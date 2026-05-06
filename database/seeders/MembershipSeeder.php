@@ -3,15 +3,13 @@
 namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\DB;
+use App\Models\Membership;
 
 class MembershipSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('memberships')->insert([
-            ['name' => 'Pantawid Pamilya'],
-            ['name' => 'Walang Gutom'],
-        ]);
+        Membership::create(['name' => 'Pantawid Pamilya']);
+        Membership::create(['name' => 'Walang Gutom']);
     }
 }
