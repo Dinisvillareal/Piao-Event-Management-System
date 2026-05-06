@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
+use App\Http\Controllers\MembershipController; //newly added Web May 6, 2026 9:22 AM Wednesday
 
 // AUTH
 Route::post('/login', [UserController::class, 'login']);
@@ -34,3 +35,14 @@ Route::get('/member', function () use ($mockMemberships) {
 Route::get('/staff', function () {
     return view('staff.dashboard');
 })->name('staff.dashboard');
+
+//newly added May 6, 2026 9:22 AM Wednesday
+// Basic resource routes
+Route::resource('memberships', MembershipController::class);
+
+// Additional pagination routes
+Route::get('/memberships-paginated', [MembershipController::class, 'getPaginated']);
+Route::get('/memberships-simple', [MembershipController::class, 'getSimplePaginated']);
+Route::get('/memberships-cursor', [MembershipController::class, 'getCursorPaginated']);
+Route::get('/memberships-search', [MembershipController::class, 'searchPaginated']);
+Route::get('/memberships-sort', [MembershipController::class, 'sortPaginated']);
