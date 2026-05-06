@@ -23,5 +23,10 @@ class DatabaseSeeder extends Seeder
                 'password' => bcrypt('password123'),
             ]);
         });
+        
+        // Add MembershipSeeder here
+        $this->call([
+            MembershipSeeder::class,
+        ]);
     }
 }
