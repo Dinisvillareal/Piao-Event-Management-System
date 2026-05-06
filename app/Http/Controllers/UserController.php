@@ -4,32 +4,22 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Models\Account;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Http\Request;
+use App\Http\Requests\StoreUserRequest;
+use App\Http\Requests\UpdateUserRequest;
 
 class UserController extends Controller
 {
     // CREATE USER + ACCOUNT
-    public function store(Request $request)
+    public function store(StoreUserRequest $request)
     {
-        $request->validate([
-            'first_name' => 'required',
-            'last_name' => 'required',
-            'contact_number' => [
-                'required',
-                'regex:/^(\+?63|0)9\d{9}$/'
-            ],
-            'role' => 'required|in:Staff,Member',
-            'username' => 'required',
-            'password' => 'required'
-        ]);
-
         $user = User::create([
             'first_name' => $request->first_name,
             'last_name' => $request->last_name,
             'middle_name' => $request->middle_name,
             'contact_number' => $request->contact_number,
-            'role' => $request->role, // Staff or User
+            'role' => $request->role,
         ]);
 
         Account::create([
@@ -62,7 +52,7 @@ class UserController extends Controller
         $query = User::with('account');
 
         if ($request->role) {
-            $query->where('role', $request->role); // MUST be Staff/User
+            $query->where('role', $request->role);
         }
 
         return response()->json($query->get());
@@ -73,17 +63,17 @@ class UserController extends Controller
     {
         return response()->json(
             User::with('account')
-                ->where('role', 'Staff') // FIXED
+                ->where('role', 'Staff')
                 ->paginate(20)
         );
     }
 
-    // USERS ONLY
+    // MEMBER ONLY
     public function member()
     {
         return response()->json(
             User::with('account')
-                ->where('role', 'Member') // FIXED
+                ->where('role', 'Member')
                 ->paginate(20)
         );
     }
@@ -96,7 +86,7 @@ class UserController extends Controller
         );
     }
 
-    // GET ACCOUNT
+    // GET ACCOUNT BY USER ID
     public function getAccountByUserId($id)
     {
         $user = User::with('account')->findOrFail($id);
@@ -104,7 +94,7 @@ class UserController extends Controller
     }
 
     // UPDATE
-    public function update(Request $request, $id)
+    public function update(UpdateUserRequest $request, $id)
     {
         $user = User::findOrFail($id);
 
