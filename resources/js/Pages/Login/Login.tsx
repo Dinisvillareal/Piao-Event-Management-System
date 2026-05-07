@@ -1,36 +1,52 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { Eye, EyeOff, ArrowRight, Copy } from "lucide-react";
 
 export default function LoginPage() {
-  const [role, setRole] = useState<"staff" | "member">("staff");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showContact, setShowContact] = useState(false);
+  const contactRef = useRef<HTMLDivElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
-    // simple navigation replacement
-    if (role === "staff") {
-      window.location.href = "/staff";
-    } else {
-      window.location.href = "/member";
-    }
+    window.location.href = "/dashboard";
   };
 
+  const contactNumber = "0917-123-4567";
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(contactNumber);
+    alert("Number copied to clipboard!");
+  };
+
+  // Close popup when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contactRef.current && !contactRef.current.contains(event.target as Node)) {
+        setShowContact(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-white text-gray-800">
+    <div className="relative min-h-screen overflow-hidden bg-white text-gray-900">
       {/* Background blobs */}
-      <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-orange-300/30 blur-3xl" />
+      <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-orange-300/40 blur-3xl" />
       <div className="absolute -right-32 top-40 h-96 w-96 rounded-full bg-yellow-300/40 blur-3xl" />
-      <div className="absolute bottom-0 left-1/3 h-96 w-96 rounded-full bg-teal-300/30 blur-3xl" />
+      <div className="absolute bottom-0 left-1/3 h-96 w-96 rounded-full bg-teal-300/40 blur-3xl" />
 
-      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-6 py-8">
-
+      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-8 py-12">
         {/* Navbar */}
-        <nav className="flex items-center gap-3">
+        <nav className="flex items-center gap-3 mb-6">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-yellow-400 text-white font-bold">
             B
           </div>
           <div>
             <p className="text-xs uppercase tracking-widest text-teal-800">
-              Barangay Portal
+              Piao Barangay Portal
             </p>
             <p className="text-base font-bold text-teal-900">
               e-Membership System
@@ -38,123 +54,122 @@ export default function LoginPage() {
           </div>
         </nav>
 
-        <main className="grid flex-1 items-center gap-10 py-10 md:grid-cols-2">
-
+        <main className="grid flex-1 items-center gap-12 py-10 md:grid-cols-2">
           {/* Left Info */}
           <div className="hidden md:block">
-            <span className="inline-flex items-center gap-2 rounded-full bg-yellow-100 px-3 py-1 text-xs font-semibold">
-              ● Welcome back
+            <span className="inline-flex items-center gap-2 rounded-full bg-yellow-400 px-3 py-1 text-xs font-semibold text-black">
+              <span className="h-2 w-2 rounded-full bg-orange-500" />
+              Welcome back
             </span>
 
-            <h1 className="mt-5 text-5xl font-black text-teal-900">
+            <h1 className="mt-5 text-5xl font-black text-teal-800">
               Sign in to your <span className="text-orange-500">barangay</span> account.
             </h1>
 
-            <p className="mt-5 max-w-md text-gray-600">
-              Staff manage memberships and events. Members track attendance,
-              notifications, and activities.
+            <p className="mt-5 max-w-md text-gray-700">
+              Manage events, register residents, and track attendance in one secure place built for your community.
             </p>
 
-            <p className="mt-6 text-xs text-gray-400">
-              UI Preview · Any credentials will work
+            <p className="mt-6 text-xs text-gray-500">
+              Use the correct credentials to access the system
             </p>
           </div>
 
           {/* Login Card */}
-          <div className="mx-auto w-full max-w-md rounded-2xl border bg-white p-6 shadow-xl">
-            <h2 className="text-2xl font-bold text-teal-900">Sign in</h2>
-            <p className="text-sm text-gray-500">Choose your role</p>
-
-            {/* Tabs */}
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setRole("staff")}
-                className={`py-2 rounded-lg font-medium ${
-                  role === "staff"
-                    ? "bg-orange-500 text-white"
-                    : "bg-gray-100"
-                }`}
-              >
-                Staff
-              </button>
-
-              <button
-                onClick={() => setRole("member")}
-                className={`py-2 rounded-lg font-medium ${
-                  role === "member"
-                    ? "bg-teal-500 text-white"
-                    : "bg-gray-100"
-                }`}
-              >
-                Member
-              </button>
-            </div>
-
-            {/* Role Info */}
-            <p className="mt-3 text-xs text-gray-500">
-              {role === "staff"
-                ? "Brgy. Captain · Kagawad · Secretary"
-                : "Resident of the barangay"}
+          <div className="mx-auto w-full max-w-lg rounded-2xl border border-gray-300 bg-white p-10 shadow-lg">
+            <h2 className="text-2xl font-bold text-teal-800">Sign in</h2>
+            <p className="text-sm text-gray-700 mt-1">
+              Sign in to your barangay account
             </p>
 
             {/* Form */}
-            <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-
+            <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+              {/* Username */}
               <div>
-                <label className="text-sm font-medium">
-                  Email or Resident ID
-                </label>
+                <label className="text-sm font-semibold text-gray-800">Username</label>
                 <input
                   type="text"
-                  className="w-full mt-1 rounded-lg border px-3 py-2"
-                  placeholder={
-                    role === "staff"
-                      ? "captain@barangay.gov"
-                      : "RES-001"
-                  }
+                  className="w-full mt-1 rounded-xl border px-3 py-2 text-sm shadow focus:ring-1 focus:border-teal-500 focus:ring-teal-400 placeholder-gray-600"
+                  placeholder="juan.delacruz@barangay.gov"
                   required
                 />
               </div>
 
+              {/* Password */}
               <div>
                 <div className="flex justify-between text-sm">
-                  <label>Password</label>
-                  <span className="text-orange-500 cursor-pointer">
+                  <label className="text-sm font-semibold text-gray-800">Password</label>
+                  <span className="text-xs text-orange-500 cursor-pointer hover:underline">
                     Forgot?
                   </span>
                 </div>
-
-                <input
-                  type="password"
-                  className="w-full mt-1 rounded-lg border px-3 py-2"
-                  placeholder="••••••••"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    className="w-full mt-1 rounded-xl border px-3 py-2 text-sm shadow focus:ring-1 focus:border-teal-500 focus:ring-teal-400 placeholder-gray-600"
+                    placeholder="••••••••"
+                    required
+                  />
+                  <button
+                    type="button"
+                    onMouseDown={() => setShowPassword(true)}
+                    onMouseUp={() => setShowPassword(false)}
+                    onMouseLeave={() => setShowPassword(false)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
+              {/* Checkbox */}
+              <div className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  id="keepSignedIn"
+                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                />
+                <label htmlFor="keepSignedIn" className="text-gray-700">
+                  Keep me signed in on this device
+                </label>
+              </div>
+
+              {/* Solid Orange Button */}
               <button
                 type="submit"
-                className={`w-full py-2 rounded-lg font-semibold ${
-                  role === "staff"
-                    ? "bg-orange-500 text-white"
-                    : "bg-teal-500 text-white"
-                }`}
+                className="w-full py-2 rounded-xl font-semibold shadow-xl transition transform text-white flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-400"
               >
-                Sign in as {role === "staff" ? "Staff" : "Member"}
+                Sign in <ArrowRight className="h-5 w-5" />
               </button>
 
-              <p className="text-center text-xs text-gray-500">
-                No account yet?{" "}
-                <span className="font-semibold cursor-pointer">
-                  Register
-                </span>
-              </p>
+              {/* Contact Number Toggle */}
+                <div className="relative flex justify-center mt-3" ref={contactRef}>
+                    <p className="text-xs text-gray-600">
+                    Need an account?{" "}
+                    <span
+                        onClick={() => setShowContact(true)}
+                        className="font-semibold cursor-pointer text-teal-700 hover:underline"
+                    >
+                        Contact this number
+                    </span>
+                    </p>
+
+                    {showContact && (
+                    <div className="absolute w-[160px] left-full ml-3 flex items-center gap-2 bg-gray-100 rounded-xl px-4 py-2 text-sm text-gray-800 shadow">
+                        <span>{contactNumber}</span>
+                        <Copy
+                        className="h-4 w-4 cursor-pointer text-gray-600 hover:text-orange-500"
+                        onClick={copyToClipboard}
+                        />
+                    </div>
+                    )}
+              </div>
             </form>
           </div>
         </main>
 
-        <footer className="text-center text-xs text-gray-400">
-          © Barangay Portal · Community system
+        <footer className="text-center text-xs text-gray-700 mt-8">
+          © 2026 Piao Barangay Portal · Community System
         </footer>
       </div>
     </div>
