@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { Eye, EyeOff, ArrowRight, Copy } from "lucide-react";
+import { ArrowRight, Copy } from "lucide-react";
 
 export default function LoginPage() {
-  const [showPassword, setShowPassword] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
 
@@ -105,20 +104,11 @@ export default function LoginPage() {
                 </div>
                 <div className="relative">
                   <input
-                    type={showPassword ? "text" : "password"}
+                    type="password"
                     className="w-full mt-1 rounded-xl border px-3 py-2 text-sm shadow focus:ring-1 focus:border-teal-500 focus:ring-teal-400 placeholder-gray-600"
                     placeholder="••••••••"
                     required
                   />
-                  <button
-                    type="button"
-                    onMouseDown={() => setShowPassword(true)}
-                    onMouseUp={() => setShowPassword(false)}
-                    onMouseLeave={() => setShowPassword(false)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
                 </div>
               </div>
 
@@ -143,26 +133,26 @@ export default function LoginPage() {
               </button>
 
               {/* Contact Number Toggle */}
-                <div className="relative flex justify-center mt-3" ref={contactRef}>
-                    <p className="text-xs text-gray-600">
-                    Need an account?{" "}
-                    <span
-                        onClick={() => setShowContact(true)}
-                        className="font-semibold cursor-pointer text-teal-700 hover:underline"
-                    >
-                        Contact this number
-                    </span>
-                    </p>
+              <div className="relative flex justify-center mt-3" ref={contactRef}>
+                <p className="text-xs text-gray-600">
+                  Need an account?{" "}
+                  <span
+                    onClick={() => setShowContact(true)}
+                    className="font-semibold cursor-pointer text-teal-700 hover:underline"
+                  >
+                    Contact this number
+                  </span>
+                </p>
 
-                    {showContact && (
-                    <div className="absolute w-[160px] left-full ml-3 flex items-center gap-2 bg-gray-100 rounded-xl px-4 py-2 text-sm text-gray-800 shadow">
-                        <span>{contactNumber}</span>
-                        <Copy
-                        className="h-4 w-4 cursor-pointer text-gray-600 hover:text-orange-500"
-                        onClick={copyToClipboard}
-                        />
-                    </div>
-                    )}
+                {showContact && (
+                  <div className="absolute w-[160px] left-full ml-3 flex items-center gap-2 bg-gray-100 rounded-xl px-4 py-2 text-sm text-gray-800 shadow">
+                    <span>{contactNumber}</span>
+                    <Copy
+                      className="h-4 w-4 cursor-pointer text-gray-600 hover:text-orange-500"
+                      onClick={copyToClipboard}
+                    />
+                  </div>
+                )}
               </div>
             </form>
           </div>
