@@ -7,8 +7,19 @@ use App\Models\Event;
 
 class EventController extends Controller
 {
+    // READ ALL WITH PAGINATION
+    public function index(Request $request)
+    {
+        
+        $perPage = $request->get('per_page', 20);
+
+        $events = Event::paginate($perPage);
+
+        return response()->json($events);
+    }
+
     //  READ ALL
-    public function index()
+    public function list()
     {
         return response()->json(Event::all());
     }
