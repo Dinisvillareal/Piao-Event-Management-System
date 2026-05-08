@@ -28,5 +28,9 @@ class DatabaseSeeder extends Seeder
         $this->call([
             MembershipSeeder::class,
         ]);
+
+        $this->call([
+            EventSeeder::class,
+        ]);
     }
 }
