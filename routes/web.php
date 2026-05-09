@@ -2,13 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
-use App\Http\Controllers\MembershipController;
-
-// Serve React build for all frontend routes
-/* SPA ENTRY */
-Route::get('/{any}', function () {
-    return view('app');
-})->where('any', '.*');
+use App\Http\Controllers\MembershipController; 
+use App\Http\Controllers\EventController; //newly added Web May 6, 2026 9:22 AM Wednesday
 
 // AUTH
 Route::post('/login', [UserController::class, 'login']);
@@ -47,3 +42,11 @@ Route::get('/memberships-simple', [MembershipController::class, 'getSimplePagina
 Route::get('/memberships-cursor', [MembershipController::class, 'getCursorPaginated']);
 Route::get('/memberships-search', [MembershipController::class, 'searchPaginated']);
 Route::get('/memberships-sort', [MembershipController::class, 'sortPaginated']);
+
+Route::get('/events', [EventController::class, 'index'])->name('events.index');
+Route::get('/events/{id}', [EventController::class, 'show'])->name('events.show');
+
+Route::post('/events', [EventController::class, 'store'])->name('events.store');
+Route::put('/events/{id}', [EventController::class, 'update'])->name('events.update');
+
+Route::delete('/events/{id}', [EventController::class, 'destroy'])->name('events.destroy');
