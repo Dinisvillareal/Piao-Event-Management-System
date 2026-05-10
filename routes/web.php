@@ -2,8 +2,9 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
-use App\Http\Controllers\MembershipController; 
+use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\EventController; //newly added Web May 6, 2026 9:22 AM Wednesday
+use App\Http\Controllers\MembershipResidentController; //newly added Web May 10, 2026 2:00 PM Sunday
 
 // AUTH
 Route::post('/login', [UserController::class, 'login']);
@@ -50,3 +51,13 @@ Route::post('/events', [EventController::class, 'store'])->name('events.store');
 Route::put('/events/{id}', [EventController::class, 'update'])->name('events.update');
 
 Route::delete('/events/{id}', [EventController::class, 'destroy'])->name('events.destroy');
+
+Route::get('/membership-residents', [MembershipResidentController::class, 'index']);
+
+Route::get('/membership-residents/{id}', [MembershipResidentController::class, 'show']);
+
+Route::post('/membership-residents', [MembershipResidentController::class, 'store']);
+
+Route::put('/membership-residents/{id}', [MembershipResidentController::class, 'update']);
+
+Route::delete('/membership-residents/{id}', [MembershipResidentController::class, 'destroy']);
