@@ -11,6 +11,7 @@ import {
   KeyRound,
   Search,
   Filter,
+  MoreVertical,
 } from "lucide-react";
 
 // SearchBar
@@ -40,11 +41,14 @@ function SearchBar({
 export default function MemberDashboard() {
   const [active, setActive] = useState("dashboard");
 
-  // ✅ Search state — shared + separate for notifications + attendance
+  // ✅ Search state — shared + separate for notifications + attendance + events
   const [searchQuery, setSearchQuery] = useState(""); // QR search
   const [notificationSearch, setNotificationSearch] = useState(""); // ✅ Notification search
   const [attendanceSearch, setAttendanceSearch] = useState(""); // ✅ Attendance search
   const [attendanceFilter, setAttendanceFilter] = useState("all"); // ✅ Filter: all | complete | incomplete | missed
+  const [eventSearch, setEventSearch] = useState(""); // ✅ Events search
+  const [eventFilter, setEventFilter] = useState("all"); // ✅ Events filter: all | upcoming | past
+  const [eventMenuOpen, setEventMenuOpen] = useState<number | null>(null); // ✅ For 3-dot menu
 
   const [currentPage, setCurrentPage] = useState(1); // ✅ Pagination state
   const [attendancePage, setAttendancePage] = useState(1); // ✅ Attendance pagination
@@ -245,7 +249,7 @@ export default function MemberDashboard() {
     );
   }, [memberships, searchQuery]);
 
-  // ✅ Attendance Filter + Search
+    // ✅ Attendance Filter + Search — NEWEST FIRST sorting
   const filteredAttendance = useMemo(() => {
     let result = attendanceRecords;
 
@@ -257,15 +261,17 @@ export default function MemberDashboard() {
     // Filter by search
     if (attendanceSearch.trim()) {
       const q = attendanceSearch.toLowerCase();
-      result = result.filter(
-        (rec) =>
-          rec.eventTitle.toLowerCase().includes(q) ||
-          rec.eventDate.toLowerCase().includes(q) ||
-          rec.location.toLowerCase().includes(q) ||
-          rec.timeIn.toLowerCase().includes(q) ||
-          rec.timeOut.toLowerCase().includes(q)
+      result = result.filter((rec) =>
+        rec.eventTitle.toLowerCase().includes(q) ||
+        rec.eventDate.toLowerCase().includes(q) ||
+        rec.location.toLowerCase().includes(q) ||
+        rec.timeIn.toLowerCase().includes(q) ||
+        rec.timeOut.toLowerCase().includes(q)
       );
     }
+
+    // ✅ SORT: NEWEST / LATEST DATE FIRST — same as Events & Notifications
+    result = [...result].sort((a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime());
 
     return result;
   }, [attendanceRecords, attendanceFilter, attendanceSearch]);
@@ -351,7 +357,7 @@ export default function MemberDashboard() {
     },
   ];
 
-  // ✅ Filtered Notifications — same logic
+    // ✅ Filtered Notifications — same logic
   const filteredNotifications = useMemo(() => {
     if (!notificationSearch.trim()) return notifications;
     return notifications.filter((n) =>
@@ -361,47 +367,166 @@ export default function MemberDashboard() {
     );
   }, [notifications, notificationSearch]);
 
-  const upcomingEvents = [
-    {
-      id: 1,
-      title: "Barangay General Assembly",
-      date: "2026-05-12 09:00",
-      location: "Barangay Hall",
-      description: "Quarterly assembly of all registered members.",
-    },
-    {
-      id: 2,
-      title: "Community Clean-Up",
-      date: "2026-05-15 06:00",
-      location: "Town Plaza",
-      description: "Weekly clean-up activity, all residents welcome.",
-    },
-    {
-      id: 3,
-      title: "Health Seminar",
-      date: "2026-05-20 13:00",
-      location: "Barangay Hall",
-      description: "Free health talk & check-up for seniors.",
-    },
-    {
-      id: 4,
-      title: "Youth Basketball League",
-      date: "2026-05-25 08:00",
-      location: "Covered Court",
-      description: "Annual sports event for youth ages 15–21.",
-    },
-    {
-      id: 5,
-      title: "Disaster Preparedness",
-      date: "2026-05-30 10:00",
-      location: "Multi-Purpose Hall",
-      description: "Training & seminar for all households.",
-    },
-  ];
+  const [upcomingEvents, setUpcomingEvents] = useState([
+  {
+    id: 1,
+    title: "Barangay General Assembly",
+    date: "2026-05-12 09:00", // ✅ This week
+    location: "Barangay Hall",
+    description: "Quarterly assembly of all registered members.",
+  },
+  {
+    id: 2,
+    title: "Community Clean-Up",
+    date: "2026-05-13 06:00", // ✅ This week
+    location: "Town Plaza",
+    description: "Weekly clean-up activity, all residents welcome. Bring gloves and brooms.",
+  },
+  {
+    id: 3,
+    title: "Health Seminar",
+    date: "2026-05-14 13:00", // ✅ This week
+    location: "Barangay Hall",
+    description: "Free health talk & check-up for seniors and vulnerable groups.",
+  },
+  {
+    id: 4,
+    title: "Youth Basketball League",
+    date: "2026-05-11 08:00", // ✅ This week
+    location: "Covered Court",
+    description: "Annual sports event for youth ages 15–21.",
+  },
+  {
+    id: 5,
+    title: "Disaster Preparedness",
+    date: "2026-05-15 10:00", // ✅ NEWEST date — This week
+    location: "Multi-Purpose Hall",
+    description: "Training & seminar for all households. Emergency kits will be distributed.",
+  },
+]);
 
-  const pastEvents = [];
-  const attended = 1;
-  const missed = 0;
+const [pastEvents, setPastEvents] = useState([
+  {
+    id: 6,
+    title: "Monthly Assembly",
+    date: "2026-05-08 09:00", // ✅ Already passed
+    location: "Barangay Hall",
+    description: "Regular monthly meeting of residents and officials.",
+  },
+  {
+    id: 7,
+    title: "Tree Planting Activity",
+    date: "2026-05-07 07:00", // ✅ Already passed
+    location: "Community Park",
+    description: "Environmental activity for all members. Over 100 seedlings planted.",
+  },
+  {
+    id: 8,
+    title: "Senior Citizen Forum",
+    date: "2026-05-06 14:00", // ✅ Already passed
+    location: "Senior Center",
+    description: "Forum on elderly care, benefits, and health services.",
+  },
+]);
+
+  // ✅ Combine all events
+  const allEvents = useMemo(() => [...upcomingEvents, ...pastEvents], [upcomingEvents, pastEvents]);
+
+    // ✅ Events Filter + Search — exactly same pattern as Attendance
+  const filteredEvents = useMemo(() => {
+    let result = allEvents;
+
+    // Filter by category: all / upcoming / past
+    if (eventFilter === "upcoming") {
+      result = upcomingEvents;
+    } else if (eventFilter === "past") {
+      result = pastEvents;
+    }
+
+    // Filter by search keyword
+    if (eventSearch.trim()) {
+      const q = eventSearch.toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.title.toLowerCase().includes(q) ||
+          e.date.toLowerCase().includes(q) ||
+          e.location.toLowerCase().includes(q) ||
+          e.description.toLowerCase().includes(q)
+      );
+    }
+
+    // ✅ SORT: NEWEST / LATEST DATE FIRST — same as Notifications
+    result = [...result].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return result;
+  }, [allEvents, upcomingEvents, pastEvents, eventFilter, eventSearch]);
+
+    // ✅ Group events by date section — EXACT RULE YOU WANT:
+  // - Filter = All → "This Week" for upcoming within 7 days, rest = full date
+  // - Filter = Upcoming / Past → ALL use full date format, NO "This Week"
+  const groupedEvents = useMemo(() => {
+    const groups: Record<string, typeof allEvents> = {};
+    const today = new Date();
+    const oneWeekFromNow = new Date();
+    oneWeekFromNow.setDate(today.getDate() + 7);
+
+    filteredEvents.forEach((e) => {
+      const eventDate = new Date(e.date);
+      const dateOnly = e.date.split(" ")[0];
+
+      let sectionKey: string;
+
+      if (eventFilter === "all") {
+        // Only show "This Week" when filter is "All"
+        if (eventDate >= today && eventDate <= oneWeekFromNow) {
+          sectionKey = "📅 This Week";
+        } else {
+          sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+        }
+      } else {
+        // When filter = Upcoming OR Past → ALL use full date format
+        sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+      }
+
+      if (!groups[sectionKey]) groups[sectionKey] = [];
+      groups[sectionKey].push(e);
+    });
+
+    // ✅ SORT GROUPS: "This Week" always first, then NEWEST DATE GROUPS FIRST
+    const sortedGroups = Object.entries(groups).sort(([keyA], [keyB]) => {
+      if (keyA === "📅 This Week") return -1;
+      if (keyB === "📅 This Week") return 1;
+      // Reverse order → latest date first
+      return new Date(keyB).getTime() - new Date(keyA).getTime();
+    });
+
+    return Object.fromEntries(sortedGroups);
+  }, [filteredEvents, eventFilter]);
+
+  // ✅ Delete event handler
+  const handleDeleteEvent = (id: number) => {
+    setUpcomingEvents(prev => prev.filter(e => e.id !== id));
+    setPastEvents(prev => prev.filter(e => e.id !== id));
+    setEventMenuOpen(null);
+  };
+
+  // ✅ Reset event page/search state when filter/search changes
+  useMemo(() => {
+    // reset any pagination here if added later
+  }, [eventSearch, eventFilter]);
+
+  const attended = attendanceRecords.filter(r => r.status === "complete").length;
+  const missed = attendanceRecords.filter(r => r.status === "missed").length;
 
   const navItems = [
     { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -415,7 +540,7 @@ export default function MemberDashboard() {
   return (
     <div className="min-h-screen bg-[#fcfcf9] text-gray-900">
       <div className="flex min-h-screen">
-                {/* ✅ UPDATED SIDEBAR — Fixed height, scrollable content, Sign Out fixed at bottom */}
+        {/* ✅ UPDATED SIDEBAR — Fixed height, scrollable content, Sign Out fixed at bottom */}
         <aside className="hidden w-[250px] flex-col border-r border-[#ddd5ca] bg-[#fcfcf9] md:flex h-screen sticky top-0">
           <div className="border-b border-[#ddd5ca] px-5 py-5 shrink-0">
             <div className="flex items-center gap-3">
@@ -580,7 +705,7 @@ export default function MemberDashboard() {
                 </>
               )}
 
-              {/* ✅ MY QR CODES — ✅ HEADER + SEARCH BAR FIXED / STICKY */}
+                            {/* ✅ MY QR CODES — ✅ HEADER + SEARCH BAR FIXED / STICKY */}
               {active === "qr" && (
                 <div className="space-y-6">
                   {/* ✅ FIXED HEADER & SEARCH AREA — STICKY, NEVER SCROLL AWAY */}
@@ -627,7 +752,7 @@ export default function MemberDashboard() {
                                     </p>
                                   </div>
                                   <span className="bg-[#2cb7b7] text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-                                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                                       <path d="M20 6L9 17l-5-5" />
                                     </svg>
                                     Verified
@@ -639,7 +764,7 @@ export default function MemberDashboard() {
                                     <FakeQR seed={m.codeId} />
                                   </div>
                                   <div>
-                                    <p className="text-sm font-medium text-[#2c5353]">Code ID</p>
+                                    <p className="text-sm font-medium text-[#0f5050]">Code ID</p>
                                     <p className="text-xs text-[#365f5f] mt-1">
                                       {highlightText(m.codeId, searchQuery)}
                                     </p>
@@ -715,7 +840,7 @@ export default function MemberDashboard() {
                             placeholder="Search attendance by event, date, location or time…"
                           />
                         </div>
-                                                {/* ✅ FILTER DROPDOWN */}
+                        {/* ✅ FILTER DROPDOWN */}
                         <div className="relative">
                           <select
                             value={attendanceFilter}
@@ -834,31 +959,136 @@ export default function MemberDashboard() {
                 </div>
               )}
 
-              {/* EVENTS */}
-              {active === "events" && (
-                <div>
-                  <h1 className="text-4xl font-black text-[#005f63]">Events</h1>
-                  <p className="text-sm text-[#667777] mt-1">Filter and view all, upcoming, and past events.</p>
-                  <div className="mt-6 grid gap-5 md:grid-cols-2">
-                    {upcomingEvents.map((e) => (
-                      <div
-                        key={e.id}
-                        className="rounded-3xl border bg-white p-5 shadow-xl hover:shadow-2xl transition-shadow duration-300"
-                      >
-                        <h2 className="font-bold text-[#005f63]">
-                          {e.title}
-                        </h2>
-                        <p className="mt-1 text-sm text-gray-500">
-                          {e.date} · {e.location}
+              {/* ✅ EVENTS PAGE — WITH FIXED HEADER + SEARCH + FILTER */}
+                {active === "events" && (
+                <div className="space-y-6">
+                    {/* ✅ FIXED HEADER & SEARCH AREA — SAME AS ATTENDANCE */}
+                    <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
+                    <div className="w-[1200px]">
+                        <h1 className="text-4xl font-black text-[#005f63]">
+                        Events
+                        </h1>
+
+                        <p className="mt-1 text-sm text-[#667777]">
+                        Filter and view all, upcoming, and past events.
                         </p>
-                        <p className="mt-3 text-gray-700">
-                          {e.description}
+
+                        {/* ✅ SEARCH + FILTER */}
+                        <div className="mt-4 flex items-center gap-4 w-[1580px]">
+                        <div className="flex-1">
+                            <SearchBar
+                            value={eventSearch}
+                            onChange={setEventSearch}
+                            placeholder="Search events by title, date, location or description..."
+                            />
+                        </div>
+
+                        {/* ✅ FILTER */}
+                        <div className="relative">
+                            <select
+                            value={eventFilter}
+                            onChange={(e) => setEventFilter(e.target.value)}
+                            className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
+                            >
+                            <option value="all">All Events</option>
+                            <option value="upcoming">Upcoming Events</option>
+                            <option value="past">Past Events</option>
+                            </select>
+
+                            <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+
+                            <svg
+                            className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            >
+                            <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                            />
+                            </svg>
+                        </div>
+                        </div>
+
+                        <p className="mt-2 text-xs text-gray-500">
+                        {filteredEvents.length} of {allEvents.length} event(s) match
                         </p>
-                      </div>
-                    ))}
-                  </div>
+                    </div>
+                    </div>
+
+                    {/* ✅ EVENTS LIST */}
+                    <div className="pl-1">
+                    {filteredEvents.length === 0 ? (
+                        <p className="text-gray-500 italic">
+                        No events match your search or filter.
+                        </p>
+                    ) : (
+                        <div className="space-y-8">
+                        {Object.entries(groupedEvents).map(
+                            ([dateLabel, eventsInGroup]) => (
+                            <div key={dateLabel}>
+                                {/* ✅ DATE LABEL */}
+                                <h3 className="mb-4 border-b border-gray-200 pb-2 text-lg font-bold text-[#005f63]">
+                                {dateLabel}
+                                </h3>
+
+                                <div className="grid gap-5 md:grid-cols-2">
+                                {eventsInGroup.map((e) => (
+                                <div
+                                    key={e.id}
+                                    className="relative rounded-2xl border-l-4 border-orange-400 bg-[#f8f3ee] p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
+                                >
+                                    {/* ✅ 3 DOT MENU */}
+                                    <div className="absolute top-4 right-4">
+                                    <button
+                                        onClick={() =>
+                                        setEventMenuOpen(
+                                            eventMenuOpen === e.id ? null : e.id
+                                        )
+                                        }
+                                        className="rounded-full p-2 transition-colors hover:bg-gray-100"
+                                    >
+                                        <MoreVertical className="h-5 w-5 text-gray-600" />
+                                    </button>
+
+                                    {eventMenuOpen === e.id && (
+                                        <div className="absolute right-0 z-20 mt-1 w-28 rounded-md border bg-white shadow-lg">
+                                        <button
+                                            onClick={() => handleDeleteEvent(e.id)}
+                                            className="w-full rounded-md px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-200 "
+                                        >
+                                            Delete
+                                        </button>
+                                        </div>
+                                    )}
+                                    </div>
+
+                                    <h2 className="pr-8 text-lg font-bold text-[#005f63]">
+                                    {highlightText(e.title, eventSearch)}
+                                    </h2>
+
+                                    <p className="mt-1 text-sm text-gray-500">
+                                    {highlightText(e.date, eventSearch)} ·{" "}
+                                    {highlightText(e.location, eventSearch)}
+                                    </p>
+
+                                    <p className="mt-3 text-gray-700">
+                                    {highlightText(e.description, eventSearch)}
+                                    </p>
+                                </div>
+                                ))}
+                                                                </div>
+                                                            </div>
+                                                            )
+                                                        )}
+                        </div>
+                    )}
+                    </div>
                 </div>
-              )}
+                )}
 
               {/* ✅ NOTIFICATIONS — WITH SEARCH BAR SAME AS QR PAGE */}
               {active === "notify" && (
@@ -884,86 +1114,90 @@ export default function MemberDashboard() {
                   </div>
 
                   <div className="mt-6 space-y-4 pl-1">
-                    {filteredNotifications.length === 0 ? (
-                      <p className="text-gray-500 italic">No notifications match your search.</p>
-                    ) : (
-                      filteredNotifications.map((n) => (
+                    {filteredNotifications.map((n) => (
                         <div
-                          key={n.id}
-                          className="rounded-2xl border-l-4 border-yellow-400 bg-[#f7f2e8] p-5 hover:shadow-xl transition-shadow duration-300"
+                            key={n.id}
+                            className="rounded-2xl border-l-4 border-yellow-400 bg-[#f7f2e8] p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-300"
                         >
-                          <div className="flex justify-between gap-3">
+                            <div className="flex justify-between gap-3">
                             <h2 className="font-bold text-[#005f63]">
-                              {highlightText(n.title, notificationSearch)}
+                                {highlightText(n.title, notificationSearch)}
                             </h2>
                             <span className="text-xs text-gray-500">
-                              {highlightText(n.sentAt, notificationSearch)}
+                                {highlightText(n.sentAt, notificationSearch)}
                             </span>
-                          </div>
-                          <p className="mt-2 text-sm text-gray-700">
+                            </div>
+                            <p className="mt-2 text-sm text-gray-700">
                             {highlightText(n.body, notificationSearch)}
-                          </p>
+                            </p>
                         </div>
-                      ))
-                    )}
+                        ))}
                   </div>
                 </div>
               )}
 
-              {/* SETTINGS */}
+                            {/* SETTINGS */}
               {active === "settings" && (
                 <div className="grid gap-6 lg:grid-cols-2">
                   {/* CHANGE PASSWORD */}
-                  <div className="rounded-3xl border bg-white p-6 shadow-xl hover:shadow-2xl transition-shadow duration-300">
-                    <div className="flex items-center gap-2">
-                      <KeyRound className="h-5 w-5 text-orange-500" />
-                      <h2 className="text-3xl font-black text-[#005f63]">Change Password</h2>
-                    </div>
-                    <div className="mt-6 space-y-4">
-                      <input
-                        type="password"
-                        placeholder="Current Password"
-                        className="w-full rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                      />
-                      <input
-                        type="password"
-                        placeholder="New Password"
-                        className="w-full rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                      />
-                      <input
-                        type="password"
-                        placeholder="Confirm Password"
-                        className="w-full rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                      />
-                      <button className="w-full rounded-xl bg-orange-500 py-3 font-semibold text-white hover:bg-orange-400 transition-colors">
-                        Update Password
-                      </button>
+                  <div className="overflow-hidden rounded-3xl bg-white shadow-[0_4px_12px_rgba(0,0,0,0.08)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-shadow duration-300">
+                    {/* ✅ TOP GRADIENT BORDER — same as your image */}
+                    <div className="h-1.5 bg-gradient-to-r from-[#ffd33d] via-[#ff9a3c] to-[#28f1ff]"></div>
+                    <div className="p-6">
+                      <div className="flex items-center gap-2">
+                        <KeyRound className="h-5 w-5 text-orange-500" />
+                        <h2 className="text-3xl font-black text-[#005f63]">Change Password</h2>
+                      </div>
+                      <div className="mt-6 space-y-4">
+                        <input
+                          type="password"
+                          placeholder="Current Password"
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                        />
+                        <input
+                          type="password"
+                          placeholder="New Password"
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                        />
+                        <input
+                          type="password"
+                          placeholder="Confirm Password"
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                        />
+                        <button className="w-full rounded-xl bg-[#f8a02c] py-3 font-semibold text-white hover:bg-[#fcbd6c] transition-colors">
+                          Update Password
+                        </button>
+                      </div>
                     </div>
                   </div>
 
                   {/* PROFILE SETTINGS */}
-                  <div className="rounded-3xl border bg-white p-6 shadow-xl hover:shadow-2xl transition-shadow duration-300">
-                    <h2 className="text-3xl font-black text-[#005f63]">Profile</h2>
-                    <div className="mt-6 space-y-4">
-                      <input
-                        type="text"
-                        defaultValue={member.name}
-                        className="w-full rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                      />
-                      <input
-                        type="text"
-                        defaultValue="0917-111-1001"
-                        className="w-full rounded-xl border px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
-                      />
-                      <input
-                        type="text"
-                        disabled
-                        defaultValue="Member · Resident"
-                        className="w-full rounded-xl border bg-gray-100 px-4 py-3 text-gray-600"
-                      />
-                      <button className="w-full rounded-xl border py-3 font-semibold text-[#005f63] hover:bg-gray-100 transition-colors">
-                        Save Profile
-                      </button>
+                  <div className="overflow-hidden rounded-3xl bg-white shadow-[0_4px_12px_rgba(0,0,0,0.08)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-shadow duration-300">
+                    {/* ✅ TOP GRADIENT BORDER — same as your image */}
+                    <div className="h-1.5 bg-gradient-to-r from-[#28f1ff] via-[#ff9a3c] to-[#ffd33d]"></div>
+                    <div className="p-6">
+                      <h2 className="text-3xl font-black text-[#005f63]">Profile</h2>
+                      <div className="mt-6 space-y-4">
+                        <input
+                          type="text"
+                          defaultValue={member.name}
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                        />
+                        <input
+                          type="text"
+                          defaultValue="0917-111-1001"
+                          className="w-full rounded-xl border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                        />
+                        <input
+                          type="text"
+                          disabled
+                          defaultValue="Member · Resident"
+                          className="w-full rounded-xl border border-gray-200 bg-gray-100 px-4 py-3 text-gray-600"
+                        />
+                        <button className="w-full rounded-xl bg-[#2cb7b7] py-3 font-semibold text-white hover:bg-[#41d1d1] transition-colors">
+                          Save Profile
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
