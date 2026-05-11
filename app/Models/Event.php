@@ -17,4 +17,11 @@ class Event extends Model
         'event_start',
         'event_end',
     ];
+    
+    public function attendances()
+    {
+        return $this->hasMany(Attendance::class);
+    }
+
+
 }

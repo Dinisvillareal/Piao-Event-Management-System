@@ -78,3 +78,19 @@ Route::prefix('events')->group(function () {
     Route::put('/{id}', [EventController::class, 'update'])->name('events.update');
     Route::delete('/{id}', [EventController::class, 'destroy'])->name('events.destroy');
 });
+
+
+/*
+|--------------------------------------------------------------------------
+| EVENT ATTENDANCE ROUTES
+|--------------------------------------------------------------------------
+*/
+Route::prefix('attendance')->group(function () {
+    // Mobile/QR Scanner routes
+    Route::post('/time-in', [AttendanceController::class, 'timeIn']);
+    Route::put('/time-out', [AttendanceController::class, 'timeOut']);
+});
+
+// Fetching lists for the Dashboards
+Route::get('/events/{id}/attendances', [AttendanceController::class, 'getEventAttendees']);
+Route::get('/users/{id}/attendances', [AttendanceController::class, 'getMemberHistory']);

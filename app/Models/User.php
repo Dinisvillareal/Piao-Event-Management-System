@@ -21,4 +21,9 @@ class User extends Model
     {
         return $this->hasOne(Account::class);
     }
+
+    public function attendances()
+    {
+        return $this->hasMany(Attendance::class);
+    }
 }
