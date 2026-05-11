@@ -23,6 +23,38 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
     { key: "settings", label: "Settings", icon: Settings },
   ];
 
+  // LOGOUT FUNCTION
+  const handleLogout = async () => {
+    try {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+      
+      await fetch('/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
+        }
+      });
+
+      // Clear all stored user data
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // Redirect to login page
+      window.location.href = '/';
+      
+    } catch (err) {
+      console.error('Logout error:', err);
+      // Force clear local data even if API fails
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/';
+    }
+  };
+
   return (
     <aside className="hidden w-[250px] flex-col border-r border-[#ddd5ca] bg-[#fcfcf9] md:flex h-screen sticky top-0">
       <div className="border-b border-[#ddd5ca] px-5 py-5 shrink-0">
@@ -65,7 +97,10 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
       </div>
 
       <div className="border-t border-[#ddd5ca] p-2 shrink-0">
-        <button className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-[#005f63] transition hover:bg-orange-100">
+        <button 
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-[#005f63] transition hover:bg-orange-100"
+        >
           <LogOut className="h-5 w-5" />
           <span className="font-medium">Sign out</span>
         </button>
