@@ -25,7 +25,8 @@ class StoreUserRequest extends FormRequest
 
             'role' => 'required|in:Staff,Member',
 
-            'username' => 'required|string|max:50|unique:accounts,username',
+            // 'username' => 'required|string|max:50|unique:accounts,username', // ❌ REMOVED - Auto-generated
+
             'password' => 'required|string|min:6|max:100'
         ];
     }
