@@ -10,6 +10,8 @@ class Membership extends Model
     // Allows you to save the name using Membership::create()
     protected $fillable = ['name'];
 
+    public $timestamps = false;
+
     /**
      * Relationship: A membership can belong to many users.
      */
