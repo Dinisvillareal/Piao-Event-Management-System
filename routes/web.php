@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\MembershipResidentController; //newl
 
 /*
 |--------------------------------------------------------------------------
@@ -17,9 +18,6 @@ Route::get('/', function () {
 Route::get('/{any}', function () {
     return view('app');
 })->where('any', 'dashboard|qr|attendance|events|notify|settings');
-use App\Http\Controllers\MembershipController;
-use App\Http\Controllers\EventController; //newly added Web May 6, 2026 9:22 AM Wednesday
-use App\Http\Controllers\MembershipResidentController; //newly added Web May 10, 2026 2:00 PM Sunday
 
 // AUTH
 Route::post('/login', [UserController::class, 'login']);
