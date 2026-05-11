@@ -16,14 +16,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        User::factory(20)->create()->each(function ($user) {
-            Account::create([
-                'user_id' => $user->id,
-                'username' => fake()->userName(),
-                'password' => bcrypt('password123'),
-            ]);
-        });
-        
+        $this->call([
+            UserAccountSeeder::class,
+        ]);
         // Add MembershipSeeder here
         $this->call([
             MembershipSeeder::class,
@@ -31,6 +26,9 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             EventSeeder::class,
+        ]);
+        $this->call([
+            MembershipResidentSeeder::class,
         ]);
     }
 }

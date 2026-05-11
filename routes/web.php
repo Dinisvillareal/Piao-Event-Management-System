@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\MembershipResidentController; //newl
 
 /*
 |--------------------------------------------------------------------------
@@ -17,6 +18,30 @@ Route::get('/', function () {
 Route::get('/{any}', function () {
     return view('app');
 })->where('any', 'dashboard|qr|attendance|events|notify|settings');
+
+// AUTH
+Route::post('/login', [UserController::class, 'login']);
+
+// USERS CRUD
+Route::get('/users', [UserController::class, 'index']);
+Route::get('/users/{id}', [UserController::class, 'show']);
+Route::post('/users', [UserController::class, 'store']);
+Route::put('/users/{id}', [UserController::class, 'update']);
+Route::delete('/users/{id}', [UserController::class, 'destroy']);
+
+// ROLE FILTERS
+Route::get('/users-staff', [UserController::class, 'staff']);
+Route::get('/users-member', [UserController::class, 'member']);
+
+// Mock data for views (only used if you still want Blade dashboards)
+$mockMemberships = [
+    ['id' => 1, 'name' => 'Pantawid Pamilya', 'color' => '#2563eb', 'role' => 'Member'],
+    ['id' => 2, 'name' => 'Piao Residents', 'color' => '#10b981', 'role' => 'Resident']
+];
+
+Route::get('/member', function () use ($mockMemberships) {
+    return view('member.dashboard', ['memberships' => $mockMemberships]);
+})->name('member.dashboard');
 
 Route::get('/staff', function () {
     return view('staff.dashboard');
@@ -80,3 +105,18 @@ Route::prefix('events')->group(function () {
     Route::put('/{id}', [EventController::class, 'update'])->name('events.update');
     Route::delete('/{id}', [EventController::class, 'destroy'])->name('events.destroy');
 });
+
+Route::post('/events', [EventController::class, 'store'])->name('events.store');
+Route::put('/events/{id}', [EventController::class, 'update'])->name('events.update');
+
+Route::delete('/events/{id}', [EventController::class, 'destroy'])->name('events.destroy');
+
+Route::get('/membership-residents', [MembershipResidentController::class, 'index']);
+
+Route::get('/membership-residents/{id}', [MembershipResidentController::class, 'show']);
+
+Route::post('/membership-residents', [MembershipResidentController::class, 'store']);
+
+Route::put('/membership-residents/{id}', [MembershipResidentController::class, 'update']);
+
+Route::delete('/membership-residents/{id}', [MembershipResidentController::class, 'destroy']);
