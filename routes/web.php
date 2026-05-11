@@ -7,17 +7,6 @@ use App\Http\Controllers\EventController;
 
 /*
 |--------------------------------------------------------------------------
-| MOCK DATA (FOR DEVELOPMENT ONLY)
-|--------------------------------------------------------------------------
-*/
-
-$mockMemberships = [
-    ['id' => 1, 'name' => 'Pantawid Pamilya', 'color' => '#2563eb', 'role' => 'Member'],
-    ['id' => 2, 'name' => 'Piao Residents', 'color' => '#10b981', 'role' => 'Resident']
-];
-
-/*
-|--------------------------------------------------------------------------
 | FRONTEND VIEWS
 |--------------------------------------------------------------------------
 */
@@ -25,12 +14,9 @@ $mockMemberships = [
 Route::get('/', function () {
     return view('app'); // ONLY ONE VIEW FOR REACT
 });
-
-Route::get('/member', function () use ($mockMemberships) {
-    return view('member.dashboard', [
-        'memberships' => $mockMemberships
-    ]);
-})->name('member.dashboard');
+Route::get('/{any}', function () {
+    return view('app');
+})->where('any', 'dashboard|qr|attendance|events|notify|settings');
 
 Route::get('/staff', function () {
     return view('staff.dashboard');
