@@ -11,7 +11,7 @@ use App\Http\Requests\UpdateUserRequest;
 
 class UserController extends Controller
 {
-    // CREATE USER + ACCOUNT
+    // CREATE USER + ACCOUNT WITH AUTO-GENERATED USERNAME
     public function store(StoreUserRequest $request)
     {
         $user = User::create([
@@ -22,16 +22,25 @@ class UserController extends Controller
             'role' => $request->role,
         ]);
 
+        // Generate username in format PR-0001, PR-0002, etc.
+        $userId = $user->id;
+        $formattedId = str_pad($userId, 4, '0', STR_PAD_LEFT);
+        $username = 'PR-' . $formattedId;
+
         Account::create([
             'user_id' => $user->id,
-            'username' => $request->username,
+            'username' => $username,
             'password' => Hash::make($request->password),
         ]);
 
-        return response()->json(['message' => 'User created successfully'], 201);
+        return response()->json([
+            'message' => 'User created successfully',
+            'username' => $username,
+            'user' => $user
+        ], 201);
     }
 
-    // LOGIN
+    // LOGIN - WITH REMEMBER ME
     public function login(Request $request)
     {
         $account = Account::where('username', $request->username)->first();
@@ -39,6 +48,9 @@ class UserController extends Controller
         if (!$account || !Hash::check($request->password, $account->password)) {
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
+
+        // THIS ENABLES "KEEP ME SIGNED IN"
+        auth()->login($account->user, $request->remember_me ?? false);
 
         return response()->json([
             'message' => 'Login successful',
@@ -127,5 +139,22 @@ class UserController extends Controller
         $user->delete();
 
         return response()->json(['message' => 'User deleted successfully']);
+    }
+
+    // LOGOUT
+    public function logout(Request $request)
+    {
+        auth()->logout();
+        
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+        
+        return response()->json(['message' => 'Logged out successfully']);
+    }
+
+    // Add this method to your UserController class
+    public function me(Request $request)
+    {
+        return response()->json($request->user());
     }
 }
