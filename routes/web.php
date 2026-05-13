@@ -17,7 +17,7 @@ Route::get('/', function () {
 });
 Route::get('/{any}', function () {
     return view('app');
-})->where('any', 'dashboard|qr|attendance|events|notify|settings');
+})->where('any', 'dashboard|qr|attendance|events|notify|settings|staff');
 
 // AUTH
 Route::post('/login', [UserController::class, 'login']);
@@ -54,7 +54,7 @@ Route::get('/staff', function () {
 */
 
 Route::post('/login', [UserController::class, 'login']);
-Route::post('/logout', [UserController::class, 'logout']); 
+Route::post('/logout', [UserController::class, 'logout']);
 Route::get('/me', [UserController::class, 'me'])->middleware('auth');
 
 /*

@@ -17,8 +17,8 @@ const currentPath = window.location.pathname.replace('/', '');
 const [active, setActiveState] = useState(currentPath || "dashboard");
 const setActive = (page: string) => {
   const url = page === "dashboard" ? "/" : `/${page}`;
-  window.history.pushState({}, "", url); 
-  setActiveState(page); 
+  window.history.pushState({}, "", url);
+  setActiveState(page);
 };
 useEffect(() => {
   const handlePopState = () => {
@@ -34,7 +34,7 @@ useEffect(() => {
     name: "Maria Santos",
   };
 
-  // ✅ MEMBERSHIPS
+  // MEMBERSHIPS
   const memberships = [
     {
       id: "m1",
@@ -118,7 +118,7 @@ useEffect(() => {
     },
   ];
 
-  // ✅ ATTENDANCE RECORDS
+  // ATTENDANCE RECORDS
   const attendanceRecords = [
     {
       id: 1,
@@ -213,7 +213,7 @@ useEffect(() => {
   ];
 
 
-  // ✅ Highlight matched text yellow
+  // Highlight matched text yellow
   const highlightText = (text: string, query: string) => {
     if (!query.trim()) return text;
     const regex = new RegExp(`(${query})`, "gi");
@@ -227,7 +227,7 @@ useEffect(() => {
     );
   };
 
-  const notifications = [
+    const notifications = [
     {
       id: 1,
       title: "General Assembly Reminder",
@@ -267,76 +267,69 @@ useEffect(() => {
   ];
 
   const [upcomingEvents, setUpcomingEvents] = useState([
-  {
-    id: 1,
-    title: "Barangay General Assembly",
-    date: "2026-05-12 09:00", // ✅ This week
-    location: "Barangay Hall",
-    description: "Quarterly assembly of all registered members.",
-  },
-  {
-    id: 2,
-    title: "Community Clean-Up",
-    date: "2026-05-13 06:00", // ✅ This week
-    location: "Town Plaza",
-    description: "Weekly clean-up activity, all residents welcome. Bring gloves and brooms.",
-  },
-  {
-    id: 3,
-    title: "Health Seminar",
-    date: "2026-05-14 13:00", // ✅ This week
-    location: "Barangay Hall",
-    description: "Free health talk & check-up for seniors and vulnerable groups.",
-  },
-  {
-    id: 4,
-    title: "Youth Basketball League",
-    date: "2026-05-11 08:00", // ✅ This week
-    location: "Covered Court",
-    description: "Annual sports event for youth ages 15–21.",
-  },
-  {
-    id: 5,
-    title: "Disaster Preparedness",
-    date: "2026-05-15 10:00", // ✅ NEWEST date — This week
-    location: "Multi-Purpose Hall",
-    description: "Training & seminar for all households. Emergency kits will be distributed.",
-  },
-]);
+    {
+      id: 1,
+      title: "Barangay General Assembly",
+      date: "2026-05-12 09:00",
+      location: "Barangay Hall",
+      description: "Quarterly assembly of all registered members.",
+    },
+    {
+      id: 2,
+      title: "Community Clean-Up",
+      date: "2026-05-13 06:00",
+      location: "Town Plaza",
+      description: "Weekly clean-up activity, all residents welcome. Bring gloves and brooms.",
+    },
+    {
+      id: 3,
+      title: "Health Seminar",
+      date: "2026-05-14 13:00",
+      location: "Barangay Hall",
+      description: "Free health talk & check-up for seniors and vulnerable groups.",
+    },
+    {
+      id: 4,
+      title: "Youth Basketball League",
+      date: "2026-05-11 08:00",
+      location: "Covered Court",
+      description: "Annual sports event for youth ages 15–21.",
+    },
+    {
+      id: 5,
+      title: "Disaster Preparedness",
+      date: "2026-05-15 10:00",
+      location: "Multi-Purpose Hall",
+      description: "Training & seminar for all households. Emergency kits will be distributed.",
+    },
+  ]);
 
-const [pastEvents, setPastEvents] = useState([
-  {
-    id: 6,
-    title: "Monthly Assembly",
-    date: "2026-05-08 09:00", // ✅ Already passed
-    location: "Barangay Hall",
-    description: "Regular monthly meeting of residents and officials.",
-  },
-  {
-    id: 7,
-    title: "Tree Planting Activity",
-    date: "2026-05-07 07:00", // ✅ Already passed
-    location: "Community Park",
-    description: "Environmental activity for all members. Over 100 seedlings planted.",
-  },
-  {
-    id: 8,
-    title: "Senior Citizen Forum",
-    date: "2026-05-06 14:00", // ✅ Already passed
-    location: "Senior Center",
-    description: "Forum on elderly care, benefits, and health services.",
-  },
-]);
+  const [pastEvents, setPastEvents] = useState([
+    {
+      id: 6,
+      title: "Monthly Assembly",
+      date: "2026-05-08 09:00",
+      location: "Barangay Hall",
+      description: "Regular monthly meeting of residents and officials.",
+    },
+    {
+      id: 7,
+      title: "Tree Planting Activity",
+      date: "2026-05-07 07:00",
+      location: "Community Park",
+      description: "Environmental activity for all members. Over 100 seedlings planted.",
+    },
+    {
+      id: 8,
+      title: "Senior Citizen Forum",
+      date: "2026-05-06 14:00",
+      location: "Senior Center",
+      description: "Forum on elderly care, benefits, and health services.",
+    },
+  ]);
 
-  // ✅ Combine all events
+  // Combine all events
   const allEvents = useMemo(() => [...upcomingEvents, ...pastEvents], [upcomingEvents, pastEvents]);
-
-  // ✅ Delete event handler
-  const handleDeleteEvent = (id: number) => {
-  setUpcomingEvents(prev => prev.filter(e => e.id !== id));
-  setPastEvents(prev => prev.filter(e => e.id !== id));
-};
-
 
   const attended = attendanceRecords.filter(r => r.status === "complete").length;
   const missed = attendanceRecords.filter(r => r.status === "missed").length;
@@ -351,10 +344,9 @@ const [pastEvents, setPastEvents] = useState([
         {/* MAIN */}
         <main className="flex-1">
 
+          <TopHeader memberName={member.name} />
 
-        <TopHeader memberName={member.name} />
-
-          {/* CONTENT — ✅ Make main content scrollable so header stays fixed + smooth scroll */}
+          {/* CONTENT — Make main content scrollable so header stays fixed + smooth scroll */}
           <div
             className="h-[calc(100vh-73px)] overflow-y-auto smooth-scroll"
             style={{ scrollBehavior: 'smooth', scrollbarGutter: 'stable' }}
@@ -374,19 +366,19 @@ const [pastEvents, setPastEvents] = useState([
                 />
               )}
 
-                          {/* MY QR CODES */}
+              {/* MY QR CODES */}
               {active === "qr" && (
-                <QRCodesView 
-                  memberships={memberships} 
-                  highlightText={highlightText} 
+                <QRCodesView
+                  memberships={memberships}
+                  highlightText={highlightText}
                 />
               )}
 
-             {/* ATTENDANCE PAGE */}
+              {/* ATTENDANCE PAGE */}
               {active === "attendance" && (
-                <AttendanceView 
-                  attendanceRecords={attendanceRecords} 
-                  highlightText={highlightText} 
+                <AttendanceView
+                  attendanceRecords={attendanceRecords}
+                  highlightText={highlightText}
                 />
               )}
 
@@ -396,7 +388,6 @@ const [pastEvents, setPastEvents] = useState([
                   allEvents={allEvents}
                   upcomingEvents={upcomingEvents}
                   pastEvents={pastEvents}
-                  onDeleteEvent={handleDeleteEvent}
                   highlightText={highlightText}
                 />
               )}
@@ -418,7 +409,7 @@ const [pastEvents, setPastEvents] = useState([
         </main>
       </div>
 
-      {/* ✅ GLOBAL SMOOTH SCROLL STYLES */}
+      {/* GLOBAL SMOOTH SCROLL STYLES */}
       <style>{`
         .smooth-scroll {
           scroll-behavior: smooth !important;

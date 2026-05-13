@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Filter, MoreVertical } from "lucide-react";
+import { Filter } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
 interface Event {
@@ -14,7 +14,6 @@ interface EventsViewProps {
   allEvents: Event[];
   upcomingEvents: Event[];
   pastEvents: Event[];
-  onDeleteEvent: (id: number) => void;
   highlightText: (text: string, query: string) => React.ReactNode;
 }
 
@@ -22,13 +21,10 @@ export default function EventsView({
   allEvents,
   upcomingEvents,
   pastEvents,
-  onDeleteEvent,
   highlightText,
 }: EventsViewProps) {
-  // Moved the search, filter, and menu state here!
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
-  const [eventMenuOpen, setEventMenuOpen] = useState<number | null>(null);
 
   // 1. Filter the events
   const filteredEvents = useMemo(() => {
@@ -103,12 +99,6 @@ export default function EventsView({
     return Object.fromEntries(sortedGroups);
   }, [filteredEvents, eventFilter]);
 
-  // Handle delete and close the menu
-  const handleDelete = (id: number) => {
-    onDeleteEvent(id);
-    setEventMenuOpen(null);
-  };
-
   return (
     <div className="space-y-6">
       <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
@@ -165,25 +155,7 @@ export default function EventsView({
                       key={e.id}
                       className="relative rounded-2xl border-l-4 border-orange-400 bg-[#f8f3ee] p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
                     >
-                      <div className="absolute top-4 right-4">
-                        <button
-                          onClick={() => setEventMenuOpen(eventMenuOpen === e.id ? null : e.id)}
-                          className="rounded-full p-2 transition-colors hover:bg-gray-100"
-                        >
-                          <MoreVertical className="h-5 w-5 text-gray-600" />
-                        </button>
-                        {eventMenuOpen === e.id && (
-                          <div className="absolute right-0 z-20 mt-1 w-28 rounded-md border bg-white shadow-lg">
-                            <button
-                              onClick={() => handleDelete(e.id)}
-                              className="w-full rounded-md px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-200"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <h2 className="pr-8 text-lg font-bold text-[#005f63]">
+                      <h2 className="text-lg font-bold text-[#005f63]">
                         {highlightText(e.title, eventSearch)}
                       </h2>
                       <p className="mt-1 text-sm text-gray-500">
