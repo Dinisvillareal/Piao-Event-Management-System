@@ -18,7 +18,6 @@ interface QRCodesViewProps {
 }
 
 export default function QRCodesView({ memberships, highlightText }: QRCodesViewProps) {
-  // ✅ We moved all the QR-specific state inside the component that actually uses it!
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;

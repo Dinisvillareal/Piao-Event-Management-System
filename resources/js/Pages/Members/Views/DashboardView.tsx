@@ -39,12 +39,12 @@ export default function DashboardView({
 }: DashboardViewProps) {
   return (
     <>
-      <div className="rounded-[24px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
+      <div className="rounded-[30px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">
           Member Dashboard
         </p>
         {/* We make the name dynamic based on the prop! */}
-        <h1 className="mt-2 text-4xl font-black">Welcome back, {memberName}!</h1>
+        <h1 className="mt-2 text-4xl font-black">Welcome back, {memberName}! 👋</h1>
         <p className="mt-2 text-base text-white/90">
           You are signed in as a resident member.
         </p>
@@ -60,7 +60,7 @@ export default function DashboardView({
         <SummaryCard
           value={attendedCount}
           title="Events Attended"
-          gradient="from-[#18b5b5] to-[#5fd3d3]"
+          gradient="from-[#067a7a] to-[#5fd3d3]"
           onClick={() => setActive("events")}
         />
         <SummaryCard
@@ -72,9 +72,9 @@ export default function DashboardView({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-[22px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
+        <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
           <h2 className="text-2xl font-black text-[#005f63]">Latest Notifications</h2>
-          <p className="mt-1 text-gray-600">Posts from your barangay staff.</p>
+          <p className="text-[15px] mt-1 text-gray-600">Posts from your barangay staff.</p>
 
           <div
             className="mt-5 space-y-3 overflow-y-auto pr-2 smooth-scroll"
@@ -95,9 +95,9 @@ export default function DashboardView({
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
+        <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
           <h2 className="text-2xl font-black text-[#005f63]">Upcoming Events</h2>
-          <p className="mt-1 text-gray-600">Events you're eligible to attend.</p>
+          <p className="text-[15px] mt-1 text-gray-600">Events you're eligible to attend.</p>
 
           <div
             className="mt-5 space-y-3 overflow-y-auto pr-2 smooth-scroll"

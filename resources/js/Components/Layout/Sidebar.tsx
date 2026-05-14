@@ -113,7 +113,7 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
                 <button
                   key={item.key}
                   onClick={() => setActive(item.key)}
-                  className={`flex items-center w-full rounded-lg py-3 transition-all duration-200 group ${
+                  className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${
                     isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"
                   } ${
                     isActive
@@ -139,7 +139,7 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
         <div className="border-t border-[#007777] p-2 shrink-0">
           <button
             onClick={handleLogout}
-            className={`flex items-center w-full rounded-lg py-3 text-white/80 transition hover:bg-[#007777] hover:text-white ${
+            className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition hover:bg-[#007777] hover:text-white ${
               isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"
             }`}
           >

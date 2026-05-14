@@ -299,7 +299,7 @@ function Sidebar({ active, setActive }: { active: string; setActive: (key: strin
                 <button
                   key={item.key}
                   onClick={() => setActive(item.key)}
-                  className={`flex items-center w-full rounded-lg py-3 transition-all duration-200 group ${
+                  className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${
                     isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"
                   } ${
                     isActive
@@ -324,7 +324,7 @@ function Sidebar({ active, setActive }: { active: string; setActive: (key: strin
         {/* Sidebar Footer / Logout - updated */}
         <div className="border-t border-[#007777] p-2 shrink-0">
           <button
-            className={`flex items-center w-full rounded-lg py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white hover:translate-x-1 ${
+            className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white hover:translate-x-1 ${
               isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"
             }`}
             onClick={() => {
@@ -348,20 +348,28 @@ function Sidebar({ active, setActive }: { active: string; setActive: (key: strin
   );
 }
 
+// ✅ NEW UPDATED HEADER — EXACTLY LIKE YOUR IMAGE + UNIFORM WITH MEMBER HEADER
+import { SquareMenu } from "lucide-react";
+
 function TopHeader({ memberName, role }: { memberName: string; role: string }) {
   return (
-    <header className="flex flex-col gap-3 border-b border-gray-200 bg-white px-5 py-4 shadow-sm sticky top-0 z-10">
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <p className="text-sm uppercase tracking-[0.25em] text-slate-500">Welcome back</p>
-          <h1 className="text-2xl font-semibold text-slate-900">{memberName}</h1>
-        </div>
-        <span className="inline-flex rounded-full bg-[#006666]/10 px-3 py-1 text-sm font-medium text-[#006666]">
-          {role}
-        </span>
+    <div className="flex items-center justify-between border-b bg-[#f5f3ef] px-6 py-4">
+      <div className="flex items-center gap-2">
+        <SquareMenu className="h-5 w-5 text-gray-700" />
+        <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 m-0">
+          Barangay Staff Portal
+        </p>
       </div>
-      <p className="text-sm text-slate-600">Manage events, residents, memberships, and announcements from your staff dashboard.</p>
-    </header>
+      <div className="flex items-center gap-4">
+        <div className="text-right">
+          <p className="text-xs text-gray-500">Signed in as</p>
+          <p className="text-sm font-bold text-[#005f63]">{memberName}</p>
+        </div>
+        <div className="rounded-full bg-[#ff7a28] px-4 py-2 text-xs font-black uppercase tracking-wide text-white shadow">
+          {role}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -490,64 +498,94 @@ export default function StaffDashboard() {
   );
 }
 
-/* ---------------- Dashboard ---------------- */
+/* ---------------- UPDATED Dashboard ---------------- */
 function DashboardView({ memberName, membershipsCount, attendedCount, missedCount, setActive, notifications, upcomingEvents, pastEventsCount }: any) {
+  // Stats exactly like screenshot — removed Notifications, kept only Residents, Memberships, Events
+  const stats = [
+    { value: 8, label: "RESIDENTS", gradient: "from-orange-400 to-yellow-300" },
+    { value: 4, label: "MEMBERSHIPS", gradient: "from-[#067a7a] to-[#5fd3d3]" },
+    { value: 4, label: "EVENTS", gradient: "from-orange-400 to-yellow-300" }
+  ];
+
+  // Activity log exactly as in screenshot
+  const recentActivities = [
+    { action: "Scanned QR — Sign In", detail: "Maria Santos · General Assembly", staff: "Brgy. Captain", time: "2026-05-12 08:55" },
+    { action: "Created Event", detail: "Senior Citizens Health Check", staff: "Brgy. Captain", time: "2026-05-06 11:02" },
+    { action: "Sent Notification", detail: "General Assembly Reminder", staff: "Kagawad Lina", time: "2026-05-05 16:20" },
+    { action: "Generated QR", detail: "SK Youth Council — 2 members", staff: "Brgy. Captain", time: "2026-05-05 10:11" },
+    { action: "Added Resident", detail: "Liza Domingo (R-007)", staff: "Kagawad Lina", time: "2026-05-04 09:32" }
+  ];
+
   return (
     <>
-      <div className="rounded-[24px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
+      {/* Header — same gradient, same style */}
+      <div className="rounded-[30px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">
-          Barangay Staff Portal
+          STAFF CONSOLE
         </p>
-        <h1 className="mt-2 text-4xl font-black">Welcome back, {memberName}!</h1>
+        <h1 className="mt-2 text-4xl font-black">Welcome back, {memberName}! 👋</h1>
         <p className="mt-2 text-base text-white/90">
-          You are signed in as STAFF / ADMIN — manage all records and operations here.
+          Manage residents, memberships, events, attendance and notifications.
         </p>
       </div>
 
+      {/* Stats Cards — 3 columns now, same card style & hover */}
       <div className="grid gap-4 md:grid-cols-3">
-        <div onClick={() => setActive("memberships")} className="cursor-pointer rounded-xl bg-gradient-to-r from-orange-400 to-yellow-300 p-5 text-white shadow-md hover:shadow-lg transition">
-          <p className="text-sm font-medium text-white/80">Total Memberships</p>
-          <p className="text-3xl font-bold mt-1">{membershipsCount}</p>
-        </div>
-        <div onClick={() => setActive("events")} className="cursor-pointer rounded-xl bg-gradient-to-r from-[#18b5b5] to-[#5fd3d3] p-5 text-white shadow-md hover:shadow-lg transition">
-          <p className="text-sm font-medium text-white/80">Events Attended</p>
-          <p className="text-3xl font-bold mt-1">{attendedCount}</p>
-        </div>
-        <div onClick={() => setActive("events")} className="cursor-pointer rounded-xl bg-gradient-to-r from-yellow-300 to-orange-400 p-5 text-white shadow-md hover:shadow-lg transition">
-          <p className="text-sm font-medium text-white/80">Events Missed</p>
-          <p className="text-3xl font-bold mt-1">{missedCount}</p>
-        </div>
+        {stats.map((item, idx) => (
+          <button
+            key={idx}
+            onClick={() => {
+              if (item.label === "RESIDENTS") setActive("residents");
+              if (item.label === "MEMBERSHIPS") setActive("memberships");
+              if (item.label === "EVENTS") setActive("events");
+            }}
+            className={`w-full rounded-[30px] bg-gradient-to-r ${item.gradient} p-5 text-left text-white transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_18px_45px_rgba(0,0,0,0.22)]`}
+          >
+            <h2 className="text-5xl font-black">{item.value}</h2>
+            <p className="mt-2 text-sm font-semibold uppercase tracking-wide">
+              {item.label}
+            </p>
+          </button>
+        ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-[22px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
-          <h2 className="text-2xl font-black text-[#005f63]">Latest Notifications</h2>
-          <p className="mt-1 text-gray-600">Posts and updates from barangay office.</p>
-          <div className="mt-5 space-y-3 overflow-y-auto pr-2 smooth-scroll" style={{ maxHeight: "220px" }}>
-            {notifications.map((item: any) => (
-              <div key={item.id} className="rounded-2xl border-l-4 border-yellow-400 bg-[#f7f2e8] p-3 transition-all duration-200 hover:shadow-lg hover:-translate-y-[1px]">
-                <div className="flex items-center justify-between gap-4">
-                  <h3 className="text-lg font-bold text-[#005f63]">{item.title}</h3>
-                  <span className="text-xs text-gray-500">{item.sentAt}</span>
-                </div>
-                <p className="mt-2 text-sm text-gray-700">{item.body}</p>
-              </div>
-            ))}
+      {/* 2 Column Section: System QR + Recent Activity */}
+      <div className="grid gap-4 lg:grid-cols-2 mt-4">
+        {/* Left: System QR Code */}
+        <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
+          <h2 className="text-2xl font-black text-[#005f63]">System QR Code</h2>
+          <p className="text-[15px] mt-1 text-gray-600">Residents scan this code to open the membership portal on their phone.</p>
+
+          <div className="mt-5 flex items-start gap-4">
+            <div className="shrink-0">
+              <FakeQR seed="BARangay-E-MEMBERSHIP-001" large />
+            </div>
+            <div className="flex-1">
+              <p className="font-medium text-[#005f63]">Barangay e-Membership</p>
+              <p className="text-sm text-gray-600 mt-1">Posted at the Barangay Hall lobby</p>
+              <p className="text-sm text-gray-600 mt-1">Print and post in public places — residents scan to install.</p>
+              <button className="mt-3 bg-orange-500 text-white px-4 py-2 rounded-[30px] text-sm font-medium hover:bg-orange-600 transition">
+                Download printable QR
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
-          <h2 className="text-2xl font-black text-[#005f63]">Upcoming Events</h2>
-          <p className="mt-1 text-gray-600">Scheduled activities and assemblies.</p>
-          <div className="mt-5 space-y-3 overflow-y-auto pr-2 smooth-scroll" style={{ maxHeight: "220px" }}>
-            {upcomingEvents.map((e: any) => (
-              <div key={e.id} className="rounded-2xl border-l-4 border-orange-400 bg-[#f8f3ee] p-3 transition-all duration-200 hover:shadow-lg hover:-translate-y-[1px]">
-                <h3 className="text-lg font-bold text-[#005f63]">{e.title}</h3>
-                <p className="mt-1 text-sm text-gray-500">{e.date} · {e.location}</p>
-                <p className="mt-2 text-sm text-gray-700">{e.description}</p>
-                              </div>
+        {/* Right: Recent Activity */}
+        <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
+          <h2 className="text-2xl font-black text-[#005f63]">Recent Activity</h2>
+          <p className="text-[15px] mt-1 text-gray-600">Latest staff actions in the system.</p>
+
+          <div className="mt-5 space-y-3 pl-4 border-l-2 border-teal-500/40 relative max-h-[260px] overflow-y-auto pr-2 smooth-scroll">
+            {recentActivities.map((act, i) => (
+              <div key={i} className="relative">
+                {/* Orange dot marker */}
+                <span className="absolute -left-[22px] top-1.5 w-3 h-3 rounded-full bg-orange-400"></span>
+                <p className="font-semibold text-[#005f63]">{act.action}</p>
+                <p className="text-[11px] text-gray-600">{act.detail}</p>
+                <p className="text-[11px] text-gray-500">Staff: {act.staff} · {act.time}</p>
+              </div>
             ))}
-            <p className="mt-3 text-sm text-gray-500">{pastEventsCount} past event(s) on record.</p>
           </div>
         </div>
       </div>
@@ -696,13 +734,13 @@ function FakeQR({ seed, large }: { seed: string; large?: boolean }) {
 
   return (
     <div
-      className={`grid gap-[2px] rounded-md bg-white p-2 shadow ring-1 ring-gray-200 ${
+      className={`grid gap-[2px] rounded-xl bg-white p-2 shadow ring-1 ring-gray-200 ${
         large ? "h-44 w-44" : "h-32 w-32"
       }`}
       style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}
     >
       {cells.map((on, i) => (
-        <div key={i} className={on ? "bg-teal-800" : "bg-white"} />
+        <div key={i} className={on ? "bg-[#095a5a]" : "bg-white"} />
       ))}
     </div>
   );
