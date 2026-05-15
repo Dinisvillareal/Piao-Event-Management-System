@@ -4,7 +4,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\EventController;
-use App\Http\Controllers\MembershipResidentController; //newl
+use App\Http\Controllers\MembershipResidentController;
+use App\Http\Controllers\EventAttendanceController;
 
 /*
 |--------------------------------------------------------------------------

@@ -7,7 +7,7 @@ use App\Models\EventAttendance;
 use App\Models\Event;
 use App\Models\User;
 
-class AttendanceController extends Controller
+class EventAttendanceController extends Controller
 {
     // TIME IN (When they scan the QR code to enter)
     public function timeIn(Request $request)
@@ -18,7 +18,7 @@ class AttendanceController extends Controller
         ]);
 
         // Check if they already scanned in
-        $existing = Attendance::where('event_id', $request->event_id)
+        $existing = EventAttendance::where('event_id', $request->event_id)
                               ->where('user_id', $request->user_id)
                               ->first();
 
@@ -30,7 +30,7 @@ class AttendanceController extends Controller
         }
 
         // Create the record
-        $attendance = Attendance::create([
+        $attendance = EventAttendance::create([
             'event_id' => $request->event_id,
             'user_id' => $request->user_id,
             'time_in' => now(),
@@ -52,7 +52,7 @@ class AttendanceController extends Controller
         ]);
 
         // Find the specific attendance record
-        $attendance = Attendance::where('event_id', $request->event_id)
+        $attendance = EventAttendance::where('event_id', $request->event_id)
                               ->where('user_id', $request->user_id)
                               ->first();
 
@@ -84,10 +84,10 @@ class AttendanceController extends Controller
     public function getEventAttendees($eventId)
     {
         // This fetches the attendance records AND attaches the Member's info to it automatically
-        $attendances = Attendance::with('user')
-                                 ->where('event_id', $eventId)
-                                 ->orderBy('time_in', 'desc')
-                                 ->get();
+        $attendances = EventAttendance::with('user')
+                                     ->where('event_id', $eventId)
+                                     ->orderBy('time_in', 'desc')
+                                     ->get();
 
         return response()->json($attendances);
     }
@@ -96,7 +96,7 @@ class AttendanceController extends Controller
     public function getMemberHistory($userId)
     {
         // Fetches all events a specific member has attended
-        $attendances = Attendance::with('event')
+        $attendances = EventAttendance::with('event')
                                  ->where('user_id', $userId)
                                  ->orderBy('time_in', 'desc')
                                  ->get();
