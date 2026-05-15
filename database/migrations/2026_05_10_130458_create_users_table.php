@@ -12,16 +12,16 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
-            $table->id();
+            $table->id(); // BIGINT UNSIGNED AUTO
 
             $table->string('first_name', 100);
             $table->string('last_name', 100);
             $table->string('middle_name', 100)->nullable();
-
             $table->string('contact_number', 20);
+            $table->enum('role', ['Staff', 'Resident']);
 
-            // better practice: restrict roles
-            $table->enum('role', ['Staff', 'Member']);
+
+            $table->engine = 'InnoDB'; // 🔥 IMPORTANT
         });
     }
 
@@ -33,5 +33,3 @@ return new class extends Migration
         Schema::dropIfExists('users');
     }
 };
-
-
