@@ -182,7 +182,7 @@ export default function LoginPage() {
     // Check if user was kept signed in
     const keptUser = localStorage.getItem('user');
     const keptAuth = localStorage.getItem('isAuthenticated');
-    
+
     if (keptUser && keptAuth === 'true') {
       const user = JSON.parse(keptUser);
       if (user.role === 'Staff') {
@@ -197,14 +197,14 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     setError("");
-    
+
     const form = e.currentTarget;
     const username = (form.elements.namedItem('username') as HTMLInputElement).value;
     const password = (form.elements.namedItem('password') as HTMLInputElement).value;
-    
+
     try {
       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-      
+
       const response = await fetch('/login', {
         method: 'POST',
         credentials: 'include',
@@ -214,10 +214,10 @@ export default function LoginPage() {
           'X-Requested-With': 'XMLHttpRequest',
           ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
         },
-        body: JSON.stringify({ 
-          username, 
-          password, 
-          remember_me: keepSignedIn 
+        body: JSON.stringify({
+          username,
+          password,
+          remember_me: keepSignedIn
         })
       });
 
@@ -235,7 +235,7 @@ export default function LoginPage() {
           sessionStorage.setItem('user', JSON.stringify(data.user));
           sessionStorage.setItem('isAuthenticated', 'true');
         }
-        
+
         // Redirect based on user role
         if (data.user.role === 'Staff') {
           window.location.href = '/staff';
@@ -250,7 +250,7 @@ export default function LoginPage() {
         } else {
           setError(data.message || "Login failed");
         }
-        
+
         (form.elements.namedItem('password') as HTMLInputElement).value = '';
       }
     } catch (err) {
@@ -327,7 +327,7 @@ export default function LoginPage() {
           <div className="mx-auto w-full max-w-lg rounded-2xl border border-gray-300 bg-white p-10 shadow-lg">
             <h2 className="text-2xl font-bold text-teal-800">Sign in</h2>
             <p className="text-sm text-gray-700 mt-1">
-              Sign in to your barangay account
+              Sign in to your barangay account.
             </p>
 
             {/* Form */}
@@ -341,7 +341,7 @@ export default function LoginPage() {
 
               {/* Username */}
               <div>
-                <label className="text-sm font-semibold text-gray-800">Username</label>
+                <label className="text-sm font-semibold text-[#1b5a5c]">Username</label>
                 <input
                   type="text"
                   name="username"
@@ -355,7 +355,7 @@ export default function LoginPage() {
               {/* Password */}
               <div>
                 <div className="flex justify-between text-sm">
-                  <label className="text-sm font-semibold text-gray-800">Password</label>
+                  <label className="text-sm font-semibold text-[#1b5a5c]">Password</label>
                   <span className="text-xs text-orange-500 cursor-pointer hover:underline">
                     Forgot?
                   </span>

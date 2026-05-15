@@ -573,20 +573,23 @@ function DashboardView({ memberName, membershipsCount, attendedCount, missedCoun
 
         {/* Right: Recent Activity */}
         <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
-          <h2 className="text-2xl font-black text-[#005f63]">Recent Activity</h2>
-          <p className="text-[15px] mt-1 text-gray-600">Latest staff actions in the system.</p>
+        <h2 className="text-2xl font-black text-[#005f63]">Recent Activity</h2>
+        <p className="text-[15px] mt-1 text-gray-600">Latest staff actions in the system.</p>
 
-          <div className="mt-5 space-y-3 pl-4 border-l-2 border-teal-500/40 relative max-h-[260px] overflow-y-auto pr-2 smooth-scroll">
-            {recentActivities.map((act, i) => (
-              <div key={i} className="relative">
-                {/* Orange dot marker */}
-                <span className="absolute -left-[22px] top-1.5 w-3 h-3 rounded-full bg-orange-400"></span>
-                <p className="font-semibold text-[#005f63]">{act.action}</p>
-                <p className="text-[11px] text-gray-600">{act.detail}</p>
-                <p className="text-[11px] text-gray-500">Staff: {act.staff} · {act.time}</p>
-              </div>
-            ))}
-          </div>
+            <div className="mt-5 space-y-4 relative max-h-[260px] overflow-y-auto pr-2 smooth-scroll">
+                {/* Teal line — now correctly aligned */}
+                <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-teal-500/40"></div>
+
+                {recentActivities.map((act, i) => (
+                <div key={i} className="relative pl-6">
+                    {/* Orange dot — perfectly centered on the line */}
+                    <span className="absolute left-[4px] top-2 w-2 h-2 rounded-full bg-orange-400"></span>
+                    <p className="font-semibold text-[#005f63]">{act.action}</p>
+                    <p className="text-[11px] text-gray-600">{act.detail}</p>
+                    <p className="text-[11px] text-gray-500">Staff: {act.staff} · {act.time}</p>
+                </div>
+                ))}
+            </div>
         </div>
       </div>
     </>
