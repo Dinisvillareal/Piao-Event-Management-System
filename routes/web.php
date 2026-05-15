@@ -4,7 +4,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\EventController;
-use App\Http\Controllers\MembershipResidentController; //newl
+use App\Http\Controllers\MembershipResidentController;
+use App\Http\Controllers\EventAttendanceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -19,8 +20,7 @@ Route::get('/{any}', function () {
     return view('app');
 })->where('any', 'dashboard|qr|attendance|events|notify|settings');
 
-// AUTH
-Route::post('/login', [UserController::class, 'login']);
+
 
 // USERS CRUD
 Route::get('/users', [UserController::class, 'index']);
@@ -57,19 +57,6 @@ Route::post('/login', [UserController::class, 'login']);
 Route::post('/logout', [UserController::class, 'logout']); 
 Route::get('/me', [UserController::class, 'me'])->middleware('auth');
 
-/*
-|--------------------------------------------------------------------------
-| USERS ROUTES
-|--------------------------------------------------------------------------
-*/
-
-Route::prefix('users')->group(function () {
-    Route::get('/', [UserController::class, 'index']);
-    Route::post('/', [UserController::class, 'store']);
-    Route::get('/{id}', [UserController::class, 'show']);
-    Route::put('/{id}', [UserController::class, 'update']);
-    Route::delete('/{id}', [UserController::class, 'destroy']);
-});
 
 /* ROLE FILTERS */
 Route::get('/users/staff', [UserController::class, 'staff']);
@@ -106,8 +93,21 @@ Route::prefix('events')->group(function () {
     Route::delete('/{id}', [EventController::class, 'destroy'])->name('events.destroy');
 });
 
-Route::post('/events', [EventController::class, 'store'])->name('events.store');
-Route::put('/events/{id}', [EventController::class, 'update'])->name('events.update');
+
+/*
+|--------------------------------------------------------------------------
+| EVENT ATTENDANCE ROUTES
+|--------------------------------------------------------------------------
+*/
+Route::prefix('attendance')->group(function () {
+    // Mobile/QR Scanner routes
+    Route::post('/time-in', [EventAttendanceController::class, 'timeIn']);
+    Route::put('/time-out', [EventAttendanceController::class, 'timeOut']);
+});
+
+// Fetching lists for the Dashboards
+Route::get('/events/{id}/attendances', [EventAttendanceController::class, 'getEventAttendees']);
+Route::get('/users/{id}/attendances', [EventAttendanceController::class, 'getMemberHistory']);
 
 Route::delete('/events/{id}', [EventController::class, 'destroy'])->name('events.destroy');
 

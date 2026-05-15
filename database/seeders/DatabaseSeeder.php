@@ -30,5 +30,9 @@ class DatabaseSeeder extends Seeder
         $this->call([
             MembershipResidentSeeder::class,
         ]);
+        $this->call([
+            EventAttendanceSeeder::class,
+        ]);
+
     }
 }
