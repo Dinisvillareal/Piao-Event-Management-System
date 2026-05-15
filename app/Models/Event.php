@@ -14,7 +14,15 @@ class Event extends Model
     protected $fillable = [
         'name',
         'description',
+        'location' ,
         'event_start',
         'event_end',
     ];
+    
+    public function attendances()
+    {
+        return $this->hasMany(EventAttendance::class);
+    }
+
+
 }

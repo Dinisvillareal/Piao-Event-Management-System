@@ -23,4 +23,10 @@ class User extends Authenticatable
     {
         return $this->hasOne(Account::class);
     }
+
+    public function attendances()
+    {
+        return $this->hasMany(EventAttendance::class);
+    }
 }
+

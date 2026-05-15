@@ -7,8 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Membership extends Model
 {
-    // Allows you to save the name using Membership::create()
-    protected $fillable = ['name'];
+    protected $fillable = ['name', 'description'];
 
     public $timestamps = false;
 
@@ -17,6 +16,6 @@ class Membership extends Model
      */
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class)->withTimestamps();
+        return $this->belongsToMany(User::class, 'membership_residents');
     }
 }

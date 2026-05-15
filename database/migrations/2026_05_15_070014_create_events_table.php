@@ -18,6 +18,7 @@ return new class extends Migration
         $table->string('name', 255);
 
         $table->text('description');
+        $table->string('location', 100);
 
         $table->dateTime('event_start');
         $table->dateTime('event_end');
