@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\MembershipResidentController; //newl
 
 /*
 |--------------------------------------------------------------------------
@@ -18,6 +19,29 @@ Route::get('/{any}', function () {
     return view('app');
 })->where('any', 'dashboard|qr|attendance|events|notify|settings');
 
+
+
+// USERS CRUD
+Route::get('/users', [UserController::class, 'index']);
+Route::get('/users/{id}', [UserController::class, 'show']);
+Route::post('/users', [UserController::class, 'store']);
+Route::put('/users/{id}', [UserController::class, 'update']);
+Route::delete('/users/{id}', [UserController::class, 'destroy']);
+
+// ROLE FILTERS
+Route::get('/users-staff', [UserController::class, 'staff']);
+Route::get('/users-member', [UserController::class, 'member']);
+
+// Mock data for views (only used if you still want Blade dashboards)
+$mockMemberships = [
+    ['id' => 1, 'name' => 'Pantawid Pamilya', 'color' => '#2563eb', 'role' => 'Member'],
+    ['id' => 2, 'name' => 'Piao Residents', 'color' => '#10b981', 'role' => 'Resident']
+];
+
+Route::get('/member', function () use ($mockMemberships) {
+    return view('member.dashboard', ['memberships' => $mockMemberships]);
+})->name('member.dashboard');
+
 Route::get('/staff', function () {
     return view('staff.dashboard');
 })->name('staff.dashboard');
@@ -29,20 +53,9 @@ Route::get('/staff', function () {
 */
 
 Route::post('/login', [UserController::class, 'login']);
+Route::post('/logout', [UserController::class, 'logout']); 
+Route::get('/me', [UserController::class, 'me'])->middleware('auth');
 
-/*
-|--------------------------------------------------------------------------
-| USERS ROUTES
-|--------------------------------------------------------------------------
-*/
-
-Route::prefix('users')->group(function () {
-    Route::get('/', [UserController::class, 'index']);
-    Route::post('/', [UserController::class, 'store']);
-    Route::get('/{id}', [UserController::class, 'show']);
-    Route::put('/{id}', [UserController::class, 'update']);
-    Route::delete('/{id}', [UserController::class, 'destroy']);
-});
 
 /* ROLE FILTERS */
 Route::get('/users/staff', [UserController::class, 'staff']);
@@ -94,3 +107,15 @@ Route::prefix('attendance')->group(function () {
 // Fetching lists for the Dashboards
 Route::get('/events/{id}/attendances', [AttendanceController::class, 'getEventAttendees']);
 Route::get('/users/{id}/attendances', [AttendanceController::class, 'getMemberHistory']);
+
+Route::delete('/events/{id}', [EventController::class, 'destroy'])->name('events.destroy');
+
+Route::get('/membership-residents', [MembershipResidentController::class, 'index']);
+
+Route::get('/membership-residents/{id}', [MembershipResidentController::class, 'show']);
+
+Route::post('/membership-residents', [MembershipResidentController::class, 'store']);
+
+Route::put('/membership-residents/{id}', [MembershipResidentController::class, 'update']);
+
+Route::delete('/membership-residents/{id}', [MembershipResidentController::class, 'destroy']);
