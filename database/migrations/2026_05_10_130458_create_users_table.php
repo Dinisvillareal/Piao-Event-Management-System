@@ -13,17 +13,17 @@ return new class extends Migration
             $table->id(); // primary key (auto increment)
 
             // 🔥 PR CODE HERE
-            $table->string('user_code')->unique();
+            $table->string('user_code', 20)->unique();
 
-            $table->string('first_name');
-            $table->string('last_name');
-            $table->string('middle_name')->nullable();
+            $table->string('first_name', 70);
+            $table->string('last_name', 70);
+            $table->string('middle_name', 70)->nullable();
 
-            $table->string('contact_number');
+            $table->string('contact_number', 15);
             $table->enum('role', ['Staff', 'Resident'])->default('Resident');
 
             // 🔥 for login (since no account table confusion anymore)
-            $table->string('password');
+            $table->string('password', 100);
         });
     }
 

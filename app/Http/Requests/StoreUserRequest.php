@@ -1,9 +1,9 @@
 public function rules()
 {
     return [
-        'first_name' => 'required|string|max:100',
-        'last_name' => 'required|string|max:100',
-        'middle_name' => 'nullable|string|max:100',
+        'first_name' => 'required|string|max:70',
+        'last_name' => 'required|string|max:70',
+        'middle_name' => 'nullable|string|max:70',
 
         'contact_number' => [
             'required',
