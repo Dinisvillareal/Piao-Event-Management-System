@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Attendance;
+use App\Models\EventAttendance;
 use App\Models\Event;
 use App\Models\User;
 
@@ -34,7 +34,7 @@ class AttendanceController extends Controller
             'event_id' => $request->event_id,
             'user_id' => $request->user_id,
             'time_in' => now(),
-            'status' => 'incomplete' // Stays incomplete until they time out
+            'status' => 'Incomplete' 
         ]);
 
         return response()->json([
@@ -62,7 +62,7 @@ class AttendanceController extends Controller
             ], 404);
         }
 
-        if ($attendance->status === 'complete') {
+        if ($attendance->status === 'Complete') {
             return response()->json([
                 'message' => 'Member has already timed out of this event.'
             ], 400);
@@ -71,7 +71,7 @@ class AttendanceController extends Controller
         // Update the record
         $attendance->update([
             'time_out' => now(),
-            'status' => 'complete'
+            'status' => 'Complete'
         ]);
 
         return response()->json([

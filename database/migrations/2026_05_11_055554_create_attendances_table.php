@@ -21,7 +21,7 @@ return new class extends Migration
             $table->timestamp('time_in')->useCurrent(); 
             $table->timestamp('time_out')->nullable();  
         
-            $table->string('status')->default('incomplete'); 
+            $table->string('status')->default('Incomplete'); 
             $table->timestamps();
             $table->unique(['event_id', 'user_id']);
         });

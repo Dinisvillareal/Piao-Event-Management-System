@@ -100,13 +100,13 @@ Route::prefix('events')->group(function () {
 */
 Route::prefix('attendance')->group(function () {
     // Mobile/QR Scanner routes
-    Route::post('/time-in', [AttendanceController::class, 'timeIn']);
-    Route::put('/time-out', [AttendanceController::class, 'timeOut']);
+    Route::post('/time-in', [EventAttendanceController::class, 'timeIn']);
+    Route::put('/time-out', [EventAttendanceController::class, 'timeOut']);
 });
 
 // Fetching lists for the Dashboards
-Route::get('/events/{id}/attendances', [AttendanceController::class, 'getEventAttendees']);
-Route::get('/users/{id}/attendances', [AttendanceController::class, 'getMemberHistory']);
+Route::get('/events/{id}/attendances', [EventAttendanceController::class, 'getEventAttendees']);
+Route::get('/users/{id}/attendances', [EventAttendanceController::class, 'getMemberHistory']);
 
 Route::delete('/events/{id}', [EventController::class, 'destroy'])->name('events.destroy');
 
