@@ -191,7 +191,13 @@ export default function QRCodesView({ highlightText }: any) {
       credentials: 'include',
       headers: { 'Accept': 'application/json' }
     })
-    .then(res => res.json())
+    .then(res => {
+      if (res.status === 403) {
+        throw new Error('You can only view your own memberships. Please log in again.');
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    })
     .then(data => {
       setAllMemberships(data.memberships || []);
       setUserData({
@@ -200,7 +206,10 @@ export default function QRCodesView({ highlightText }: any) {
         last_name: data.last_name
       });
     })
-    .catch(err => console.error('Failed to fetch all memberships:', err));
+    .catch(err => {
+      console.error('Failed to fetch all memberships:', err);
+      setError(err.message);
+    });
   }, [userId]);
 
   // Fetch filtered/paginated memberships for DISPLAY
@@ -217,6 +226,9 @@ export default function QRCodesView({ highlightText }: any) {
       headers: { 'Accept': 'application/json' }
     })
     .then(res => {
+      if (res.status === 403) {
+        throw new Error('You can only view your own memberships. Please log in again.');
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
     })
@@ -246,8 +258,27 @@ export default function QRCodesView({ highlightText }: any) {
     return (
       <div className="p-5">
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600">
-          <p>Error: {error}</p>
-          <button onClick={() => window.location.reload()} className="mt-2 text-sm underline">Retry</button>
+          <p className="font-semibold">Access Denied</p>
+          <p className="text-sm mt-1">{error}</p>
+          <div className="flex gap-3 mt-3">
+            <button 
+              onClick={() => window.location.reload()} 
+              className="text-sm underline hover:text-red-800"
+            >
+              Retry
+            </button>
+            <button 
+              onClick={async () => {
+                await fetch('/logout', { method: 'POST', credentials: 'include' });
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.href = '/';
+              }}
+              className="text-sm underline hover:text-red-800"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -263,7 +294,7 @@ export default function QRCodesView({ highlightText }: any) {
     );
   }
 
-  // ✅ UPDATED: QR code uses MEMBERSHIP NAMES (not IDs)
+  // QR code uses MEMBERSHIP NAMES (not IDs)
   const qrData = JSON.stringify({
     user_code: user_code,
     memberships: allMemberships.map((m: any) => m.name)

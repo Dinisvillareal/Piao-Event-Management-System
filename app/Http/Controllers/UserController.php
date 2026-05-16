@@ -7,13 +7,33 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use App\Http\Requests\UpdateUserRequest;
 use App\Http\Requests\StoreUserRequest;
+
 class UserController extends Controller
 {
+    // Helper methods for authorization
+    private function isStaff()
+    {
+        $user = auth()->user();
+        return $user && $user->role === 'Staff';
+    }
+
+    private function isOwnProfile($id)
+    {
+        return auth()->id() == $id;
+    }
+
     // =========================
     // CREATE USER
     // =========================
     public function store(StoreUserRequest $request)
     {
+        // ✅ Only staff can create users
+        if (!$this->isStaff()) {
+            return response()->json([
+                'message' => 'Unauthorized: Only staff can create users'
+            ], 403);
+        }
+
         $last = User::latest('id')->first();
 
         $next = $last && $last->user_code
@@ -63,6 +83,13 @@ class UserController extends Controller
     // =========================
     public function index(Request $request)
     {
+        // ✅ Only staff can view all users
+        if (!$this->isStaff()) {
+            return response()->json([
+                'message' => 'Unauthorized: Only staff can view all users'
+            ], 403);
+        }
+
         $query = User::query();
 
         if ($request->role) {
@@ -77,6 +104,13 @@ class UserController extends Controller
     // =========================
     public function staff()
     {
+        // ✅ Only staff can view staff list
+        if (!$this->isStaff()) {
+            return response()->json([
+                'message' => 'Unauthorized: Only staff can view staff list'
+            ], 403);
+        }
+
         return response()->json(
             User::where('role', 'Staff')->paginate(20)
         );
@@ -87,6 +121,13 @@ class UserController extends Controller
     // =========================
     public function resident()
     {
+        // ✅ Only staff can view resident list
+        if (!$this->isStaff()) {
+            return response()->json([
+                'message' => 'Unauthorized: Only staff can view resident list'
+            ], 403);
+        }
+
         return response()->json(
             User::where('role', 'Resident')->paginate(20)
         );
@@ -97,6 +138,13 @@ class UserController extends Controller
     // =========================
     public function show($id)
     {
+        // ✅ Users can view their own profile, staff can view any
+        if (!$this->isOwnProfile($id) && !$this->isStaff()) {
+            return response()->json([
+                'message' => 'Unauthorized: You can only view your own profile'
+            ], 403);
+        }
+
         return response()->json(
             User::findOrFail($id)
         );
@@ -107,6 +155,13 @@ class UserController extends Controller
     // =========================
     public function update(UpdateUserRequest $request, $id)
     {
+        // ✅ Users can update their own profile, staff can update any
+        if (!$this->isOwnProfile($id) && !$this->isStaff()) {
+            return response()->json([
+                'message' => 'Unauthorized: You can only update your own profile'
+            ], 403);
+        }
+
         $user = User::findOrFail($id);
 
         $user->update([
@@ -133,6 +188,13 @@ class UserController extends Controller
     // =========================
     public function destroy($id)
     {
+        // ✅ Only staff can delete users
+        if (!$this->isStaff()) {
+            return response()->json([
+                'message' => 'Unauthorized: Only staff can delete users'
+            ], 403);
+        }
+
         User::findOrFail($id)->delete();
 
         return response()->json([
