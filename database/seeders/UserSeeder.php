@@ -21,7 +21,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Dela',
                 'contact_number' => '09180000001',
                 'role' => 'Staff',
-                'password' => 'staff01',
+                'password' => 'password123',
             ],
             [
                 'first_name' => 'Maria',
@@ -29,7 +29,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Lopez',
                 'contact_number' => '09180000002',
                 'role' => 'Staff',
-                'password' => 'staff02',
+                'password' => 'password123',
             ],
             [
                 'first_name' => 'Carlos',
@@ -37,7 +37,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Santos',
                 'contact_number' => '09180000003',
                 'role' => 'Staff',
-                'password' => 'staff03',
+                'password' => 'password123',
             ],
             [
                 'first_name' => 'Anna',
@@ -45,7 +45,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Garcia',
                 'contact_number' => '09180000004',
                 'role' => 'Staff',
-                'password' => 'staff04',
+                'password' => 'password123',
             ],
             [
                 'first_name' => 'Mark',
@@ -53,7 +53,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Cruz',
                 'contact_number' => '09180000005',
                 'role' => 'Staff',
-                'password' => 'staff05',
+                'password' => 'password123',
             ],
 
             [
@@ -62,7 +62,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Dela',
                 'contact_number' => '09180000006',
                 'role' => 'Staff',
-                'password' => 'staff06',
+                'password' => 'password123',
             ],
 
             [
@@ -71,7 +71,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Lopez',
                 'contact_number' => '09180000007',
                 'role' => 'Staff',
-                'password' => 'staff07',
+                'password' => 'password123',
             ],
 
             [
@@ -80,7 +80,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Santos',
                 'contact_number' => '09180000008',
                 'role' => 'Staff',
-                'password' => 'staff08',
+                'password' => 'password123',
             ],
 
             [
@@ -89,7 +89,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Garcia',
                 'contact_number' => '09180000009',
                 'role' => 'Staff',
-                'password' => 'staff09',
+                'password' => 'password123',
             ],
 
             [
@@ -98,7 +98,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Cruz',
                 'contact_number' => '09180000010',
                 'role' => 'Staff',
-                'password' => 'staff10',
+                'password' => 'password123',
             ],
 
             // =====================
@@ -110,7 +110,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Dela',
                 'contact_number' => '09190000001',
                 'role' => 'Resident',
-                'password' => 'resident01',
+                'password' => 'password123',
             ],
             [
                 'first_name' => 'Bea',
@@ -118,7 +118,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Lopez',
                 'contact_number' => '09190000002',
                 'role' => 'Resident',
-                'password' => 'resident02',
+                'password' => 'password123',
             ],
             [
                 'first_name' => 'Cathy',
@@ -126,7 +126,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Santos',
                 'contact_number' => '09190000003',
                 'role' => 'Resident',
-                'password' => 'resident03',
+                'password' => 'password123',
             ],
             [
                 'first_name' => 'Diana',
@@ -134,7 +134,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Garcia',
                 'contact_number' => '09190000004',
                 'role' => 'Resident',
-                'password' => 'resident04',
+                'password' => 'password123',
             ],
             [
                 'first_name' => 'Ella',
@@ -142,7 +142,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Cruz',
                 'contact_number' => '09190000005',
                 'role' => 'Resident',
-                'password' => 'resident05',
+                'password' => 'password123',
             ],
 
             [
@@ -151,7 +151,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Dela',
                 'contact_number' => '09190000006',
                 'role' => 'Resident',
-                'password' => 'resident06',
+                'password' => 'password123',
             ],
 
             [
@@ -160,7 +160,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Lopez',
                 'contact_number' => '09190000007',
                 'role' => 'Resident',
-                'password' => 'resident07',
+                'password' => 'password123',
             ],
 
             [
@@ -169,7 +169,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Santos',
                 'contact_number' => '09190000008',
                 'role' => 'Resident',
-                'password' => 'resident08',
+                'password' => 'password123',
             ],
 
             [
@@ -178,7 +178,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Garcia',
                 'contact_number' => '09190000009',
                 'role' => 'Resident',
-                'password' => 'resident09',
+                'password' => 'password123',
             ],
 
             [
@@ -187,7 +187,7 @@ class UserSeeder extends Seeder
                 'middle_name' => 'Cruz',
                 'contact_number' => '09190000010',
                 'role' => 'Resident',
-                'password' => 'resident10',
+                'password' => 'password123',
             ]
         ];
 

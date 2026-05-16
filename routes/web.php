@@ -115,6 +115,8 @@ Route::get('/membership-residents', [MembershipResidentController::class, 'index
 
 Route::get('/membership-residents/{id}', [MembershipResidentController::class, 'show']);
 
+Route::get('/membership-residents/{id}/memberships', [MembershipResidentController::class, 'getUserMembershipsPaginated']); // ← ADD THIS LINE
+
 Route::post('/membership-residents', [MembershipResidentController::class, 'store']);
 
 Route::put('/membership-residents/{id}', [MembershipResidentController::class, 'update']);

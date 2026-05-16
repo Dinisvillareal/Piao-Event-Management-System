@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\MembershipResident;
@@ -151,6 +152,40 @@ class MembershipResidentController extends Controller
 
         return response()->json([
             'message' => 'Memberships deleted successfully'
+        ]);
+    }
+
+    // =========================
+    // GET USER MEMBERSHIPS WITH PAGINATION
+    // =========================
+    public function getUserMembershipsPaginated($id, Request $request)
+    {
+        $perPage = $request->get('per_page', 6);
+        $search = $request->get('search', '');
+        
+        $user = User::findOrFail($id);
+        
+        $query = DB::table('membership_residents')
+            ->join('memberships', 'membership_residents.membership_id', '=', 'memberships.id')
+            ->select('memberships.id', 'memberships.name', 'memberships.description')
+            ->where('membership_residents.user_id', $id);
+        
+        // ✅ ADD SEARCH FILTERING
+        if ($search) {
+            $query->where('memberships.name', 'like', '%' . $search . '%');
+        }
+        
+        $memberships = $query->paginate($perPage);
+        
+        return response()->json([
+            'user_code' => $user->user_code,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'memberships' => $memberships->items(),
+            'current_page' => $memberships->currentPage(),
+            'last_page' => $memberships->lastPage(),
+            'total' => $memberships->total(),
+            'per_page' => $memberships->perPage(),
         ]);
     }
 }

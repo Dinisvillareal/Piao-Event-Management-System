@@ -346,7 +346,7 @@ export default function LoginPage() {
                   type="text"
                   name="username"
                   className="w-full mt-1 rounded-xl border px-3 py-2 text-sm shadow focus:ring-1 focus:border-teal-500 focus:ring-teal-400 placeholder-gray-600"
-                  placeholder="PR-0000"
+                  placeholder="PR-000001"
                   required
                   disabled={isLoading}
                 />
