@@ -179,9 +179,9 @@ export default function LoginPage() {
 
   // Check for existing session on page load
   useEffect(() => {
-    // Check if user was kept signed in
-    const keptUser = localStorage.getItem('user');
-    const keptAuth = localStorage.getItem('isAuthenticated');
+    // Check BOTH storage locations
+    const keptUser = localStorage.getItem('user') || sessionStorage.getItem('user');
+    const keptAuth = localStorage.getItem('isAuthenticated') || sessionStorage.getItem('isAuthenticated');
     
     if (keptUser && keptAuth === 'true') {
       const user = JSON.parse(keptUser);
@@ -224,16 +224,16 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // Store user data based on "Keep me signed in" choice
+        // ✅ STORE IN BOTH localStorage AND sessionStorage
+        localStorage.setItem('user', JSON.stringify(data.user));
+        localStorage.setItem('isAuthenticated', 'true');
+        sessionStorage.setItem('user', JSON.stringify(data.user));
+        sessionStorage.setItem('isAuthenticated', 'true');
+        
         if (keepSignedIn) {
-          // Persists even after browser closes
-          localStorage.setItem('user', JSON.stringify(data.user));
-          localStorage.setItem('isAuthenticated', 'true');
           localStorage.setItem('keepSignedIn', 'true');
         } else {
-          // Clears when browser closes
-          sessionStorage.setItem('user', JSON.stringify(data.user));
-          sessionStorage.setItem('isAuthenticated', 'true');
+          sessionStorage.setItem('keepSignedIn', 'false');
         }
         
         // Redirect based on user role

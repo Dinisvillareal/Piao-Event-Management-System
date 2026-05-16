@@ -178,7 +178,7 @@ export default function QRCodesView({ highlightText }: any) {
   const [error, setError] = useState<string | null>(null);
   const itemsPerPage = 6;
 
-  const storedUser = sessionStorage.getItem('user');
+  const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
   const user = storedUser ? JSON.parse(storedUser) : null;
   const userId = user?.id;
   const user_code = user?.user_code;
