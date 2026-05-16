@@ -6,28 +6,27 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
-            $table->id(); // BIGINT UNSIGNED AUTO
 
-            $table->string('first_name', 100);
-            $table->string('last_name', 100);
-            $table->string('middle_name', 100)->nullable();
-            $table->string('contact_number', 20);
-            $table->enum('role', ['Staff', 'Resident']);
+            $table->id(); // primary key (auto increment)
 
+            // 🔥 PR CODE HERE
+            $table->string('user_code', 20)->unique();
 
-            $table->engine = 'InnoDB'; // 🔥 IMPORTANT
+            $table->string('first_name', 70);
+            $table->string('last_name', 70);
+            $table->string('middle_name', 70)->nullable();
+
+            $table->string('contact_number', 15);
+            $table->enum('role', ['Staff', 'Resident'])->default('Resident');
+
+            // 🔥 for login (since no account table confusion anymore)
+            $table->string('password', 100);
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('users');

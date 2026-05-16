@@ -60,3 +60,4 @@ class MembershipSeeder extends Seeder
         ]);
     }
 }
+

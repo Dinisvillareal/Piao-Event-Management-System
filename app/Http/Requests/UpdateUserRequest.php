@@ -1,34 +1,17 @@
-<?php
-
-namespace App\Http\Requests;
-
-use Illuminate\Foundation\Http\FormRequest;
-
-class UpdateUserRequest extends FormRequest
+public function rules()
 {
-    public function authorize()
-    {
-        return true;
-    }
+    return [
+        'first_name' => 'nullable|string|max:100',
+        'last_name' => 'nullable|string|max:100',
+        'middle_name' => 'nullable|string|max:100',
 
-    public function rules()
-    {
-        $userId = $this->route('id');
+        'contact_number' => [
+            'nullable',
+            'regex:/^(\+?63|0)9\d{9}$/'
+        ],
 
-        return [
-            'first_name' => 'nullable|string|max:100',
-            'last_name' => 'nullable|string|max:100',
-            'middle_name' => 'nullable|string|max:100',
+        'role' => 'nullable|in:Staff,Member',
 
-            'contact_number' => [
-                'nullable',
-                'regex:/^(\+?63|0)9\d{9}$/'
-            ],
-
-            'role' => 'nullable|in:Staff,Member',
-
-            'username' => "nullable|string|max:50|unique:accounts,username,{$userId},user_id",
-            'password' => 'nullable|string|min:6|max:100'
-        ];
-    }
+        'password' => 'nullable|string|min:6|max:100'
+    ];
 }

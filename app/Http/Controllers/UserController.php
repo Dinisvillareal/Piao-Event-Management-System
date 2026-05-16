@@ -3,65 +3,67 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Models\Account;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
-use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
-
+use App\Http\Requests\StoreUserRequest;
 class UserController extends Controller
 {
-    // CREATE USER + ACCOUNT WITH AUTO-GENERATED USERNAME
+    // =========================
+    // CREATE USER
+    // =========================
     public function store(StoreUserRequest $request)
     {
+        $last = User::latest('id')->first();
+
+        $next = $last && $last->user_code
+            ? (int) str_replace('PR-', '', $last->user_code) + 1
+            : 1;
+
+        $pr = 'PR-' . str_pad($next, 6, '0', STR_PAD_LEFT);
+
         $user = User::create([
+            'user_code' => $pr,
             'first_name' => $request->first_name,
             'last_name' => $request->last_name,
             'middle_name' => $request->middle_name,
             'contact_number' => $request->contact_number,
             'role' => $request->role,
-        ]);
-
-        // Generate username in format PR-0001, PR-0002, etc.
-        $userId = $user->id;
-        $formattedId = str_pad($userId, 4, '0', STR_PAD_LEFT);
-        $username = 'PR-' . $formattedId;
-
-        Account::create([
-            'user_id' => $user->id,
-            'username' => $username,
             'password' => Hash::make($request->password),
         ]);
 
         return response()->json([
             'message' => 'User created successfully',
-            'username' => $username,
+            'user_code' => $pr,
             'user' => $user
         ], 201);
     }
 
-    // LOGIN - WITH REMEMBER ME
+    // =========================
+    // LOGIN
+    // =========================
     public function login(Request $request)
     {
-        $account = Account::where('username', $request->username)->first();
+        $user = User::where('user_code', $request->username)->first();
 
-        if (!$account || !Hash::check($request->password, $account->password)) {
+        if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
-        // THIS ENABLES "KEEP ME SIGNED IN"
-        auth()->login($account->user, $request->remember_me ?? false);
+        auth()->login($user, $request->remember_me ?? false);
 
         return response()->json([
             'message' => 'Login successful',
-            'user' => $account->user
+            'user' => $user
         ]);
     }
 
-    // GET USERS (FILTER)
+    // =========================
+    // GET ALL USERS
+    // =========================
     public function index(Request $request)
     {
-        $query = User::with('account');
+        $query = User::query();
 
         if ($request->role) {
             $query->where('role', $request->role);
@@ -70,42 +72,39 @@ class UserController extends Controller
         return response()->json($query->get());
     }
 
-    // STAFF ONLY
+    // =========================
+    // STAFF
+    // =========================
     public function staff()
     {
         return response()->json(
-            User::with('account')
-                ->where('role', 'Staff')
-                ->paginate(20)
+            User::where('role', 'Staff')->paginate(20)
         );
     }
 
-    // MEMBER ONLY
-    public function member()
+    // =========================
+    // RESIDENT
+    // =========================
+    public function resident()
     {
         return response()->json(
-            User::with('account')
-                ->where('role', 'Member')
-                ->paginate(20)
+            User::where('role', 'Resident')->paginate(20)
         );
     }
 
+    // =========================
     // SHOW USER
+    // =========================
     public function show($id)
     {
         return response()->json(
-            User::with('account')->findOrFail($id)
+            User::findOrFail($id)
         );
     }
 
-    // GET ACCOUNT BY USER ID
-    public function getAccountByUserId($id)
-    {
-        $user = User::with('account')->findOrFail($id);
-        return response()->json($user->account);
-    }
-
-    // UPDATE
+    // =========================
+    // UPDATE USER
+    // =========================
     public function update(UpdateUserRequest $request, $id)
     {
         $user = User::findOrFail($id);
@@ -118,41 +117,47 @@ class UserController extends Controller
             'role' => $request->role ?? $user->role,
         ]);
 
-        $account = Account::where('user_id', $id)->first();
-
-        if ($account) {
-            $account->update([
-                'username' => $request->username ?? $account->username,
-                'password' => $request->password
-                    ? Hash::make($request->password)
-                    : $account->password,
+        if ($request->password) {
+            $user->update([
+                'password' => Hash::make($request->password)
             ]);
         }
 
-        return response()->json(['message' => 'User updated successfully']);
+        return response()->json([
+            'message' => 'User updated successfully'
+        ]);
     }
 
-    // DELETE
+    // =========================
+    // DELETE USER
+    // =========================
     public function destroy($id)
     {
-        $user = User::findOrFail($id);
-        $user->delete();
+        User::findOrFail($id)->delete();
 
-        return response()->json(['message' => 'User deleted successfully']);
+        return response()->json([
+            'message' => 'User deleted successfully'
+        ]);
     }
 
+    // =========================
     // LOGOUT
+    // =========================
     public function logout(Request $request)
     {
         auth()->logout();
-        
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-        
-        return response()->json(['message' => 'Logged out successfully']);
+
+        return response()->json([
+            'message' => 'Logged out successfully'
+        ]);
     }
 
-    // Add this method to your UserController class
+    // =========================
+    // CURRENT USER
+    // =========================
     public function me(Request $request)
     {
         return response()->json($request->user());
