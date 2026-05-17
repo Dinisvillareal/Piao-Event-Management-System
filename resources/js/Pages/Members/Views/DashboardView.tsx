@@ -65,7 +65,7 @@ export default function DashboardView({
         />
         <SummaryCard
           value={missedCount}
-          title="Events Missed"
+          title="Notifications"
           gradient="from-yellow-300 to-orange-400"
           onClick={() => setActive("events")}
         />

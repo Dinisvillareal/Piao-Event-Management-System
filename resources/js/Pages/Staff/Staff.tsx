@@ -1,9 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
-import { Filter, MoreVertical, KeyRound, UserPlus, Eye, Pencil, Archive, LayoutDashboard, ScanLine, Users, Award, CalendarDays, Bell, Settings, ChevronLeft, ChevronRight, LogOut, User, Download, PlusCircle, Calendar, MapPin, Trash2 } from "lucide-react";
-
+import {
+  Filter, MoreVertical, KeyRound, UserPlus, Eye, Pencil, Archive, LayoutDashboard, ScanLine, Users, Award, CalendarDays, Bell, Settings, ChevronLeft, ChevronRight, LogOut, User, Download, PlusCircle, Calendar, MapPin, Trash2,
+  Camera, CameraOff, CheckCircle, XCircle, LogIn, Clock, UserCheck
+} from "lucide-react";
+import SearchBar from "../../Components/UI/SearchBar";
 // --------------------------
 // TYPES & MOCK DATA
 // --------------------------
+type ScanResult = {
+  ok: boolean;
+  residentId: string;
+  residentName: string;
+  hasAccess: boolean;
+  reason: string;
+  memberships: string[];
+};
+
+type AttendanceEntry = {
+  residentId: string;
+  residentName: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  status: "pending" | "in" | "complete";
+};
+
 type NavItem = {
   key: string;
   label: string;
@@ -596,130 +616,445 @@ function DashboardView({ memberName, membershipsCount, attendedCount, missedCoun
   );
 }
 
-/* ---------------- Scan ---------------- */
-type ScanResult = { ok: boolean; resident: string; sub: string };
-
+// ---------------- Scan ----------------
 function ScanView() {
   const [eventId, setEventId] = useState(events[0].id);
   const [scan, setScan] = useState<ScanResult | null>(null);
-  const [attendance, setAttendance] = useState<Record<string, string[]>>({});
+  const [attendance, setAttendance] = useState<Record<string, AttendanceEntry[]>>({});
+  const [isCameraOn, setIsCameraOn] = useState(false);
+  const [closingTime, setClosingTime] = useState("");
+  const [scanMode, setScanMode] = useState<"in" | "out">("in");
+  const [showAddEvent, setShowAddEvent] = useState(false);
+  const [newEvent, setNewEvent] = useState({ title: "", membershipId: "" });
 
   const ev = events.find((e) => e.id === eventId)!;
-  const ms = ev.membershipId ? memberships.find((m) => m.id === ev.membershipId) : null;
+  const requiredMs = ev.membershipId ? memberships.find((m) => m.id === ev.membershipId) : null;
 
-  const simulateScan = (residentId: string) => {
-    const r = residents.find((x) => x.id === residentId)!;
-    if (!ms || ms.memberIds.includes(residentId)) {
-      setScan({ ok: true, resident: r.name, sub: ms ? `Verified for ${ms.name}` : "Open event — allowed" });
-    } else {
-      setScan({ ok: false, resident: r.name, sub: `Not eligible — requires ${ms?.name}` });
-    }
+  // ✅ Add new event logic
+  const handleAddEvent = () => {
+    if (!newEvent.title.trim()) return;
+    const newId = `event-${Date.now()}`;
+    events.push({ id: newId, title: newEvent.title, membershipId: newEvent.membershipId || undefined });
+    setEventId(newId);
+    setShowAddEvent(false);
+    setNewEvent({ title: "", membershipId: "" });
   };
 
+  // ✅ Scan logic — check membership access
+  const simulateScan = (residentId: string) => {
+    const r = residents.find((x) => x.id === residentId)!;
+    const residentMemberships = memberships.filter(m => m.memberIds.includes(residentId)).map(m => m.id);
+
+    let hasAccess = true;
+    let reason = "Open event — all residents allowed";
+
+    if (requiredMs) {
+      hasAccess = residentMemberships.includes(requiredMs.id);
+      reason = hasAccess
+        ? `Verified: member of ${requiredMs.name}`
+        : `Denied: requires ${requiredMs.name} membership`;
+    }
+
+    setScan({
+      ok: true,
+      residentId: r.id,
+      residentName: r.name,
+      hasAccess,
+      reason,
+      memberships: residentMemberships
+    });
+  };
+
+  // ✅ Record Sign-In or Sign-Out
   const confirmAttendance = () => {
-    if (!scan?.ok) return;
+    if (!scan?.ok || !scan.hasAccess) return;
+
     setAttendance(prev => {
       const list = prev[eventId] ?? [];
-      if (list.includes(scan.resident)) return prev;
-      return { ...prev, [eventId]: [...list, scan.resident] };
+      const existing = list.find(e => e.residentId === scan!.residentId);
+      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      if (scanMode === "in") {
+        if (existing) return prev;
+        return {
+          ...prev,
+          [eventId]: [...list, {
+            residentId: scan!.residentId,
+            residentName: scan!.residentName,
+            timeIn: now,
+            timeOut: null,
+            status: "in"
+          }]
+        };
+      }
+
+      if (scanMode === "out" && existing && existing.timeIn && !existing.timeOut) {
+        return {
+          ...prev,
+          [eventId]: list.map(e =>
+            e.residentId === scan!.residentId
+              ? { ...e, timeOut: now, status: "complete" }
+              : e
+          )
+        };
+      }
+
+      return prev;
     });
+
     setScan(null);
   };
 
+  const setEventCloseTime = () => {
+    if (!closingTime) return;
+    alert(`Attendance for this event will close at ${closingTime}`);
+  };
+
   return (
-    <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle>QR Scanner</CardTitle>
-          <CardDescription>Scan resident QR codes to record attendance and verify membership.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="relative aspect-video overflow-hidden rounded-xl border-2 border-dashed border-teal-500/50 bg-gradient-to-br from-teal-800/95 to-teal-600/80">
-            <div className="absolute inset-6 rounded-lg border-2 border-yellow-400/80" />
-            <div className="absolute inset-x-6 top-1/2 h-0.5 animate-pulse bg-orange-500 shadow-[0_0_18px_rgb(249,115,22)]" />
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-xs text-white backdrop-blur">
-              Camera view · point at QR
+    <div className="space-y-6">
+      {/* ✅ Fixed Header — same style */}
+      <div className="sticky top-0 z-10 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm rounded-[10px]">
+        <div>
+          <h1 className="text-4xl font-black text-[#005f63]">QR Scanner</h1>
+          <p className="text-sm text-[#667777] mt-1">Scan resident QR codes — sign in & sign out.</p>
+        </div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+        {/* Left: Scanner */}
+        <Card className="overflow-hidden border-[#ddd5ca] rounded-[30px] shadow-sm hover:shadow-md transition-shadow">
+          <CardHeader className="border-b border-[#ddd5ca] bg-white rounded-t-[30px]">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-[#005f63] font-black text-[15px]">Camera Scanner</CardTitle>
+                <CardDescription className="text-[#667777] mt-1">One QR per resident — contains all their memberships</CardDescription>
             </div>
-          </div>
-
-          <div>
-            <Label className="text-xs uppercase tracking-wider text-gray-500">Select Event</Label>
-            <Select value={eventId} onValueChange={setEventId}>
-              {events.map(e => (
-                <SelectItem key={e.id} value={e.id}>
-                  {e.title} {e.membershipId ? `· ${memberships.find(m => m.id === e.membershipId)?.name}` : "· Open"}
-                </SelectItem>
-              ))}
-            </Select>
-            <p className="mt-2 text-xs text-gray-500">
-              {ms ? `Restricted: only ${ms.name}` : "Open: all residents"}
-            </p>
-          </div>
-
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Simulate Scan</p>
-            <div className="flex flex-wrap gap-2">
-              {residents.map(r => (
-                <Button key={r.id} variant="outline" size="sm" onClick={() => simulateScan(r.id)} className="border-teal-500/30">
-                  {r.name}
-                </Button>
-              ))}
+              <Button
+                onClick={() => setIsCameraOn(!isCameraOn)}
+                className={`rounded-full w-10 h-10 p-0 flex items-center justify-center ${isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#e9c655] hover:bg-[#1a6969]"}`}
+              >
+                {isCameraOn ? <CameraOff size={18} /> : <Camera size={18} />}
+              </Button>
             </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="space-y-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Scan Result</CardTitle>
           </CardHeader>
-          <CardContent>
-            {!scan ? (
-              <div className="rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
-                No scan performed yet.
-              </div>
-            ) : (
-              <div className={`rounded-lg border p-4 ${scan.ok ? "border-teal-500/50 bg-teal-50" : "border-red-500/40 bg-red-50"}`}>
-                <p className={`text-lg font-bold ${scan.ok ? "text-teal-800" : "text-red-600"}`}>
-                  {scan.ok ? `✓ ${scan.resident}` : `✗ Denied — ${scan.resident}`}
-                </p>
-                <p className="mt-1 text-sm text-gray-600">{scan.sub}</p>
-                {scan.ok && (
-                  <Button
-                    onClick={confirmAttendance}
-                    className="mt-3 w-full bg-orange-500 text-white hover:bg-orange-600"
-                  >
-                    Confirm Attendance
-                  </Button>
+
+          <CardContent className="space-y-4 p-5 rounded-b-[30px]">
+            {/* Camera View — ✅ Matches page background, slightly darker */}
+            <div className="relative aspect-video overflow-hidden rounded-[30px] border-2 border-dashed border-[#e2e2dc] bg-gradient-to-br from-[#f4f4f0] to-[#ecece8]">
+                {isCameraOn ? (
+                    <>
+                    <div className="absolute inset-6 rounded-[30px] border-2 border-yellow-400/80" />
+                    <div className="absolute inset-x-6 top-1/2 h-0.5 animate-pulse bg-[#d0d0cb] shadow-[0_0_18px_rgba(208,208,203,0.5)]" />
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-xs text-white backdrop-blur">
+                        Scanning...
+                    </div>
+                    </>
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-[#888880] rounded-[30px]">
+                    <Camera size={40} className="mb-2 opacity-60" />
+                    <p>Camera off — click button to start</p>
+                    </div>
                 )}
-              </div>
+            </div>
+
+            {/* Scan Mode Toggle */}
+            <div className="flex gap-2">
+                <Button
+                    onClick={() => setScanMode("in")}
+                    className={`flex-1 rounded-[40px] py-3 font-medium transition-all duration-150
+                    ${scanMode === "in"
+                        ? "bg-[#237474] text-white hover:bg-[#28b0b0] active:bg-[#209999]"
+                        : "bg-gray-100 text-gray-600 hover:bg-[#33c4c4]/10 hover:text-[#33c4c4] active:bg-[#33c4c4]/20"
+                    }
+                    focus:outline-none focus:ring-0 focus:ring-offset-0 border-0`}
+                >
+                    <LogIn size={16} className="mr-2" /> Sign In
+                </Button>
+
+                <Button
+                    onClick={() => setScanMode("out")}
+                    className={`flex-1 rounded-[40px] py-3 font-medium transition-all duration-150
+                    ${scanMode === "out"
+                        ? "bg-[#ff9c07] text-white hover:bg-[#e68a00] active:bg-[#cc7a00]"
+                        : "bg-gray-100 text-gray-600 hover:bg-[#ff9c07]/10 hover:text-[#ff9c07] active:bg-[#ff9c07]/20"
+                    }
+                    focus:outline-none focus:ring-0 focus:ring-offset-0 border-0`}
+                >
+                    <LogOut size={16} className="mr-2" /> Sign Out
+                </Button>
+            </div>
+
+            {/* ✅ Event Selector — WITH ADD EVENT OPTION */}
+            <div>
+            <Label className="text-[15px] tracking-wider text-gray-500 font-semibold">Select Event</Label>
+            <Select
+            value={eventId}
+            onValueChange={(val) => {
+                if (val === "add-new") {
+                setShowAddEvent(true);
+                } else {
+                setEventId(val);
+                }
+            }}
+            className={`mt-1.5 border-[#ddd5ca] rounded-[40px] text-[14px] [&_[data-selected]]:text-[#005f63] [&>span]:data-[state=closed]:text-[#005f63] transition-colors ${scanMode === "in" ? "text-[#005f63]" : "text-[#b86a00]"}`}
+            >
+                {events.map(e => (
+                <SelectItem
+                    key={e.id}
+                    value={e.id}
+                    className={`text-[14px] ${
+                    // ✅ Open Event items (including Health Checkup) are ALWAYS #005f63 in the list
+                    e.title.includes("Open Event") ? "text-[#005f63]" : "text-gray-700"
+                    } ${
+                    scanMode === "in" ? "data-[highlighted]:bg-teal-100" : "data-[highlighted]:bg-orange-100"
+                    } data-[selected]:text-[#005f63]`} // ✅ When selected → also #005f63
+                >
+                    {e.title} {e.membershipId ? `· ${memberships.find(m => m.id === e.membershipId)?.name}` : "· Open Event"}
+                </SelectItem>
+                ))}
+                {/* ✅ ADD NEW EVENT OPTION */}
+                <SelectItem
+                    value="add-new"
+                    className={`font-medium text-[14px] ${
+                        scanMode === "in" ? "text-teal-600 data-[highlighted]:bg-teal-100" : "text-orange-600 data-[highlighted]:bg-orange-100"
+                    }`}
+                 >
+                    + Add New Event
+                </SelectItem>
+            </Select>
+
+            {/* ✅ Add Event Form */}
+            {showAddEvent && (
+            <div className={`mt-3 p-3 border border-dashed rounded-[40px] space-y-2 ${
+                scanMode === "in" ? "border-teal-300 bg-teal-50/50" : "border-orange-300 bg-orange-50/50"
+            }`}>
+                <Input
+                    placeholder="Event Title"
+                    value={newEvent.title}
+                    onChange={(e) => setNewEvent({...newEvent, title: e.target.value})}
+                    className="rounded-[40px] border-[#ddd5ca] text-[14px] text-gray-700"
+                />
+                <Select
+                    value={newEvent.membershipId}
+                    onValueChange={(val) => setNewEvent({...newEvent, membershipId: val})}
+                    className="rounded-[40px] text-[14px] text-gray-700 [&_[data-selected]]:text-[#005f63] [&>span]:text-gray-700 [&>span]:data-[state=closed]:text-[#005f63]"
+                >
+                    {/* ✅ "Open Event (All can join)" → always #005f63 */}
+                    <SelectItem
+                        value=""
+                        className={`rounded-[40px] text-[14px] text-[#005f63] ${
+                            scanMode === "in" ? "data-[highlighted]:bg-teal-100" : "data-[highlighted]:bg-orange-100"
+                        } data-[selected]:text-[#005f63]`}
+                        >
+                        Open Event (All can join)
+                        </SelectItem>
+                        {memberships.map(m => (
+                        <SelectItem
+                            key={m.id}
+                            value={m.id}
+                            className={`rounded-[40px] text-[14px] text-gray-700 ${
+                            scanMode === "in" ? "data-[highlighted]:bg-teal-100" : "data-[highlighted]:bg-orange-100"
+                            } data-[selected]:text-[#005f63]`}
+                        >
+                            {m.name}
+                    </SelectItem>
+                    ))}
+                </Select>
+                <div className="flex gap-2">
+                    <Button
+                        size="sm"
+                        onClick={handleAddEvent}
+                        className={`text-white rounded-[40px] text-[12px] transition-colors ${
+                            scanMode === "in"
+                            ? "bg-[#097375] hover:bg-[#0a5051] active:bg-[#084243]"
+                            : "bg-[#ff9c07] hover:bg-[#e68a00] active:bg-[#cc7a00]"
+                        }`}
+                        >
+                        Save
+                        </Button>
+                        <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowAddEvent(false)}
+                        className={`rounded-[40px] text-[12px] transition-colors ${
+                            scanMode === "in"
+                            ? "text-[#005f63] hover:bg-teal-100"
+                            : "text-[#b86a00] hover:bg-orange-100"
+                        }`}
+                        >
+                        Cancel
+                    </Button>
+                </div>
+                </div>
             )}
+
+            {requiredMs && (
+                <p className={`mt-2 text-xs px-2 py-1 rounded-[40px] inline-flex items-center gap-1 transition-colors ${
+                    scanMode === "in" ? "text-teal-700 bg-teal-50" : "text-orange-700 bg-orange-50"
+                }`}>
+                    <UserCheck size={12} /> Eligibility: <strong>{requiredMs.name}</strong> only
+                </p>
+                )}
+            </div>
+
+            {/* Closing Time */}
+            <div className="flex gap-3 items-end">
+                <div className="flex-1">
+                    <Label className="text-[15px] tracking-wider text-gray-500 font-semibold">Attendance Closing Time</Label>
+                    <Input
+                    type="time"
+                    value={closingTime}
+                    onChange={(e) => setClosingTime(e.target.value)}
+                    className={`mt-1.5 border-[#ddd5ca] rounded-[40px] text-[14px] transition-colors ${scanMode === "in" ? "text-[#005f63] [&:not(:placeholder-shown)]:text-[#005f63]" : "text-[#b86a00] [&:not(:placeholder-shown)]:text-[#b86a00]"}`}
+                    />
+                </div>
+                {/* Set Button */}
+                <Button
+                    onClick={setEventCloseTime}
+                    className={`rounded-[40px] h-10 text-[14px] transition-colors ${
+                        scanMode === "in"
+                        ? "bg-[#61a0a1] hover:bg-[#0a5051] text-white"
+                        : "bg-[#e6bf54] hover:bg-[#e68a00] text-white"
+                    }`}
+                >
+                    <Clock size={15} className="mr-1" /> Set
+                </Button>
+            </div>
+
+            {/* Test Scan Buttons */}
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Test Scan (Select Resident)</p>
+              <div className="flex flex-wrap gap-2">
+                {residents.map(r => (
+                    <Button
+                        key={r.id}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => simulateScan(r.id)}
+                        className={`rounded-[30px] transition-colors ${
+                        scanMode === "in"
+                            ? "border-teal-500/30 text-teal-700 hover:bg-teal-50"
+                            : "border-orange-500/30 text-orange-700 hover:bg-orange-50"
+                        }`}
+                    >
+                        {r.name}
+                    </Button>
+                ))}
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Attendance List · {ev.title}</CardTitle>
-            <CardDescription>Confirmed attendees for this event.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {(attendance[eventId] ?? []).length === 0 ? (
-              <p className="rounded-md border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
-                No attendees added yet.
-              </p>
-            ) : (
-              <ul className="space-y-2 text-sm">
-                {(attendance[eventId] ?? []).map((name, i) => (
-                  <li key={name} className="flex items-center justify-between rounded-md bg-teal-50 px-3 py-2">
-                    <span>{i + 1}. {name}</span>
-                    <span className="text-[11px] text-gray-500">{new Date().toLocaleTimeString()}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-        </Card>
+        {/* Right: Scan Result + Attendance List */}
+        <div className="space-y-4">
+          {/* Scan Result */}
+          <Card className="border-[#ddd5ca] rounded-[30px] shadow-sm">
+            <CardHeader className="border-b border-[#ddd5ca] bg-white rounded-t-[30px]">
+              <CardTitle className={`font-black transition-colors ${
+                    scanMode === "in" ? "text-[#005f63]" : "text-[#005f63]"
+                    }`}>
+                    Scan Result
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="rounded-b-[30px]">
+              {!scan ? (
+                <div className="rounded-[30px] border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                  No scan performed yet.
+                </div>
+              ) : (
+                <div className={`rounded-[30px] border p-4 transition-colors ${
+                scan.hasAccess
+                    ? scanMode === "in"
+                    ? "border-teal-500/50 bg-teal-50"     // ✅ Sign In = Teal
+                    : "border-orange-500/50 bg-orange-50" // ✅ Sign Out = Orange
+                    : "border-red-500/40 bg-red-50"
+                }`}>
+                <div className="flex items-start gap-3">
+                    {scan.hasAccess
+                    ? (scanMode === "in"
+                        ? <CheckCircle className="text-teal-600 shrink-0" size={20} />
+                        : <CheckCircle className="text-orange-600 shrink-0" size={20} />)
+                    : <XCircle className="text-red-600 shrink-0" size={20} />
+                    }
+                    <div>
+                    <p className={`text-lg font-bold ${
+                        scan.hasAccess
+                        ? scanMode === "in" ? "text-teal-800" : "text-orange-800"
+                        : "text-red-600"
+                    }`}>
+                        {scan.hasAccess ? `✓ ${scan.residentName}` : `✗ Denied — ${scan.residentName}`}
+                    </p>
+                      <p className="mt-1 text-sm text-gray-600">{scan.reason}</p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        Their memberships: {scan.memberships.map(id => memberships.find(m => m.id === id)?.name).join(", ") || "None"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {scan.hasAccess && (
+                    <Button
+                        onClick={confirmAttendance}
+                        className={`mt-3 w-full text-white rounded-[50px] transition-colors ${
+                            scanMode === "in"
+                            ? "bg-[#237474] hover:bg-[#1a9494]" // ✅ Sign In = Teal
+                            : "bg-[#ff9c07] hover:bg-[#e68a00]" // ✅ Sign Out = Orange
+                        }`}
+                        >
+                        Confirm {scanMode === "in" ? "Sign In" : "Sign Out"}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Attendance List */}
+          <Card className="border-[#ddd5ca] rounded-[30px] shadow-sm">
+            <CardHeader className="border-b border-[#ddd5ca] bg-white sticky top-0 z-10 rounded-t-[30px]">
+              <CardTitle className={`font-black transition-colors ${
+                scanMode === "in" ? "text-[#005f63]" : "text-[#005f63]"
+                }`}>
+                Attendance · {ev.title}
+              </CardTitle>
+              <CardDescription className="text-[#667777] mt-1">
+                {attendance[eventId]?.length ?? 0} record(s)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="max-h-[400px] overflow-y-auto smooth-scroll rounded-b-[30px]">
+              {!(attendance[eventId] ?? []).length ? (
+                <p className="rounded-[30px] border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">
+                  No attendees added yet.
+                </p>
+              ) : (
+                <div className="space-y-2 text-sm">
+                  {attendance[eventId]!.map((rec, i) => (
+                    <div
+                        key={rec.residentId}
+                        className={`p-3 rounded-[30px] border flex items-center justify-between transition-colors ${
+                            scanMode === "in" ? "bg-teal-50 border-teal-100" : "bg-orange-50 border-orange-100"
+                        }`}
+                    >
+                      <div>
+                        <p className="font-medium text-gray-800">{i + 1}. {rec.residentName}</p>
+                        <div className="flex gap-3 mt-1 text-xs text-gray-600">
+                          <span className="flex items-center gap-1"><LogIn size={12} /> {rec.timeIn || "—"}</span>
+                          <span className="flex items-center gap-1"><LogOut size={12} /> {rec.timeOut || "—"}</span>
+                        </div>
+                      </div>
+                      <Badge
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          rec.status === "complete" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {rec.status === "complete" ? "Completed" : "Signed In"}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
@@ -750,120 +1085,1050 @@ function FakeQR({ seed, large }: { seed: string; large?: boolean }) {
 }
 
 /* ---------------- Residents ---------------- */
-function ResidentsView() {
-  const [archived, setArchived] = useState<string[]>([]);
-  const [view, setView] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+// Available membership options
+const availableMemberships = [
+  "Verified Resident",
+  "Women's Association",
+  "Senior Citizen",
+  "Health Worker",
+  "Barangay Staff",
+  "Peace & Order Team",
+  "Treasurer",
+  "Secretary"
+];
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return residents;
-    const q = search.toLowerCase();
-    return residents.filter(r =>
-      r.name.toLowerCase().includes(q) ||
-      r.address.toLowerCase().includes(q) ||
-      r.id.toLowerCase().includes(q)
-    );
-  }, [residents, search]);
+function ResidentsView() {
+  const [residentSearch, setResidentSearch] = useState("");
+  const [residentFilter, setResidentFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [viewRecord, setViewRecord] = useState<string | null>(null);
+  const [editRecord, setEditRecord] = useState<string | null>(null);
+  const [deleteRecord, setDeleteRecord] = useState<string | null>(null);
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+
+  // ✅ DATA — passwordChangedByUser = true → staff cannot see/edit password
+  const [residentsData, setResidentsData] = useState([
+    {
+      id: "R-001",
+      lastName: "Santos",
+      firstName: "Maria",
+      middleName: "Reyes",
+      contactNumber: "0917-123-4567",
+      memberships: "Verified Resident, Women's Association, Senior Citizen, Health Worker",
+      role: "Resident",
+      hasAccount: true,
+      username: "R-001",
+      password: "temp1234",
+      passwordChangedByUser: false,
+    },
+    {
+      id: "S-001",
+      lastName: "Dela Cruz",
+      firstName: "Juan",
+      middleName: "Garcia",
+      contactNumber: "0918-987-6543",
+      memberships: "Barangay Staff, Peace & Order Team, Treasurer",
+      role: "Staff",
+      hasAccount: true,
+      username: "S-001",
+      password: "temp5678",
+      passwordChangedByUser: true,
+    },
+    {
+      id: "R-002",
+      lastName: "Reyes",
+      firstName: "Ana",
+      middleName: "Martinez",
+      contactNumber: "0919-111-2222",
+      memberships: "Senior Citizen, Health Worker",
+      role: "Resident",
+      hasAccount: false,
+      username: "",
+      password: "",
+      passwordChangedByUser: false,
+    },
+  ]);
+
+  // ✅ Helper: Auto-capitalize first letter of every word
+  const capitalizeName = (value: string) => {
+    return value
+      .split(" ")
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(" ");
+  };
+
+  // ✅ Helper: Format & validate contact number (11 digits only, auto add hyphens)
+  const formatContactNumber = (value: string) => {
+    const digitsOnly = value.replace(/\D/g, "").slice(0, 11);
+    if (digitsOnly.length <= 4) return digitsOnly;
+    if (digitsOnly.length <= 7) return `${digitsOnly.slice(0,4)}-${digitsOnly.slice(4)}`;
+    return `${digitsOnly.slice(0,4)}-${digitsOnly.slice(4,7)}-${digitsOnly.slice(7)}`;
+  };
+
+  // ✅ NEW RESIDENT FORM — NO CREATE ACCOUNT SECTION
+  const [newResident, setNewResident] = useState({
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    contactNumber: "",
+    hasMemberships: false,
+    selectedMemberships: [] as string[],
+  });
+
+  // ✅ ADD FORM VALIDATION
+  const validateAddForm = () => {
+    const errors: Record<string, string> = {};
+
+    if (!newResident.firstName.trim()) errors.firstName = "First name is required";
+    if (!newResident.lastName.trim()) errors.lastName = "Last name is required";
+
+    const rawDigits = newResident.contactNumber.replace(/\D/g, "");
+    if (!rawDigits) {
+      errors.contactNumber = "Contact number is required";
+    } else if (rawDigits.length !== 11) {
+      errors.contactNumber = "Must be exactly 11 digits";
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // ✅ ADD RESIDENT FUNCTION
+  const handleAddResident = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateAddForm()) return;
+
+    // Generate new ID
+    const newId = residentsData.length > 0
+      ? `R-${String(Number(residentsData[residentsData.length - 1].id.split("-")[1]) + 1).padStart(3, "0")}`
+      : "R-001";
+
+    // Format memberships
+    const membershipsString = newResident.hasMemberships
+      ? newResident.selectedMemberships.join(", ")
+      : "";
+
+    setResidentsData(prev => [
+      ...prev,
+      {
+        id: newId,
+        firstName: newResident.firstName,
+        middleName: newResident.middleName,
+        lastName: newResident.lastName,
+        contactNumber: newResident.contactNumber,
+        memberships: membershipsString,
+        role: "Resident",
+        hasAccount: false, // new residents have NO account by default
+        username: "",
+        password: "",
+        passwordChangedByUser: false,
+      }
+    ]);
+
+    // Reset form
+    setNewResident({
+      firstName: "",
+      middleName: "",
+      lastName: "",
+      contactNumber: "",
+      hasMemberships: false,
+      selectedMemberships: [],
+    });
+    setFormErrors({});
+    setShowAddForm(false);
+  };
+
+  // ✅ EDIT FORM STATE
+  const [editingResident, setEditingResident] = useState({
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    contactNumber: "",
+    hasMemberships: false,
+    selectedMemberships: [] as string[],
+    hasAccount: false,
+    username: "",
+    password: "",
+    role: "Resident",
+    passwordChangedByUser: false,
+  });
+
+  // ✅ EDIT FORM VALIDATION
+  const validateEditForm = () => {
+    const errors: Record<string, string> = {};
+
+    if (!editingResident.firstName.trim()) errors.firstName = "First name is required";
+    if (!editingResident.lastName.trim()) errors.lastName = "Last name is required";
+
+    const rawDigits = editingResident.contactNumber.replace(/\D/g, "");
+    if (!rawDigits) {
+      errors.contactNumber = "Contact number is required";
+    } else if (rawDigits.length !== 11) {
+      errors.contactNumber = "Must be exactly 11 digits";
+    }
+
+    // If creating account → password required
+    if (!editingResident.hasAccount && editingResident.password.trim()) {
+      // creating account now
+    }
+    if (editingResident.hasAccount && !editingResident.passwordChangedByUser && !editingResident.password.trim()) {
+      errors.password = "Password is required";
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // ✅ UPDATE RESIDENT
+  const handleUpdateResident = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editRecord || !validateEditForm()) return;
+
+    const updatedMemberships = editingResident.hasMemberships
+      ? editingResident.selectedMemberships.join(", ")
+      : "";
+
+    setResidentsData((prev) => prev.map((resident) =>
+      resident.id === editRecord
+        ? {
+            ...resident,
+            firstName: editingResident.firstName,
+            middleName: editingResident.middleName,
+            lastName: editingResident.lastName,
+            contactNumber: editingResident.contactNumber,
+            memberships: updatedMemberships,
+            role: editingResident.role,
+            // ✅ If creating account now → set username = ID
+            hasAccount: editingResident.hasAccount,
+            username: editingResident.hasAccount ? resident.username || resident.id : "",
+            password: resident.passwordChangedByUser
+              ? resident.password
+              : editingResident.password,
+            passwordChangedByUser: resident.passwordChangedByUser,
+          }
+        : resident
+    ));
+
+    setEditRecord(null);
+    setFormErrors({});
+  };
+
+  const handleDeleteResident = () => {
+    if (!deleteRecord) return;
+    setResidentsData((prev) => prev.filter((resident) => resident.id !== deleteRecord));
+    setDeleteRecord(null);
+  };
+
+  // ✅ SEARCH + FILTER LOGIC
+  const filteredResidents = useMemo(() => {
+    let result = residentsData;
+
+    if (residentFilter === "residents") result = result.filter(r => r.role === "Resident");
+    if (residentFilter === "staff") result = result.filter(r => r.role === "Staff");
+    if (residentFilter === "with-account") result = result.filter(r => r.hasAccount);
+    if (residentFilter === "no-account") result = result.filter(r => !r.hasAccount);
+
+    if (residentSearch.trim()) {
+      const q = residentSearch.toLowerCase();
+      result = result.filter(r =>
+        r.id.toLowerCase().includes(q) ||
+        r.lastName.toLowerCase().includes(q) ||
+        r.firstName.toLowerCase().includes(q) ||
+        r.middleName.toLowerCase().includes(q) ||
+        r.contactNumber.toLowerCase().includes(q) ||
+        r.memberships.toLowerCase().includes(q) ||
+        r.role.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [residentsData, residentFilter, residentSearch]);
+
+  // ✅ PAGINATION
+  const totalPages = useMemo(() => Math.ceil(filteredResidents.length / itemsPerPage), [filteredResidents]);
+  const paginatedResidents = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredResidents.slice(start, start + itemsPerPage);
+  }, [filteredResidents, currentPage, itemsPerPage]);
+
+  useMemo(() => setCurrentPage(1), [residentSearch, residentFilter]);
+
+  // ✅ HIGHLIGHT TEXT FUNCTION
+  const highlightText = (text: string, query: string) => {
+    if (!query.trim()) return text;
+    try {
+      const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, "gi");
+      const parts = text.split(regex);
+      return parts.map((part, i) =>
+        part.toLowerCase() === query.toLowerCase() ? (
+          <mark key={i} className="bg-yellow-300 rounded-sm px-0.5">{part}</mark>
+        ) : part
+      );
+    } catch { return text; }
+  };
+
+  // ✅ Helper: get badge color for memberships
+  const getMembershipBadgeStyle = (name: string) => {
+    const colors = [
+      "bg-teal-50 text-teal-800",
+      "bg-orange-50 text-orange-800",
+      "bg-blue-50 text-blue-800",
+      "bg-purple-50 text-purple-800",
+      "bg-amber-50 text-amber-800",
+      "bg-emerald-50 text-emerald-800"
+    ];
+    const index = name.length % colors.length;
+    return colors[index];
+  };
+
+  // ✅ Handle membership checkbox change
+  const handleMembershipChange = (e: React.ChangeEvent<HTMLInputElement>, isEdit = false) => {
+    const value = e.target.value;
+    if (isEdit) {
+      setEditingResident(prev => {
+        const updated = prev.selectedMemberships.includes(value)
+          ? prev.selectedMemberships.filter(m => m !== value)
+          : [...prev.selectedMemberships, value];
+        return { ...prev, selectedMemberships: updated };
+      });
+    } else {
+      setNewResident(prev => {
+        const updated = prev.selectedMemberships.includes(value)
+          ? prev.selectedMemberships.filter(m => m !== value)
+          : [...prev.selectedMemberships, value];
+        return { ...prev, selectedMemberships: updated };
+      });
+    }
+  };
+
+  // ✅ --- NEW FEATURE: CHANGE DETECTION & UNSAVED CHANGES PROMPT ---
+  const [initialEditData, setInitialEditData] = useState<any>(null);
+  const [initialAddData, setInitialAddData] = useState<any>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState<"edit" | "add" | null>(null);
+
+  // ✅ Detect changes
+  const hasEditChanges = useMemo(() => {
+    if (!initialEditData) return false;
+    return JSON.stringify(initialEditData) !== JSON.stringify(editingResident);
+  }, [initialEditData, editingResident]);
+
+  const hasAddChanges = useMemo(() => {
+    if (!initialAddData) return false;
+    return JSON.stringify(initialAddData) !== JSON.stringify(newResident);
+  }, [initialAddData, newResident]);
+
+  // ✅ Updated: Load Edit Data + save initial state
+  useEffect(() => {
+    if (!editRecord) {
+      setInitialEditData(null);
+      return;
+    }
+    const resident = residentsData.find(r => r.id === editRecord);
+    if (!resident) return;
+    const initialState = {
+      firstName: resident.firstName,
+      middleName: resident.middleName,
+      lastName: resident.lastName,
+      contactNumber: resident.contactNumber,
+      hasMemberships: resident.memberships.trim().length > 0,
+      selectedMemberships: resident.memberships
+        .split(",")
+        .map((m) => m.trim())
+        .filter(Boolean),
+      hasAccount: resident.hasAccount,
+      username: resident.username,
+      password: resident.password,
+      role: resident.role,
+      passwordChangedByUser: resident.passwordChangedByUser,
+    };
+    setEditingResident(initialState);
+    setInitialEditData(JSON.parse(JSON.stringify(initialState)));
+  }, [editRecord, residentsData]);
+
+  // ✅ Open Add Form & save initial state
+  const handleOpenAddForm = () => {
+    const emptyState = {
+      firstName: "",
+      middleName: "",
+      lastName: "",
+      contactNumber: "",
+      hasMemberships: false,
+      selectedMemberships: [] as string[],
+    };
+    setNewResident(emptyState);
+    setInitialAddData(JSON.parse(JSON.stringify(emptyState)));
+    setShowAddForm(true);
+  };
+
+  // ✅ Cancel handlers
+  const handleCancelEdit = () => {
+    if (hasEditChanges) {
+      setShowCancelConfirm("edit");
+    } else {
+      setEditRecord(null);
+      setFormErrors({});
+    }
+  };
+
+  const handleCancelAdd = () => {
+    if (hasAddChanges) {
+      setShowCancelConfirm("add");
+    } else {
+      setShowAddForm(false);
+      setFormErrors({});
+    }
+  };
+  // ✅ --- END NEW FEATURE ---
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle>Residents Master List</CardTitle>
-          <CardDescription>Manage all registered residents — add, edit, archive or view profiles.</CardDescription>
+    <div className="space-y-6">
+      {/* ✅ HEADER + SEARCH BAR SECTION */}
+      <div className="sticky top-0 z-10 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm">
+        <div className="w-[1200px]">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-black text-[#005f63]">Residents & Staff Records</h1>
+              <p className="text-sm text-[#667777] mt-1">
+                Manage all registered residents, staff, and their account status.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center gap-4 w-[1580px]">
+            <div className="flex-1">
+              <SearchBar
+                value={residentSearch}
+                onChange={setResidentSearch}
+                placeholder="Search by ID, name, contact, role or membership..."
+              />
+            </div>
+
+            {/* ✅ FILTER DROPDOWN */}
+            <div className="relative">
+              <select
+                value={residentFilter}
+                onChange={(e) => setResidentFilter(e.target.value)}
+                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
+              >
+                <option value="all">All Records</option>
+                <option value="residents">Residents</option>
+                <option value="staff">Staff</option>
+                <option value="with-account">Has Account</option>
+                <option value="no-account">No Account</option>
+              </select>
+              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+              <svg className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+
+          <p className="mt-2 text-xs text-gray-500">
+            {filteredResidents.length} of {residentsData.length} record(s) match — showing {itemsPerPage} per page.
+          </p>
         </div>
-        <Button className="bg-orange-500 text-white hover:bg-orange-600">
-          <UserPlus className="mr-1 h-4 w-4" /> Add New Resident
-        </Button>
-      </CardHeader>
-      <CardContent>
-        <div className="mb-4">
-          <Input value={search} onChange={(e: any) => setSearch(e.target.value)} placeholder="Search residents by name, ID or address…" />
+      </div>
+
+      {/* ✅ TABLE SECTION - BUTTON AT TOP RIGHT */}
+      <div className="pl-1">
+        <div className="flex justify-end mb-3">
+          <button
+            onClick={handleOpenAddForm}
+            className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm"
+          >
+            + Add New Resident
+          </button>
         </div>
 
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>ID</TableHead>
-              <TableHead>Full Name</TableHead>
-              <TableHead>Age</TableHead>
-              <TableHead>Address</TableHead>
-              <TableHead>Memberships</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((r) => {
-              const ms = memberships.filter(m => m.memberIds.includes(r.id));
-              const isArchived = archived.includes(r.id);
-              return (
-                <TableRow key={r.id} className={isArchived ? "opacity-50" : ""}>
-                  <TableCell className="font-mono text-xs">{r.id}</TableCell>
-                  <TableCell className="font-medium">{r.name}</TableCell>
-                  <TableCell>{r.age}</TableCell>
-                  <TableCell className="text-gray-600">{r.address}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {ms.length === 0 && <span className="text-xs text-gray-500">—</span>}
-                      {ms.map(m => (
-                        <Badge key={m.id} className="border-0 bg-teal-50 text-teal-800">{m.name}</Badge>
-                      ))}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {isArchived ? (
-                      <Badge className="border-0 bg-gray-100 text-gray-600">Archived</Badge>
-                    ) : (
-                      <Badge className="border-0 bg-teal-50 text-teal-800">Active</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="inline-flex gap-1">
-                      <Button size="icon" variant="ghost" title="View" onClick={() => setView(r.id)}>
-                        <Eye className="h-4 w-4 text-teal-700" />
-                      </Button>
-                      <Button size="icon" variant="ghost" title="Edit">
-                        <Pencil className="h-4 w-4 text-orange-500" />
-                      </Button>
-                      <Button
-                        size="icon" variant="ghost" title={isArchived ? "Restore" : "Archive"}
-                        onClick={() => setArchived(prev =>
-                          prev.includes(r.id) ? prev.filter(x => x !== r.id) : [...prev, r.id]
-                        )}
-                      >
-                        <Archive className="h-4 w-4 text-red-500" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
+        <div className="rounded-[30px] border border-[#ddd5ca] bg-white shadow-sm overflow-hidden">
+          <div className="p-5">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[#eee8e0]">
+                  <th className="text-left py-3 px-2 font-bold text-[#005f63] whitespace-nowrap">ID</th>
+                  <th className="text-left py-3 px-2 font-bold text-[#005f63] whitespace-nowrap">Last Name</th>
+                  <th className="text-left py-3 px-2 font-bold text-[#005f63] whitespace-nowrap">First Name</th>
+                  <th className="text-left py-3 px-2 font-bold text-[#005f63] whitespace-nowrap">Middle Name</th>
+                  <th className="text-left py-3 px-2 font-bold text-[#005f63] whitespace-nowrap">Contact Number</th>
+                  <th className="text-left py-3 px-2 font-bold text-[#005f63] whitespace-nowrap">Memberships</th>
+                  <th className="text-left py-3 px-2 font-bold text-[#005f63] whitespace-nowrap">Role</th>
+                  <th className="text-left py-3 px-2 font-bold text-[#005f63] whitespace-nowrap">Has Account?</th>
+                  <th className="text-right py-3 px-2 font-bold text-[#005f63] whitespace-nowrap">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedResidents.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-6 text-center text-gray-500 italic">
+                      No records match your search or filter.
+                    </td>
+                  </tr>
+                ) : (
+                  paginatedResidents.map((r) => {
+                    const allMemberships = r.memberships ? r.memberships.split(",").map(m => m.trim()).filter(Boolean) : [];
+                    const visibleMemberships = allMemberships.slice(0, 2);
+                    const remainingCount = allMemberships.length - 2;
 
-        {view && (
-          <div className="mt-4 rounded-xl border border-teal-500/30 bg-teal-50 p-4">
-            <p className="text-xs uppercase tracking-wider text-teal-800">Resident Detail</p>
-            {(() => {
-              const r = residents.find(x => x.id === view)!;
-              return (
-                <div className="mt-2 grid gap-2 text-sm md:grid-cols-2">
-                  <p><strong>ID:</strong> {r.id}</p>
-                  <p><strong>Name:</strong> {r.name}</p>
-                  <p><strong>Age:</strong> {r.age}</p>
-                  <p><strong>Contact:</strong> {r.contact}</p>
-                  <p className="md:col-span-2"><strong>Address:</strong> {r.address}</p>
-                </div>
-              );
-            })()}
-            <Button size="sm" variant="ghost" className="mt-2" onClick={() => setView(null)}>
-              Close
-            </Button>
+                    return (
+                      <tr key={r.id} className="border-b border-[#eee8e0] hover:bg-orange-50/30 transition">
+                        <td className="py-3 px-2 font-mono text-gray-700">{highlightText(r.id, residentSearch)}</td>
+                        <td className="py-3 px-2 font-medium text-gray-800">{highlightText(r.lastName, residentSearch)}</td>
+                        <td className="py-3 px-2 text-gray-700">{highlightText(r.firstName, residentSearch)}</td>
+                        <td className="py-3 px-2 text-gray-700">{highlightText(r.middleName, residentSearch)}</td>
+                        <td className="py-3 px-2 text-gray-600">{highlightText(r.contactNumber, residentSearch)}</td>
+
+                        {/* ✅ MEMBERSHIPS — SHOW ONLY 2 + "+X MORE" */}
+                        <td className="py-3 px-2">
+                          <div className="flex flex-wrap gap-1.5 items-center">
+                            {visibleMemberships.map((mName, idx) => (
+                              <span
+                                key={idx}
+                                className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(mName)}`}
+                              >
+                                {highlightText(mName, residentSearch)}
+                              </span>
+                            ))}
+                            {remainingCount > 0 && (
+                              <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                                +{remainingCount} more
+                              </span>
+                            )}
+                            {allMemberships.length === 0 && <span className="text-gray-400 text-xs">None</span>}
+                          </div>
+                        </td>
+
+                        {/* ✅ ROLE — BADGE STYLE */}
+                        <td className="py-3 px-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            r.role === "Staff" ? "bg-orange-100 text-orange-800" : "bg-teal-50 text-teal-800"
+                          }`}>
+                            {highlightText(r.role, residentSearch)}
+                          </span>
+                        </td>
+
+                        {/* ✅ HAS ACCOUNT — BADGE STYLE */}
+                        <td className="py-3 px-2">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            r.hasAccount ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                          }`}>
+                            {r.hasAccount ? "✅ Yes" : "❌ No"}
+                          </span>
+                        </td>
+
+                        {/* ✅ ACTIONS */}
+                        <td className="py-3 px-2 text-right">
+                          <div className="inline-flex gap-1">
+                            <button onClick={() => setViewRecord(r.id)} className="p-2 rounded-full hover:bg-teal-50 transition" title="View">
+                              <svg width="16" height="16" fill="none" stroke="#006666" strokeWidth={2} viewBox="0 0 24 24">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                            </button>
+                            <button onClick={() => setEditRecord(r.id)} className="p-2 rounded-full hover:bg-orange-50 transition" title="Edit">
+                              <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </button>
+                            <button onClick={() => setDeleteRecord(r.id)} className="p-2 rounded-full hover:bg-red-50 transition" title="Delete">
+                              <svg width="16" height="16" fill="none" stroke="#ef4444" strokeWidth={2} viewBox="0 0 24 24">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ✅ VIEW RECORD MODAL — POPUP */}
+        {viewRecord && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+            <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-black text-[#005f63]">Record Details</h2>
+                <button onClick={() => setViewRecord(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+              </div>
+              {(() => {
+                const r = residentsData.find(x => x.id === viewRecord)!;
+                const allMemberships = r.memberships ? r.memberships.split(",").map(m => m.trim()).filter(Boolean) : [];
+                return (
+                  <div className="grid gap-4 text-sm md:grid-cols-2">
+                    <div>
+                      <p className="mb-2"><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
+                      <p className="mb-2"><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
+                      <p className="mb-2"><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
+                      <p className="mb-2"><strong className="text-[#005f63]">Role:</strong> {r.role}</p>
+                      <p className="mb-2"><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
+                      {r.hasAccount && (
+                        <>
+                          <p className="mb-2"><strong className="text-[#005f63]">Username:</strong> {r.username}</p>
+                          <p className="mb-2">
+                            <strong className="text-[#005f63]">Password:</strong>{" "}
+                            {r.passwordChangedByUser ? "•••••••• (changed by user)" : r.password}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                    <div className="md:col-span-2">
+                      <strong className="text-[#005f63] block mb-2">Memberships:</strong>
+                      <div className="flex flex-wrap gap-1.5">
+                        {allMemberships.length > 0 ? allMemberships.map((m, i) => (
+                          <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>
+                            {m}
+                          </span>
+                        )) : <span className="text-gray-500">None</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+
+        {/* ✅ EDIT MODAL — "Create Account" if no account yet — AUTO-FILL USERNAME WITH ACTUAL ID */}
+        {editRecord && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+            <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-black text-[#005f63]">Edit Resident / Staff</h2>
+                <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+              </div>
+
+              <form onSubmit={handleUpdateResident} className="space-y-4">
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingResident.firstName}
+                      onChange={(e) => setEditingResident(prev => ({
+                        ...prev,
+                        firstName: capitalizeName(e.target.value)
+                      }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                        formErrors.firstName ? "border-red-500" : "border-gray-200"
+                      }`}
+                    />
+                    {formErrors.firstName && <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
+                    <input
+                      type="text"
+                      value={editingResident.middleName}
+                      onChange={(e) => setEditingResident(prev => ({
+                        ...prev,
+                        middleName: capitalizeName(e.target.value)
+                      }))}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingResident.lastName}
+                      onChange={(e) => setEditingResident(prev => ({
+                        ...prev,
+                        lastName: capitalizeName(e.target.value)
+                      }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                        formErrors.lastName ? "border-red-500" : "border-gray-200"
+                      }`}
+                    />
+                    {formErrors.lastName && <p className="text-red-500 text-xs mt-1">{formErrors.lastName}</p>}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingResident.contactNumber}
+                    onChange={(e) => setEditingResident(prev => ({
+                      ...prev,
+                      contactNumber: formatContactNumber(e.target.value)
+                    }))}
+                    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                      formErrors.contactNumber ? "border-red-500" : "border-gray-200"
+                    }`}
+                    placeholder="09XX-XXX-XXXX"
+                  />
+                  {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+                </div>
+
+                <div className="border-t border-b py-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editingResident.hasMemberships}
+                      onChange={(e) => setEditingResident(prev => ({ ...prev, hasMemberships: e.target.checked }))}
+                      className="w-4 h-4 text-[#005f63]"
+                    />
+                    <span className="font-medium text-gray-700">Has Memberships?</span>
+                  </label>
+                  {editingResident.hasMemberships && (
+                    <div className="mt-3 pl-6 grid grid-cols-2 gap-2">
+                      {availableMemberships.map((mem, idx) => (
+                        <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            value={mem}
+                            checked={editingResident.selectedMemberships.includes(mem)}
+                            onChange={(e) => handleMembershipChange(e, true)}
+                            className="w-4 h-4 text-[#005f63]"
+                          />
+                          <span>{mem}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ✅ ACCOUNT SECTION: "Create Account" if no account yet — AUTO-FILL USERNAME WITH ACTUAL ID */}
+                <div className="border-b pb-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editingResident.hasAccount}
+                      onChange={(e) => setEditingResident(prev => ({ ...prev, hasAccount: e.target.checked }))}
+                      className="w-4 h-4 text-[#005f63]"
+                      disabled={editingResident.hasAccount && editingResident.username !== ""}
+                    />
+                    <span className="font-medium text-gray-700">
+                      {editingResident.hasAccount ? "Has Account" : "Create Account"}
+                    </span>
+                  </label>
+
+                  {editingResident.hasAccount && (
+                    <div className="mt-3 pl-6 space-y-3">
+                      {/* ✅ Username — AUTO-FILLED WITH ACTUAL ID, fixed, cannot edit */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                        <input
+                          type="text"
+                          value={editingResident.username || editRecord}
+                          readOnly
+                          className="w-full rounded-full border border-gray-200 bg-gray-100 px-4 py-2.5 text-gray-600"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">* Username is automatically set to ID and cannot be changed</p>
+                      </div>
+
+                      {/* ✅ Password — editable only if NOT changed by user */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                        <input
+                          type="text"
+                          value={editingResident.passwordChangedByUser ? "••••••••" : editingResident.password}
+                          onChange={(e) => !editingResident.passwordChangedByUser && setEditingResident(prev => ({ ...prev, password: e.target.value }))}
+                          readOnly={editingResident.passwordChangedByUser}
+                          className={`w-full rounded-full border px-4 py-2.5 ${
+                            editingResident.passwordChangedByUser
+                              ? "bg-gray-100 text-gray-500 border-gray-200"
+                              : "border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                          }`}
+                          placeholder={!editingResident.passwordChangedByUser ? "Enter temporary password" : ""}
+                        />
+                        {editingResident.passwordChangedByUser ? (
+                          <p className="text-xs text-gray-500 mt-1">* Password already changed by user — cannot view or edit</p>
+                        ) : (
+                          formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                        <select
+                          required={editingResident.hasAccount}
+                          value={editingResident.role}
+                          onChange={(e) => setEditingResident(prev => ({ ...prev, role: e.target.value }))}
+                          className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                        >
+                          <option value="Resident">Resident</option>
+                          <option value="Staff">Staff</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-between gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelEdit}
+                    className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!hasEditChanges}
+                    className={`px-5 py-2.5 rounded-full transition ${
+                      hasEditChanges
+                        ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
+                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    }`}
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ✅ DELETE CONFIRM MODAL */}
+        {deleteRecord && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+            <div className="bg-white rounded-[30px] w-full max-w-lg p-6 shadow-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <p className="text-xl font-black text-[#b91c1c]">Confirm Delete</p>
+                  <p className="text-sm text-gray-600 mt-1">This action cannot be undone.</p>
+                </div>
+                <button onClick={() => setDeleteRecord(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+              </div>
+              <p className="text-sm text-gray-700 mb-5">
+                Are you sure you want to delete record <strong>{deleteRecord}</strong>?
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setDeleteRecord(null)}
+                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteResident}
+                  className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ✅ ADD NEW RESIDENT FORM — NO CREATE ACCOUNT SECTION */}
+        {showAddForm && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+            <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-black text-[#005f63]">Add New Resident / Staff</h2>
+                <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+              </div>
+
+              <form onSubmit={handleAddResident} className="space-y-4">
+                {/* ✅ NAME FIELDS WITH AUTO-CAPITALIZATION */}
+                <div className="grid md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newResident.firstName}
+                      onChange={(e) => setNewResident(prev => ({
+                        ...prev,
+                        firstName: capitalizeName(e.target.value)
+                      }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                        formErrors.firstName ? "border-red-500" : "border-gray-200"
+                      }`}
+                    />
+                    {formErrors.firstName && <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
+                    <input
+                      type="text"
+                      value={newResident.middleName}
+                      onChange={(e) => setNewResident(prev => ({
+                        ...prev,
+                        middleName: capitalizeName(e.target.value)
+                      }))}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={newResident.lastName}
+                      onChange={(e) => setNewResident(prev => ({
+                        ...prev,
+                        lastName: capitalizeName(e.target.value)
+                      }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                        formErrors.lastName ? "border-red-500" : "border-gray-200"
+                      }`}
+                    />
+                    {formErrors.lastName && <p className="text-red-500 text-xs mt-1">{formErrors.lastName}</p>}
+                  </div>
+                </div>
+
+                {/* ✅ CONTACT NUMBER - 11 DIGITS ONLY, AUTO-FORMAT */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newResident.contactNumber}
+                    onChange={(e) => setNewResident(prev => ({
+                      ...prev,
+                      contactNumber: formatContactNumber(e.target.value)
+                    }))}
+                    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                      formErrors.contactNumber ? "border-red-500" : "border-gray-200"
+                    }`}
+                    placeholder="09XX-XXX-XXXX"
+                  />
+                  {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+                </div>
+
+                {/* ✅ HAS MEMBERSHIPS ONLY — NO ACCOUNT OPTION */}
+                <div className="border-t border-b py-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newResident.hasMemberships}
+                      onChange={(e) => setNewResident(prev => ({...prev, hasMemberships: e.target.checked}))}
+                      className="w-4 h-4 text-[#005f63]"
+                    />
+                    <span className="font-medium text-gray-700">Has Memberships?</span>
+                  </label>
+
+                  {newResident.hasMemberships && (
+                    <div className="mt-3 pl-6 grid grid-cols-2 gap-2">
+                      {availableMemberships.map((mem, idx) => (
+                        <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            value={mem}
+                            checked={newResident.selectedMemberships.includes(mem)}
+                            onChange={handleMembershipChange}
+                            className="w-4 h-4 text-[#005f63]"
+                          />
+                          <span>{mem}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleCancelAdd}
+                    className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!hasAddChanges}
+                    className={`px-5 py-2.5 rounded-full transition ${
+                      hasAddChanges
+                        ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
+                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    }`}
+                  >
+                    Save Record
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ✅ UNSAVED CHANGES CONFIRMATION */}
+        {showCancelConfirm && (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4">
+            <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl">
+              <h3 className="text-lg font-bold text-gray-800 mb-2">Discard changes?</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                You have unsaved changes. If you leave now, your changes will be lost.
+              </p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => setShowCancelConfirm(null)}
+                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+                >
+                  Keep Editing
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCancelConfirm(null);
+                    if (showCancelConfirm === "edit") {
+                      setEditRecord(null);
+                      setFormErrors({});
+                    } else {
+                      setShowAddForm(false);
+                      setFormErrors({});
+                    }
+                  }}
+                  className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+                {/* ✅ PAGINATION */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-8">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
+            >
+              Previous
+            </button>
+
+            {Array.from({ length: totalPages }, (_, i) => (
+              <button
+                key={i + 1}
+                onClick={() => setCurrentPage(i + 1)}
+                className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${
+                  currentPage === i + 1
+                    ? "bg-[#005f63] text-white shadow-sm"
+                    : "bg-white border text-[#005f63] hover:bg-orange-50"
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
+            >
+              Next
+            </button>
+
+            <span className="text-xs text-gray-600 ml-1.5">
+              Page {currentPage} of {totalPages}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
