@@ -18,7 +18,7 @@ return new class extends Migration
             $table->foreignId('event_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             
-            $table->timestamp('time_in')->useCurrent(); 
+            $table->timestamp('time_in')->nullable(); 
             $table->timestamp('time_out')->nullable();  
         
             $table->string('status')->default('Incomplete'); 
