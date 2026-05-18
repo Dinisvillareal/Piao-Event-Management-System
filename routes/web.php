@@ -23,7 +23,7 @@ Route::get('/{any}', function () {
 
 /*
 |--------------------------------------------------------------------------
-| PUBLIC ROUTES (No authentication required)
+| PUBLIC ROUTES
 |--------------------------------------------------------------------------
 */
 
@@ -31,28 +31,26 @@ Route::post('/login', [UserController::class, 'login']);
 
 /*
 |--------------------------------------------------------------------------
-| PROTECTED ROUTES (Authentication required)
+| PROTECTED ROUTES
 |--------------------------------------------------------------------------
 */
 
 Route::middleware('auth')->group(function () {
 
-    // AUTH
+    /*
+    |------------------------
+    | AUTH
+    |------------------------
+    */
     Route::post('/logout', [UserController::class, 'logout']);
-
     Route::get('/me', [UserController::class, 'me']);
 
-    // USERS ROUTES
-
+    /*
+    |------------------------
+    | USERS (MERGED + CLEANED)
+    |------------------------
+    */
     Route::get('/users', [UserController::class, 'index']);
-
-    Route::get('/users/staff', [UserController::class, 'staff']);
-
-    Route::get('/users/resident', [UserController::class, 'resident']);
-
-    // 🔥 CRUD
-
-    Route::get('/users/deleted', [UserController::class, 'deletedUsers']);
 
     Route::get('/users/{id}', [UserController::class, 'show']);
 
@@ -62,11 +60,20 @@ Route::middleware('auth')->group(function () {
 
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
-    Route::post('/users/{id}/restore', [UserController::class, 'restore']);
+    // Role-based filters (FROM SECOND FILE - ADDED)
+    Route::get('/users/staff', [UserController::class, 'staff']);
+    Route::get('/users/resident', [UserController::class, 'resident']);
 
+    // Soft delete / restore / force delete (FROM SECOND FILE - ADDED)
+    Route::get('/users/deleted', [UserController::class, 'deletedUsers']);
+    Route::post('/users/{id}/restore', [UserController::class, 'restore']);
     Route::delete('/users/{id}/force-delete', [UserController::class, 'forceDelete']);
 
-    // MEMBERSHIPS ROUTES
+    /*
+    |------------------------
+    | MEMBERSHIPS
+    |------------------------
+    */
     Route::resource('memberships', MembershipController::class);
 
     Route::prefix('memberships')->group(function () {
@@ -77,7 +84,11 @@ Route::middleware('auth')->group(function () {
         Route::get('/sort', [MembershipController::class, 'sortPaginated']);
     });
 
-    // MEMBERSHIP RESIDENTS ROUTES
+    /*
+    |------------------------
+    | MEMBERSHIP RESIDENTS
+    |------------------------
+    */
     Route::get('/membership-residents', [MembershipResidentController::class, 'index']);
     Route::get('/membership-residents/{id}', [MembershipResidentController::class, 'show']);
     Route::get('/membership-residents/{id}/memberships', [MembershipResidentController::class, 'getUserMembershipsPaginated']);
@@ -85,7 +96,11 @@ Route::middleware('auth')->group(function () {
     Route::put('/membership-residents/{id}', [MembershipResidentController::class, 'update']);
     Route::delete('/membership-residents/{id}', [MembershipResidentController::class, 'destroy']);
 
-    // EVENTS ROUTES
+    /*
+    |------------------------
+    | EVENTS
+    |------------------------
+    */
     Route::prefix('events')->group(function () {
         Route::get('/', [EventController::class, 'index'])->name('events.index');
         Route::get('/{id}', [EventController::class, 'show'])->name('events.show');
@@ -94,14 +109,21 @@ Route::middleware('auth')->group(function () {
         Route::delete('/{id}', [EventController::class, 'destroy'])->name('events.destroy');
     });
 
-    // EVENT ATTENDANCE ROUTES
+    /*
+    |------------------------
+    | ATTENDANCE
+    |------------------------
+    */
     Route::prefix('attendance')->group(function () {
         Route::post('/time-in', [EventAttendanceController::class, 'timeIn']);
         Route::put('/time-out', [EventAttendanceController::class, 'timeOut']);
     });
 
-    // FETCHING LISTS FOR DASHBOARDS
+    /*
+    |------------------------
+    | DASHBOARD QUERIES
+    |------------------------
+    */
     Route::get('/events/{id}/attendances', [EventAttendanceController::class, 'getEventAttendees']);
     Route::get('/users/{id}/attendances', [EventAttendanceController::class, 'getMemberHistory']);
-    Route::delete('/events/{id}', [EventController::class, 'destroy'])->name('events.destroy');
 });
