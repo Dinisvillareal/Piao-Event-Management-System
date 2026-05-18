@@ -17,12 +17,15 @@ class EventAttendanceSeeder extends Seeder
 
         $users = $staff->concat($residents);
 
-        // Get all events
-        $events = Event::all();
+        // Get only ONE event
+        $event = Event::first();
+
+        if (!$event) {
+            return;
+        }
 
         $attendances = [];
 
-        // Static sample times
         $timeInSamples = [
             '08:00:00',
             '08:15:00',
@@ -39,37 +42,31 @@ class EventAttendanceSeeder extends Seeder
             '13:15:00',
         ];
 
-        foreach ($events as $event) {
-            
-            
-            $dateOnly = substr($event->event_start, 0, 10);
+        $dateOnly = substr($event->event_start, 0, 10);
 
-            foreach ($users as $index => $user) {
+        foreach ($users as $index => $user) {
 
-              
-                $timeIn = $dateOnly . ' ' . $timeInSamples[$index % count($timeInSamples)];
+            $timeIn = $dateOnly . ' ' . $timeInSamples[$index % count($timeInSamples)];
 
-                
-                $isComplete = rand(1, 10) <= 8;
+            $isComplete = rand(1, 10) <= 8;
 
-                if ($isComplete) {
-                    $timeOut = $dateOnly . ' ' . $timeOutSamples[$index % count($timeOutSamples)];
-                    $status = 'Complete';
-                } else {
-                    $timeOut = null;
-                    $status = 'Incomplete';
-                }
-
-                $attendances[] = [
-                    'event_id' => $event->id,
-                    'user_id' => $user->id,
-                    'time_in' => $timeIn,
-                    'time_out' => $timeOut,
-                    'status' => $status,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ];
+            if ($isComplete) {
+                $timeOut = $dateOnly . ' ' . $timeOutSamples[$index % count($timeOutSamples)];
+                $status = 'Complete';
+            } else {
+                $timeOut = null;
+                $status = 'Incomplete';
             }
+
+            $attendances[] = [
+                'event_id' => $event->id,
+                'user_id' => $user->id,
+                'time_in' => $timeIn,
+                'time_out' => $timeOut,
+                'status' => $status,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
         }
 
         EventAttendance::insert($attendances);

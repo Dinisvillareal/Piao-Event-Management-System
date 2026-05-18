@@ -2,8 +2,8 @@ import { useState, useMemo } from "react";
 import { Filter } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
-// Define the shape of our data
-interface AttendanceRecord {
+// ✅ Exported so Members.tsx can import and reuse it
+export interface AttendanceRecord {
   id: number;
   eventTitle: string;
   eventDate: string;
@@ -25,11 +25,9 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
   const [attendancePage, setAttendancePage] = useState(1);
   const attendancePerPage = 20;
 
-  // Reset page when search or filter changes
   useMemo(() => {
     setAttendancePage(1);
   }, [attendanceSearch, attendanceFilter]);
-
 
   const filteredAttendance = useMemo(() => {
     let result = attendanceRecords;
@@ -49,17 +47,14 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
       );
     }
 
-    // SORT: NEWEST / LATEST DATE FIRST
     result = [...result].sort((a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime());
 
     return result;
   }, [attendanceRecords, attendanceFilter, attendanceSearch]);
 
-
   const attendanceTotalPages = useMemo(() => {
     return Math.ceil(filteredAttendance.length / attendancePerPage);
   }, [filteredAttendance, attendancePerPage]);
-
 
   const paginatedAttendance = useMemo(() => {
     const startIndex = (attendancePage - 1) * attendancePerPage;
@@ -70,11 +65,11 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
     <div className="space-y-6">
       {/* FIXED HEADER & SEARCH AREA */}
       <div className="sticky top-0 z-10 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm">
-        <div className="w-[1200px]">
+        <div className="w-full pr-4">
           <h1 className="text-4xl font-black text-[#005f63]">Attendance Records</h1>
           <p className="text-sm text-[#667777] mt-1">Your sign in / sign out history per event.</p>
 
-          <div className="mt-4 flex items-center gap-4 w-[1580px]">
+          <div className="mt-4 flex items-center gap-4 w-full">
             <div className="flex-1">
               <SearchBar
                 value={attendanceSearch}
