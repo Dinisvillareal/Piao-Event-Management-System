@@ -1,20 +1,23 @@
 <?php
 
+// ========================================
+// CONTROLLER
+// app/Http/Controllers/UserController.php
+// ========================================
+
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
-use App\Http\Requests\UpdateUserRequest;
+use Illuminate\Support\Facades\Hash;
 use App\Http\Requests\StoreUserRequest;
+use App\Http\Requests\UpdateUserRequest;
 
 class UserController extends Controller
 {
-    // Helper methods for authorization
     private function isStaff()
     {
-        $user = auth()->user();
-        return $user && $user->role === 'Staff';
+        return auth()->user()?->role === 'Staff';
     }
 
     private function isOwnProfile($id)
@@ -22,46 +25,48 @@ class UserController extends Controller
         return auth()->id() == $id;
     }
 
-    // =========================
+    // ========================================
     // CREATE USER
-    // =========================
+    // ========================================
     public function store(StoreUserRequest $request)
     {
-        // ✅ Only staff can create users
         if (!$this->isStaff()) {
-            return response()->json([
-                'message' => 'Unauthorized: Only staff can create users'
-            ], 403);
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $last = User::latest('id')->first();
+        $last = User::withTrashed()->latest('id')->first();
 
         $next = $last && $last->user_code
             ? (int) str_replace('PR-', '', $last->user_code) + 1
             : 1;
 
-        $pr = 'PR-' . str_pad($next, 6, '0', STR_PAD_LEFT);
+        $pad = max(4, strlen((string)$next));
+
+        $userCode = 'PR-' . str_pad($next, $pad, '0', STR_PAD_LEFT);
+        $tempPassword = 'temp-' . str_pad($next, $pad, '0', STR_PAD_LEFT);
 
         $user = User::create([
-            'user_code' => $pr,
+            'user_code' => $userCode,
             'first_name' => $request->first_name,
             'last_name' => $request->last_name,
             'middle_name' => $request->middle_name,
             'contact_number' => $request->contact_number,
             'role' => $request->role,
-            'password' => Hash::make($request->password),
+            'password' => Hash::make($tempPassword),
+            'has_account' => 0,
         ]);
 
         return response()->json([
             'message' => 'User created successfully',
-            'user_code' => $pr,
+            'user_code' => $userCode,
+            'temporary_password' => $tempPassword,
             'user' => $user
         ], 201);
     }
 
-    // =========================
+    // ========================================
     // LOGIN
-    // =========================
+    // ========================================
     public function login(Request $request)
     {
         $user = User::where('user_code', $request->username)->first();
@@ -78,88 +83,43 @@ class UserController extends Controller
         ]);
     }
 
-    // =========================
-    // GET ALL USERS
-    // =========================
-    public function index(Request $request)
+    // ========================================
+    // GET USERS (WITH SOFT DELETE)
+    // ========================================
+    public function index()
     {
-        // ✅ Only staff can view all users
         if (!$this->isStaff()) {
-            return response()->json([
-                'message' => 'Unauthorized: Only staff can view all users'
-            ], 403);
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $query = User::query();
+        $users = User::withTrashed()
+            ->with('memberships')
+            ->paginate(20);
 
-        if ($request->role) {
-            $query->where('role', $request->role);
-        }
-
-        return response()->json($query->get());
+        return response()->json($users);
     }
 
-    // =========================
-    // STAFF
-    // =========================
-    public function staff()
-    {
-        // ✅ Only staff can view staff list
-        if (!$this->isStaff()) {
-            return response()->json([
-                'message' => 'Unauthorized: Only staff can view staff list'
-            ], 403);
-        }
-
-        return response()->json(
-            User::where('role', 'Staff')->paginate(20)
-        );
-    }
-
-    // =========================
-    // RESIDENT
-    // =========================
-    public function resident()
-    {
-        // ✅ Only staff can view resident list
-        if (!$this->isStaff()) {
-            return response()->json([
-                'message' => 'Unauthorized: Only staff can view resident list'
-            ], 403);
-        }
-
-        return response()->json(
-            User::where('role', 'Resident')->paginate(20)
-        );
-    }
-
-    // =========================
+    // ========================================
     // SHOW USER
-    // =========================
+    // ========================================
     public function show($id)
     {
-        // ✅ Users can view their own profile, staff can view any
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
-            return response()->json([
-                'message' => 'Unauthorized: You can only view your own profile'
-            ], 403);
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         return response()->json(
-            User::findOrFail($id)
+            User::withTrashed()->with('memberships')->findOrFail($id)
         );
     }
 
-    // =========================
+    // ========================================
     // UPDATE USER
-    // =========================
+    // ========================================
     public function update(UpdateUserRequest $request, $id)
     {
-        // ✅ Users can update their own profile, staff can update any
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
-            return response()->json([
-                'message' => 'Unauthorized: You can only update your own profile'
-            ], 403);
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $user = User::findOrFail($id);
@@ -174,54 +134,53 @@ class UserController extends Controller
 
         if ($request->password) {
             $user->update([
-                'password' => Hash::make($request->password)
+                'password' => Hash::make($request->password),
+                'has_account' => 1
             ]);
         }
 
-        return response()->json([
-            'message' => 'User updated successfully'
-        ]);
+        return response()->json(['message' => 'Updated successfully']);
     }
 
-    // =========================
-    // DELETE USER
-    // =========================
+    // ========================================
+    // SOFT DELETE
+    // ========================================
     public function destroy($id)
     {
-        // ✅ Only staff can delete users
         if (!$this->isStaff()) {
-            return response()->json([
-                'message' => 'Unauthorized: Only staff can delete users'
-            ], 403);
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         User::findOrFail($id)->delete();
 
-        return response()->json([
-            'message' => 'User deleted successfully'
-        ]);
+        return response()->json(['message' => 'Deleted']);
     }
 
-    // =========================
-    // LOGOUT
-    // =========================
-    public function logout(Request $request)
+    // ========================================
+    // RESTORE
+    // ========================================
+    public function restore($id)
     {
-        auth()->logout();
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
 
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        User::onlyTrashed()->findOrFail($id)->restore();
 
-        return response()->json([
-            'message' => 'Logged out successfully'
-        ]);
+        return response()->json(['message' => 'Restored']);
     }
 
-    // =========================
-    // CURRENT USER
-    // =========================
-    public function me(Request $request)
+    // ========================================
+    // FORCE DELETE
+    // ========================================
+    public function forceDelete($id)
     {
-        return response()->json($request->user());
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        User::onlyTrashed()->findOrFail($id)->forceDelete();
+
+        return response()->json(['message' => 'Permanently deleted']);
     }
 }

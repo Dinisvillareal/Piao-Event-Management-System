@@ -2,14 +2,17 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User; 
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\MembershipResident;
 
 class MembershipResidentController extends Controller
 {
-    // Helper methods for authorization
+    // =========================
+    // AUTH HELPERS
+    // =========================
+
     private function isStaff()
     {
         $user = auth()->user();
@@ -22,19 +25,20 @@ class MembershipResidentController extends Controller
     }
 
     // =========================
-    // GET ALL (GROUPED BY USER)
+    // GET ALL USERS + MEMBERSHIPS (INCLUDING SOFT DELETED)
     // =========================
+
     public function index()
     {
-        // ✅ Only Staff can view all users' memberships
         if (!$this->isStaff()) {
             return response()->json([
                 'message' => 'Unauthorized: Only staff can view all memberships'
             ], 403);
         }
 
-        $data = DB::table('membership_residents')
-            ->leftJoin('users', 'membership_residents.user_id', '=', 'users.id')
+        $users = DB::table('users')
+            // 🔥 NO whereNull(deleted_at) → includes deleted + active users
+            ->leftJoin('membership_residents', 'users.id', '=', 'membership_residents.user_id')
             ->leftJoin('memberships', 'membership_residents.membership_id', '=', 'memberships.id')
             ->select(
                 'users.id',
@@ -42,47 +46,60 @@ class MembershipResidentController extends Controller
                 'users.first_name',
                 'users.middle_name',
                 'users.last_name',
+                'users.contact_number',
+                'users.has_account',
+                'users.deleted_at', // 🔥 show soft delete status
+
                 'memberships.id as membership_id',
                 'memberships.name as membership_name'
             )
             ->get()
-            ->groupBy('user_code')
+            ->groupBy('id')
             ->map(function ($items) {
 
                 $first = $items->first();
 
                 return [
+                    'user_id' => $first->id,
                     'user_code' => $first->user_code,
                     'first_name' => $first->first_name,
                     'middle_name' => $first->middle_name,
                     'last_name' => $first->last_name,
-                    'memberships' => $items->map(function ($item) {
-                        return [
-                            'id' => $item->membership_id,
-                            'name' => $item->membership_name,
-                        ];
-                    })->values()
+                    'contact_number' => $first->contact_number,
+                    'has_account' => $first->has_account,
+
+                    // 🔥 soft delete flag
+                    'is_deleted' => $first->deleted_at ? true : false,
+
+                    'memberships' => $items
+                        ->filter(fn ($i) => $i->membership_id)
+                        ->map(fn ($i) => [
+                            'id' => $i->membership_id,
+                            'name' => $i->membership_name,
+                        ])
+                        ->values()
                 ];
             })
             ->values();
 
-        return response()->json($data);
+        return response()->json($users);
     }
 
     // =========================
-    // SHOW SINGLE RESIDENT
+    // SHOW SINGLE USER + MEMBERSHIPS (INCLUDING SOFT DELETED)
     // =========================
+
     public function show($id)
     {
-        // ✅ Residents can view only their own, Staff can view any
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
             return response()->json([
                 'message' => 'Unauthorized: You can only view your own memberships'
             ], 403);
         }
 
-        $data = DB::table('membership_residents')
-            ->leftJoin('users', 'membership_residents.user_id', '=', 'users.id')
+        $data = DB::table('users')
+            // 🔥 NO FILTER → includes deleted users too
+            ->leftJoin('membership_residents', 'users.id', '=', 'membership_residents.user_id')
             ->leftJoin('memberships', 'membership_residents.membership_id', '=', 'memberships.id')
             ->select(
                 'users.id',
@@ -90,6 +107,10 @@ class MembershipResidentController extends Controller
                 'users.first_name',
                 'users.middle_name',
                 'users.last_name',
+                'users.contact_number',
+                'users.has_account',
+                'users.deleted_at',
+
                 'memberships.id as membership_id',
                 'memberships.name as membership_name'
             )
@@ -98,42 +119,50 @@ class MembershipResidentController extends Controller
 
         if ($data->isEmpty()) {
             return response()->json([
-                'message' => 'Resident not found'
+                'message' => 'User not found'
             ], 404);
         }
 
         $first = $data->first();
 
         return response()->json([
+            'user_id' => $first->id,
             'user_code' => $first->user_code,
             'first_name' => $first->first_name,
             'middle_name' => $first->middle_name,
             'last_name' => $first->last_name,
-            'memberships' => $data->map(function ($item) {
-                return [
-                    'id' => $item->membership_id,
-                    'name' => $item->membership_name,
-                ];
-            })->values()
+            'contact_number' => $first->contact_number,
+            'has_account' => $first->has_account,
+
+            // 🔥 soft delete status
+            'is_deleted' => $first->deleted_at ? true : false,
+
+            'memberships' => $data
+                ->filter(fn ($i) => $i->membership_id)
+                ->map(fn ($i) => [
+                    'id' => $i->membership_id,
+                    'name' => $i->membership_name,
+                ])
+                ->values()
         ]);
     }
 
     // =========================
     // ASSIGN MEMBERSHIPS
     // =========================
+
     public function store(Request $request)
     {
-        // ✅ Only Staff can assign memberships
         if (!$this->isStaff()) {
             return response()->json([
-                'message' => 'Unauthorized: Only staff can assign memberships'
+                'message' => 'Unauthorized'
             ], 403);
         }
 
         $request->validate([
             'user_id' => 'required|exists:users,id',
             'membership_ids' => 'required|array|min:1',
-            'membership_ids.*' => 'required|exists:memberships,id',
+            'membership_ids.*' => 'exists:memberships,id',
         ]);
 
         foreach ($request->membership_ids as $membershipId) {
@@ -151,18 +180,18 @@ class MembershipResidentController extends Controller
     // =========================
     // UPDATE MEMBERSHIPS
     // =========================
+
     public function update(Request $request, $id)
     {
-        // ✅ Only Staff can update memberships
         if (!$this->isStaff()) {
             return response()->json([
-                'message' => 'Unauthorized: Only staff can update memberships'
+                'message' => 'Unauthorized'
             ], 403);
         }
 
         $request->validate([
             'membership_ids' => 'required|array|min:1',
-            'membership_ids.*' => 'required|exists:memberships,id',
+            'membership_ids.*' => 'exists:memberships,id',
         ]);
 
         MembershipResident::where('user_id', $id)->delete();
@@ -182,12 +211,12 @@ class MembershipResidentController extends Controller
     // =========================
     // DELETE MEMBERSHIPS
     // =========================
+
     public function destroy($id)
     {
-        // ✅ Only Staff can delete memberships
         if (!$this->isStaff()) {
             return response()->json([
-                'message' => 'Unauthorized: Only staff can delete memberships'
+                'message' => 'Unauthorized'
             ], 403);
         }
 
@@ -199,37 +228,41 @@ class MembershipResidentController extends Controller
     }
 
     // =========================
-    // GET USER MEMBERSHIPS WITH PAGINATION
+    // PAGINATED USER MEMBERSHIPS
     // =========================
+
     public function getUserMembershipsPaginated($id, Request $request)
     {
-        // ✅ Residents can view only their own, Staff can view any
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
             return response()->json([
-                'message' => 'Unauthorized: You can only view your own memberships'
+                'message' => 'Unauthorized'
             ], 403);
         }
 
         $perPage = $request->get('per_page', 6);
         $search = $request->get('search', '');
-        
+
         $user = User::findOrFail($id);
-        
+
         $query = DB::table('membership_residents')
             ->join('memberships', 'membership_residents.membership_id', '=', 'memberships.id')
             ->select('memberships.id', 'memberships.name', 'memberships.description')
             ->where('membership_residents.user_id', $id);
-        
+
         if ($search) {
-            $query->where('memberships.name', 'like', '%' . $search . '%');
+            $query->where('memberships.name', 'like', "%{$search}%");
         }
-        
+
         $memberships = $query->paginate($perPage);
-        
+
         return response()->json([
             'user_code' => $user->user_code,
             'first_name' => $user->first_name,
             'last_name' => $user->last_name,
+            'contact_number' => $user->contact_number,
+            'has_account' => $user->has_account,
+            'is_deleted' => $user->deleted_at ? true : false,
+
             'memberships' => $memberships->items(),
             'current_page' => $memberships->currentPage(),
             'last_page' => $memberships->lastPage(),
