@@ -1,20 +1,19 @@
 <?php
 
-// ========================================
-// CONTROLLER
-// app/Http/Controllers/UserController.php
-// ========================================
-
 namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Auth;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 
 class UserController extends Controller
 {
+    // =========================
+    // HELPERS
+    // =========================
     private function isStaff()
     {
         return auth()->user()?->role === 'Staff';
@@ -25,9 +24,9 @@ class UserController extends Controller
         return auth()->id() == $id;
     }
 
-    // ========================================
-    // CREATE USER
-    // ========================================
+    // =========================
+    // CREATE USER (MERGED FEATURES)
+    // =========================
     public function store(StoreUserRequest $request)
     {
         if (!$this->isStaff()) {
@@ -64,18 +63,25 @@ class UserController extends Controller
         ], 201);
     }
 
-    // ========================================
-    // LOGIN
-    // ========================================
+    // =========================
+    // LOGIN (FIXED SESSION SAFE)
+    // =========================
     public function login(Request $request)
     {
+        $request->validate([
+            'username' => 'required',
+            'password' => 'required',
+        ]);
+
         $user = User::where('user_code', $request->username)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
-        auth()->login($user, $request->remember_me ?? false);
+        Auth::login($user, $request->boolean('remember_me'));
+
+        $request->session()->regenerate();
 
         return response()->json([
             'message' => 'Login successful',
@@ -83,25 +89,53 @@ class UserController extends Controller
         ]);
     }
 
-    // ========================================
-    // GET USERS (WITH SOFT DELETE)
-    // ========================================
+    // =========================
+    // GET ALL USERS (STAFF ONLY)
+    // =========================
     public function index()
     {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $users = User::withTrashed()
-            ->with('memberships')
-            ->paginate(20);
-
-        return response()->json($users);
+        return response()->json(
+            User::withTrashed()
+                ->with('memberships')
+                ->paginate(20)
+        );
     }
 
-    // ========================================
+    // =========================
+    // STAFF LIST
+    // =========================
+    public function staff()
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json(
+            User::where('role', 'Staff')->paginate(20)
+        );
+    }
+
+    // =========================
+    // RESIDENT LIST
+    // =========================
+    public function resident()
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json(
+            User::where('role', 'Resident')->paginate(20)
+        );
+    }
+
+    // =========================
     // SHOW USER
-    // ========================================
+    // =========================
     public function show($id)
     {
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
@@ -109,13 +143,15 @@ class UserController extends Controller
         }
 
         return response()->json(
-            User::withTrashed()->with('memberships')->findOrFail($id)
+            User::withTrashed()
+                ->with('memberships')
+                ->findOrFail($id)
         );
     }
 
-    // ========================================
+    // =========================
     // UPDATE USER
-    // ========================================
+    // =========================
     public function update(UpdateUserRequest $request, $id)
     {
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
@@ -139,12 +175,12 @@ class UserController extends Controller
             ]);
         }
 
-        return response()->json(['message' => 'Updated successfully']);
+        return response()->json(['message' => 'User updated successfully']);
     }
 
-    // ========================================
-    // SOFT DELETE
-    // ========================================
+    // =========================
+    // DELETE (SOFT DELETE)
+    // =========================
     public function destroy($id)
     {
         if (!$this->isStaff()) {
@@ -156,9 +192,9 @@ class UserController extends Controller
         return response()->json(['message' => 'Deleted']);
     }
 
-    // ========================================
-    // RESTORE
-    // ========================================
+    // =========================
+    // RESTORE USER
+    // =========================
     public function restore($id)
     {
         if (!$this->isStaff()) {
@@ -170,9 +206,9 @@ class UserController extends Controller
         return response()->json(['message' => 'Restored']);
     }
 
-    // ========================================
+    // =========================
     // FORCE DELETE
-    // ========================================
+    // =========================
     public function forceDelete($id)
     {
         if (!$this->isStaff()) {
@@ -182,5 +218,26 @@ class UserController extends Controller
         User::onlyTrashed()->findOrFail($id)->forceDelete();
 
         return response()->json(['message' => 'Permanently deleted']);
+    }
+
+    // =========================
+    // LOGOUT
+    // =========================
+    public function logout(Request $request)
+    {
+        Auth::logout();
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->json(['message' => 'Logged out successfully']);
+    }
+
+    // =========================
+    // CURRENT USER
+    // =========================
+    public function me(Request $request)
+    {
+        return response()->json($request->user());
     }
 }
