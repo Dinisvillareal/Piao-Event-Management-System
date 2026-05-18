@@ -11,74 +11,108 @@ class EventAttendanceController extends Controller
 {
     // TIME IN (When they scan the QR code to enter)
     public function timeIn(Request $request)
-    {
-        $request->validate([
-            'event_id' => 'required|exists:events,id',
-            'user_id' => 'required|exists:users,id',
-        ]);
+{
+    $request->validate([
+        'event_id' => 'required|exists:events,id',
+        'user_id' => 'required|exists:users,id',
+    ]);
 
-        // Check if they already scanned in
-        $existing = EventAttendance::where('event_id', $request->event_id)
-                              ->where('user_id', $request->user_id)
-                              ->first();
+    $attendance = EventAttendance::where('event_id', $request->event_id)
+        ->where('user_id', $request->user_id)
+        ->first();
 
-        if ($existing) {
+    // If record already exists
+    if ($attendance) {
+
+        // Prevent double time-in
+        if ($attendance->time_in) {
             return response()->json([
-                'message' => 'Member is already signed in to this event.',
-                'attendance' => $existing
-            ], 400); // 400 Bad Request
+                'message' => 'Member already signed in.'
+            ], 400);
         }
 
-        // Create the record
-        $attendance = EventAttendance::create([
-            'event_id' => $request->event_id,
-            'user_id' => $request->user_id,
-            'time_in' => now(),
-            'status' => 'Incomplete' 
-        ]);
+        // Add time_in
+        $attendance->time_in = now();
+
+        // Update status
+        $attendance->status = $this->determineStatus(
+            $attendance->time_in,
+            $attendance->time_out
+        );
+
+        $attendance->save();
 
         return response()->json([
             'message' => 'Time-in successful!',
             'attendance' => $attendance
-        ], 201);
+        ]);
     }
+
+    // Create new attendance
+    $attendance = EventAttendance::create([
+        'event_id' => $request->event_id,
+        'user_id' => $request->user_id,
+        'time_in' => now(),
+        'status' => 'Incomplete'
+    ]);
+
+    return response()->json([
+        'message' => 'Time-in successful!',
+        'attendance' => $attendance
+    ], 201);
+}
 
     // TIME OUT (When they scan the QR code to leave)
     public function timeOut(Request $request)
-    {
-        $request->validate([
-            'event_id' => 'required|exists:events,id',
-            'user_id' => 'required|exists:users,id',
-        ]);
+{
+    $request->validate([
+        'event_id' => 'required|exists:events,id',
+        'user_id' => 'required|exists:users,id',
+    ]);
 
-        // Find the specific attendance record
-        $attendance = EventAttendance::where('event_id', $request->event_id)
-                              ->where('user_id', $request->user_id)
-                              ->first();
+    $attendance = EventAttendance::where('event_id', $request->event_id)
+        ->where('user_id', $request->user_id)
+        ->first();
 
-        if (!$attendance) {
-            return response()->json([
-                'message' => 'No time-in record found for this member at this event.'
-            ], 404);
-        }
+    // If no record exists yet, create one
+    if (!$attendance) {
 
-        if ($attendance->status === 'Complete') {
-            return response()->json([
-                'message' => 'Member has already timed out of this event.'
-            ], 400);
-        }
-
-        // Update the record
-        $attendance->update([
+        $attendance = EventAttendance::create([
+            'event_id' => $request->event_id,
+            'user_id' => $request->user_id,
             'time_out' => now(),
-            'status' => 'Complete'
+            'status' => 'Incomplete'
         ]);
 
         return response()->json([
-            'message' => 'Time-out successful!',
+            'message' => 'Time-out recorded without time-in.',
             'attendance' => $attendance
-        ]);
+        ], 201);
     }
+
+    // Prevent double timeout
+    if ($attendance->time_out) {
+        return response()->json([
+            'message' => 'Member already signed out.'
+        ], 400);
+    }
+
+    // Add timeout
+    $attendance->time_out = now();
+
+    // Update status
+    $attendance->status = $this->determineStatus(
+        $attendance->time_in,
+        $attendance->time_out
+    );
+
+    $attendance->save();
+
+    return response()->json([
+        'message' => 'Time-out successful!',
+        'attendance' => $attendance
+    ]);
+}
 
     // GET ATTENDANCE FOR A SPECIFIC EVENT (For the Staff Dashboard)
     public function getEventAttendees($eventId)
@@ -103,4 +137,13 @@ class EventAttendanceController extends Controller
 
         return response()->json($attendances);
     }
+
+    private function determineStatus($timeIn, $timeOut)
+{
+    if ($timeIn && $timeOut) {
+        return 'Complete';
+    }
+
+    return 'Incomplete';
+}
 }
