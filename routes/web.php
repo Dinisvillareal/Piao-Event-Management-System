@@ -39,20 +39,32 @@ Route::middleware('auth')->group(function () {
 
     // AUTH
     Route::post('/logout', [UserController::class, 'logout']);
+
     Route::get('/me', [UserController::class, 'me']);
 
-    // USERS CRUD
+    // USERS ROUTES
+
     Route::get('/users', [UserController::class, 'index']);
+
+    Route::get('/users/staff', [UserController::class, 'staff']);
+
+    Route::get('/users/resident', [UserController::class, 'resident']);
+
+    // 🔥 CRUD
+
+    Route::get('/users/deleted', [UserController::class, 'deletedUsers']);
+
     Route::get('/users/{id}', [UserController::class, 'show']);
+
     Route::post('/users', [UserController::class, 'store']);
+
     Route::put('/users/{id}', [UserController::class, 'update']);
+
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
 
-    // ROLE FILTERS
-    Route::get('/users-staff', [UserController::class, 'staff']);
-    Route::get('/users-member', [UserController::class, 'member']);
-    Route::get('/users/staff', [UserController::class, 'staff']);
-    Route::get('/users/member', [UserController::class, 'member']);
+    Route::post('/users/{id}/restore', [UserController::class, 'restore']);
+
+    Route::delete('/users/{id}/force-delete', [UserController::class, 'forceDelete']);
 
     // MEMBERSHIPS ROUTES
     Route::resource('memberships', MembershipController::class);
