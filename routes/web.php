@@ -117,6 +117,7 @@ Route::middleware('auth')->group(function () {
     Route::prefix('attendance')->group(function () {
         Route::post('/time-in', [EventAttendanceController::class, 'timeIn']);
         Route::put('/time-out', [EventAttendanceController::class, 'timeOut']);
+        Route::get('/{userId}', [EventAttendanceController::class, 'getMemberHistory']);
     });
 
     /*

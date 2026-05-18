@@ -17,6 +17,34 @@ class EventAttendanceController extends Controller
         'user_id' => 'required|exists:users,id',
     ]);
 
+    $event = Event::findOrFail($request->event_id);
+
+       
+        $currentTime = time(); 
+        
+       
+        $eventStart = strtotime($event->event_start);
+        $eventEnd = strtotime($event->event_end);
+
+        // VALIDATION
+        if ($currentTime < $eventStart) {
+            return response()->json([
+                'message' => 'Sign-in is not available yet. This event has not started.'
+            ], 403);
+        }
+
+        // VALIDATION
+        if ($currentTime > $eventEnd) {
+            return response()->json([
+                'message' => 'Sign-in is closed. This event has already ended.'
+            ], 403);
+        }
+
+        
+        $attendance = EventAttendance::where('event_id', $request->event_id)
+            ->where('user_id', $request->user_id)
+            ->first();
+
     $attendance = EventAttendance::where('event_id', $request->event_id)
         ->where('user_id', $request->user_id)
         ->first();
@@ -128,15 +156,14 @@ class EventAttendanceController extends Controller
 
     // GET ATTENDANCE FOR A SPECIFIC MEMBER (For the Member Dashboard)
     public function getMemberHistory($userId)
-    {
-        // Fetches all events a specific member has attended
-        $attendances = EventAttendance::with('event')
-                                 ->where('user_id', $userId)
-                                 ->orderBy('time_in', 'desc')
-                                 ->get();
+{
+    $attendances = EventAttendance::with('event')  
+        ->where('user_id', $userId)
+        ->orderBy('time_in', 'desc')
+        ->get();
 
-        return response()->json($attendances);
-    }
+    return response()->json($attendances);
+}
 
     private function determineStatus($timeIn, $timeOut)
 {
