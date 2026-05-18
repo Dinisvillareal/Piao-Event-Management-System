@@ -450,7 +450,7 @@ export default function StaffDashboard() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "Staff" };
+  const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "STAFF / ADMIN" };
 
   const [upcomingEvents, setUpcomingEvents] = useState([
     { id: 1, title: "Barangay General Assembly", date: "2026-05-12 09:00", location: "Barangay Hall", description: "Quarterly assembly of all registered members." },
@@ -665,7 +665,7 @@ function ScanView() {
     });
   };
 
-  // ✅ Record Sign-In or Sign-Out
+  // ✅ Record Sign-In OR Sign-Out — EVEN IF NO PREVIOUS SIGN IN
   const confirmAttendance = () => {
     if (!scan?.ok || !scan.hasAccess) return;
 
@@ -675,6 +675,7 @@ function ScanView() {
       const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       if (scanMode === "in") {
+        // ✅ SIGN IN: only add if not exists
         if (existing) return prev;
         return {
           ...prev,
@@ -688,15 +689,30 @@ function ScanView() {
         };
       }
 
-      if (scanMode === "out" && existing && existing.timeIn && !existing.timeOut) {
-        return {
-          ...prev,
-          [eventId]: list.map(e =>
-            e.residentId === scan!.residentId
-              ? { ...e, timeOut: now, status: "complete" }
-              : e
-          )
-        };
+      if (scanMode === "out") {
+        if (existing) {
+          // ✅ Already has record → update timeOut
+          return {
+            ...prev,
+            [eventId]: list.map(e =>
+              e.residentId === scan!.residentId
+                ? { ...e, timeOut: now, status: e.timeIn ? "complete" : "out" }
+                : e
+            )
+          };
+        } else {
+          // ✅ NO SIGN IN BEFORE → CREATE NEW RECORD WITH ONLY SIGNOUT
+          return {
+            ...prev,
+            [eventId]: [...list, {
+              residentId: scan!.residentId,
+              residentName: scan!.residentName,
+              timeIn: null,
+              timeOut: now,
+              status: "out"
+            }]
+          };
+        }
       }
 
       return prev;
@@ -731,7 +747,7 @@ function ScanView() {
             </div>
               <Button
                 onClick={() => setIsCameraOn(!isCameraOn)}
-                className={`rounded-full w-10 h-10 p-0 flex items-center justify-center ${isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#e9c655] hover:bg-[#1a6969]"}`}
+                className={`rounded-full w-10 h-10 p-0 flex items-center justify-center ${isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#f1ce5a] hover:bg-[#ffd931]"}`}
               >
                 {isCameraOn ? <CameraOff size={18} /> : <Camera size={18} />}
               </Button>
@@ -757,28 +773,26 @@ function ScanView() {
                 )}
             </div>
 
-            {/* Scan Mode Toggle */}
+            {/* Scan Mode Toggle — ✅ NO BLUE, HOVER LIGHTER */}
             <div className="flex gap-2">
                 <Button
                     onClick={() => setScanMode("in")}
-                    className={`flex-1 rounded-[40px] py-3 font-medium transition-all duration-150
+                    className={`flex-1 rounded-[60px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
                     ${scanMode === "in"
-                        ? "bg-[#237474] text-white hover:bg-[#28b0b0] active:bg-[#209999]"
-                        : "bg-gray-100 text-gray-600 hover:bg-[#33c4c4]/10 hover:text-[#33c4c4] active:bg-[#33c4c4]/20"
-                    }
-                    focus:outline-none focus:ring-0 focus:ring-offset-0 border-0`}
+                        ? "!bg-[#217676] !text-white hover:!bg-[#46a7a7] active:!bg-[#1a6060]"
+                        : "!bg-gray-100 !text-gray-600 hover:!bg-[#e0f2f2] hover:!text-[#217676] active:!bg-[#cceae]"
+                    }`}
                 >
                     <LogIn size={16} className="mr-2" /> Sign In
                 </Button>
 
                 <Button
                     onClick={() => setScanMode("out")}
-                    className={`flex-1 rounded-[40px] py-3 font-medium transition-all duration-150
+                    className={`flex-1 rounded-[60px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
                     ${scanMode === "out"
-                        ? "bg-[#ff9c07] text-white hover:bg-[#e68a00] active:bg-[#cc7a00]"
-                        : "bg-gray-100 text-gray-600 hover:bg-[#ff9c07]/10 hover:text-[#ff9c07] active:bg-[#ff9c07]/20"
-                    }
-                    focus:outline-none focus:ring-0 focus:ring-offset-0 border-0`}
+                        ? "!bg-[#ff9a04] !text-white hover:!bg-[#ffbc57] active:!bg-[#cc7a00]"
+                        : "!bg-gray-100 !text-gray-600 hover:!bg-[#fff3e0] hover:!text-[#ff9a04] active:!bg-[#ffe0b2]"
+                    }`}
                 >
                     <LogOut size={16} className="mr-2" /> Sign Out
                 </Button>
@@ -796,7 +810,7 @@ function ScanView() {
                 setEventId(val);
                 }
             }}
-            className={`mt-1.5 border-[#ddd5ca] rounded-[40px] text-[14px] [&_[data-selected]]:text-[#005f63] [&>span]:data-[state=closed]:text-[#005f63] transition-colors ${scanMode === "in" ? "text-[#005f63]" : "text-[#b86a00]"}`}
+            className={`mt-1.5 border-[#ddd5ca] rounded-[60px] text-[14px] [&_[data-selected]]:text-[#005f63] [&>span]:data-[state=closed]:text-[#005f63] transition-colors ${scanMode === "in" ? "text-[#005f63]" : "text-[#b86a00]"}`}
             >
                 {events.map(e => (
                 <SelectItem
@@ -825,19 +839,19 @@ function ScanView() {
 
             {/* ✅ Add Event Form */}
             {showAddEvent && (
-            <div className={`mt-3 p-3 border border-dashed rounded-[40px] space-y-2 ${
+            <div className={`mt-3 p-3 border border-dashed rounded-[30px] space-y-2 ${
                 scanMode === "in" ? "border-teal-300 bg-teal-50/50" : "border-orange-300 bg-orange-50/50"
             }`}>
                 <Input
                     placeholder="Event Title"
                     value={newEvent.title}
                     onChange={(e) => setNewEvent({...newEvent, title: e.target.value})}
-                    className="rounded-[40px] border-[#ddd5ca] text-[14px] text-gray-700"
+                    className="rounded-[60px] border-[#ddd5ca] text-[14px] text-gray-700"
                 />
                 <Select
                     value={newEvent.membershipId}
                     onValueChange={(val) => setNewEvent({...newEvent, membershipId: val})}
-                    className="rounded-[40px] text-[14px] text-gray-700 [&_[data-selected]]:text-[#005f63] [&>span]:text-gray-700 [&>span]:data-[state=closed]:text-[#005f63]"
+                    className="rounded-[60px] text-[14px] text-gray-700 [&_[data-selected]]:text-[#005f63] [&>span]:text-gray-700 [&>span]:data-[state=closed]:text-[#005f63]"
                 >
                     {/* ✅ "Open Event (All can join)" → always #005f63 */}
                     <SelectItem
@@ -864,10 +878,10 @@ function ScanView() {
                     <Button
                         size="sm"
                         onClick={handleAddEvent}
-                        className={`text-white rounded-[40px] text-[12px] transition-colors ${
+                        className={`text-white rounded-[60px] text-[12px] transition-colors ${
                             scanMode === "in"
-                            ? "bg-[#097375] hover:bg-[#0a5051] active:bg-[#084243]"
-                            : "bg-[#ff9c07] hover:bg-[#e68a00] active:bg-[#cc7a00]"
+                            ? "bg-[#1c5455] hover:bg-[#267274] active:bg-[#084243]"
+                            : "bg-[#dd8a0e] hover:bg-[#d9a454] active:bg-[#cc7a00]"
                         }`}
                         >
                         Save
@@ -876,7 +890,7 @@ function ScanView() {
                         size="sm"
                         variant="ghost"
                         onClick={() => setShowAddEvent(false)}
-                        className={`rounded-[40px] text-[12px] transition-colors ${
+                        className={`rounded-[60px] text-[12px] transition-colors ${
                             scanMode === "in"
                             ? "text-[#005f63] hover:bg-teal-100"
                             : "text-[#b86a00] hover:bg-orange-100"
@@ -905,16 +919,16 @@ function ScanView() {
                     type="time"
                     value={closingTime}
                     onChange={(e) => setClosingTime(e.target.value)}
-                    className={`mt-1.5 border-[#ddd5ca] rounded-[40px] text-[14px] transition-colors ${scanMode === "in" ? "text-[#005f63] [&:not(:placeholder-shown)]:text-[#005f63]" : "text-[#b86a00] [&:not(:placeholder-shown)]:text-[#b86a00]"}`}
+                    className={`mt-1.5 border-[#ddd5ca] rounded-[60px] text-[14px] transition-colors ${scanMode === "in" ? "text-[#005f63] [&:not(:placeholder-shown)]:text-[#005f63]" : "text-[#b86a00] [&:not(:placeholder-shown)]:text-[#b86a00]"}`}
                     />
                 </div>
                 {/* Set Button */}
                 <Button
                     onClick={setEventCloseTime}
-                    className={`rounded-[40px] h-10 text-[14px] transition-colors ${
+                    className={`rounded-[60px] h-10 text-[14px] transition-colors ${
                         scanMode === "in"
-                        ? "bg-[#61a0a1] hover:bg-[#0a5051] text-white"
-                        : "bg-[#e6bf54] hover:bg-[#e68a00] text-white"
+                        ? "bg-[#64aaad] hover:bg-[#0f8082] text-white"
+                        : "bg-[#deba58] hover:bg-[#ea910b] text-white"
                     }`}
                 >
                     <Clock size={15} className="mr-1" /> Set
@@ -994,10 +1008,10 @@ function ScanView() {
                   {scan.hasAccess && (
                     <Button
                         onClick={confirmAttendance}
-                        className={`mt-3 w-full text-white rounded-[50px] transition-colors ${
+                        className={`mt-3 w-full text-white rounded-[60px] transition-colors ${
                             scanMode === "in"
-                            ? "bg-[#237474] hover:bg-[#1a9494]" // ✅ Sign In = Teal
-                            : "bg-[#ff9c07] hover:bg-[#e68a00]" // ✅ Sign Out = Orange
+                            ? "bg-[#217676] hover:bg-[#46a7a7]" // ✅ Sign In = Teal
+                            : "bg-[#ff9a04] hover:bg-[#ffb545]" // ✅ Sign Out = Orange
                         }`}
                         >
                         Confirm {scanMode === "in" ? "Sign In" : "Sign Out"}
@@ -1008,7 +1022,7 @@ function ScanView() {
             </CardContent>
           </Card>
 
-          {/* Attendance List */}
+          {/* Attendance List — ✅ Shows even Sign-Out-only records */}
           <Card className="border-[#ddd5ca] rounded-[30px] shadow-sm">
             <CardHeader className="border-b border-[#ddd5ca] bg-white sticky top-0 z-10 rounded-t-[30px]">
               <CardTitle className={`font-black transition-colors ${
@@ -1043,10 +1057,14 @@ function ScanView() {
                       </div>
                       <Badge
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          rec.status === "complete" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                          rec.status === "complete" ? "bg-green-100 text-green-800" :
+                          rec.status === "in" ? "bg-yellow-100 text-yellow-800" :
+                          rec.status === "out" ? "bg-orange-100 text-orange-800" : ""
                         }`}
                       >
-                        {rec.status === "complete" ? "Completed" : "Signed In"}
+                        {rec.status === "complete" ? "Completed" :
+                         rec.status === "in" ? "Signed In" :
+                         rec.status === "out" ? "Signed Out" : ""}
                       </Badge>
                     </div>
                   ))}
@@ -1108,7 +1126,7 @@ function ResidentsView() {
   const [deleteRecord, setDeleteRecord] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // ✅ DATA — passwordChangedByUser = true → staff cannot see/edit password
+  // ✅ DATA — passwordChangedByUser = true → staff cannot see/edit password OR change role
   const [residentsData, setResidentsData] = useState([
     {
       id: "R-001",
@@ -1134,7 +1152,7 @@ function ResidentsView() {
       hasAccount: true,
       username: "S-001",
       password: "temp5678",
-      passwordChangedByUser: true,
+      passwordChangedByUser: true, // ✅ ROLE WILL BE LOCKED
     },
     {
       id: "R-002",
@@ -1299,7 +1317,8 @@ function ResidentsView() {
             lastName: editingResident.lastName,
             contactNumber: editingResident.contactNumber,
             memberships: updatedMemberships,
-            role: editingResident.role,
+            // ✅ IF USER CHANGED PASSWORD → KEEP ORIGINAL ROLE, DO NOT UPDATE
+            role: resident.passwordChangedByUser ? resident.role : editingResident.role,
             // ✅ If creating account now → set username = ID
             hasAccount: editingResident.hasAccount,
             username: editingResident.hasAccount ? resident.username || resident.id : "",
@@ -1488,7 +1507,7 @@ function ResidentsView() {
         <div className="w-[1200px]">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-black text-[#005f63]">Residents & Staff Records</h1>
+              <h1 className="text-4xl font-black text-[#005f63]">Residents Master List</h1>
               <p className="text-sm text-[#667777] mt-1">
                 Manage all registered residents, staff, and their account status.
               </p>
@@ -1541,8 +1560,13 @@ function ResidentsView() {
           </button>
         </div>
 
-        <div className="rounded-[30px] border border-[#ddd5ca] bg-white shadow-sm overflow-hidden">
-          <div className="p-5">
+        {/* ✅ UPDATED: Container with gradient border + rounded corners like your image */}
+        <div className="relative rounded-[20px] bg-white shadow-lg overflow-hidden">
+          {/* Gradient top border — your exact colors */}
+          <div className="h-1 w-full bg-gradient-to-r from-[#3d9085] via-[#FFC107] to-[#00897B] absolute top-0 left-0 right-0"></div>
+
+          {/* Inner content with padding */}
+          <div className="p-5 pt-6">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#eee8e0]">
@@ -1571,7 +1595,11 @@ function ResidentsView() {
                     const remainingCount = allMemberships.length - 2;
 
                     return (
-                      <tr key={r.id} className="border-b border-[#eee8e0] hover:bg-orange-50/30 transition">
+                      <tr
+                        key={r.id}
+                        className="border-b border-[#eee8e0] transition-all duration-200
+                                  hover:bg-teal-50/100 hover:shadow-md hover:rounded-lg"
+                      >
                         <td className="py-3 px-2 font-mono text-gray-700">{highlightText(r.id, residentSearch)}</td>
                         <td className="py-3 px-2 font-medium text-gray-800">{highlightText(r.lastName, residentSearch)}</td>
                         <td className="py-3 px-2 text-gray-700">{highlightText(r.firstName, residentSearch)}</td>
@@ -1604,6 +1632,7 @@ function ResidentsView() {
                             r.role === "Staff" ? "bg-orange-100 text-orange-800" : "bg-teal-50 text-teal-800"
                           }`}>
                             {highlightText(r.role, residentSearch)}
+                            {r.passwordChangedByUser && <span className="ml-1 text-yellow-600 text-[10px] font-bold"></span>}
                           </span>
                         </td>
 
@@ -1664,14 +1693,14 @@ function ResidentsView() {
                       <p className="mb-2"><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
                       <p className="mb-2"><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
                       <p className="mb-2"><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
-                      <p className="mb-2"><strong className="text-[#005f63]">Role:</strong> {r.role}</p>
+                      <p className="mb-2"><strong className="text-[#005f63]">Role:</strong> {r.role} {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}</p>
                       <p className="mb-2"><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
                       {r.hasAccount && (
                         <>
                           <p className="mb-2"><strong className="text-[#005f63]">Username:</strong> {r.username}</p>
                           <p className="mb-2">
                             <strong className="text-[#005f63]">Password:</strong>{" "}
-                            {r.passwordChangedByUser ? "•••••••• (changed by user)" : r.password}
+                            {r.passwordChangedByUser ? "•••••••• (changed by user — hidden)" : r.password}
                           </p>
                         </>
                       )}
@@ -1693,7 +1722,7 @@ function ResidentsView() {
           </div>
         )}
 
-        {/* ✅ EDIT MODAL — "Create Account" if no account yet — AUTO-FILL USERNAME WITH ACTUAL ID */}
+        {/* ✅ EDIT MODAL — "Create Account" if no account yet — AUTO-FILL USERNAME WITH ACTUAL ID — ROLE LOCKED IF USER CHANGED PASSWORD */}
         {editRecord && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
             <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1796,7 +1825,7 @@ function ResidentsView() {
                   )}
                 </div>
 
-                {/* ✅ ACCOUNT SECTION: "Create Account" if no account yet — AUTO-FILL USERNAME WITH ACTUAL ID */}
+                {/* ✅ ACCOUNT SECTION: "Create Account" if no account yet — AUTO-FILL USERNAME WITH ACTUAL ID — ROLE LOCKED */}
                 <div className="border-b pb-3">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -1847,17 +1876,26 @@ function ResidentsView() {
                         )}
                       </div>
 
+                      {/* ✅ ROLE — LOCKED / DISABLED IF USER CHANGED PASSWORD */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                         <select
                           required={editingResident.hasAccount}
                           value={editingResident.role}
                           onChange={(e) => setEditingResident(prev => ({ ...prev, role: e.target.value }))}
-                          className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                          disabled={editingResident.passwordChangedByUser}
+                          className={`w-full rounded-full border px-4 py-2.5 focus:outline-none ${
+                            editingResident.passwordChangedByUser
+                              ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed"
+                              : "border-gray-200 focus:ring-2 focus:ring-[#005f63]/30"
+                          }`}
                         >
                           <option value="Resident">Resident</option>
                           <option value="Staff">Staff</option>
                         </select>
+                        {editingResident.passwordChangedByUser && (
+                          <p className="text-xs text-[#44a5a2] mt-1 font-medium">Locked: User already changed password — role cannot be modified</p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -2054,7 +2092,7 @@ function ResidentsView() {
           </div>
         )}
 
-        {/* ✅ UNSAVED CHANGES CONFIRMATION */}
+                {/* ✅ UNSAVED CHANGES CONFIRMATION */}
         {showCancelConfirm && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4">
             <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl">
@@ -2089,7 +2127,7 @@ function ResidentsView() {
           </div>
         )}
 
-                {/* ✅ PAGINATION */}
+        {/* ✅ PAGINATION */}
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-2 mt-8">
             <button
