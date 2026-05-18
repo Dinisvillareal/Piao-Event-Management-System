@@ -60,7 +60,7 @@ export default function DashboardView({
         <SummaryCard
           value={attendedCount}
           title="Events Attended"
-          gradient="from-[#18b5b5] to-[#5fd3d3]"
+          gradient="from-[#067a7a] to-[#5fd3d3]"
           onClick={() => setActive("events")}
         />
         <SummaryCard
