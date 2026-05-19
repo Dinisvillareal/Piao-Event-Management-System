@@ -96,29 +96,78 @@ export default function MemberDashboard() {
   }, []);
 
   // ─── FETCH LOGGED-IN USER ────────────────────────────────────────────────────
-  useEffect(() => {
-    fetch('/me', {
-      credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    })
-    .then(res => res.json())
-    .then(user => {
-      setMember({
-        id: user.id,
-        name: `${user.first_name} ${user.last_name}`,
-        first_name: user.first_name,
-        last_name: user.last_name
+ 
+useEffect(() => {
+
+  fetch('/me', {
+    credentials: 'include',
+    headers: {
+      'Accept': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    }
+  })
+
+  .then(async (res) => {
+
+    // USER NOT AUTHENTICATED
+    if (res.status === 401 || res.status === 419) {
+
+      // Clear broken cache/session
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // Clear cookies manually (best effort)
+      document.cookie.split(";").forEach((cookie) => {
+        document.cookie = cookie
+          .replace(/^ +/, "")
+          .replace(
+            /=.*/,
+            "=;expires=" + new Date(0).toUTCString() + ";path=/"
+          );
       });
-      setLoading(false);
-    })
-    .catch(err => {
-      console.error('Failed to fetch user:', err);
-      setLoading(false);
+
+      // Redirect to login page
+      window.location.href = "/";
+
+      return null;
+    }
+
+    if (!res.ok) {
+      throw new Error("Authentication failed");
+    }
+
+    return res.json();
+  })
+
+  .then((user) => {
+
+    if (!user) return;
+
+    setMember({
+      id: user.id,
+      name: `${user.first_name} ${user.last_name}`,
+      first_name: user.first_name,
+      last_name: user.last_name
     });
-  }, []);
+
+  })
+
+  .catch((err) => {
+
+    console.error("Failed to fetch user:", err);
+
+    // Prevent infinite reload loop
+    localStorage.clear();
+    sessionStorage.clear();
+
+    window.location.href = "/";
+  })
+
+  .finally(() => {
+    setLoading(false);
+  });
+
+}, []);
 
   // ─── FETCH ALL MEMBERSHIP TYPES (for QR Codes view) ─────────────────────────
   useEffect(() => {
