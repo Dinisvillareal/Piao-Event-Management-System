@@ -21,67 +21,10 @@ export default function MemberDashboard() {
   const [attended, setAttended] = useState(0);
   const [missed, setMissed] = useState(0);
 
-  const [upcomingEvents, setUpcomingEvents] = useState([
-    {
-      id: 1,
-      title: "Barangay General Assembly",
-      date: "2026-05-12 09:00",
-      location: "Barangay Hall",
-      description: "Quarterly assembly of all registered members.",
-    },
-    {
-      id: 2,
-      title: "Community Clean-Up",
-      date: "2026-05-13 06:00",
-      location: "Town Plaza",
-      description: "Weekly clean-up activity, all residents welcome. Bring gloves and brooms.",
-    },
-    {
-      id: 3,
-      title: "Health Seminar",
-      date: "2026-05-14 13:00",
-      location: "Barangay Hall",
-      description: "Free health talk & check-up for seniors and vulnerable groups.",
-    },
-    {
-      id: 4,
-      title: "Youth Basketball League",
-      date: "2026-05-11 08:00",
-      location: "Covered Court",
-      description: "Annual sports event for youth ages 15–21.",
-    },
-    {
-      id: 5,
-      title: "Disaster Preparedness",
-      date: "2026-05-15 10:00",
-      location: "Multi-Purpose Hall",
-      description: "Training & seminar for all households. Emergency kits will be distributed.",
-    },
-  ]);
+  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
+  const [pastEvents, setPastEvents] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
 
-  const [pastEvents, setPastEvents] = useState([
-    {
-      id: 6,
-      title: "Monthly Assembly",
-      date: "2026-05-08 09:00",
-      location: "Barangay Hall",
-      description: "Regular monthly meeting of residents and officials.",
-    },
-    {
-      id: 7,
-      title: "Tree Planting Activity",
-      date: "2026-05-07 07:00",
-      location: "Community Park",
-      description: "Environmental activity for all members. Over 100 seedlings planted.",
-    },
-    {
-      id: 8,
-      title: "Senior Citizen Forum",
-      date: "2026-05-06 14:00",
-      location: "Senior Center",
-      description: "Forum on elderly care, benefits, and health services.",
-    },
-  ]);
 
   const allEvents = useMemo(() => [...upcomingEvents, ...pastEvents], [upcomingEvents, pastEvents]);
 
@@ -96,7 +39,9 @@ export default function MemberDashboard() {
   }, []);
 
   // ─── FETCH LOGGED-IN USER ────────────────────────────────────────────────────
+
   useEffect(() => {
+
     fetch('/me', {
       credentials: 'include',
       headers: {
@@ -104,20 +49,67 @@ export default function MemberDashboard() {
         'X-Requested-With': 'XMLHttpRequest'
       }
     })
-    .then(res => res.json())
-    .then(user => {
-      setMember({
-        id: user.id,
-        name: `${user.first_name} ${user.last_name}`,
-        first_name: user.first_name,
-        last_name: user.last_name
+
+      .then(async (res) => {
+
+        // USER NOT AUTHENTICATED
+        if (res.status === 401 || res.status === 419) {
+
+          // Clear broken cache/session
+          localStorage.clear();
+          sessionStorage.clear();
+
+          // Clear cookies manually (best effort)
+          document.cookie.split(";").forEach((cookie) => {
+            document.cookie = cookie
+              .replace(/^ +/, "")
+              .replace(
+                /=.*/,
+                "=;expires=" + new Date(0).toUTCString() + ";path=/"
+              );
+          });
+
+          // Redirect to login page
+          window.location.href = "/";
+
+          return null;
+        }
+
+        if (!res.ok) {
+          throw new Error("Authentication failed");
+        }
+
+        return res.json();
+      })
+
+      .then((user) => {
+
+        if (!user) return;
+
+        setMember({
+          id: user.id,
+          name: `${user.first_name} ${user.last_name}`,
+          first_name: user.first_name,
+          last_name: user.last_name
+        });
+
+      })
+
+      .catch((err) => {
+
+        console.error("Failed to fetch user:", err);
+
+        // Prevent infinite reload loop
+        localStorage.clear();
+        sessionStorage.clear();
+
+        window.location.href = "/";
+      })
+
+      .finally(() => {
+        setLoading(false);
       });
-      setLoading(false);
-    })
-    .catch(err => {
-      console.error('Failed to fetch user:', err);
-      setLoading(false);
-    });
+
   }, []);
 
   // ─── FETCH ALL MEMBERSHIP TYPES (for QR Codes view) ─────────────────────────
@@ -126,14 +118,53 @@ export default function MemberDashboard() {
       credentials: 'include',
       headers: { 'Accept': 'application/json' }
     })
-    .then(res => res.json())
-    .then(data => {
-      setMemberships(data.data);
-    })
-    .catch(err => {
-      console.error('Failed to fetch memberships:', err);
-    });
+      .then(res => res.json())
+      .then(data => {
+        setMemberships(data.data);
+      })
+      .catch(err => {
+        console.error('Failed to fetch memberships:', err);
+      });
   }, []);
+// fetch events and auto-create notifications
+  useEffect(() => {
+  fetch("http://127.0.0.1:8000/events-data")
+    .then((res) => res.json())
+    .then((data) => {
+
+      const now = new Date();
+
+      const formattedEvents = data.data.map((event: any) => ({
+        id: event.id,
+        title: event.name,
+        date: event.event_start,
+        location: event.location,
+        description: event.description,
+      }));
+
+      const upcoming = formattedEvents.filter(
+        (e: any) => new Date(e.date) >= now
+      );
+
+      const past = formattedEvents.filter(
+        (e: any) => new Date(e.date) < now
+      );
+
+      setUpcomingEvents(upcoming);
+      setPastEvents(past);
+
+      // AUTO CREATE NOTIFICATIONS FROM EVENTS
+      const eventNotifications = upcoming.map((e: any) => ({
+        id: e.id,
+        title: `Upcoming Event: ${e.title}`,
+        body: `${e.description} at ${e.location}`,
+        sentAt: e.date,
+      }));
+
+      setNotifications(eventNotifications);
+    })
+    .catch((err) => console.error("Failed to fetch events:", err));
+}, []);
 
   // ─── FETCH USER'S MEMBERSHIP COUNT (for Dashboard summary card) ──────────────
   useEffect(() => {
@@ -143,15 +174,15 @@ export default function MemberDashboard() {
       credentials: 'include',
       headers: { 'Accept': 'application/json' }
     })
-    .then(res => res.json())
-    .then(data => {
-      setUserMembershipsCount(data.total || data.memberships?.length || 0);
-    })
-    .catch(err => console.error('Failed to fetch user memberships count:', err));
+      .then(res => res.json())
+      .then(data => {
+        setUserMembershipsCount(data.total || data.memberships?.length || 0);
+      })
+      .catch(err => console.error('Failed to fetch user memberships count:', err));
   }, [member.id]);
 
   // ─── FETCH ATTENDANCE RECORDS ────────────────────────────────────────────────
- useEffect(() => {
+  useEffect(() => {
     if (!member.id) return;
 
     // 1. UNIQUE CACHE KEY: Tie the cache to this specific user's ID
@@ -172,36 +203,36 @@ export default function MemberDashboard() {
       credentials: 'include',
       headers: { 'Accept': 'application/json' }
     })
-    .then(res => res.json())
-    .then(data => {
-      if (!Array.isArray(data)) return;
+      .then(res => res.json())
+      .then(data => {
+        if (!Array.isArray(data)) return;
 
-      const records: AttendanceRecord[] = data.map((item: any) => ({
-        id: item.id,
-        eventTitle: item.event?.name ?? '—',
-        eventDate: item.event?.event_start ?? '',
-        location: item.event?.location ?? '—',
-        timeIn: item.time_in ?? '',
-        timeOut: item.time_out ?? '',
-        status: (!item.time_in && !item.time_out) ? 'missed' : item.status?.toLowerCase() ?? 'incomplete',
-      }));
+        const records: AttendanceRecord[] = data.map((item: any) => ({
+          id: item.id,
+          eventTitle: item.event?.name ?? '—',
+          eventDate: item.event?.event_start ?? '',
+          location: item.event?.location ?? '—',
+          timeIn: item.time_in ?? '',
+          timeOut: item.time_out ?? '',
+          status: (!item.time_in && !item.time_out) ? 'missed' : item.status?.toLowerCase() ?? 'incomplete',
+        }));
 
-      const attendedCount = records.filter(r => r.status === 'complete').length;
-      const missedCount = records.filter(r => r.status === 'missed').length;
+        const attendedCount = records.filter(r => r.status === 'complete').length;
+        const missedCount = records.filter(r => r.status === 'missed').length;
 
-      // Update the React UI with the fresh data
-      setAttendanceRecords(records);
-      setAttended(attendedCount);
-      setMissed(missedCount);
+        // Update the React UI with the fresh data
+        setAttendanceRecords(records);
+        setAttended(attendedCount);
+        setMissed(missedCount);
 
-      // 4. UPDATE CACHE: Save this fresh data back into the browser's memory for next time
-      sessionStorage.setItem(cacheKey, JSON.stringify({
-        records: records,
-        attended: attendedCount,
-        missed: missedCount
-      }));
-    })
-    .catch(err => console.error('Failed to fetch attendance:', err));
+        // 4. UPDATE CACHE: Save this fresh data back into the browser's memory for next time
+        sessionStorage.setItem(cacheKey, JSON.stringify({
+          records: records,
+          attended: attendedCount,
+          missed: missedCount
+        }));
+      })
+      .catch(err => console.error('Failed to fetch attendance:', err));
   }, [member.id]);
 
   // ─── NAVIGATION ──────────────────────────────────────────────────────────────
@@ -232,44 +263,7 @@ export default function MemberDashboard() {
   };
 
   // ─── NOTIFICATIONS (hardcoded) ────────────────────────────────────────────────
-  const notifications = [
-    {
-      id: 1,
-      title: "General Assembly Reminder",
-      body: "Please attend the General Assembly on May 12, 9:00 AM at the Barangay Hall.",
-      sentAt: "2026-05-05 16:20",
-    },
-    {
-      id: 2,
-      title: "Bring your QR code",
-      body: "Always bring your QR code for attendance scanning.",
-      sentAt: "2026-05-04 10:00",
-    },
-    {
-      id: 3,
-      title: "Sports Fest open registration",
-      body: "SK Youth Sports Fest registration is now open.",
-      sentAt: "2026-05-02 09:15",
-    },
-    {
-      id: 4,
-      title: "Water Service Advisory",
-      body: "Water interruption scheduled May 10 1PM–5PM in Poblacion area.",
-      sentAt: "2026-05-01 09:45",
-    },
-    {
-      id: 5,
-      title: "New Benefit Available",
-      body: "Senior citizens may now claim free medicine every Wednesday.",
-      sentAt: "2026-04-30 14:30",
-    },
-    {
-      id: 6,
-      title: "Clean-Up Drive",
-      body: "Join our community clean-up drive this Saturday, 6AM at the plaza.",
-      sentAt: "2026-04-29 08:00",
-    },
-  ];
+  
 
   // ─── LOADING SCREEN ───────────────────────────────────────────────────────────
   if (loading) {

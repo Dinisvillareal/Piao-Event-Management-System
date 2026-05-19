@@ -101,13 +101,15 @@ Route::middleware('auth')->group(function () {
     | EVENTS
     |------------------------
     */
-    Route::prefix('events')->group(function () {
-        Route::get('/', [EventController::class, 'index'])->name('events.index');
-        Route::get('/{id}', [EventController::class, 'show'])->name('events.show');
-        Route::post('/', [EventController::class, 'store'])->name('events.store');
-        Route::put('/{id}', [EventController::class, 'update'])->name('events.update');
-        Route::delete('/{id}', [EventController::class, 'destroy'])->name('events.destroy');
-    });
+
+    // EVENTS JSON DATA
+    Route::get('/events-data', [EventController::class, 'index']);
+
+    // EVENTS CRUD
+    Route::post('/events', [EventController::class, 'store']);
+    Route::put('/events/{id}', [EventController::class, 'update']);
+    Route::delete('/events/{id}', [EventController::class, 'destroy']);
+    Route::get('/events/{id}', [EventController::class, 'show']);
 
     /*
     |------------------------
