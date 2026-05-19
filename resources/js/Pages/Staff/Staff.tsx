@@ -4,6 +4,7 @@ import {
   Camera, CameraOff, CheckCircle, XCircle, LogIn, Clock, UserCheck
 } from "lucide-react";
 import SearchBar from "../../Components/UI/SearchBar";
+
 // --------------------------
 // TYPES & MOCK DATA
 // --------------------------
@@ -634,7 +635,15 @@ function ScanView() {
   const handleAddEvent = () => {
     if (!newEvent.title.trim()) return;
     const newId = `event-${Date.now()}`;
-    events.push({ id: newId, title: newEvent.title, membershipId: newEvent.membershipId || undefined });
+    events.push({
+      id: newId,
+      title: newEvent.title,
+      date: "",
+      location: "",
+      description: "",
+      membershipId: newEvent.membershipId || undefined,
+      attendees: []
+    });
     setEventId(newId);
     setShowAddEvent(false);
     setNewEvent({ title: "", membershipId: "" });
@@ -665,7 +674,24 @@ function ScanView() {
     });
   };
 
-  // ✅ Record Sign-In OR Sign-Out — EVEN IF NO PREVIOUS SIGN IN
+  // ✅ Helper: Check if Sign Out is allowed
+  const isSignOutAllowed = (residentId: string) => {
+    const record = attendance[eventId]?.find(e => e.residentId === residentId);
+    if (!record || !record.timeIn) return false; // No sign-in yet
+
+    // If no closing time set → allow immediately after sign-in
+    if (!closingTime) return true;
+
+    // Compare current time vs closing time
+    const now = new Date();
+    const [closeHour, closeMin] = closingTime.split(":").map(Number);
+    const closeTimeObj = new Date();
+    closeTimeObj.setHours(closeHour, closeMin, 0);
+
+    return now >= closeTimeObj;
+  };
+
+  // ✅ Record Sign-In OR Sign-Out — with restriction logic
   const confirmAttendance = () => {
     if (!scan?.ok || !scan.hasAccess) return;
 
@@ -690,29 +716,25 @@ function ScanView() {
       }
 
       if (scanMode === "out") {
-        if (existing) {
-          // ✅ Already has record → update timeOut
-          return {
-            ...prev,
-            [eventId]: list.map(e =>
-              e.residentId === scan!.residentId
-                ? { ...e, timeOut: now, status: e.timeIn ? "complete" : "out" }
-                : e
-            )
-          };
-        } else {
-          // ✅ NO SIGN IN BEFORE → CREATE NEW RECORD WITH ONLY SIGNOUT
-          return {
-            ...prev,
-            [eventId]: [...list, {
-              residentId: scan!.residentId,
-              residentName: scan!.residentName,
-              timeIn: null,
-              timeOut: now,
-              status: "out"
-            }]
-          };
+        // ❌ Can't sign out if never signed in
+        if (!existing || !existing.timeIn) {
+          alert("You must Sign In first before Sign Out.");
+          return prev;
         }
+        // ❌ Can't sign out before allowed time
+        if (!isSignOutAllowed(scan.residentId)) {
+          alert(`Sign Out is only available after ${closingTime || "set closing time"}.`);
+          return prev;
+        }
+        // ✅ Already has record → update timeOut
+        return {
+          ...prev,
+          [eventId]: list.map(e =>
+            e.residentId === scan!.residentId
+              ? { ...e, timeOut: now, status: "complete" }
+              : e
+          )
+        };
       }
 
       return prev;
@@ -724,6 +746,12 @@ function ScanView() {
   const setEventCloseTime = () => {
     if (!closingTime) return;
     alert(`Attendance for this event will close at ${closingTime}`);
+  };
+
+  // ✅ Determine if Sign Out tab should be accessible
+  const canAccessSignOut = () => {
+    const records = attendance[eventId] ?? [];
+    return records.some(r => r.timeIn && !r.timeOut);
   };
 
   return (
@@ -747,7 +775,7 @@ function ScanView() {
             </div>
               <Button
                 onClick={() => setIsCameraOn(!isCameraOn)}
-                className={`rounded-full w-10 h-10 p-0 flex items-center justify-center ${isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#f1ce5a] hover:bg-[#ffd931]"}`}
+                className={`rounded-full w-10 h-10 p-0 flex items-center justify-center ${isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#005f63] hover:bg-[#217676]"}`}
               >
                 {isCameraOn ? <CameraOff size={18} /> : <Camera size={18} />}
               </Button>
@@ -773,11 +801,11 @@ function ScanView() {
                 )}
             </div>
 
-            {/* Scan Mode Toggle — ✅ NO BLUE, HOVER LIGHTER */}
+            {/* Scan Mode Toggle — ✅ Sign Out disabled until eligible */}
             <div className="flex gap-2">
                 <Button
                     onClick={() => setScanMode("in")}
-                    className={`flex-1 rounded-[60px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
+                    className={`flex-1 rounded-[80px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
                     ${scanMode === "in"
                         ? "!bg-[#217676] !text-white hover:!bg-[#46a7a7] active:!bg-[#1a6060]"
                         : "!bg-gray-100 !text-gray-600 hover:!bg-[#e0f2f2] hover:!text-[#217676] active:!bg-[#cceae]"
@@ -788,11 +816,12 @@ function ScanView() {
 
                 <Button
                     onClick={() => setScanMode("out")}
-                    className={`flex-1 rounded-[60px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
+                    disabled={!canAccessSignOut()}
+                    className={`flex-1 rounded-[80px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
                     ${scanMode === "out"
                         ? "!bg-[#ff9a04] !text-white hover:!bg-[#ffbc57] active:!bg-[#cc7a00]"
                         : "!bg-gray-100 !text-gray-600 hover:!bg-[#fff3e0] hover:!text-[#ff9a04] active:!bg-[#ffe0b2]"
-                    }`}
+                    } ${!canAccessSignOut() ? "opacity-40 cursor-not-allowed" : ""}`}
                 >
                     <LogOut size={16} className="mr-2" /> Sign Out
                 </Button>
@@ -803,14 +832,14 @@ function ScanView() {
             <Label className="text-[15px] tracking-wider text-gray-500 font-semibold">Select Event</Label>
             <Select
             value={eventId}
-            onValueChange={(val) => {
+            onValueChange={(val: string) => {
                 if (val === "add-new") {
                 setShowAddEvent(true);
                 } else {
                 setEventId(val);
                 }
             }}
-            className={`mt-1.5 border-[#ddd5ca] rounded-[60px] text-[14px] [&_[data-selected]]:text-[#005f63] [&>span]:data-[state=closed]:text-[#005f63] transition-colors ${scanMode === "in" ? "text-[#005f63]" : "text-[#b86a00]"}`}
+            className={`mt-1.5 border-[#ddd5ca] rounded-[80px] text-[14px] [&_[data-selected]]:text-[#005f63] [&>span]:data-[state=closed]:text-[#005f63] transition-colors ${scanMode === "in" ? "text-[#005f63]" : "text-[#b86a00]"}`}
             >
                 {events.map(e => (
                 <SelectItem
@@ -845,13 +874,13 @@ function ScanView() {
                 <Input
                     placeholder="Event Title"
                     value={newEvent.title}
-                    onChange={(e) => setNewEvent({...newEvent, title: e.target.value})}
-                    className="rounded-[60px] border-[#ddd5ca] text-[14px] text-gray-700"
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEvent({...newEvent, title: e.target.value})}
+                    className="rounded-[80px] border-[#ddd5ca] text-[14px] text-gray-700"
                 />
                 <Select
                     value={newEvent.membershipId}
-                    onValueChange={(val) => setNewEvent({...newEvent, membershipId: val})}
-                    className="rounded-[60px] text-[14px] text-gray-700 [&_[data-selected]]:text-[#005f63] [&>span]:text-gray-700 [&>span]:data-[state=closed]:text-[#005f63]"
+                    onValueChange={(val: string) => setNewEvent({...newEvent, membershipId: val})}
+                    className="rounded-[80px] text-[14px] text-gray-700 [&_[data-selected]]:text-[#005f63] [&>span]:text-gray-700 [&>span]:data-[state=closed]:text-[#005f63]"
                 >
                     {/* ✅ "Open Event (All can join)" → always #005f63 */}
                     <SelectItem
@@ -878,10 +907,10 @@ function ScanView() {
                     <Button
                         size="sm"
                         onClick={handleAddEvent}
-                        className={`text-white rounded-[60px] text-[12px] transition-colors ${
+                        className={`text-white rounded-[80px] text-[12px] transition-colors ${
                             scanMode === "in"
-                            ? "bg-[#1c5455] hover:bg-[#267274] active:bg-[#084243]"
-                            : "bg-[#dd8a0e] hover:bg-[#d9a454] active:bg-[#cc7a00]"
+                            ? "bg-[#1c6364] hover:bg-[#238588] active:bg-[#185455]"
+                            : "bg-[#d18513] hover:bg-[#ebaa48] active:bg-[#cc7a00]"
                         }`}
                         >
                         Save
@@ -890,7 +919,7 @@ function ScanView() {
                         size="sm"
                         variant="ghost"
                         onClick={() => setShowAddEvent(false)}
-                        className={`rounded-[60px] text-[12px] transition-colors ${
+                        className={`rounded-[80px] text-[12px] transition-colors ${
                             scanMode === "in"
                             ? "text-[#005f63] hover:bg-teal-100"
                             : "text-[#b86a00] hover:bg-orange-100"
@@ -918,17 +947,17 @@ function ScanView() {
                     <Input
                     type="time"
                     value={closingTime}
-                    onChange={(e) => setClosingTime(e.target.value)}
-                    className={`mt-1.5 border-[#ddd5ca] rounded-[60px] text-[14px] transition-colors ${scanMode === "in" ? "text-[#005f63] [&:not(:placeholder-shown)]:text-[#005f63]" : "text-[#b86a00] [&:not(:placeholder-shown)]:text-[#b86a00]"}`}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClosingTime(e.target.value)}
+                    className={`mt-1.5 border-[#ddd5ca] rounded-[80px] text-[14px] transition-colors ${scanMode === "in" ? "text-[#005f63] [&:not(:placeholder-shown)]:text-[#005f63]" : "text-[#b86a00] [&:not(:placeholder-shown)]:text-[#b86a00]"}`}
                     />
                 </div>
                 {/* Set Button */}
                 <Button
                     onClick={setEventCloseTime}
-                    className={`rounded-[60px] h-10 text-[14px] transition-colors ${
+                    className={`rounded-[80px] h-10 text-[14px] transition-colors ${
                         scanMode === "in"
-                        ? "bg-[#64aaad] hover:bg-[#0f8082] text-white"
-                        : "bg-[#deba58] hover:bg-[#ea910b] text-white"
+                        ? "bg-[#5b9b9e] hover:bg-[#0f7a7c] text-white"
+                        : "bg-[#c9ab5a] hover:bg-[#fc9c0b] text-white"
                     }`}
                 >
                     <Clock size={15} className="mr-1" /> Set
@@ -1008,11 +1037,12 @@ function ScanView() {
                   {scan.hasAccess && (
                     <Button
                         onClick={confirmAttendance}
-                        className={`mt-3 w-full text-white rounded-[60px] transition-colors ${
+                        disabled={scanMode === "out" && !isSignOutAllowed(scan.residentId)}
+                        className={`mt-3 w-full text-white rounded-[80px] transition-colors ${
                             scanMode === "in"
-                            ? "bg-[#217676] hover:bg-[#46a7a7]" // ✅ Sign In = Teal
-                            : "bg-[#ff9a04] hover:bg-[#ffb545]" // ✅ Sign Out = Orange
-                        }`}
+                            ? "bg-[#227a7a] hover:bg-[#439e9e]" // ✅ Sign In = Teal
+                            : "bg-[#fd9a06] hover:bg-[#ffb444]" // ✅ Sign Out = Orange
+                        } ${scanMode === "out" && !isSignOutAllowed(scan.residentId) ? "opacity-40 cursor-not-allowed" : ""}`}
                         >
                         Confirm {scanMode === "in" ? "Sign In" : "Sign Out"}
                     </Button>
@@ -1058,13 +1088,10 @@ function ScanView() {
                       <Badge
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                           rec.status === "complete" ? "bg-green-100 text-green-800" :
-                          rec.status === "in" ? "bg-yellow-100 text-yellow-800" :
-                          rec.status === "out" ? "bg-orange-100 text-orange-800" : ""
+                          "bg-yellow-100 text-yellow-800"
                         }`}
                       >
-                        {rec.status === "complete" ? "Completed" :
-                         rec.status === "in" ? "Signed In" :
-                         rec.status === "out" ? "Signed Out" : ""}
+                        {rec.status === "complete" ? "Completed" : "Signed In"}
                       </Badge>
                     </div>
                   ))}
@@ -2324,141 +2351,406 @@ function QRCodesView({ memberships, highlightText }: any) {
 }
 
 /* ---------------- Events ---------------- */
-function EventsView({ allEvents, upcomingEvents, pastEvents, onDeleteEvent, highlightText }: any) {
+
+function EventsView({ allEvents = [], upcomingEvents = [], pastEvents = [], onDeleteEvent = () => {}, highlightText = () => "", residents = [], memberships = [], attendanceRecords = [] }: any) {
   const [activeTab, setActiveTab] = useState("upcoming");
   const [searchEv, setSearchEv] = useState("");
   const [viewEv, setViewEv] = useState<any>(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newEvent, setNewEvent] = useState({
+    title: "",
+    date: "",
+    time: "",
+    location: "",
+    description: "",
+    membershipId: "" // target membership
+  });
 
-  const displayedEvents = useMemo(() => {
-    let list = activeTab === "upcoming" ? upcomingEvents : pastEvents;
-    if (!searchEv.trim()) return list;
-    const q = searchEv.toLowerCase();
-    return list.filter((e: any) =>
-      e.title.toLowerCase().includes(q) ||
-      e.location?.toLowerCase().includes(q) ||
-      e.date.toLowerCase().includes(q)
-    );
-  }, [activeTab, upcomingEvents, pastEvents, searchEv]);
+  // ─── FILTER & SEARCH LOGIC ────────────────────────────────────────
+  const filteredEvents = useMemo(() => {
+    let list = activeTab === "upcoming" ? upcomingEvents : activeTab === "past" ? pastEvents : allEvents;
+
+    if (searchEv.trim()) {
+      const q = searchEv.toLowerCase();
+      list = list.filter((e: any) =>
+        e.title.toLowerCase().includes(q) ||
+        e.location?.toLowerCase().includes(q) ||
+        e.date.toLowerCase().includes(q)
+      );
+    }
+
+    // Group events by date
+    const grouped = list.reduce((groups: any, event: any) => {
+      const dateKey = new Date(event.date).toLocaleDateString("en-US", {
+        year: "numeric", month: "long", day: "numeric"
+      });
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(event);
+      return groups;
+    }, {});
+
+    return grouped;
+  }, [activeTab, upcomingEvents, pastEvents, allEvents, searchEv]);
+
+  // ─── HANDLE CREATE EVENT ───────────────────────────────────────────
+  const handleCreateEvent = (e: React.FormEvent) => {
+    e.preventDefault();
+    const fullDate = `${newEvent.date} ${newEvent.time}`;
+    const membershipName = memberships.find((m: any) => m.id === newEvent.membershipId)?.name || "Open Event";
+
+    const eventToAdd = {
+      id: `EVT-${Date.now()}`,
+      title: newEvent.title,
+      date: fullDate,
+      location: newEvent.location,
+      description: newEvent.description,
+      membershipId: newEvent.membershipId,
+      membershipName: membershipName
+    };
+
+    // Add to state — updated proper way
+    if (new Date(fullDate) >= new Date()) {
+      upcomingEvents = [eventToAdd, ...upcomingEvents];
+    } else {
+      pastEvents = [eventToAdd, ...pastEvents];
+    }
+    allEvents = [eventToAdd, ...allEvents];
+
+    setShowCreateForm(false);
+    setNewEvent({ title: "", date: "", time: "", location: "", description: "", membershipId: "" });
+  };
+
+  // ─── GET ATTENDANCE FOR SPECIFIC EVENT ─────────────────────────────
+  const getEventAttendance = (eventId: string) => {
+    return attendanceRecords.filter((a: any) => a.eventId === eventId);
+  };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-[#005f63]">Events & Activities</h2>
-          <p className="text-sm text-gray-600">Manage barangay activities, attendance and eligibility rules.</p>
+    <div className="space-y-6">
+      {/* ✅ HEADER — EXACTLY LIKE MEMBER'S PAGE */}
+      <div className="sticky top-0 z-10 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm">
+        <div className="w-[1200px]">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-black text-[#005f63]">Events & Attendance</h1>
+              <p className="text-sm text-[#667777] mt-1">
+                Manage activities, eligibility, and attendance records.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowCreateForm(true)}
+              className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm"
+            >
+              <PlusCircle className="inline mr-2 h-4 w-4" /> Create New Event
+            </button>
+          </div>
+
+          {/* ✅ SEARCH BAR — SAME AS MEMBER PAGE — FIXED WIDTH */}
+          <div className="mt-4 w-full max-w-[1200px]">
+            <input
+              type="text"
+              value={searchEv}
+              onChange={(e) => setSearchEv(e.target.value)}
+              placeholder="Search events by title, location or date..."
+              className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+            />
+          </div>
+
+          {/* ✅ FILTER TABS */}
+          <div className="mt-4 flex gap-1 border-b border-gray-200">
+            {["all", "upcoming", "past"].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 font-medium border-b-2 transition-colors rounded-t-lg ${
+                  activeTab === tab
+                    ? "border-[#005f63] text-[#005f63] bg-teal-50/40"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {tab.charAt(0).toUpperCase() + tab.slice(1)} Events
+              </button>
+            ))}
+          </div>
         </div>
-        <Button className="bg-orange-500 text-white hover:bg-orange-600">
-          <PlusCircle className="mr-1 h-4 w-4" /> Create New Event
-        </Button>
       </div>
 
-      <div className="flex items-center justify-between gap-4 border-b border-gray-200">
-        <div className="flex gap-1">
-          <button
-            onClick={() => setActiveTab("upcoming")}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === "upcoming" ? "border-[#005f63] text-[#005f63]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            Upcoming ({upcomingEvents.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("past")}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === "past" ? "border-[#005f63] text-[#005f63]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            Past ({pastEvents.length})
-          </button>
-        </div>
-        <Input
-          value={searchEv}
-          onChange={(e: any) => setSearchEv(e.target.value)}
-          placeholder="Search events…"
-          className="w-[240px]"
-        />
+      {/* ✅ EVENTS GROUPED BY DATE */}
+      <div className="pl-1 space-y-8">
+        {Object.keys(filteredEvents).length === 0 ? (
+          <div className="rounded-[30px] border border-dashed border-gray-300 p-10 text-center text-gray-500 bg-white">
+            No events found matching your filters.
+          </div>
+        ) : (
+          Object.entries(filteredEvents).map(([dateLabel, eventsList]: [string, any]) => (
+            <div key={dateLabel} className="space-y-4">
+              <h3 className="text-lg font-bold text-[#005f63] border-b border-orange-200 pb-1 pl-2">
+                📅 {dateLabel}
+              </h3>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {eventsList.map((ev: any) => {
+                  // ✅ FIXED: Eligible members calculation
+                  const targetMembershipName = memberships.find((m: any) => m.id === ev.membershipId)?.name;
+                  const eligibleMembers = ev.membershipId && targetMembershipName
+                    ? residents.filter((r: any) => Array.isArray(r.memberships) && r.memberships.includes(targetMembershipName))
+                    : residents;
+
+                  const eventAttendance = getEventAttendance(ev.id);
+
+                  return (
+                    <div
+                      key={ev.id}
+                      className="rounded-[30px] border border-[#ddd5ca] bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow"
+                    >
+                      {/* Gradient top border */}
+                      <div className="h-1.5 bg-gradient-to-r from-[#3d9085] via-[#FFC107] to-[#00897B]" />
+
+                      <div className="p-5">
+                        <div className="flex items-start justify-between">
+                          <h3 className="font-bold text-lg text-gray-800">{highlightText(ev.title, searchEv)}</h3>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            ev.membershipId ? "bg-orange-100 text-orange-800" : "bg-teal-50 text-teal-800"
+                          }`}>
+                            {ev.membershipName || "Open Event"}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-1.5 text-sm text-gray-600">
+                          <p className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-gray-400" /> {ev.date}
+                          </p>
+                          <p className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-gray-400" /> {ev.location}
+                          </p>
+                        </div>
+
+                        <p className="mt-3 text-sm text-gray-600 line-clamp-2">{ev.description || "No description provided."}</p>
+
+                        {/* ✅ ATTENDANCE SUMMARY — ADDED ELIGIBLE COUNT */}
+                        <div className="mt-3 pt-2 border-t border-gray-100 text-xs text-gray-500">
+                          ✅ {eventAttendance.filter((a: any) => a.timeIn).length} Signed In |
+                          ✋ {eventAttendance.filter((a: any) => a.timeOut).length} Signed Out |
+                          👥 {eligibleMembers.length} Eligible
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => setViewEv(ev)}
+                            className="p-2 rounded-full hover:bg-teal-50 transition"
+                            title="View Details & Attendance"
+                          >
+                            <Eye className="h-4 w-4 text-teal-700" />
+                          </button>
+                          <button className="p-2 rounded-full hover:bg-orange-50 transition" title="Edit">
+                            <Pencil className="h-4 w-4 text-orange-500" />
+                          </button>
+                          <button
+                            onClick={() => onDeleteEvent(ev.id)}
+                            className="p-2 rounded-full hover:bg-red-50 transition"
+                            title="Delete"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
-      {displayedEvents.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500">
-          No events found.
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {displayedEvents.map((ev: any) => {
-            const requiredMs = ev.membershipId ? memberships.find((m: any) => m.id === ev.membershipId) : null;
-            return (
-              <Card key={ev.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                <div className="h-2 bg-gradient-to-r from-teal-500 to-cyan-400" />
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <h3 className="font-bold text-lg text-gray-800">{highlightText(ev.title, searchEv)}</h3>
-                    <Badge variant={requiredMs ? "default" : "secondary"} className={requiredMs ? "bg-teal-100 text-teal-800" : "bg-gray-100 text-gray-700"}>
-                      {requiredMs ? requiredMs.name : "Open"}
-                    </Badge>
-                  </div>
+      {/* ✅ CREATE EVENT MODAL */}
+      {showCreateForm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-lg p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-black text-[#005f63]">Create New Event</h2>
+              <button onClick={() => setShowCreateForm(false)} className="text-gray-500 hover:text-gray-700">
+                <XCircle size={20} />
+              </button>
+            </div>
 
-                  <div className="mt-3 space-y-1.5 text-sm text-gray-600">
-                    <p className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-gray-400" /> {ev.date} · {ev.time || "TBA"}
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-gray-400" /> {ev.venue || "Barangay Hall"}
-                    </p>
-                  </div>
+            <form onSubmit={handleCreateEvent} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Event Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={newEvent.title}
+                  onChange={(e) => setNewEvent({...newEvent, title: e.target.value})}
+                  className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                />
+              </div>
 
-                  <p className="mt-3 text-sm text-gray-600 line-clamp-2">{ev.description || "No description provided."}</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={newEvent.date}
+                    onChange={(e) => setNewEvent({...newEvent, date: e.target.value})}
+                    className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
+                  <input
+                    type="time"
+                    required
+                    value={newEvent.time}
+                    onChange={(e) => setNewEvent({...newEvent, time: e.target.value})}
+                    className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                  />
+                </div>
+              </div>
 
-                  <div className="mt-4 flex items-center justify-end gap-2">
-                    <Button size="sm" variant="ghost" onClick={() => setViewEv(ev)}>
-                      <Eye className="h-4 w-4 text-teal-700" />
-                    </Button>
-                    <Button size="sm" variant="ghost">
-                      <Pencil className="h-4 w-4 text-orange-500" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => onDeleteEvent(ev.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+                <input
+                  type="text"
+                  required
+                  value={newEvent.location}
+                  onChange={(e) => setNewEvent({...newEvent, location: e.target.value})}
+                  className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={newEvent.description}
+                  onChange={(e) => setNewEvent({...newEvent, description: e.target.value})}
+                  className="w-full rounded-2xl border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Target Membership</label>
+                <select
+                  value={newEvent.membershipId}
+                  onChange={(e) => setNewEvent({...newEvent, membershipId: e.target.value})}
+                  className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                >
+                  <option value="">📢 Open Event (All residents)</option>
+                  {memberships.map((m: any) => (
+                    <option key={m.id} value={m.id}>🎯 {m.name}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">* Only members of this group will see this event and receive notifications.</p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateForm(false)}
+                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004d4d] transition"
+                >
+                  Create Event
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
+      {/* ✅ VIEW EVENT + ATTENDANCE MODAL */}
       {viewEv && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between">
-              <h2 className="text-xl font-bold text-[#005f63]">{viewEv.title}</h2>
-              <button onClick={() => setViewEv(null)} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-
-            <div className="mt-4 space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs font-semibold text-gray-500">Date & Time</p>
-                  <p className="font-medium">{viewEv.date} — {viewEv.time || 'TBA'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500">Venue</p>
-                  <p className="font-medium">{viewEv.venue || 'Barangay Hall'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500">Eligibility</p>
-                  <p className="font-medium">{viewEv.membershipId ? memberships.find((m: any) => m.id === viewEv.membershipId)?.name : 'Open to all residents'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500">Attendance Count</p>
-                  <p className="font-medium">{attendanceRecords.filter((r: any) => r.eventTitle === viewEv.title).length} recorded</p>
-                </div>
-              </div>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs font-semibold text-gray-500">Description</p>
-                <p className="text-gray-700">{viewEv.description || 'No additional details.'}</p>
+                <h2 className="text-2xl font-black text-[#005f63]">{viewEv.title}</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  {viewEv.date} • {viewEv.location}
+                </p>
               </div>
+              <button onClick={() => setViewEv(null)} className="text-gray-500 hover:text-gray-700">
+                <XCircle size={20} />
+              </button>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setViewEv(null)}>Close</Button>
-              <Button className="bg-teal-600 hover:bg-teal-700 text-white">View Attendance List</Button>
+            <div className="space-y-5">
+              <div>
+                <h4 className="font-semibold text-gray-700 mb-1">Description</h4>
+                <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl">{viewEv.description || "—"}</p>
+              </div>
+
+              <div>
+                <h4 className="font-semibold text-gray-700 mb-2">✅ Attendance List</h4>
+                <div className="rounded-xl border border-[#ddd5ca] overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-[#f8f6f2]">
+                      <tr>
+                        <th className="text-left p-3 font-medium text-[#005f63]">Resident Name</th>
+                        <th className="text-left p-3 font-medium text-[#005f63]">Membership</th>
+                        <th className="text-left p-3 font-medium text-[#005f63]">Sign In</th>
+                        <th className="text-left p-3 font-medium text-[#005f63]">Sign Out</th>
+                        <th className="text-left p-3 font-medium text-[#005f63]">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getEventAttendance(viewEv.id).length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="p-4 text-center text-gray-500 italic">
+                            No attendance records yet.
+                          </td>
+                        </tr>
+                      ) : (
+                        getEventAttendance(viewEv.id).map((a: any, i: number) => {
+                          const resident = residents.find((r:any) => r.id === a.residentId);
+                          return (
+                            <tr key={i} className="border-t">
+                              <td className="p-3">{resident?.name || "Unknown"}</td>
+                              <td className="p-3">
+                                <span className="px-2 py-1 bg-teal-50 text-teal-700 rounded-full text-xs">
+                                  {resident?.memberships || "—"}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                {a.timeIn ? (
+                                  <span className="text-green-600 flex items-center gap-1">
+                                    <LogIn size={12} /> {a.timeIn}
+                                  </span>
+                                ) : "—"}
+                              </td>
+                              <td className="p-3">
+                                {a.timeOut ? (
+                                  <span className="text-orange-600 flex items-center gap-1">
+                                    <LogOut size={12} /> {a.timeOut}
+                                  </span>
+                                ) : "—"}
+                              </td>
+                              <td className="p-3">
+                                {a.timeIn && a.timeOut ? (
+                                  <span className="text-green-700 font-medium flex items-center gap-1">
+                                    <CheckCircle size={12} /> Complete
+                                  </span>
+                                ) : a.timeIn ? (
+                                  <span className="text-yellow-600 font-medium">Signed In</span>
+                                ) : (
+                                  <span className="text-gray-500">Absent</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -2466,6 +2758,7 @@ function EventsView({ allEvents, upcomingEvents, pastEvents, onDeleteEvent, high
     </div>
   );
 }
+
 
 /* ---------------- Notifications ---------------- */
 function NotificationsView({ notifications }: any) {
