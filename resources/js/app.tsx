@@ -61,19 +61,41 @@ export default function App() {
   }, []);
 
   // Fetch user role
+ // Fetch user role (Inside app.tsx)
   useEffect(() => {
     fetch('/me', {
       credentials: 'include',
-      headers: { 'Accept': 'application/json' }
+      headers: { 
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
     })
-    .then(res => {
-      if (res.ok) return res.json();
-      throw new Error('Not logged in');
+    .then(async (res) => {
+      // USER NOT AUTHENTICATED OR TOKEN EXPIRED
+      if (res.status === 401 || res.status === 419) {
+        localStorage.clear();
+        sessionStorage.clear();
+        
+        setUserRole(null);
+        return null;
+      }
+
+      if (!res.ok) {
+        throw new Error("Authentication failed");
+      }
+
+      return res.json();
     })
-    .then(user => {
+    .then((user) => {
+      if (!user) return;
       setUserRole(user.role);
     })
-    .catch(() => {
+    .catch((err) => {
+      console.error("Failed to fetch user:", err);
+      
+      // Nuclear cleanup on total failure
+      localStorage.clear();
+      sessionStorage.clear();
       setUserRole(null);
     })
     .finally(() => {
