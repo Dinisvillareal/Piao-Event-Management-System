@@ -4,16 +4,18 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 
 class UserController extends Controller
 {
-    // =========================
+    // =====================
     // HELPERS
-    // =========================
+    // =====================
+
     private function isStaff()
     {
         return auth()->user()?->role === 'Staff';
@@ -24,9 +26,10 @@ class UserController extends Controller
         return auth()->id() == $id;
     }
 
-    // =========================
-    // CREATE USER (MERGED FEATURES)
-    // =========================
+    // =====================
+    // CREATE USER
+    // =====================
+
     public function store(StoreUserRequest $request)
     {
         if (!$this->isStaff()) {
@@ -39,33 +42,58 @@ class UserController extends Controller
             ? (int) str_replace('PR-', '', $last->user_code) + 1
             : 1;
 
-        $pad = max(4, strlen((string)$next));
+        $userCode = 'PR-' . str_pad($next, 4, '0', STR_PAD_LEFT);
 
-        $userCode = 'PR-' . str_pad($next, $pad, '0', STR_PAD_LEFT);
-        $tempPassword = 'temp-' . str_pad($next, $pad, '0', STR_PAD_LEFT);
+        // =====================
+        // FTP UPLOAD
+        // =====================
+
+        $filePath = null;
+
+        if ($request->hasFile('validation_id')) {
+
+            $file = $request->file('validation_id');
+
+            $filename = time() . '_' . $file->getClientOriginalName();
+
+            $filePath = $file->storeAs(
+                'validation_ids',
+                $filename,
+                'ftp'
+            );
+        }
 
         $user = User::create([
+
             'user_code' => $userCode,
+
             'first_name' => $request->first_name,
             'last_name' => $request->last_name,
             'middle_name' => $request->middle_name,
             'contact_number' => $request->contact_number,
+
+            // FTP IMAGE PATH
+            'validation_id' => $filePath,
+
             'role' => $request->role,
-            'password' => Hash::make($tempPassword),
-            'has_account' => 0,
+
+            // ALWAYS USE INPUT PASSWORD
+            'password' => Hash::make($request->password),
+
+            // NEVER AUTO CHANGE
+            'has_account' => $request->has_account,
         ]);
 
         return response()->json([
             'message' => 'User created successfully',
-            'user_code' => $userCode,
-            'temporary_password' => $tempPassword,
             'user' => $user
         ], 201);
     }
 
-    // =========================
-    // LOGIN (FIXED SESSION SAFE)
-    // =========================
+    // =====================
+    // LOGIN
+    // =====================
+
     public function login(Request $request)
     {
         $request->validate([
@@ -80,7 +108,6 @@ class UserController extends Controller
         }
 
         Auth::login($user, $request->boolean('remember_me'));
-
         $request->session()->regenerate();
 
         return response()->json([
@@ -89,9 +116,10 @@ class UserController extends Controller
         ]);
     }
 
-    // =========================
-    // GET ALL USERS (STAFF ONLY)
-    // =========================
+    // =====================
+    // LIST USERS
+    // =====================
+
     public function index()
     {
         if (!$this->isStaff()) {
@@ -105,37 +133,24 @@ class UserController extends Controller
         );
     }
 
-    // =========================
-    // STAFF LIST
-    // =========================
     public function staff()
     {
-        if (!$this->isStaff()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
         return response()->json(
             User::where('role', 'Staff')->paginate(20)
         );
     }
 
-    // =========================
-    // RESIDENT LIST
-    // =========================
     public function resident()
     {
-        if (!$this->isStaff()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
         return response()->json(
             User::where('role', 'Resident')->paginate(20)
         );
     }
 
-    // =========================
-    // SHOW USER
-    // =========================
+    // =====================
+    // SHOW
+    // =====================
+
     public function show($id)
     {
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
@@ -149,9 +164,10 @@ class UserController extends Controller
         );
     }
 
-    // =========================
-    // UPDATE USER
-    // =========================
+    // =====================
+    // UPDATE
+    // =====================
+
     public function update(UpdateUserRequest $request, $id)
     {
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
@@ -160,27 +176,49 @@ class UserController extends Controller
 
         $user = User::findOrFail($id);
 
+        // UPDATE FILE
+        if ($request->hasFile('validation_id')) {
+
+            if ($user->validation_id) {
+                Storage::disk('ftp')->delete($user->validation_id);
+            }
+
+            $file = $request->file('validation_id');
+            $filename = time() . '_' . $file->getClientOriginalName();
+
+            $user->validation_id = $file->storeAs(
+                'validation_ids',
+                $filename,
+                'ftp'
+            );
+        }
+
         $user->update([
             'first_name' => $request->first_name ?? $user->first_name,
             'last_name' => $request->last_name ?? $user->last_name,
             'middle_name' => $request->middle_name ?? $user->middle_name,
             'contact_number' => $request->contact_number ?? $user->contact_number,
             'role' => $request->role ?? $user->role,
+
+            // NEVER AUTO CHANGE
+            'has_account' => $request->has_account ?? $user->has_account,
         ]);
 
-        if ($request->password) {
+        if ($request->filled('password')) {
             $user->update([
-                'password' => Hash::make($request->password),
-                'has_account' => 1
+                'password' => Hash::make($request->password)
             ]);
         }
 
-        return response()->json(['message' => 'User updated successfully']);
+        return response()->json([
+            'message' => 'User updated successfully'
+        ]);
     }
 
-    // =========================
-    // DELETE (SOFT DELETE)
-    // =========================
+    // =====================
+    // DELETE
+    // =====================
+
     public function destroy($id)
     {
         if (!$this->isStaff()) {
@@ -192,9 +230,10 @@ class UserController extends Controller
         return response()->json(['message' => 'Deleted']);
     }
 
-    // =========================
-    // RESTORE USER
-    // =========================
+    // =====================
+    // RESTORE
+    // =====================
+
     public function restore($id)
     {
         if (!$this->isStaff()) {
@@ -206,36 +245,40 @@ class UserController extends Controller
         return response()->json(['message' => 'Restored']);
     }
 
-    // =========================
+    // =====================
     // FORCE DELETE
-    // =========================
+    // =====================
+
     public function forceDelete($id)
     {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        User::onlyTrashed()->findOrFail($id)->forceDelete();
+        $user = User::onlyTrashed()->findOrFail($id);
+
+        if ($user->validation_id) {
+            Storage::disk('ftp')->delete($user->validation_id);
+        }
+
+        $user->forceDelete();
 
         return response()->json(['message' => 'Permanently deleted']);
     }
 
-    // =========================
-    // LOGOUT
-    // =========================
+    // =====================
+    // AUTH
+    // =====================
+
     public function logout(Request $request)
     {
         Auth::logout();
-
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return response()->json(['message' => 'Logged out successfully']);
+        return response()->json(['message' => 'Logged out']);
     }
 
-    // =========================
-    // CURRENT USER
-    // =========================
     public function me(Request $request)
     {
         return response()->json($request->user());
