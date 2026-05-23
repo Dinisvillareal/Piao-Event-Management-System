@@ -1,5 +1,10 @@
 <?php
 
+// ========================================
+// MIGRATION
+// database/migrations/xxxx_xx_xx_create_users_table.php
+// ========================================
+
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -21,20 +26,17 @@ return new class extends Migration
 
             $table->string('contact_number', 15);
 
-            // 🔥 ADD THIS (FTP VALIDATION IMAGE PATH)
-            $table->string('validation_id')->nullable();
-
             $table->enum('role', ['Staff', 'Resident'])
                 ->default('Resident');
 
             $table->string('password', 255);
 
-            // 0 = temp / not activated
-            // 1 = active account
+            // 0 = temp password
+            // 1 = changed password
             $table->boolean('has_account')
                 ->default(0);
 
-            // SOFT DELETE
+            // 🔥 SOFT DELETE
             $table->softDeletes();
         });
     }
