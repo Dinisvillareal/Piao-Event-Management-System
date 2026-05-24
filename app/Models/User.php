@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
 
 class User extends Authenticatable
 {
@@ -18,6 +19,7 @@ class User extends Authenticatable
         'last_name',
         'middle_name',
         'contact_number',
+        'validation_id',
         'role',
         'password',
         'has_account'
@@ -27,16 +29,36 @@ class User extends Authenticatable
         'password'
     ];
 
+    protected $casts = [
+        'has_account' => 'boolean',
+    ];
+
+    // =====================
+    // ACCESSOR
+    // =====================
+
+    public function getValidationIdUrlAttribute()
+    {
+        if (!$this->validation_id) {
+            return null;
+        }
+
+        return Storage::disk('ftp')->url(
+            $this->validation_id
+        );
+    }
+
     // =====================
     // RELATIONSHIPS
     // =====================
 
     public function attendances()
     {
-        return $this->hasMany(EventAttendance::class);
+        return $this->hasMany(
+            EventAttendance::class
+        );
     }
 
-    // 🔥 ADD THIS (VERY IMPORTANT)
     public function memberships()
     {
         return $this->belongsToMany(
