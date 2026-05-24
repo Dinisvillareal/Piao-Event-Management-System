@@ -4,6 +4,7 @@ import {
   Camera, CameraOff, CheckCircle, XCircle, LogIn, Clock, UserCheck
 } from "lucide-react";
 import SearchBar from "../../Components/UI/SearchBar";
+
 // --------------------------
 // TYPES & MOCK DATA
 // --------------------------
@@ -450,7 +451,7 @@ export default function StaffDashboard() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "Staff" };
+  const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "STAFF / ADMIN" };
 
   const [upcomingEvents, setUpcomingEvents] = useState([
     { id: 1, title: "Barangay General Assembly", date: "2026-05-12 09:00", location: "Barangay Hall", description: "Quarterly assembly of all registered members." },
@@ -502,7 +503,7 @@ export default function StaffDashboard() {
             highlightText={highlightText}
           />
         )}
-        {active === "notify" && <NotificationsView notifications={notifications} highlightText={highlightText} />}
+        {active === "notify" && <NotificationsView notifications={notifications} memberships={memberships} highlightText={highlightText} />}
         {active === "settings" && <SettingsView member={staff} />}
       </AppShell>
 
@@ -634,7 +635,15 @@ function ScanView() {
   const handleAddEvent = () => {
     if (!newEvent.title.trim()) return;
     const newId = `event-${Date.now()}`;
-    events.push({ id: newId, title: newEvent.title, membershipId: newEvent.membershipId || undefined });
+    events.push({
+      id: newId,
+      title: newEvent.title,
+      date: "",
+      location: "",
+      description: "",
+      membershipId: newEvent.membershipId || undefined,
+      attendees: []
+    });
     setEventId(newId);
     setShowAddEvent(false);
     setNewEvent({ title: "", membershipId: "" });
@@ -665,7 +674,24 @@ function ScanView() {
     });
   };
 
-  // ✅ Record Sign-In or Sign-Out
+  // ✅ Helper: Check if Sign Out is allowed
+  const isSignOutAllowed = (residentId: string) => {
+    const record = attendance[eventId]?.find(e => e.residentId === residentId);
+    if (!record || !record.timeIn) return false; // No sign-in yet
+
+    // If no closing time set → allow immediately after sign-in
+    if (!closingTime) return true;
+
+    // Compare current time vs closing time
+    const now = new Date();
+    const [closeHour, closeMin] = closingTime.split(":").map(Number);
+    const closeTimeObj = new Date();
+    closeTimeObj.setHours(closeHour, closeMin, 0);
+
+    return now >= closeTimeObj;
+  };
+
+  // ✅ Record Sign-In OR Sign-Out — with restriction logic
   const confirmAttendance = () => {
     if (!scan?.ok || !scan.hasAccess) return;
 
@@ -675,6 +701,7 @@ function ScanView() {
       const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
       if (scanMode === "in") {
+        // ✅ SIGN IN: only add if not exists
         if (existing) return prev;
         return {
           ...prev,
@@ -688,7 +715,18 @@ function ScanView() {
         };
       }
 
-      if (scanMode === "out" && existing && existing.timeIn && !existing.timeOut) {
+      if (scanMode === "out") {
+        // ❌ Can't sign out if never signed in
+        if (!existing || !existing.timeIn) {
+          alert("You must Sign In first before Sign Out.");
+          return prev;
+        }
+        // ❌ Can't sign out before allowed time
+        if (!isSignOutAllowed(scan.residentId)) {
+          alert(`Sign Out is only available after ${closingTime || "set closing time"}.`);
+          return prev;
+        }
+        // ✅ Already has record → update timeOut
         return {
           ...prev,
           [eventId]: list.map(e =>
@@ -708,6 +746,12 @@ function ScanView() {
   const setEventCloseTime = () => {
     if (!closingTime) return;
     alert(`Attendance for this event will close at ${closingTime}`);
+  };
+
+  // ✅ Determine if Sign Out tab should be accessible
+  const canAccessSignOut = () => {
+    const records = attendance[eventId] ?? [];
+    return records.some(r => r.timeIn && !r.timeOut);
   };
 
   return (
@@ -731,7 +775,7 @@ function ScanView() {
             </div>
               <Button
                 onClick={() => setIsCameraOn(!isCameraOn)}
-                className={`rounded-full w-10 h-10 p-0 flex items-center justify-center ${isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#e9c655] hover:bg-[#1a6969]"}`}
+                className={`rounded-full w-10 h-10 p-0 flex items-center justify-center ${isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#005f63] hover:bg-[#217676]"}`}
               >
                 {isCameraOn ? <CameraOff size={18} /> : <Camera size={18} />}
               </Button>
@@ -757,28 +801,27 @@ function ScanView() {
                 )}
             </div>
 
-            {/* Scan Mode Toggle */}
+            {/* Scan Mode Toggle — ✅ Sign Out disabled until eligible */}
             <div className="flex gap-2">
                 <Button
                     onClick={() => setScanMode("in")}
-                    className={`flex-1 rounded-[40px] py-3 font-medium transition-all duration-150
+                    className={`flex-1 rounded-[80px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
                     ${scanMode === "in"
-                        ? "bg-[#237474] text-white hover:bg-[#28b0b0] active:bg-[#209999]"
-                        : "bg-gray-100 text-gray-600 hover:bg-[#33c4c4]/10 hover:text-[#33c4c4] active:bg-[#33c4c4]/20"
-                    }
-                    focus:outline-none focus:ring-0 focus:ring-offset-0 border-0`}
+                        ? "!bg-[#217676] !text-white hover:!bg-[#46a7a7] active:!bg-[#1a6060]"
+                        : "!bg-gray-100 !text-gray-600 hover:!bg-[#e0f2f2] hover:!text-[#217676] active:!bg-[#cceae]"
+                    }`}
                 >
                     <LogIn size={16} className="mr-2" /> Sign In
                 </Button>
 
                 <Button
                     onClick={() => setScanMode("out")}
-                    className={`flex-1 rounded-[40px] py-3 font-medium transition-all duration-150
+                    disabled={!canAccessSignOut()}
+                    className={`flex-1 rounded-[80px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
                     ${scanMode === "out"
-                        ? "bg-[#ff9c07] text-white hover:bg-[#e68a00] active:bg-[#cc7a00]"
-                        : "bg-gray-100 text-gray-600 hover:bg-[#ff9c07]/10 hover:text-[#ff9c07] active:bg-[#ff9c07]/20"
-                    }
-                    focus:outline-none focus:ring-0 focus:ring-offset-0 border-0`}
+                        ? "!bg-[#ff9a04] !text-white hover:!bg-[#ffbc57] active:!bg-[#cc7a00]"
+                        : "!bg-gray-100 !text-gray-600 hover:!bg-[#fff3e0] hover:!text-[#ff9a04] active:!bg-[#ffe0b2]"
+                    } ${!canAccessSignOut() ? "opacity-40 cursor-not-allowed" : ""}`}
                 >
                     <LogOut size={16} className="mr-2" /> Sign Out
                 </Button>
@@ -789,14 +832,14 @@ function ScanView() {
             <Label className="text-[15px] tracking-wider text-gray-500 font-semibold">Select Event</Label>
             <Select
             value={eventId}
-            onValueChange={(val) => {
+            onValueChange={(val: string) => {
                 if (val === "add-new") {
                 setShowAddEvent(true);
                 } else {
                 setEventId(val);
                 }
             }}
-            className={`mt-1.5 border-[#ddd5ca] rounded-[40px] text-[14px] [&_[data-selected]]:text-[#005f63] [&>span]:data-[state=closed]:text-[#005f63] transition-colors ${scanMode === "in" ? "text-[#005f63]" : "text-[#b86a00]"}`}
+            className={`mt-1.5 border-[#ddd5ca] rounded-[80px] text-[14px] [&_[data-selected]]:text-[#005f63] [&>span]:data-[state=closed]:text-[#005f63] transition-colors ${scanMode === "in" ? "text-[#005f63]" : "text-[#b86a00]"}`}
             >
                 {events.map(e => (
                 <SelectItem
@@ -825,19 +868,19 @@ function ScanView() {
 
             {/* ✅ Add Event Form */}
             {showAddEvent && (
-            <div className={`mt-3 p-3 border border-dashed rounded-[40px] space-y-2 ${
+            <div className={`mt-3 p-3 border border-dashed rounded-[30px] space-y-2 ${
                 scanMode === "in" ? "border-teal-300 bg-teal-50/50" : "border-orange-300 bg-orange-50/50"
             }`}>
                 <Input
                     placeholder="Event Title"
                     value={newEvent.title}
-                    onChange={(e) => setNewEvent({...newEvent, title: e.target.value})}
-                    className="rounded-[40px] border-[#ddd5ca] text-[14px] text-gray-700"
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEvent({...newEvent, title: e.target.value})}
+                    className="rounded-[80px] border-[#ddd5ca] text-[14px] text-gray-700"
                 />
                 <Select
                     value={newEvent.membershipId}
-                    onValueChange={(val) => setNewEvent({...newEvent, membershipId: val})}
-                    className="rounded-[40px] text-[14px] text-gray-700 [&_[data-selected]]:text-[#005f63] [&>span]:text-gray-700 [&>span]:data-[state=closed]:text-[#005f63]"
+                    onValueChange={(val: string) => setNewEvent({...newEvent, membershipId: val})}
+                    className="rounded-[80px] text-[14px] text-gray-700 [&_[data-selected]]:text-[#005f63] [&>span]:text-gray-700 [&>span]:data-[state=closed]:text-[#005f63]"
                 >
                     {/* ✅ "Open Event (All can join)" → always #005f63 */}
                     <SelectItem
@@ -864,10 +907,10 @@ function ScanView() {
                     <Button
                         size="sm"
                         onClick={handleAddEvent}
-                        className={`text-white rounded-[40px] text-[12px] transition-colors ${
+                        className={`text-white rounded-[80px] text-[12px] transition-colors ${
                             scanMode === "in"
-                            ? "bg-[#097375] hover:bg-[#0a5051] active:bg-[#084243]"
-                            : "bg-[#ff9c07] hover:bg-[#e68a00] active:bg-[#cc7a00]"
+                            ? "bg-[#1c6364] hover:bg-[#238588] active:bg-[#185455]"
+                            : "bg-[#d18513] hover:bg-[#ebaa48] active:bg-[#cc7a00]"
                         }`}
                         >
                         Save
@@ -876,7 +919,7 @@ function ScanView() {
                         size="sm"
                         variant="ghost"
                         onClick={() => setShowAddEvent(false)}
-                        className={`rounded-[40px] text-[12px] transition-colors ${
+                        className={`rounded-[80px] text-[12px] transition-colors ${
                             scanMode === "in"
                             ? "text-[#005f63] hover:bg-teal-100"
                             : "text-[#b86a00] hover:bg-orange-100"
@@ -904,17 +947,17 @@ function ScanView() {
                     <Input
                     type="time"
                     value={closingTime}
-                    onChange={(e) => setClosingTime(e.target.value)}
-                    className={`mt-1.5 border-[#ddd5ca] rounded-[40px] text-[14px] transition-colors ${scanMode === "in" ? "text-[#005f63] [&:not(:placeholder-shown)]:text-[#005f63]" : "text-[#b86a00] [&:not(:placeholder-shown)]:text-[#b86a00]"}`}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClosingTime(e.target.value)}
+                    className={`mt-1.5 border-[#ddd5ca] rounded-[80px] text-[14px] transition-colors ${scanMode === "in" ? "text-[#005f63] [&:not(:placeholder-shown)]:text-[#005f63]" : "text-[#b86a00] [&:not(:placeholder-shown)]:text-[#b86a00]"}`}
                     />
                 </div>
                 {/* Set Button */}
                 <Button
                     onClick={setEventCloseTime}
-                    className={`rounded-[40px] h-10 text-[14px] transition-colors ${
+                    className={`rounded-[80px] h-10 text-[14px] transition-colors ${
                         scanMode === "in"
-                        ? "bg-[#61a0a1] hover:bg-[#0a5051] text-white"
-                        : "bg-[#e6bf54] hover:bg-[#e68a00] text-white"
+                        ? "bg-[#5b9b9e] hover:bg-[#0f7a7c] text-white"
+                        : "bg-[#c9ab5a] hover:bg-[#fc9c0b] text-white"
                     }`}
                 >
                     <Clock size={15} className="mr-1" /> Set
@@ -994,11 +1037,12 @@ function ScanView() {
                   {scan.hasAccess && (
                     <Button
                         onClick={confirmAttendance}
-                        className={`mt-3 w-full text-white rounded-[50px] transition-colors ${
+                        disabled={scanMode === "out" && !isSignOutAllowed(scan.residentId)}
+                        className={`mt-3 w-full text-white rounded-[80px] transition-colors ${
                             scanMode === "in"
-                            ? "bg-[#237474] hover:bg-[#1a9494]" // ✅ Sign In = Teal
-                            : "bg-[#ff9c07] hover:bg-[#e68a00]" // ✅ Sign Out = Orange
-                        }`}
+                            ? "bg-[#227a7a] hover:bg-[#439e9e]" // ✅ Sign In = Teal
+                            : "bg-[#fd9a06] hover:bg-[#ffb444]" // ✅ Sign Out = Orange
+                        } ${scanMode === "out" && !isSignOutAllowed(scan.residentId) ? "opacity-40 cursor-not-allowed" : ""}`}
                         >
                         Confirm {scanMode === "in" ? "Sign In" : "Sign Out"}
                     </Button>
@@ -1008,7 +1052,7 @@ function ScanView() {
             </CardContent>
           </Card>
 
-          {/* Attendance List */}
+          {/* Attendance List — ✅ Shows even Sign-Out-only records */}
           <Card className="border-[#ddd5ca] rounded-[30px] shadow-sm">
             <CardHeader className="border-b border-[#ddd5ca] bg-white sticky top-0 z-10 rounded-t-[30px]">
               <CardTitle className={`font-black transition-colors ${
@@ -1043,7 +1087,8 @@ function ScanView() {
                       </div>
                       <Badge
                         className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                          rec.status === "complete" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
+                          rec.status === "complete" ? "bg-green-100 text-green-800" :
+                          "bg-yellow-100 text-yellow-800"
                         }`}
                       >
                         {rec.status === "complete" ? "Completed" : "Signed In"}
@@ -1084,6 +1129,8 @@ function FakeQR({ seed, large }: { seed: string; large?: boolean }) {
   );
 }
 
+
+
 /* ---------------- Residents ---------------- */
 // Available membership options
 const availableMemberships = [
@@ -1108,7 +1155,7 @@ function ResidentsView() {
   const [deleteRecord, setDeleteRecord] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // ✅ DATA — passwordChangedByUser = true → staff cannot see/edit password
+  // ✅ DATA — added photo field
   const [residentsData, setResidentsData] = useState([
     {
       id: "R-001",
@@ -1122,6 +1169,7 @@ function ResidentsView() {
       username: "R-001",
       password: "temp1234",
       passwordChangedByUser: false,
+      photo: "",
     },
     {
       id: "S-001",
@@ -1135,6 +1183,7 @@ function ResidentsView() {
       username: "S-001",
       password: "temp5678",
       passwordChangedByUser: true,
+      photo: "",
     },
     {
       id: "R-002",
@@ -1148,6 +1197,7 @@ function ResidentsView() {
       username: "",
       password: "",
       passwordChangedByUser: false,
+      photo: "",
     },
   ]);
 
@@ -1167,7 +1217,7 @@ function ResidentsView() {
     return `${digitsOnly.slice(0,4)}-${digitsOnly.slice(4,7)}-${digitsOnly.slice(7)}`;
   };
 
-  // ✅ NEW RESIDENT FORM — NO CREATE ACCOUNT SECTION
+  // ✅ NEW RESIDENT FORM — WITH PHOTO UPLOAD
   const [newResident, setNewResident] = useState({
     firstName: "",
     middleName: "",
@@ -1175,7 +1225,41 @@ function ResidentsView() {
     contactNumber: "",
     hasMemberships: false,
     selectedMemberships: [] as string[],
+    photo: "",
   });
+
+  // ✅ Handle photo file read — ONLY 1 IMAGE ALLOWED
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>, isEdit = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please upload an image file only.");
+      e.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const photoUrl = event.target?.result as string;
+      if (isEdit) {
+        setEditingResident(prev => ({ ...prev, photo: photoUrl }));
+      } else {
+        setNewResident(prev => ({ ...prev, photo: photoUrl }));
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  // ✅ Remove photo function
+  const handleRemovePhoto = (isEdit = false) => {
+    if (isEdit) {
+      setEditingResident(prev => ({ ...prev, photo: "" }));
+    } else {
+      setNewResident(prev => ({ ...prev, photo: "" }));
+    }
+  };
 
   // ✅ ADD FORM VALIDATION
   const validateAddForm = () => {
@@ -1200,12 +1284,10 @@ function ResidentsView() {
     e.preventDefault();
     if (!validateAddForm()) return;
 
-    // Generate new ID
     const newId = residentsData.length > 0
       ? `R-${String(Number(residentsData[residentsData.length - 1].id.split("-")[1]) + 1).padStart(3, "0")}`
       : "R-001";
 
-    // Format memberships
     const membershipsString = newResident.hasMemberships
       ? newResident.selectedMemberships.join(", ")
       : "";
@@ -1220,14 +1302,14 @@ function ResidentsView() {
         contactNumber: newResident.contactNumber,
         memberships: membershipsString,
         role: "Resident",
-        hasAccount: false, // new residents have NO account by default
+        hasAccount: false,
         username: "",
         password: "",
         passwordChangedByUser: false,
+        photo: newResident.photo,
       }
     ]);
 
-    // Reset form
     setNewResident({
       firstName: "",
       middleName: "",
@@ -1235,12 +1317,13 @@ function ResidentsView() {
       contactNumber: "",
       hasMemberships: false,
       selectedMemberships: [],
+      photo: "",
     });
     setFormErrors({});
     setShowAddForm(false);
   };
 
-  // ✅ EDIT FORM STATE
+  // ✅ EDIT FORM STATE — WITH PHOTO
   const [editingResident, setEditingResident] = useState({
     firstName: "",
     middleName: "",
@@ -1253,6 +1336,7 @@ function ResidentsView() {
     password: "",
     role: "Resident",
     passwordChangedByUser: false,
+    photo: "",
   });
 
   // ✅ EDIT FORM VALIDATION
@@ -1269,10 +1353,6 @@ function ResidentsView() {
       errors.contactNumber = "Must be exactly 11 digits";
     }
 
-    // If creating account → password required
-    if (!editingResident.hasAccount && editingResident.password.trim()) {
-      // creating account now
-    }
     if (editingResident.hasAccount && !editingResident.passwordChangedByUser && !editingResident.password.trim()) {
       errors.password = "Password is required";
     }
@@ -1299,14 +1379,14 @@ function ResidentsView() {
             lastName: editingResident.lastName,
             contactNumber: editingResident.contactNumber,
             memberships: updatedMemberships,
-            role: editingResident.role,
-            // ✅ If creating account now → set username = ID
+            role: resident.passwordChangedByUser ? resident.role : editingResident.role,
             hasAccount: editingResident.hasAccount,
             username: editingResident.hasAccount ? resident.username || resident.id : "",
             password: resident.passwordChangedByUser
               ? resident.password
               : editingResident.password,
             passwordChangedByUser: resident.passwordChangedByUser,
+            photo: editingResident.photo,
           }
         : resident
     ));
@@ -1407,7 +1487,6 @@ function ResidentsView() {
   const [initialAddData, setInitialAddData] = useState<any>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState<"edit" | "add" | null>(null);
 
-  // ✅ Detect changes
   const hasEditChanges = useMemo(() => {
     if (!initialEditData) return false;
     return JSON.stringify(initialEditData) !== JSON.stringify(editingResident);
@@ -1418,7 +1497,6 @@ function ResidentsView() {
     return JSON.stringify(initialAddData) !== JSON.stringify(newResident);
   }, [initialAddData, newResident]);
 
-  // ✅ Updated: Load Edit Data + save initial state
   useEffect(() => {
     if (!editRecord) {
       setInitialEditData(null);
@@ -1441,12 +1519,12 @@ function ResidentsView() {
       password: resident.password,
       role: resident.role,
       passwordChangedByUser: resident.passwordChangedByUser,
+      photo: resident.photo,
     };
     setEditingResident(initialState);
     setInitialEditData(JSON.parse(JSON.stringify(initialState)));
   }, [editRecord, residentsData]);
 
-  // ✅ Open Add Form & save initial state
   const handleOpenAddForm = () => {
     const emptyState = {
       firstName: "",
@@ -1455,13 +1533,13 @@ function ResidentsView() {
       contactNumber: "",
       hasMemberships: false,
       selectedMemberships: [] as string[],
+      photo: "",
     };
     setNewResident(emptyState);
     setInitialAddData(JSON.parse(JSON.stringify(emptyState)));
     setShowAddForm(true);
   };
 
-  // ✅ Cancel handlers
   const handleCancelEdit = () => {
     if (hasEditChanges) {
       setShowCancelConfirm("edit");
@@ -1488,7 +1566,7 @@ function ResidentsView() {
         <div className="w-[1200px]">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-black text-[#005f63]">Residents & Staff Records</h1>
+              <h1 className="text-4xl font-black text-[#005f63]">Residents Master List</h1>
               <p className="text-sm text-[#667777] mt-1">
                 Manage all registered residents, staff, and their account status.
               </p>
@@ -1504,7 +1582,6 @@ function ResidentsView() {
               />
             </div>
 
-            {/* ✅ FILTER DROPDOWN */}
             <div className="relative">
               <select
                 value={residentFilter}
@@ -1530,7 +1607,7 @@ function ResidentsView() {
         </div>
       </div>
 
-      {/* ✅ TABLE SECTION - BUTTON AT TOP RIGHT */}
+      {/* ✅ TABLE SECTION */}
       <div className="pl-1">
         <div className="flex justify-end mb-3">
           <button
@@ -1541,8 +1618,10 @@ function ResidentsView() {
           </button>
         </div>
 
-        <div className="rounded-[30px] border border-[#ddd5ca] bg-white shadow-sm overflow-hidden">
-          <div className="p-5">
+        <div className="relative rounded-[20px] bg-white shadow-lg overflow-hidden">
+          <div className="h-1 w-full bg-gradient-to-r from-[#3d9085] via-[#FFC107] to-[#00897B] absolute top-0 left-0 right-0"></div>
+
+          <div className="p-5 pt-6">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[#eee8e0]">
@@ -1571,14 +1650,16 @@ function ResidentsView() {
                     const remainingCount = allMemberships.length - 2;
 
                     return (
-                      <tr key={r.id} className="border-b border-[#eee8e0] hover:bg-orange-50/30 transition">
+                      <tr
+                        key={r.id}
+                        className="border-b border-[#eee8e0] transition-all duration-200 hover:bg-teal-50/100 hover:shadow-md hover:rounded-lg"
+                      >
                         <td className="py-3 px-2 font-mono text-gray-700">{highlightText(r.id, residentSearch)}</td>
                         <td className="py-3 px-2 font-medium text-gray-800">{highlightText(r.lastName, residentSearch)}</td>
                         <td className="py-3 px-2 text-gray-700">{highlightText(r.firstName, residentSearch)}</td>
                         <td className="py-3 px-2 text-gray-700">{highlightText(r.middleName, residentSearch)}</td>
                         <td className="py-3 px-2 text-gray-600">{highlightText(r.contactNumber, residentSearch)}</td>
 
-                        {/* ✅ MEMBERSHIPS — SHOW ONLY 2 + "+X MORE" */}
                         <td className="py-3 px-2">
                           <div className="flex flex-wrap gap-1.5 items-center">
                             {visibleMemberships.map((mName, idx) => (
@@ -1598,25 +1679,19 @@ function ResidentsView() {
                           </div>
                         </td>
 
-                        {/* ✅ ROLE — BADGE STYLE */}
                         <td className="py-3 px-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            r.role === "Staff" ? "bg-orange-100 text-orange-800" : "bg-teal-50 text-teal-800"
-                          }`}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${r.role === "Staff" ? "bg-orange-100 text-orange-800" : "bg-teal-50 text-teal-800"}`}>
                             {highlightText(r.role, residentSearch)}
+                            {r.passwordChangedByUser && <span className="ml-1 text-yellow-600 text-[10px] font-bold">🔒</span>}
                           </span>
                         </td>
 
-                        {/* ✅ HAS ACCOUNT — BADGE STYLE */}
                         <td className="py-3 px-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            r.hasAccount ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                          }`}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${r.hasAccount ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
                             {r.hasAccount ? "✅ Yes" : "❌ No"}
                           </span>
                         </td>
 
-                        {/* ✅ ACTIONS */}
                         <td className="py-3 px-2 text-right">
                           <div className="inline-flex gap-1">
                             <button onClick={() => setViewRecord(r.id)} className="p-2 rounded-full hover:bg-teal-50 transition" title="View">
@@ -1647,7 +1722,7 @@ function ResidentsView() {
           </div>
         </div>
 
-        {/* ✅ VIEW RECORD MODAL — POPUP */}
+        {/* ✅ VIEW RECORD MODAL */}
         {viewRecord && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
             <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1659,24 +1734,36 @@ function ResidentsView() {
                 const r = residentsData.find(x => x.id === viewRecord)!;
                 const allMemberships = r.memberships ? r.memberships.split(",").map(m => m.trim()).filter(Boolean) : [];
                 return (
-                  <div className="grid gap-4 text-sm md:grid-cols-2">
-                    <div>
-                      <p className="mb-2"><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
-                      <p className="mb-2"><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
-                      <p className="mb-2"><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
-                      <p className="mb-2"><strong className="text-[#005f63]">Role:</strong> {r.role}</p>
-                      <p className="mb-2"><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
-                      {r.hasAccount && (
-                        <>
-                          <p className="mb-2"><strong className="text-[#005f63]">Username:</strong> {r.username}</p>
-                          <p className="mb-2">
-                            <strong className="text-[#005f63]">Password:</strong>{" "}
-                            {r.passwordChangedByUser ? "•••••••• (changed by user)" : r.password}
-                          </p>
-                        </>
-                      )}
+                  <div className="text-sm">
+                    <div className="flex gap-6">
+                      <div className="flex-1 space-y-2">
+                        <p><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
+                        <p><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
+                        <p><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
+                        <p><strong className="text-[#005f63]">Role:</strong> {r.role} {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}</p>
+                        <p><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
+                        {r.hasAccount && (
+                          <>
+                            <p><strong className="text-[#005f63]">Username:</strong> {r.username}</p>
+                            <p><strong className="text-[#005f63]">Password:</strong> {r.passwordChangedByUser ? "•••••••• (changed by user — hidden)" : r.password}</p>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="w-[160px] flex items-start">
+                        <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative" style={{ minHeight: "180px" }}>
+                          {r.photo ? (
+                            <img src={r.photo} alt="ID Photo" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-2">
+                              No photo uploaded
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="md:col-span-2">
+
+                    <div className="mt-6">
                       <strong className="text-[#005f63] block mb-2">Memberships:</strong>
                       <div className="flex flex-wrap gap-1.5">
                         {allMemberships.length > 0 ? allMemberships.map((m, i) => (
@@ -1693,7 +1780,7 @@ function ResidentsView() {
           </div>
         )}
 
-        {/* ✅ EDIT MODAL — "Create Account" if no account yet — AUTO-FILL USERNAME WITH ACTUAL ID */}
+        {/* ✅ EDIT MODAL — FULLY FIXED TAGS */}
         {editRecord && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
             <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1710,13 +1797,8 @@ function ResidentsView() {
                       type="text"
                       required
                       value={editingResident.firstName}
-                      onChange={(e) => setEditingResident(prev => ({
-                        ...prev,
-                        firstName: capitalizeName(e.target.value)
-                      }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors.firstName ? "border-red-500" : "border-gray-200"
-                      }`}
+                      onChange={(e) => setEditingResident(prev => ({ ...prev, firstName: capitalizeName(e.target.value) }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.firstName ? "border-red-500" : "border-gray-200"}`}
                     />
                     {formErrors.firstName && <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>}
                   </div>
@@ -1725,10 +1807,7 @@ function ResidentsView() {
                     <input
                       type="text"
                       value={editingResident.middleName}
-                      onChange={(e) => setEditingResident(prev => ({
-                        ...prev,
-                        middleName: capitalizeName(e.target.value)
-                      }))}
+                      onChange={(e) => setEditingResident(prev => ({ ...prev, middleName: capitalizeName(e.target.value) }))}
                       className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
                     />
                   </div>
@@ -1738,13 +1817,8 @@ function ResidentsView() {
                       type="text"
                       required
                       value={editingResident.lastName}
-                      onChange={(e) => setEditingResident(prev => ({
-                        ...prev,
-                        lastName: capitalizeName(e.target.value)
-                      }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors.lastName ? "border-red-500" : "border-gray-200"
-                      }`}
+                      onChange={(e) => setEditingResident(prev => ({ ...prev, lastName: capitalizeName(e.target.value) }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.lastName ? "border-red-500" : "border-gray-200"}`}
                     />
                     {formErrors.lastName && <p className="text-red-500 text-xs mt-1">{formErrors.lastName}</p>}
                   </div>
@@ -1756,16 +1830,34 @@ function ResidentsView() {
                     type="text"
                     required
                     value={editingResident.contactNumber}
-                    onChange={(e) => setEditingResident(prev => ({
-                      ...prev,
-                      contactNumber: formatContactNumber(e.target.value)
-                    }))}
-                    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                      formErrors.contactNumber ? "border-red-500" : "border-gray-200"
-                    }`}
+                    onChange={(e) => setEditingResident(prev => ({ ...prev, contactNumber: formatContactNumber(e.target.value) }))}
+                    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
                     placeholder="09XX-XXX-XXXX"
                   />
                   {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ID Photo</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handlePhotoChange(e, true)}
+                    className="w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63] hover:file:bg-[#005f63]/20"
+                  />
+                  {editingResident.photo && (
+                    <div className="relative inline-block mt-2">
+                      <img src={editingResident.photo} alt="Preview" className="h-20 rounded border" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePhoto(true)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow"
+                        title="Remove photo"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t border-b py-3">
@@ -1796,7 +1888,6 @@ function ResidentsView() {
                   )}
                 </div>
 
-                {/* ✅ ACCOUNT SECTION: "Create Account" if no account yet — AUTO-FILL USERNAME WITH ACTUAL ID */}
                 <div className="border-b pb-3">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -1813,7 +1904,6 @@ function ResidentsView() {
 
                   {editingResident.hasAccount && (
                     <div className="mt-3 pl-6 space-y-3">
-                      {/* ✅ Username — AUTO-FILLED WITH ACTUAL ID, fixed, cannot edit */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
                         <input
@@ -1825,7 +1915,6 @@ function ResidentsView() {
                         <p className="text-xs text-gray-500 mt-1">* Username is automatically set to ID and cannot be changed</p>
                       </div>
 
-                      {/* ✅ Password — editable only if NOT changed by user */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
                         <input
@@ -1833,11 +1922,7 @@ function ResidentsView() {
                           value={editingResident.passwordChangedByUser ? "••••••••" : editingResident.password}
                           onChange={(e) => !editingResident.passwordChangedByUser && setEditingResident(prev => ({ ...prev, password: e.target.value }))}
                           readOnly={editingResident.passwordChangedByUser}
-                          className={`w-full rounded-full border px-4 py-2.5 ${
-                            editingResident.passwordChangedByUser
-                              ? "bg-gray-100 text-gray-500 border-gray-200"
-                              : "border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
-                          }`}
+                          className={`w-full rounded-full border px-4 py-2.5 ${editingResident.passwordChangedByUser ? "bg-gray-100 text-gray-500 border-gray-200" : "border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"}`}
                           placeholder={!editingResident.passwordChangedByUser ? "Enter temporary password" : ""}
                         />
                         {editingResident.passwordChangedByUser ? (
@@ -1853,11 +1938,15 @@ function ResidentsView() {
                           required={editingResident.hasAccount}
                           value={editingResident.role}
                           onChange={(e) => setEditingResident(prev => ({ ...prev, role: e.target.value }))}
-                          className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                          disabled={editingResident.passwordChangedByUser}
+                          className={`w-full rounded-full border px-4 py-2.5 focus:outline-none ${editingResident.passwordChangedByUser ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed" : "border-gray-200 focus:ring-2 focus:ring-[#005f63]/30"}`}
                         >
                           <option value="Resident">Resident</option>
                           <option value="Staff">Staff</option>
                         </select>
+                        {editingResident.passwordChangedByUser && (
+                          <p className="text-xs text-[#44a5a2] mt-1 font-medium">Locked: User already changed password — role cannot be modified</p>
+                        )}
                       </div>
                     </div>
                   )}
@@ -1874,11 +1963,7 @@ function ResidentsView() {
                   <button
                     type="submit"
                     disabled={!hasEditChanges}
-                    className={`px-5 py-2.5 rounded-full transition ${
-                      hasEditChanges
-                        ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
-                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    }`}
+                    className={`px-5 py-2.5 rounded-full transition ${hasEditChanges ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
                   >
                     Save Changes
                   </button>
@@ -1922,215 +2007,234 @@ function ResidentsView() {
           </div>
         )}
 
-        {/* ✅ ADD NEW RESIDENT FORM — NO CREATE ACCOUNT SECTION */}
-        {showAddForm && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-black text-[#005f63]">Add New Resident / Staff</h2>
-                <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
-              </div>
+        {/* ✅ ADD NEW RESIDENT FORM — FULLY FIXED TAGS */}
+{showAddForm && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-black text-[#005f63]">Add New Resident / Staff</h2>
+        <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700">
+          <XCircle size={20} />
+        </button>
+      </div>
 
-              <form onSubmit={handleAddResident} className="space-y-4">
-                {/* ✅ NAME FIELDS WITH AUTO-CAPITALIZATION */}
-                <div className="grid md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={newResident.firstName}
-                      onChange={(e) => setNewResident(prev => ({
-                        ...prev,
-                        firstName: capitalizeName(e.target.value)
-                      }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors.firstName ? "border-red-500" : "border-gray-200"
-                      }`}
-                    />
-                    {formErrors.firstName && <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
-                    <input
-                      type="text"
-                      value={newResident.middleName}
-                      onChange={(e) => setNewResident(prev => ({
-                        ...prev,
-                        middleName: capitalizeName(e.target.value)
-                      }))}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={newResident.lastName}
-                      onChange={(e) => setNewResident(prev => ({
-                        ...prev,
-                        lastName: capitalizeName(e.target.value)
-                      }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors.lastName ? "border-red-500" : "border-gray-200"
-                      }`}
-                    />
-                    {formErrors.lastName && <p className="text-red-500 text-xs mt-1">{formErrors.lastName}</p>}
-                  </div>
-                </div>
-
-                {/* ✅ CONTACT NUMBER - 11 DIGITS ONLY, AUTO-FORMAT */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newResident.contactNumber}
-                    onChange={(e) => setNewResident(prev => ({
-                      ...prev,
-                      contactNumber: formatContactNumber(e.target.value)
-                    }))}
-                    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                      formErrors.contactNumber ? "border-red-500" : "border-gray-200"
-                    }`}
-                    placeholder="09XX-XXX-XXXX"
-                  />
-                  {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
-                </div>
-
-                {/* ✅ HAS MEMBERSHIPS ONLY — NO ACCOUNT OPTION */}
-                <div className="border-t border-b py-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newResident.hasMemberships}
-                      onChange={(e) => setNewResident(prev => ({...prev, hasMemberships: e.target.checked}))}
-                      className="w-4 h-4 text-[#005f63]"
-                    />
-                    <span className="font-medium text-gray-700">Has Memberships?</span>
-                  </label>
-
-                  {newResident.hasMemberships && (
-                    <div className="mt-3 pl-6 grid grid-cols-2 gap-2">
-                      {availableMemberships.map((mem, idx) => (
-                        <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input
-                            type="checkbox"
-                            value={mem}
-                            checked={newResident.selectedMemberships.includes(mem)}
-                            onChange={handleMembershipChange}
-                            className="w-4 h-4 text-[#005f63]"
-                          />
-                          <span>{mem}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleCancelAdd}
-                    className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!hasAddChanges}
-                    className={`px-5 py-2.5 rounded-full transition ${
-                      hasAddChanges
-                        ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
-                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    }`}
-                  >
-                    Save Record
-                  </button>
-                </div>
-              </form>
-            </div>
+      <form onSubmit={handleAddResident} className="space-y-4">
+        <div className="grid md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+            <input
+              type="text"
+              required
+              value={newResident.firstName}
+              onChange={(e) => setNewResident(prev => ({ ...prev, firstName: capitalizeName(e.target.value) }))}
+              className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                formErrors.firstName ? "border-red-500" : "border-gray-200"
+              }`}
+            />
+            {formErrors.firstName && <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>}
           </div>
-        )}
-
-        {/* ✅ UNSAVED CHANGES CONFIRMATION */}
-        {showCancelConfirm && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4">
-            <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl">
-              <h3 className="text-lg font-bold text-gray-800 mb-2">Discard changes?</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                You have unsaved changes. If you leave now, your changes will be lost.
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowCancelConfirm(null)}
-                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-                >
-                  Keep Editing
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCancelConfirm(null);
-                    if (showCancelConfirm === "edit") {
-                      setEditRecord(null);
-                      setFormErrors({});
-                    } else {
-                      setShowAddForm(false);
-                      setFormErrors({});
-                    }
-                  }}
-                  className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
-                >
-                  Discard
-                </button>
-              </div>
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
+            <input
+              type="text"
+              value={newResident.middleName}
+              onChange={(e) => setNewResident(prev => ({ ...prev, middleName: capitalizeName(e.target.value) }))}
+              className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+            />
           </div>
-        )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+            <input
+              type="text"
+              required
+              value={newResident.lastName}
+              onChange={(e) => setNewResident(prev => ({ ...prev, lastName: capitalizeName(e.target.value) }))}
+              className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                formErrors.lastName ? "border-red-500" : "border-gray-200"
+              }`}
+            />
+            {formErrors.lastName && <p className="text-red-500 text-xs mt-1">{formErrors.lastName}</p>}
+          </div>
+        </div>
 
-                {/* ✅ PAGINATION */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 mt-8">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
-            >
-              Previous
-            </button>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+          <input
+            type="text"
+            required
+            value={newResident.contactNumber}
+            onChange={(e) => setNewResident(prev => ({ ...prev, contactNumber: formatContactNumber(e.target.value) }))}
+            className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+              formErrors.contactNumber ? "border-red-500" : "border-gray-200"
+            }`}
+            placeholder="09XX-XXX-XXXX"
+          />
+          {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+        </div>
 
-            {Array.from({ length: totalPages }, (_, i) => (
+        {/* ✅ ADD NEW RESIDENT FORM — WITH PHOTO UPLOAD + REMOVE BUTTON */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">ID Photo</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoChange}
+            className="w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63] hover:file:bg-[#005f63]/20"
+          />
+          {newResident.photo && (
+            <div className="relative inline-block mt-3">
+              <img
+                src={newResident.photo}
+                alt="ID Preview"
+                className="h-28 w-auto rounded-lg border border-gray-200 object-cover shadow-sm"
+              />
+              {/* ✅ REMOVE PHOTO BUTTON */}
               <button
-                key={i + 1}
-                onClick={() => setCurrentPage(i + 1)}
-                className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${
-                  currentPage === i + 1
-                    ? "bg-[#005f63] text-white shadow-sm"
-                    : "bg-white border text-[#005f63] hover:bg-orange-50"
-                }`}
+                type="button"
+                onClick={() => handleRemovePhoto(false)}
+                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold shadow-md hover:bg-red-600 transition"
+                title="Remove photo"
               >
-                {i + 1}
+                ×
               </button>
-            ))}
+            </div>
+          )}
+          <p className="text-xs text-gray-500 mt-1">* Only 1 image file allowed (JPG, PNG, GIF)</p>
+        </div>
 
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
-            >
-              Next
-            </button>
+        <div className="border-t border-b py-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={newResident.hasMemberships}
+              onChange={(e) => setNewResident(prev => ({...prev, hasMemberships: e.target.checked}))}
+              className="w-4 h-4 text-[#005f63]"
+            />
+            <span className="font-medium text-gray-700">Has Memberships?</span>
+          </label>
+          {newResident.hasMemberships && (
+            <div className="mt-3 pl-6 grid grid-cols-2 gap-2">
+              {availableMemberships.map((mem, idx) => (
+                <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    value={mem}
+                    checked={newResident.selectedMemberships.includes(mem)}
+                    onChange={handleMembershipChange}
+                    className="w-4 h-4 text-[#005f63]"
+                  />
+                  <span>{mem}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
 
-            <span className="text-xs text-gray-600 ml-1.5">
-              Page {currentPage} of {totalPages}
-            </span>
-          </div>
-        )}
+        <div className="flex justify-end gap-3 pt-2">
+          <button
+            type="button"
+            onClick={handleCancelAdd}
+            className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!hasAddChanges}
+            className={`px-5 py-2.5 rounded-full transition ${
+              hasAddChanges
+                ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
+                : "bg-gray-200 text-gray-400 cursor-not-allowed"
+            }`}
+          >
+            Save Record
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+)}
+
+{/* ✅ UNSAVED CHANGES CONFIRMATION MODAL */}
+{showCancelConfirm && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4">
+    <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl">
+      <h3 className="text-lg font-bold text-gray-800 mb-2">Discard changes?</h3>
+      <p className="text-sm text-gray-600 mb-6">
+        You have unsaved changes. If you leave now, your changes will be lost.
+      </p>
+      <div className="flex justify-end gap-3">
+        <button
+          onClick={() => setShowCancelConfirm(null)}
+          className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+        >
+          Keep Editing
+        </button>
+        <button
+          onClick={() => {
+            setShowCancelConfirm(null);
+            if (showCancelConfirm === "edit") {
+              setEditRecord(null);
+              setFormErrors({});
+            } else {
+              setShowAddForm(false);
+              setFormErrors({});
+            }
+          }}
+          className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+        >
+          Discard
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ✅ PAGINATION CONTROLS */}
+{totalPages > 1 && (
+  <div className="flex items-center justify-center gap-2 mt-8">
+    <button
+      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+      disabled={currentPage === 1}
+      className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
+    >
+      Previous
+    </button>
+
+    {Array.from({ length: totalPages }, (_, i) => (
+      <button
+        key={i + 1}
+        onClick={() => setCurrentPage(i + 1)}
+        className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${
+          currentPage === i + 1
+            ? "bg-[#005f63] text-white shadow-sm"
+            : "bg-white border text-[#005f63] hover:bg-orange-50"
+        }`}
+      >
+        {i + 1}
+      </button>
+    ))}
+
+    <button
+      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+      disabled={currentPage === totalPages}
+      className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
+    >
+      Next
+    </button>
+
+    <span className="text-xs text-gray-600 ml-1.5">
+      Page {currentPage} of {totalPages}
+    </span>
+  </div>
+)}
       </div>
     </div>
   );
 }
+
+
+
 
 /* ---------------- Memberships / QR Codes ---------------- */
 function QRCodesView({ memberships, highlightText }: any) {
@@ -2285,142 +2389,671 @@ function QRCodesView({ memberships, highlightText }: any) {
   );
 }
 
-/* ---------------- Events ---------------- */
-function EventsView({ allEvents, upcomingEvents, pastEvents, onDeleteEvent, highlightText }: any) {
-  const [activeTab, setActiveTab] = useState("upcoming");
-  const [searchEv, setSearchEv] = useState("");
-  const [viewEv, setViewEv] = useState<any>(null);
 
-  const displayedEvents = useMemo(() => {
-    let list = activeTab === "upcoming" ? upcomingEvents : pastEvents;
-    if (!searchEv.trim()) return list;
-    const q = searchEv.toLowerCase();
-    return list.filter((e: any) =>
-      e.title.toLowerCase().includes(q) ||
-      e.location?.toLowerCase().includes(q) ||
-      e.date.toLowerCase().includes(q)
+
+// ─── EVENTS & ATTENDANCE ───────────────────────────────────────────
+interface MyEvent {
+  id: number | string;
+  title: string;
+  date: string;
+  location: string;
+  description: string;
+  membershipId?: string;
+  membershipName?: string;
+}
+
+interface EventsViewProps {
+  allEvents: MyEvent[];
+  upcomingEvents: MyEvent[];
+  pastEvents: MyEvent[];
+  onDeleteEvent: (id: number | string) => void;
+  highlightText: (text: string, query: string) => React.ReactNode;
+  residents?: any[];
+  memberships?: any[];
+  attendanceRecords?: any[];
+}
+
+// ✅ Mock Data
+const mockResidents = [
+  { id: "res1", name: "Juan Dela Cruz", membershipIds: ["mem1"] },
+  { id: "res2", name: "Maria Santos", membershipIds: ["mem1", "mem2"] },
+  { id: "res3", name: "Roberto Reyes", membershipIds: ["mem2"] },
+  { id: "res4", name: "Ana Garcia", membershipIds: ["mem3"] },
+  { id: "res5", name: "Luis Torres", membershipIds: [] }, // No membership
+  { id: "res6", name: "Elena Cruz", membershipIds: ["mem1", "mem3"] },
+];
+
+const mockMemberships = [
+  { id: "mem1", name: "Women's Club" },
+  { id: "mem2", name: "Youth Organization" },
+  { id: "mem3", name: "Senior Citizens Group" },
+];
+
+const mockAttendanceRecords = [
+  // Event 1 records
+  { eventId: "EVT-1", residentId: "res1", timeIn: "08:05 AM", timeOut: "11:30 AM" }, // Complete
+  { eventId: "EVT-1", residentId: "res2", timeIn: "08:15 AM", timeOut: "" }, // Incomplete
+  { eventId: "EVT-1", residentId: "res6", timeIn: "", timeOut: "11:00 AM" }, // Incomplete
+  // Event 2 records
+  { eventId: "EVT-2", residentId: "res3", timeIn: "09:00 AM", timeOut: "01:00 PM" }, // Complete
+  { eventId: "EVT-2", residentId: "res2", timeIn: "09:10 AM", timeOut: "" }, // Incomplete
+  // Event 3 records
+  { eventId: "EVT-3", residentId: "res4", timeIn: "07:45 AM", timeOut: "04:15 PM" }, // Complete
+  { eventId: "EVT-3", residentId: "res5", timeIn: "", timeOut: "" }, // Missed
+];
+
+// ✅ Named export — NO duplicate default
+export function EventsView({
+  allEvents,
+  upcomingEvents,
+  pastEvents,
+  onDeleteEvent,
+  highlightText,
+  residents = mockResidents,
+  memberships = mockMemberships,
+  attendanceRecords = mockAttendanceRecords,
+}: EventsViewProps) {
+  const [eventSearch, setEventSearch] = useState("");
+  const [eventFilter, setEventFilter] = useState("all");
+  const [viewEv, setViewEv] = useState<MyEvent | null>(null);
+  const [showAttendance, setShowAttendance] = useState<MyEvent | null>(null);
+  const [eventToDelete, setEventToDelete] = useState<number | string | null>(null); // for delete confirmation
+
+  const [newEvent, setNewEvent] = useState({
+    title: "",
+    date: "",
+    time: "",
+    location: "",
+    description: "",
+    membershipId: "",
+  });
+
+  // ✅ Attendance search & filter state
+  const [attendanceSearch, setAttendanceSearch] = useState("");
+  const [attendanceStatusFilter, setAttendanceStatusFilter] = useState("all");
+
+  // ✅ Custom highlight function with YELLOW background
+  const highlightAttendanceText = (text: string, query: string) => {
+    if (!query.trim()) return text;
+    const regex = new RegExp(`(${query})`, "gi");
+    const parts = text.split(regex);
+    return parts.map((part, i) =>
+      part.toLowerCase() === query.toLowerCase() ? (
+        <span key={i} className="bg-yellow-300 text-black rounded-sm px-0.5">
+          {part}
+        </span>
+      ) : (
+        part
+      )
     );
-  }, [activeTab, upcomingEvents, pastEvents, searchEv]);
+  };
+
+  // 1. Filter the events
+  const filteredEvents = useMemo(() => {
+    let result = allEvents;
+
+    if (eventFilter === "upcoming") {
+      result = upcomingEvents;
+    } else if (eventFilter === "past") {
+      result = pastEvents;
+    }
+
+    if (eventSearch.trim()) {
+      const q = eventSearch.toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.title.toLowerCase().includes(q) ||
+          e.date.toLowerCase().includes(q) ||
+          e.location.toLowerCase().includes(q) ||
+          e.description.toLowerCase().includes(q)
+      );
+    }
+
+    // SORT: NEWEST / LATEST DATE FIRST
+    result = [...result].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return result;
+  }, [allEvents, upcomingEvents, pastEvents, eventFilter, eventSearch]);
+
+  // 2. Group the events by date — SAME AS MEMBER PAGE
+  const groupedEvents = useMemo(() => {
+    const groups: Record<string, MyEvent[]> = {};
+    const today = new Date();
+    const oneWeekFromNow = new Date();
+    oneWeekFromNow.setDate(today.getDate() + 7);
+
+    filteredEvents.forEach((e) => {
+      const eventDate = new Date(e.date);
+      const dateOnly = e.date.split(" ")[0];
+
+      let sectionKey: string;
+
+      if (eventFilter === "all") {
+        if (eventDate >= today && eventDate <= oneWeekFromNow) {
+          sectionKey = "📅 This Week";
+        } else {
+          sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          });
+        }
+      } else {
+        sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+      }
+
+      if (!groups[sectionKey]) groups[sectionKey] = [];
+      groups[sectionKey].push(e);
+    });
+
+    const sortedGroups = Object.entries(groups).sort(([keyA], [keyB]) => {
+      if (keyA === "📅 This Week") return -1;
+      if (keyB === "📅 This Week") return 1;
+      return new Date(keyB).getTime() - new Date(keyA).getTime();
+    });
+
+    return Object.fromEntries(sortedGroups);
+  }, [filteredEvents, eventFilter]);
+
+  // ─── CREATE EVENT ───────────────────────────────────────────
+  const handleCreateEvent = (e: React.FormEvent) => {
+    e.preventDefault();
+    const fullDate = `${newEvent.date} ${newEvent.time}`;
+    const membershipName = newEvent.membershipId
+      ? memberships.find((m: any) => m.id === newEvent.membershipId)?.name
+      : "Open Event (All Residents)";
+
+    const eventToAdd: MyEvent = {
+      id: `EVT-${Date.now()}`,
+      title: newEvent.title,
+      date: fullDate,
+      location: newEvent.location,
+      description: newEvent.description,
+      membershipId: newEvent.membershipId || "",
+      membershipName: membershipName,
+    };
+
+    if (new Date(fullDate) >= new Date()) {
+      upcomingEvents.unshift(eventToAdd);
+    } else {
+      pastEvents.unshift(eventToAdd);
+    }
+    allEvents.unshift(eventToAdd);
+
+    // reset form
+    setNewEvent({ title: "", date: "", time: "", location: "", description: "", membershipId: "" });
+  };
+
+  // ─── DELETE CONFIRMATION HANDLERS ─────────────────────────────
+  const confirmDelete = () => {
+    if (eventToDelete !== null) {
+      onDeleteEvent(eventToDelete);
+      setEventToDelete(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setEventToDelete(null);
+  };
+
+  // ─── GET MEMBERS BELONGING TO SELECTED MEMBERSHIP ────────────
+  const getMembersForEvent = (event: MyEvent) => {
+    if (!event.membershipId) {
+      // Open Event → all residents
+      return residents;
+    }
+    // Only residents with this membershipId (supports single or multiple memberships)
+    return residents.filter((r: any) =>
+      Array.isArray(r.membershipIds)
+        ? r.membershipIds.includes(event.membershipId)
+        : r.membershipId === event.membershipId
+    );
+  };
+
+  // ─── GET FULL ATTENDANCE LIST: ALL ELIGIBLE MEMBERS ────────────
+  const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[]) => {
+    const recordsForEvent = attendanceRecords.filter((a: any) => a.eventId === eventId);
+
+    return eligibleMembers.map((member: any) => {
+      const record = recordsForEvent.find((r: any) => r.residentId === member.id);
+      return {
+        residentId: member.id,
+        residentName: member.name,
+        timeIn: record?.timeIn || "",
+        timeOut: record?.timeOut || "",
+      };
+    });
+  };
+
+  // ─── GET ATTENDANCE STATUS — MATCH MEMBER PAGE COLORS ────────────
+  const getAttendanceStatus = (record: any) => {
+    if (record.timeIn && record.timeOut) {
+      return { label: "Complete" };
+    } else if (record.timeIn || record.timeOut) {
+      return { label: "Incomplete" };
+    } else {
+      return { label: "Missed" };
+    }
+  };
+
+  // ✅ Filter & search attendance records
+  const getFilteredAttendance = (fullList: any[]) => {
+    return fullList.filter((record) => {
+      const matchesSearch = record.residentName.toLowerCase().includes(attendanceSearch.toLowerCase());
+      const status = getAttendanceStatus(record).label.toLowerCase();
+      const matchesStatus = attendanceStatusFilter === "all" || status === attendanceStatusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-[#005f63]">Events & Activities</h2>
-          <p className="text-sm text-gray-600">Manage barangay activities, attendance and eligibility rules.</p>
+    <div className="space-y-6">
+      {/* ✅ HEADER, SEARCH & FILTER */}
+      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
+        <div className="w-full">
+          <h1 className="text-4xl font-black text-[#005f63]">Events & Attendance</h1>
+          <p className="mt-1 text-sm text-[#667777]">Filter and view all, upcoming, and past events.</p>
+
+          <div className="mt-4 flex items-center gap-4 w-full">
+            <div className="flex-1">
+              <SearchBar
+                value={eventSearch}
+                onChange={setEventSearch}
+                placeholder="Search events by title, date, location or description..."
+              />
+            </div>
+
+            <div className="relative">
+              <select
+                value={eventFilter}
+                onChange={(e) => setEventFilter(e.target.value)}
+                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
+              >
+                <option value="all">All Events</option>
+                <option value="upcoming">Upcoming Events</option>
+                <option value="past">Past Events</option>
+              </select>
+              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+              <svg
+                className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </div>
+
+          <p className="mt-2 text-xs text-gray-500">
+            {filteredEvents.length} of {allEvents.length} event(s) match
+          </p>
         </div>
-        <Button className="bg-orange-500 text-white hover:bg-orange-600">
-          <PlusCircle className="mr-1 h-4 w-4" /> Create New Event
-        </Button>
       </div>
 
-      <div className="flex items-center justify-between gap-4 border-b border-gray-200">
-        <div className="flex gap-1">
-          <button
-            onClick={() => setActiveTab("upcoming")}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === "upcoming" ? "border-[#005f63] text-[#005f63]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            Upcoming ({upcomingEvents.length})
-          </button>
-          <button
-            onClick={() => setActiveTab("past")}
-            className={`px-4 py-2 font-medium border-b-2 transition-colors ${activeTab === "past" ? "border-[#005f63] text-[#005f63]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            Past ({pastEvents.length})
-          </button>
+      {/* ✅ NEW LAYOUT: 50% LEFT FIXED FORM | 50% RIGHT SCROLLABLE EVENTS */}
+      <div className="flex gap-6 items-start px-1 w-full h-[calc(100vh-180px)]">
+        {/* ✅ LEFT SIDE: CREATE EVENT FORM — FIXED / NOT SCROLLABLE */}
+        <div className="w-1/2 h-100%">
+          <div className="bg-white rounded-3xl border border-gray-200 p-5 shadow-md h-full overflow-hidden">
+            <h2 className="text-xl font-bold text-[#005f63] mb-4">Create New Event</h2>
+
+            <form onSubmit={handleCreateEvent} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Event Title *</label>
+                <input
+                  type="text"
+                  required
+                  value={newEvent.title}
+                  onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                  className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={newEvent.date}
+                    onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+                    className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
+                  <input
+                    type="time"
+                    required
+                    value={newEvent.time}
+                    onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
+                    className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
+                <input
+                  type="text"
+                  required
+                  value={newEvent.location}
+                  onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })}
+                  className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  value={newEvent.description}
+                  onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
+                  className="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Target Members</label>
+                <select
+                  value={newEvent.membershipId}
+                  onChange={(e) => setNewEvent({ ...newEvent, membershipId: e.target.value })}
+                  className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                >
+                  <option value="">📢 Open Event (All residents)</option>
+                  {memberships.map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      🎯 {m.name}
+                    </option>
+                  ))}
+                </select>
+                {/* ✅ DYNAMIC TEXT CHANGES BASED ON SELECTED OPTION */}
+                <p className="text-xs text-gray-500 mt-1">
+                  {newEvent.membershipId
+                    ? `* Only members of "${memberships.find((m) => m.id === newEvent.membershipId)?.name || "this group"}" will be included`
+                    : "* All registered residents will be included"}
+                </p>
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="w-full py-2.5 rounded-full bg-[#3c9b9e] text-white font-bold hover:bg-[#2a6b6b] transition"
+                >
+                  Post Event
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-        <Input
-          value={searchEv}
-          onChange={(e: any) => setSearchEv(e.target.value)}
-          placeholder="Search events…"
-          className="w-[240px]"
-        />
+
+        {/* ✅ RIGHT SIDE: EVENTS LIST — SCROLLABLE ONLY */}
+        <div className="w-1/2 h-full overflow-y-auto pr-2">
+          {filteredEvents.length === 0 ? (
+            <p className="text-gray-500 italic">No events match your search or filter.</p>
+          ) : (
+            <div className="space-y-8">
+              {Object.entries(groupedEvents).map(([dateLabel, eventsInGroup]) => (
+                <div key={dateLabel}>
+                  <h3 className="mb-4 border-b border-gray-200 pb-2 text-lg font-bold text-[#005f63]">{dateLabel}</h3>
+                  <div className="grid gap-5 md:grid-cols-1">
+                    {eventsInGroup.map((e) => {
+                      const eligibleMembers = getMembersForEvent(e);
+                      const attendanceList = getFullAttendanceList(e.id, eligibleMembers);
+                      const signedIn = attendanceList.filter((a: any) => a.timeIn).length;
+                      const signedOut = attendanceList.filter((a: any) => a.timeOut).length;
+
+                      return (
+                        <div
+                          key={e.id}
+                          className="relative rounded-2xl border-l-4 border-orange-400 bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
+                        >
+                          <div className="absolute top-4 right-4 flex items-center gap-2">
+                            {/* ✅ VIEW ICON — TEAL COLOR */}
+                            <button
+                              onClick={() => setViewEv(e)}
+                              className="rounded-full p-2 text-[#005f63] hover:bg-[#005f63]/10 transition-colors"
+                              title="View Details"
+                            >
+                              <Eye className="h-[18px] w-[18px]" />
+                            </button>
+
+                            {/* ✅ DELETE ICON — RED COLOR + CONFIRMATION */}
+                            <button
+                              onClick={() => setEventToDelete(e.id)}
+                              className="p-2 rounded-full hover:bg-red-100 transition"
+                              title="Delete"
+                            >
+                              <svg width="16" height="16" fill="none" stroke="#ef4444" strokeWidth={2} viewBox="0 0 24 24">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              </svg>
+                            </button>
+                          </div>
+
+                          <h2 className="pr-8 text-lg font-bold text-[#005f63]">{highlightText(e.title, eventSearch)}</h2>
+                          <p className="mt-1 text-sm text-gray-500">
+                            {highlightText(e.date, eventSearch)} · {highlightText(e.location, eventSearch)}
+                          </p>
+                          <p className="mt-3 text-[14px] text-gray-700">{highlightText(e.description, eventSearch)}</p>
+
+                          <div className="mt-3 pt-2 border-t border-gray-200 text-xs text-gray-500">
+                            <span className="inline-block w-2 h-2 rounded-full bg-[#4eb4b8] mr-1"></span> {signedIn} Signed In |{" "}
+                            <span className="inline-block w-2 h-2 rounded-full bg-red-400 mr-1"></span> {signedOut} Signed Out |{" "}
+                            <span className="font-medium">{e.membershipName || "Open Event"}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
-      {displayedEvents.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500">
-          No events found.
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {displayedEvents.map((ev: any) => {
-            const requiredMs = ev.membershipId ? memberships.find((m: any) => m.id === ev.membershipId) : null;
-            return (
-              <Card key={ev.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                <div className="h-2 bg-gradient-to-r from-teal-500 to-cyan-400" />
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between">
-                    <h3 className="font-bold text-lg text-gray-800">{highlightText(ev.title, searchEv)}</h3>
-                    <Badge variant={requiredMs ? "default" : "secondary"} className={requiredMs ? "bg-teal-100 text-teal-800" : "bg-gray-100 text-gray-700"}>
-                      {requiredMs ? requiredMs.name : "Open"}
-                    </Badge>
-                  </div>
-
-                  <div className="mt-3 space-y-1.5 text-sm text-gray-600">
-                    <p className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-gray-400" /> {ev.date} · {ev.time || "TBA"}
-                    </p>
-                    <p className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-gray-400" /> {ev.venue || "Barangay Hall"}
-                    </p>
-                  </div>
-
-                  <p className="mt-3 text-sm text-gray-600 line-clamp-2">{ev.description || "No description provided."}</p>
-
-                  <div className="mt-4 flex items-center justify-end gap-2">
-                    <Button size="sm" variant="ghost" onClick={() => setViewEv(ev)}>
-                      <Eye className="h-4 w-4 text-teal-700" />
-                    </Button>
-                    <Button size="sm" variant="ghost">
-                      <Pencil className="h-4 w-4 text-orange-500" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => onDeleteEvent(ev.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+      {/* ✅ DELETE CONFIRMATION MODAL */}
+      {eventToDelete !== null && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-red-500 flex justify-center">
+              <svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">This will be permanently deleted.</h3>
+            <p className="text-sm text-gray-600 mb-6">Are you sure you want to delete this event? This action cannot be undone.</p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={cancelDelete}
+                className="px-5 py-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-100 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
+      {/* ✅ VIEW EVENT DETAILS MODAL */}
       {viewEv && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-start justify-between">
-              <h2 className="text-xl font-bold text-[#005f63]">{viewEv.title}</h2>
-              <button onClick={() => setViewEv(null)} className="text-gray-400 hover:text-gray-600">✕</button>
-            </div>
-
-            <div className="mt-4 space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs font-semibold text-gray-500">Date & Time</p>
-                  <p className="font-medium">{viewEv.date} — {viewEv.time || 'TBA'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500">Venue</p>
-                  <p className="font-medium">{viewEv.venue || 'Barangay Hall'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500">Eligibility</p>
-                  <p className="font-medium">{viewEv.membershipId ? memberships.find((m: any) => m.id === viewEv.membershipId)?.name : 'Open to all residents'}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-gray-500">Attendance Count</p>
-                  <p className="font-medium">{attendanceRecords.filter((r: any) => r.eventTitle === viewEv.title).length} recorded</p>
-                </div>
-              </div>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-xs font-semibold text-gray-500">Description</p>
-                <p className="text-gray-700">{viewEv.description || 'No additional details.'}</p>
+                <h2 className="text-2xl font-black text-[#005f63]">{viewEv.title}</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  {viewEv.date} • {viewEv.location}
+                </p>
               </div>
+              <button onClick={() => setViewEv(null)} className="text-gray-500 hover:text-gray-700">
+                <XCircle size={20} />
+              </button>
             </div>
 
-            <div className="mt-6 flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setViewEv(null)}>Close</Button>
-              <Button className="bg-teal-600 hover:bg-teal-700 text-white">View Attendance List</Button>
+            <div className="space-y-4">
+              <div>
+                <h4 className="font-semibold text-gray-700 mb-1">Description</h4>
+                <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl">{viewEv.description || "—"}</p>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-teal-50 rounded-xl p-3">
+                  <p className="text-xs text-teal-600 font-medium">Membership Type</p>
+                  <p className="font-bold text-teal-800">{viewEv.membershipName || "Open Event"}</p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-3">
+                  <p className="text-xs text-green-600 font-medium">Signed In</p>
+                  <p className="font-bold text-green-800">
+                    {getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length}
+                  </p>
+                </div>
+                <div className="bg-orange-50 rounded-xl p-3">
+                  <p className="text-xs text-orange-600 font-medium">Signed Out</p>
+                  <p className="font-bold text-orange-800">
+                    {getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeOut).length}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowAttendance(viewEv)}
+                className="w-full bg-[#005f63] hover:bg-[#004a4d] text-white py-2.5 rounded-full font-medium transition"
+              >
+                View Attendance List
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ ATTENDANCE LIST MODAL — LARGE SIZE, NOT FULL SCREEN + SEARCH & FILTER + YELLOW HIGHLIGHT */}
+      {showAttendance && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white w-[95%] max-w-5xl h-[65vh] rounded-3xl shadow-2xl overflow-auto relative">
+            <div className="sticky top-0 bg-white z-10 flex items-center justify-between p-6 border-b border-gray-200">
+              <div>
+                <h2 className="text-2xl font-black text-[#005f63]">Attendance — {showAttendance.title}</h2>
+                <p className="text-sm text-gray-600 mt-1">{showAttendance.date}</p>
+              </div>
+              <button onClick={() => setShowAttendance(null)} className="text-gray-500 hover:text-gray-700">
+                <XCircle size={24} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {/* ✅ FIXED SEARCH BAR & FILTER ABOVE TABLE */}
+              <div className="sticky top-0 z-20 bg-white pb-4 mb-4 border-b border-gray-100 flex flex-wrap gap-4 items-center">
+                <div className="flex-1 min-w-[250px]">
+                  <SearchBar
+                    value={attendanceSearch}
+                    onChange={setAttendanceSearch}
+                    placeholder="Search resident name..."
+                  />
+                </div>
+                <div className="relative">
+                  <select
+                    value={attendanceStatusFilter}
+                    onChange={(e) => setAttendanceStatusFilter(e.target.value)}
+                    className="h-12 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
+                  >
+                    <option value="all">All Status</option>
+                    <option value="complete">Complete</option>
+                    <option value="incomplete">Incomplete</option>
+                    <option value="missed">Missed</option>
+                  </select>
+                  <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+                  <svg
+                    className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[#ddd5ca] overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#f8f6f2]">
+                    <tr>
+                      <th className="text-left p-4 font-medium text-[#005f63]">Resident Name</th>
+                      <th className="text-left p-4 font-medium text-[#005f63]">Time In</th>
+                      <th className="text-left p-4 font-medium text-[#005f63]">Time Out</th>
+                      <th className="text-left p-4 font-medium text-[#005f63]">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const eligibleMembers = getMembersForEvent(showAttendance);
+                      const fullList = getFullAttendanceList(showAttendance.id, eligibleMembers);
+                      const filteredList = getFilteredAttendance(fullList);
+
+                      return filteredList.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-6 text-center text-gray-500 italic">
+                            No matching records found.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredList.map((record: any, i: number) => {
+                          const status = getAttendanceStatus(record);
+                          return (
+                            <tr key={i} className="border-t">
+                              <td className="p-4">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
+                              <td className="p-4">
+                                {record.timeIn ? (
+                                  <span className="text-teal-700 flex items-center gap-1">
+                                    <LogIn size={12} /> {record.timeIn}
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td className="p-4">
+                                {record.timeOut ? (
+                                  <span className="text-orange-700 flex items-center gap-1">
+                                    <LogOut size={12} /> {record.timeOut}
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td className="p-4">
+                                <span
+                                  className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                                    status.label === "Complete"
+                                      ? "bg-teal-100 text-teal-800"
+                                      : status.label === "Incomplete"
+                                      ? "bg-amber-100 text-amber-800"
+                                      : "bg-red-100 text-red-800"
+                                  }`}
+                                >
+                                  {status.label.charAt(0).toUpperCase() + status.label.slice(1)}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -2429,77 +3062,234 @@ function EventsView({ allEvents, upcomingEvents, pastEvents, onDeleteEvent, high
   );
 }
 
+
+
 /* ---------------- Notifications ---------------- */
-function NotificationsView({ notifications }: any) {
-  const [items, setItems] = useState(notifications);
-  const [filter, setFilter] = useState("all");
+function NotificationsView({ notifications, memberships, highlightText }: any) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFilter, setDateFilter] = useState("all"); // all | upcoming | past
+  const [targetFilter, setTargetFilter] = useState("all-residents"); // default to All residents
+  const [selectedNotification, setSelectedNotification] = useState<any>(null); // for popup
 
-  const filtered = useMemo(() => {
-    if (filter === "unread") return items.filter((n: any) => !n.read);
-    if (filter === "alerts") return items.filter((n: any) => n.type === "alert");
-    if (filter === "info") return items.filter((n: any) => n.type === "info");
-    return items;
-  }, [items, filter]);
+  // ✅ Filter & search logic
+  const filteredNotifications = useMemo(() => {
+    let result = [...notifications];
 
-  const markAllRead = () => setItems((prev: any[]) => prev.map((n: any) => ({ ...n, read: true })));
-  const markRead = (id: string) => setItems((prev: any[]) => prev.map((n: any) => n.id === id ? { ...n, read: true } : n));
+    // 1. Search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (n) =>
+          n.title.toLowerCase().includes(q) ||
+          n.body.toLowerCase().includes(q)
+      );
+    }
+
+    // 2. Date filter: All / Upcoming / Past
+    const now = new Date();
+    if (dateFilter === "upcoming") {
+      result = result.filter((n) => new Date(n.sentAt) > now);
+    } else if (dateFilter === "past") {
+      result = result.filter((n) => new Date(n.sentAt) <= now);
+    }
+
+    // 3. Target membership filter
+    if (targetFilter !== "all-residents") {
+      result = result.filter((n) => n.targetMembershipId === targetFilter);
+    }
+
+    // Sort: newest first
+    result.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+
+    return result;
+  }, [notifications, searchQuery, dateFilter, targetFilter]);
+
+  // Format date to dd/mm/yyyy
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-[#005f63]">Notifications & Announcements</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={markAllRead}>Mark all as read</Button>
-          <Button className="bg-orange-500 text-white hover:bg-orange-600" size="sm">New Announcement</Button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      {/* ✅ FIXED HEADER — same style as member page */}
+      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de] shadow-b-sm">
+        <div className="w-full">
+          <h1 className="text-4xl font-black text-[#005f63]">Notifications & Announcements</h1>
+          <p className="mt-1 text-sm text-[#667777]">View and filter all system notifications and announcements.</p>
 
-      <div className="flex gap-2 border-b border-gray-200">
-        {[
-          { key: "all", label: `All (${items.length})` },
-          { key: "unread", label: `Unread (${items.filter((n: any) => !n.read).length})` },
-          { key: "alerts", label: "Alerts" },
-          { key: "info", label: "Info" },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${filter === f.key ? "border-[#005f63] text-[#005f63]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+          {/* ✅ SEARCH BAR + FILTERS — FULL VERTICAL ALIGNMENT (TOP ↔ BOTTOM) */}
+          <div className="mt-4 flex items-stretch gap-4 w-full">
+            {/* Search Bar — full height container */}
+            <div className="flex-1">
+              <SearchBar
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search notifications by title or message..."
+                className="h-full w-full rounded-full border border-[#005f63]/20"
+              />
+            </div>
 
-      {filtered.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500">
-          No notifications here.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((n: any) => (
-            <div
-              key={n.id}
-              onClick={() => markRead(n.id)}
-              className={`rounded-lg border p-4 transition-all cursor-pointer hover:shadow ${n.read ? "bg-white border-gray-200" : "bg-teal-50/50 border-teal-200"}`}
-            >
-              <div className="flex items-start gap-3">
-                <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${n.type === "alert" ? "bg-red-500" : "bg-teal-500"}`} />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h3 className={`font-semibold ${n.read ? "text-gray-800" : "text-[#005f63]"}`}>{n.title}</h3>
-                    <span className="text-xs text-gray-500">{n.date}</span>
-                  </div>
-                  <p className="mt-1 text-sm text-gray-600">{n.message}</p>
-                </div>
+            {/* Filters — SAME HEIGHT, PERFECT TOP-TO-BOTTOM ALIGNMENT */}
+            <div className="flex gap-3">
+              {/* Date filter */}
+              <div className="relative h-full">
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none whitespace-nowrap"
+                >
+                  <option value="all">All Notifications</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="past">Past</option>
+                </select>
+                <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+                <svg
+                  className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+
+              {/* ✅ Target Membership filter — shows "To:" by default, NOT in options; dropdown has All residents + memberships */}
+              <div className="relative h-full">
+                <select
+                  value={targetFilter}
+                  onChange={(e) => setTargetFilter(e.target.value)}
+                  className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none whitespace-nowrap"
+                >
+                  {/* Only shows "To:" when closed; NOT an option in the list */}
+                  <option value="all-residents" hidden>To:</option>
+                  <option value="all-residents">All residents</option>
+                  {memberships.map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <Users className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+                <svg
+                  className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
               </div>
             </div>
-          ))}
+          </div>
+
+          <p className="mt-2 text-xs text-gray-500">
+            {filteredNotifications.length} of {notifications.length} notification(s) match
+          </p>
+        </div>
+      </div>
+
+      {/* ✅ NOTIFICATIONS LIST — ORIGINAL GAP KEPT, strong pop-up hover effect, darker white background */}
+      <div className="px-1 space-y-2">
+        {filteredNotifications.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-[#005f63]/20 bg-white p-10 text-center text-gray-500">
+            <Bell size={40} className="mx-auto mb-3 text-[#005f63]/40" />
+            <p>No notifications match your current filters.</p>
+          </div>
+        ) : (
+          filteredNotifications.map((n: any) => {
+            // Get target name: All residents or specific membership
+            const targetName = n.targetMembershipId
+              ? memberships.find((m: any) => m.id === n.targetMembershipId)?.name || "Unknown Group"
+              : "All residents";
+
+            return (
+              <div
+                key={n.id}
+                onClick={() => setSelectedNotification({ ...n, targetName })}
+                className="relative rounded-3xl bg-white px-6 py-4 border-l-4 border-l-[#ecd862] border-y border-r border-gray-200 cursor-pointer transition-all duration-300 ease-out hover:shadow-[0_20px_35px_-8px_rgba(0,0,0,0.25),0_10px_15px_-6px_rgba(0,0,0,0.10)] hover:-translate-y-1 hover:bg-gray-100"
+              >
+                <div className="flex items-center justify-between gap-4 w-full min-h-[44px]">
+                  {/* ✅ LEFT SECTION: To → Title → Description — aligned in one line, proper text size */}
+                  <div className="flex-1 min-w-0 flex items-center gap-2.5 text-base">
+                    <span className="font-medium text-gray-800 whitespace-nowrap">To:</span>
+                    <span className="text-gray-700 truncate">{highlightText(targetName, searchQuery)}</span>
+                    <span className="text-gray-400">•</span>
+                    <span className="font-semibold text-[#005f63] truncate">{highlightText(n.title, searchQuery)}</span>
+                    <span className="text-gray-600 truncate">— {highlightText(n.body, searchQuery)}</span>
+                  </div>
+
+                  {/* ✅ RIGHT SECTION: Date — dd/mm/yyyy format */}
+                  <div className="shrink-0 text-sm text-gray-500 whitespace-nowrap">
+                    {formatDate(n.sentAt)}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* ✅ POPUP MODAL — shows full details when card is clicked */}
+      {selectedNotification && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl border-l-6 border-l-[#ecd862]">
+            {/* Header */}
+            <div className="sticky top-0 bg-white px-8 py-5 border-b border-gray-100 flex justify-between items-center rounded-t-3xl">
+              <h2 className="text-xl font-bold text-[#005f63]">Notification Details</h2>
+              <button
+                onClick={() => setSelectedNotification(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="px-8 py-6 space-y-5">
+              <div>
+                <label className="text-sm font-medium text-gray-500 block mb-1">To</label>
+                <p className="text-base text-gray-800 font-medium">{selectedNotification.targetName}</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-500 block mb-1">Title</label>
+                <p className="text-lg font-semibold text-[#005f63]">{selectedNotification.title}</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-500 block mb-1">Message</label>
+                <p className="text-base text-gray-700 leading-relaxed whitespace-pre-wrap">
+                  {selectedNotification.body}
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-500 block mb-1">Date Sent</label>
+                <p className="text-base text-gray-600">{formatDate(selectedNotification.sentAt)}</p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-8 py-4 border-t border-gray-100 text-right rounded-b-3xl">
+              <button
+                onClick={() => setSelectedNotification(null)}
+                className="px-5 py-2 bg-[#005f63] text-white rounded-full hover:bg-[#004a4d] transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
+
 
 /* ---------------- Settings ---------------- */
 function SettingsView({ member }: any) {
