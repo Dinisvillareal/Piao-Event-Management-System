@@ -503,7 +503,7 @@ export default function StaffDashboard() {
             highlightText={highlightText}
           />
         )}
-        {active === "notify" && <NotificationsView notifications={notifications} highlightText={highlightText} />}
+        {active === "notify" && <NotificationsView notifications={notifications} memberships={memberships} highlightText={highlightText} />}
         {active === "settings" && <SettingsView member={staff} />}
       </AppShell>
 
@@ -1129,6 +1129,8 @@ function FakeQR({ seed, large }: { seed: string; large?: boolean }) {
   );
 }
 
+
+
 /* ---------------- Residents ---------------- */
 // Available membership options
 const availableMemberships = [
@@ -1153,7 +1155,7 @@ function ResidentsView() {
   const [deleteRecord, setDeleteRecord] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  // ✅ DATA — passwordChangedByUser = true → staff cannot see/edit password OR change role
+  // ✅ DATA — added photo field
   const [residentsData, setResidentsData] = useState([
     {
       id: "R-001",
@@ -1167,6 +1169,7 @@ function ResidentsView() {
       username: "R-001",
       password: "temp1234",
       passwordChangedByUser: false,
+      photo: "",
     },
     {
       id: "S-001",
@@ -1179,7 +1182,8 @@ function ResidentsView() {
       hasAccount: true,
       username: "S-001",
       password: "temp5678",
-      passwordChangedByUser: true, // ✅ ROLE WILL BE LOCKED
+      passwordChangedByUser: true,
+      photo: "",
     },
     {
       id: "R-002",
@@ -1193,6 +1197,7 @@ function ResidentsView() {
       username: "",
       password: "",
       passwordChangedByUser: false,
+      photo: "",
     },
   ]);
 
@@ -1212,7 +1217,7 @@ function ResidentsView() {
     return `${digitsOnly.slice(0,4)}-${digitsOnly.slice(4,7)}-${digitsOnly.slice(7)}`;
   };
 
-  // ✅ NEW RESIDENT FORM — NO CREATE ACCOUNT SECTION
+  // ✅ NEW RESIDENT FORM — WITH PHOTO UPLOAD
   const [newResident, setNewResident] = useState({
     firstName: "",
     middleName: "",
@@ -1220,7 +1225,41 @@ function ResidentsView() {
     contactNumber: "",
     hasMemberships: false,
     selectedMemberships: [] as string[],
+    photo: "",
   });
+
+  // ✅ Handle photo file read — ONLY 1 IMAGE ALLOWED
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>, isEdit = false) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Please upload an image file only.");
+      e.target.value = "";
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const photoUrl = event.target?.result as string;
+      if (isEdit) {
+        setEditingResident(prev => ({ ...prev, photo: photoUrl }));
+      } else {
+        setNewResident(prev => ({ ...prev, photo: photoUrl }));
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  // ✅ Remove photo function
+  const handleRemovePhoto = (isEdit = false) => {
+    if (isEdit) {
+      setEditingResident(prev => ({ ...prev, photo: "" }));
+    } else {
+      setNewResident(prev => ({ ...prev, photo: "" }));
+    }
+  };
 
   // ✅ ADD FORM VALIDATION
   const validateAddForm = () => {
@@ -1245,12 +1284,10 @@ function ResidentsView() {
     e.preventDefault();
     if (!validateAddForm()) return;
 
-    // Generate new ID
     const newId = residentsData.length > 0
       ? `R-${String(Number(residentsData[residentsData.length - 1].id.split("-")[1]) + 1).padStart(3, "0")}`
       : "R-001";
 
-    // Format memberships
     const membershipsString = newResident.hasMemberships
       ? newResident.selectedMemberships.join(", ")
       : "";
@@ -1265,14 +1302,14 @@ function ResidentsView() {
         contactNumber: newResident.contactNumber,
         memberships: membershipsString,
         role: "Resident",
-        hasAccount: false, // new residents have NO account by default
+        hasAccount: false,
         username: "",
         password: "",
         passwordChangedByUser: false,
+        photo: newResident.photo,
       }
     ]);
 
-    // Reset form
     setNewResident({
       firstName: "",
       middleName: "",
@@ -1280,12 +1317,13 @@ function ResidentsView() {
       contactNumber: "",
       hasMemberships: false,
       selectedMemberships: [],
+      photo: "",
     });
     setFormErrors({});
     setShowAddForm(false);
   };
 
-  // ✅ EDIT FORM STATE
+  // ✅ EDIT FORM STATE — WITH PHOTO
   const [editingResident, setEditingResident] = useState({
     firstName: "",
     middleName: "",
@@ -1298,6 +1336,7 @@ function ResidentsView() {
     password: "",
     role: "Resident",
     passwordChangedByUser: false,
+    photo: "",
   });
 
   // ✅ EDIT FORM VALIDATION
@@ -1314,10 +1353,6 @@ function ResidentsView() {
       errors.contactNumber = "Must be exactly 11 digits";
     }
 
-    // If creating account → password required
-    if (!editingResident.hasAccount && editingResident.password.trim()) {
-      // creating account now
-    }
     if (editingResident.hasAccount && !editingResident.passwordChangedByUser && !editingResident.password.trim()) {
       errors.password = "Password is required";
     }
@@ -1344,15 +1379,14 @@ function ResidentsView() {
             lastName: editingResident.lastName,
             contactNumber: editingResident.contactNumber,
             memberships: updatedMemberships,
-            // ✅ IF USER CHANGED PASSWORD → KEEP ORIGINAL ROLE, DO NOT UPDATE
             role: resident.passwordChangedByUser ? resident.role : editingResident.role,
-            // ✅ If creating account now → set username = ID
             hasAccount: editingResident.hasAccount,
             username: editingResident.hasAccount ? resident.username || resident.id : "",
             password: resident.passwordChangedByUser
               ? resident.password
               : editingResident.password,
             passwordChangedByUser: resident.passwordChangedByUser,
+            photo: editingResident.photo,
           }
         : resident
     ));
@@ -1453,7 +1487,6 @@ function ResidentsView() {
   const [initialAddData, setInitialAddData] = useState<any>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState<"edit" | "add" | null>(null);
 
-  // ✅ Detect changes
   const hasEditChanges = useMemo(() => {
     if (!initialEditData) return false;
     return JSON.stringify(initialEditData) !== JSON.stringify(editingResident);
@@ -1464,7 +1497,6 @@ function ResidentsView() {
     return JSON.stringify(initialAddData) !== JSON.stringify(newResident);
   }, [initialAddData, newResident]);
 
-  // ✅ Updated: Load Edit Data + save initial state
   useEffect(() => {
     if (!editRecord) {
       setInitialEditData(null);
@@ -1487,12 +1519,12 @@ function ResidentsView() {
       password: resident.password,
       role: resident.role,
       passwordChangedByUser: resident.passwordChangedByUser,
+      photo: resident.photo,
     };
     setEditingResident(initialState);
     setInitialEditData(JSON.parse(JSON.stringify(initialState)));
   }, [editRecord, residentsData]);
 
-  // ✅ Open Add Form & save initial state
   const handleOpenAddForm = () => {
     const emptyState = {
       firstName: "",
@@ -1501,13 +1533,13 @@ function ResidentsView() {
       contactNumber: "",
       hasMemberships: false,
       selectedMemberships: [] as string[],
+      photo: "",
     };
     setNewResident(emptyState);
     setInitialAddData(JSON.parse(JSON.stringify(emptyState)));
     setShowAddForm(true);
   };
 
-  // ✅ Cancel handlers
   const handleCancelEdit = () => {
     if (hasEditChanges) {
       setShowCancelConfirm("edit");
@@ -1550,7 +1582,6 @@ function ResidentsView() {
               />
             </div>
 
-            {/* ✅ FILTER DROPDOWN */}
             <div className="relative">
               <select
                 value={residentFilter}
@@ -1576,7 +1607,7 @@ function ResidentsView() {
         </div>
       </div>
 
-      {/* ✅ TABLE SECTION - BUTTON AT TOP RIGHT */}
+      {/* ✅ TABLE SECTION */}
       <div className="pl-1">
         <div className="flex justify-end mb-3">
           <button
@@ -1587,12 +1618,9 @@ function ResidentsView() {
           </button>
         </div>
 
-        {/* ✅ UPDATED: Container with gradient border + rounded corners like your image */}
         <div className="relative rounded-[20px] bg-white shadow-lg overflow-hidden">
-          {/* Gradient top border — your exact colors */}
           <div className="h-1 w-full bg-gradient-to-r from-[#3d9085] via-[#FFC107] to-[#00897B] absolute top-0 left-0 right-0"></div>
 
-          {/* Inner content with padding */}
           <div className="p-5 pt-6">
             <table className="w-full text-sm">
               <thead>
@@ -1624,8 +1652,7 @@ function ResidentsView() {
                     return (
                       <tr
                         key={r.id}
-                        className="border-b border-[#eee8e0] transition-all duration-200
-                                  hover:bg-teal-50/100 hover:shadow-md hover:rounded-lg"
+                        className="border-b border-[#eee8e0] transition-all duration-200 hover:bg-teal-50/100 hover:shadow-md hover:rounded-lg"
                       >
                         <td className="py-3 px-2 font-mono text-gray-700">{highlightText(r.id, residentSearch)}</td>
                         <td className="py-3 px-2 font-medium text-gray-800">{highlightText(r.lastName, residentSearch)}</td>
@@ -1633,7 +1660,6 @@ function ResidentsView() {
                         <td className="py-3 px-2 text-gray-700">{highlightText(r.middleName, residentSearch)}</td>
                         <td className="py-3 px-2 text-gray-600">{highlightText(r.contactNumber, residentSearch)}</td>
 
-                        {/* ✅ MEMBERSHIPS — SHOW ONLY 2 + "+X MORE" */}
                         <td className="py-3 px-2">
                           <div className="flex flex-wrap gap-1.5 items-center">
                             {visibleMemberships.map((mName, idx) => (
@@ -1653,26 +1679,19 @@ function ResidentsView() {
                           </div>
                         </td>
 
-                        {/* ✅ ROLE — BADGE STYLE */}
                         <td className="py-3 px-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            r.role === "Staff" ? "bg-orange-100 text-orange-800" : "bg-teal-50 text-teal-800"
-                          }`}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${r.role === "Staff" ? "bg-orange-100 text-orange-800" : "bg-teal-50 text-teal-800"}`}>
                             {highlightText(r.role, residentSearch)}
-                            {r.passwordChangedByUser && <span className="ml-1 text-yellow-600 text-[10px] font-bold"></span>}
+                            {r.passwordChangedByUser && <span className="ml-1 text-yellow-600 text-[10px] font-bold">🔒</span>}
                           </span>
                         </td>
 
-                        {/* ✅ HAS ACCOUNT — BADGE STYLE */}
                         <td className="py-3 px-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            r.hasAccount ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                          }`}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${r.hasAccount ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
                             {r.hasAccount ? "✅ Yes" : "❌ No"}
                           </span>
                         </td>
 
-                        {/* ✅ ACTIONS */}
                         <td className="py-3 px-2 text-right">
                           <div className="inline-flex gap-1">
                             <button onClick={() => setViewRecord(r.id)} className="p-2 rounded-full hover:bg-teal-50 transition" title="View">
@@ -1703,7 +1722,7 @@ function ResidentsView() {
           </div>
         </div>
 
-        {/* ✅ VIEW RECORD MODAL — POPUP */}
+        {/* ✅ VIEW RECORD MODAL */}
         {viewRecord && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
             <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1715,24 +1734,36 @@ function ResidentsView() {
                 const r = residentsData.find(x => x.id === viewRecord)!;
                 const allMemberships = r.memberships ? r.memberships.split(",").map(m => m.trim()).filter(Boolean) : [];
                 return (
-                  <div className="grid gap-4 text-sm md:grid-cols-2">
-                    <div>
-                      <p className="mb-2"><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
-                      <p className="mb-2"><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
-                      <p className="mb-2"><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
-                      <p className="mb-2"><strong className="text-[#005f63]">Role:</strong> {r.role} {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}</p>
-                      <p className="mb-2"><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
-                      {r.hasAccount && (
-                        <>
-                          <p className="mb-2"><strong className="text-[#005f63]">Username:</strong> {r.username}</p>
-                          <p className="mb-2">
-                            <strong className="text-[#005f63]">Password:</strong>{" "}
-                            {r.passwordChangedByUser ? "•••••••• (changed by user — hidden)" : r.password}
-                          </p>
-                        </>
-                      )}
+                  <div className="text-sm">
+                    <div className="flex gap-6">
+                      <div className="flex-1 space-y-2">
+                        <p><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
+                        <p><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
+                        <p><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
+                        <p><strong className="text-[#005f63]">Role:</strong> {r.role} {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}</p>
+                        <p><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
+                        {r.hasAccount && (
+                          <>
+                            <p><strong className="text-[#005f63]">Username:</strong> {r.username}</p>
+                            <p><strong className="text-[#005f63]">Password:</strong> {r.passwordChangedByUser ? "•••••••• (changed by user — hidden)" : r.password}</p>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="w-[160px] flex items-start">
+                        <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50 relative" style={{ minHeight: "180px" }}>
+                          {r.photo ? (
+                            <img src={r.photo} alt="ID Photo" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-2">
+                              No photo uploaded
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div className="md:col-span-2">
+
+                    <div className="mt-6">
                       <strong className="text-[#005f63] block mb-2">Memberships:</strong>
                       <div className="flex flex-wrap gap-1.5">
                         {allMemberships.length > 0 ? allMemberships.map((m, i) => (
@@ -1749,7 +1780,7 @@ function ResidentsView() {
           </div>
         )}
 
-        {/* ✅ EDIT MODAL — "Create Account" if no account yet — AUTO-FILL USERNAME WITH ACTUAL ID — ROLE LOCKED IF USER CHANGED PASSWORD */}
+        {/* ✅ EDIT MODAL — FULLY FIXED TAGS */}
         {editRecord && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
             <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1766,13 +1797,8 @@ function ResidentsView() {
                       type="text"
                       required
                       value={editingResident.firstName}
-                      onChange={(e) => setEditingResident(prev => ({
-                        ...prev,
-                        firstName: capitalizeName(e.target.value)
-                      }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors.firstName ? "border-red-500" : "border-gray-200"
-                      }`}
+                      onChange={(e) => setEditingResident(prev => ({ ...prev, firstName: capitalizeName(e.target.value) }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.firstName ? "border-red-500" : "border-gray-200"}`}
                     />
                     {formErrors.firstName && <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>}
                   </div>
@@ -1781,10 +1807,7 @@ function ResidentsView() {
                     <input
                       type="text"
                       value={editingResident.middleName}
-                      onChange={(e) => setEditingResident(prev => ({
-                        ...prev,
-                        middleName: capitalizeName(e.target.value)
-                      }))}
+                      onChange={(e) => setEditingResident(prev => ({ ...prev, middleName: capitalizeName(e.target.value) }))}
                       className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
                     />
                   </div>
@@ -1794,13 +1817,8 @@ function ResidentsView() {
                       type="text"
                       required
                       value={editingResident.lastName}
-                      onChange={(e) => setEditingResident(prev => ({
-                        ...prev,
-                        lastName: capitalizeName(e.target.value)
-                      }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors.lastName ? "border-red-500" : "border-gray-200"
-                      }`}
+                      onChange={(e) => setEditingResident(prev => ({ ...prev, lastName: capitalizeName(e.target.value) }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.lastName ? "border-red-500" : "border-gray-200"}`}
                     />
                     {formErrors.lastName && <p className="text-red-500 text-xs mt-1">{formErrors.lastName}</p>}
                   </div>
@@ -1812,16 +1830,34 @@ function ResidentsView() {
                     type="text"
                     required
                     value={editingResident.contactNumber}
-                    onChange={(e) => setEditingResident(prev => ({
-                      ...prev,
-                      contactNumber: formatContactNumber(e.target.value)
-                    }))}
-                    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                      formErrors.contactNumber ? "border-red-500" : "border-gray-200"
-                    }`}
+                    onChange={(e) => setEditingResident(prev => ({ ...prev, contactNumber: formatContactNumber(e.target.value) }))}
+                    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
                     placeholder="09XX-XXX-XXXX"
                   />
                   {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">ID Photo</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handlePhotoChange(e, true)}
+                    className="w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63] hover:file:bg-[#005f63]/20"
+                  />
+                  {editingResident.photo && (
+                    <div className="relative inline-block mt-2">
+                      <img src={editingResident.photo} alt="Preview" className="h-20 rounded border" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePhoto(true)}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow"
+                        title="Remove photo"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="border-t border-b py-3">
@@ -1852,7 +1888,6 @@ function ResidentsView() {
                   )}
                 </div>
 
-                {/* ✅ ACCOUNT SECTION: "Create Account" if no account yet — AUTO-FILL USERNAME WITH ACTUAL ID — ROLE LOCKED */}
                 <div className="border-b pb-3">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input
@@ -1869,7 +1904,6 @@ function ResidentsView() {
 
                   {editingResident.hasAccount && (
                     <div className="mt-3 pl-6 space-y-3">
-                      {/* ✅ Username — AUTO-FILLED WITH ACTUAL ID, fixed, cannot edit */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
                         <input
@@ -1881,7 +1915,6 @@ function ResidentsView() {
                         <p className="text-xs text-gray-500 mt-1">* Username is automatically set to ID and cannot be changed</p>
                       </div>
 
-                      {/* ✅ Password — editable only if NOT changed by user */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
                         <input
@@ -1889,11 +1922,7 @@ function ResidentsView() {
                           value={editingResident.passwordChangedByUser ? "••••••••" : editingResident.password}
                           onChange={(e) => !editingResident.passwordChangedByUser && setEditingResident(prev => ({ ...prev, password: e.target.value }))}
                           readOnly={editingResident.passwordChangedByUser}
-                          className={`w-full rounded-full border px-4 py-2.5 ${
-                            editingResident.passwordChangedByUser
-                              ? "bg-gray-100 text-gray-500 border-gray-200"
-                              : "border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
-                          }`}
+                          className={`w-full rounded-full border px-4 py-2.5 ${editingResident.passwordChangedByUser ? "bg-gray-100 text-gray-500 border-gray-200" : "border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"}`}
                           placeholder={!editingResident.passwordChangedByUser ? "Enter temporary password" : ""}
                         />
                         {editingResident.passwordChangedByUser ? (
@@ -1903,7 +1932,6 @@ function ResidentsView() {
                         )}
                       </div>
 
-                      {/* ✅ ROLE — LOCKED / DISABLED IF USER CHANGED PASSWORD */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                         <select
@@ -1911,11 +1939,7 @@ function ResidentsView() {
                           value={editingResident.role}
                           onChange={(e) => setEditingResident(prev => ({ ...prev, role: e.target.value }))}
                           disabled={editingResident.passwordChangedByUser}
-                          className={`w-full rounded-full border px-4 py-2.5 focus:outline-none ${
-                            editingResident.passwordChangedByUser
-                              ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed"
-                              : "border-gray-200 focus:ring-2 focus:ring-[#005f63]/30"
-                          }`}
+                          className={`w-full rounded-full border px-4 py-2.5 focus:outline-none ${editingResident.passwordChangedByUser ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed" : "border-gray-200 focus:ring-2 focus:ring-[#005f63]/30"}`}
                         >
                           <option value="Resident">Resident</option>
                           <option value="Staff">Staff</option>
@@ -1939,11 +1963,7 @@ function ResidentsView() {
                   <button
                     type="submit"
                     disabled={!hasEditChanges}
-                    className={`px-5 py-2.5 rounded-full transition ${
-                      hasEditChanges
-                        ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
-                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    }`}
+                    className={`px-5 py-2.5 rounded-full transition ${hasEditChanges ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
                   >
                     Save Changes
                   </button>
@@ -1987,215 +2007,234 @@ function ResidentsView() {
           </div>
         )}
 
-        {/* ✅ ADD NEW RESIDENT FORM — NO CREATE ACCOUNT SECTION */}
-        {showAddForm && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-black text-[#005f63]">Add New Resident / Staff</h2>
-                <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
-              </div>
+        {/* ✅ ADD NEW RESIDENT FORM — FULLY FIXED TAGS */}
+{showAddForm && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-black text-[#005f63]">Add New Resident / Staff</h2>
+        <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700">
+          <XCircle size={20} />
+        </button>
+      </div>
 
-              <form onSubmit={handleAddResident} className="space-y-4">
-                {/* ✅ NAME FIELDS WITH AUTO-CAPITALIZATION */}
-                <div className="grid md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={newResident.firstName}
-                      onChange={(e) => setNewResident(prev => ({
-                        ...prev,
-                        firstName: capitalizeName(e.target.value)
-                      }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors.firstName ? "border-red-500" : "border-gray-200"
-                      }`}
-                    />
-                    {formErrors.firstName && <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
-                    <input
-                      type="text"
-                      value={newResident.middleName}
-                      onChange={(e) => setNewResident(prev => ({
-                        ...prev,
-                        middleName: capitalizeName(e.target.value)
-                      }))}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={newResident.lastName}
-                      onChange={(e) => setNewResident(prev => ({
-                        ...prev,
-                        lastName: capitalizeName(e.target.value)
-                      }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors.lastName ? "border-red-500" : "border-gray-200"
-                      }`}
-                    />
-                    {formErrors.lastName && <p className="text-red-500 text-xs mt-1">{formErrors.lastName}</p>}
-                  </div>
-                </div>
-
-                {/* ✅ CONTACT NUMBER - 11 DIGITS ONLY, AUTO-FORMAT */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newResident.contactNumber}
-                    onChange={(e) => setNewResident(prev => ({
-                      ...prev,
-                      contactNumber: formatContactNumber(e.target.value)
-                    }))}
-                    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                      formErrors.contactNumber ? "border-red-500" : "border-gray-200"
-                    }`}
-                    placeholder="09XX-XXX-XXXX"
-                  />
-                  {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
-                </div>
-
-                {/* ✅ HAS MEMBERSHIPS ONLY — NO ACCOUNT OPTION */}
-                <div className="border-t border-b py-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={newResident.hasMemberships}
-                      onChange={(e) => setNewResident(prev => ({...prev, hasMemberships: e.target.checked}))}
-                      className="w-4 h-4 text-[#005f63]"
-                    />
-                    <span className="font-medium text-gray-700">Has Memberships?</span>
-                  </label>
-
-                  {newResident.hasMemberships && (
-                    <div className="mt-3 pl-6 grid grid-cols-2 gap-2">
-                      {availableMemberships.map((mem, idx) => (
-                        <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input
-                            type="checkbox"
-                            value={mem}
-                            checked={newResident.selectedMemberships.includes(mem)}
-                            onChange={handleMembershipChange}
-                            className="w-4 h-4 text-[#005f63]"
-                          />
-                          <span>{mem}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={handleCancelAdd}
-                    className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!hasAddChanges}
-                    className={`px-5 py-2.5 rounded-full transition ${
-                      hasAddChanges
-                        ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
-                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                    }`}
-                  >
-                    Save Record
-                  </button>
-                </div>
-              </form>
-            </div>
+      <form onSubmit={handleAddResident} className="space-y-4">
+        <div className="grid md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">First Name *</label>
+            <input
+              type="text"
+              required
+              value={newResident.firstName}
+              onChange={(e) => setNewResident(prev => ({ ...prev, firstName: capitalizeName(e.target.value) }))}
+              className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                formErrors.firstName ? "border-red-500" : "border-gray-200"
+              }`}
+            />
+            {formErrors.firstName && <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>}
           </div>
-        )}
-
-                {/* ✅ UNSAVED CHANGES CONFIRMATION */}
-        {showCancelConfirm && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4">
-            <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl">
-              <h3 className="text-lg font-bold text-gray-800 mb-2">Discard changes?</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                You have unsaved changes. If you leave now, your changes will be lost.
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setShowCancelConfirm(null)}
-                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-                >
-                  Keep Editing
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCancelConfirm(null);
-                    if (showCancelConfirm === "edit") {
-                      setEditRecord(null);
-                      setFormErrors({});
-                    } else {
-                      setShowAddForm(false);
-                      setFormErrors({});
-                    }
-                  }}
-                  className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
-                >
-                  Discard
-                </button>
-              </div>
-            </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Middle Name</label>
+            <input
+              type="text"
+              value={newResident.middleName}
+              onChange={(e) => setNewResident(prev => ({ ...prev, middleName: capitalizeName(e.target.value) }))}
+              className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+            />
           </div>
-        )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Last Name *</label>
+            <input
+              type="text"
+              required
+              value={newResident.lastName}
+              onChange={(e) => setNewResident(prev => ({ ...prev, lastName: capitalizeName(e.target.value) }))}
+              className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                formErrors.lastName ? "border-red-500" : "border-gray-200"
+              }`}
+            />
+            {formErrors.lastName && <p className="text-red-500 text-xs mt-1">{formErrors.lastName}</p>}
+          </div>
+        </div>
 
-        {/* ✅ PAGINATION */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 mt-8">
-            <button
-              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              disabled={currentPage === 1}
-              className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
-            >
-              Previous
-            </button>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+          <input
+            type="text"
+            required
+            value={newResident.contactNumber}
+            onChange={(e) => setNewResident(prev => ({ ...prev, contactNumber: formatContactNumber(e.target.value) }))}
+            className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+              formErrors.contactNumber ? "border-red-500" : "border-gray-200"
+            }`}
+            placeholder="09XX-XXX-XXXX"
+          />
+          {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+        </div>
 
-            {Array.from({ length: totalPages }, (_, i) => (
+        {/* ✅ ADD NEW RESIDENT FORM — WITH PHOTO UPLOAD + REMOVE BUTTON */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">ID Photo</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handlePhotoChange}
+            className="w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63] hover:file:bg-[#005f63]/20"
+          />
+          {newResident.photo && (
+            <div className="relative inline-block mt-3">
+              <img
+                src={newResident.photo}
+                alt="ID Preview"
+                className="h-28 w-auto rounded-lg border border-gray-200 object-cover shadow-sm"
+              />
+              {/* ✅ REMOVE PHOTO BUTTON */}
               <button
-                key={i + 1}
-                onClick={() => setCurrentPage(i + 1)}
-                className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${
-                  currentPage === i + 1
-                    ? "bg-[#005f63] text-white shadow-sm"
-                    : "bg-white border text-[#005f63] hover:bg-orange-50"
-                }`}
+                type="button"
+                onClick={() => handleRemovePhoto(false)}
+                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold shadow-md hover:bg-red-600 transition"
+                title="Remove photo"
               >
-                {i + 1}
+                ×
               </button>
-            ))}
+            </div>
+          )}
+          <p className="text-xs text-gray-500 mt-1">* Only 1 image file allowed (JPG, PNG, GIF)</p>
+        </div>
 
-            <button
-              onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              disabled={currentPage === totalPages}
-              className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
-            >
-              Next
-            </button>
+        <div className="border-t border-b py-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={newResident.hasMemberships}
+              onChange={(e) => setNewResident(prev => ({...prev, hasMemberships: e.target.checked}))}
+              className="w-4 h-4 text-[#005f63]"
+            />
+            <span className="font-medium text-gray-700">Has Memberships?</span>
+          </label>
+          {newResident.hasMemberships && (
+            <div className="mt-3 pl-6 grid grid-cols-2 gap-2">
+              {availableMemberships.map((mem, idx) => (
+                <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    value={mem}
+                    checked={newResident.selectedMemberships.includes(mem)}
+                    onChange={handleMembershipChange}
+                    className="w-4 h-4 text-[#005f63]"
+                  />
+                  <span>{mem}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
 
-            <span className="text-xs text-gray-600 ml-1.5">
-              Page {currentPage} of {totalPages}
-            </span>
-          </div>
-        )}
+        <div className="flex justify-end gap-3 pt-2">
+          <button
+            type="button"
+            onClick={handleCancelAdd}
+            className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={!hasAddChanges}
+            className={`px-5 py-2.5 rounded-full transition ${
+              hasAddChanges
+                ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
+                : "bg-gray-200 text-gray-400 cursor-not-allowed"
+            }`}
+          >
+            Save Record
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+)}
+
+{/* ✅ UNSAVED CHANGES CONFIRMATION MODAL */}
+{showCancelConfirm && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4">
+    <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl">
+      <h3 className="text-lg font-bold text-gray-800 mb-2">Discard changes?</h3>
+      <p className="text-sm text-gray-600 mb-6">
+        You have unsaved changes. If you leave now, your changes will be lost.
+      </p>
+      <div className="flex justify-end gap-3">
+        <button
+          onClick={() => setShowCancelConfirm(null)}
+          className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+        >
+          Keep Editing
+        </button>
+        <button
+          onClick={() => {
+            setShowCancelConfirm(null);
+            if (showCancelConfirm === "edit") {
+              setEditRecord(null);
+              setFormErrors({});
+            } else {
+              setShowAddForm(false);
+              setFormErrors({});
+            }
+          }}
+          className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+        >
+          Discard
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ✅ PAGINATION CONTROLS */}
+{totalPages > 1 && (
+  <div className="flex items-center justify-center gap-2 mt-8">
+    <button
+      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+      disabled={currentPage === 1}
+      className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
+    >
+      Previous
+    </button>
+
+    {Array.from({ length: totalPages }, (_, i) => (
+      <button
+        key={i + 1}
+        onClick={() => setCurrentPage(i + 1)}
+        className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${
+          currentPage === i + 1
+            ? "bg-[#005f63] text-white shadow-sm"
+            : "bg-white border text-[#005f63] hover:bg-orange-50"
+        }`}
+      >
+        {i + 1}
+      </button>
+    ))}
+
+    <button
+      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+      disabled={currentPage === totalPages}
+      className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
+    >
+      Next
+    </button>
+
+    <span className="text-xs text-gray-600 ml-1.5">
+      Page {currentPage} of {totalPages}
+    </span>
+  </div>
+)}
       </div>
     </div>
   );
 }
+
+
+
 
 /* ---------------- Memberships / QR Codes ---------------- */
 function QRCodesView({ memberships, highlightText }: any) {
@@ -2774,7 +2813,7 @@ export function EventsView({
                       return (
                         <div
                           key={e.id}
-                          className="relative rounded-2xl border-l-4 border-orange-400 bg-[#f8f3ee] p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
+                          className="relative rounded-2xl border-l-4 border-orange-400 bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
                         >
                           <div className="absolute top-4 right-4 flex items-center gap-2">
                             {/* ✅ VIEW ICON — TEAL COLOR */}
@@ -3026,76 +3065,231 @@ export function EventsView({
 
 
 /* ---------------- Notifications ---------------- */
-function NotificationsView({ notifications }: any) {
-  const [items, setItems] = useState(notifications);
-  const [filter, setFilter] = useState("all");
+function NotificationsView({ notifications, memberships, highlightText }: any) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFilter, setDateFilter] = useState("all"); // all | upcoming | past
+  const [targetFilter, setTargetFilter] = useState("all-residents"); // default to All residents
+  const [selectedNotification, setSelectedNotification] = useState<any>(null); // for popup
 
-  const filtered = useMemo(() => {
-    if (filter === "unread") return items.filter((n: any) => !n.read);
-    if (filter === "alerts") return items.filter((n: any) => n.type === "alert");
-    if (filter === "info") return items.filter((n: any) => n.type === "info");
-    return items;
-  }, [items, filter]);
+  // ✅ Filter & search logic
+  const filteredNotifications = useMemo(() => {
+    let result = [...notifications];
 
-  const markAllRead = () => setItems((prev: any[]) => prev.map((n: any) => ({ ...n, read: true })));
-  const markRead = (id: string) => setItems((prev: any[]) => prev.map((n: any) => n.id === id ? { ...n, read: true } : n));
+    // 1. Search filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (n) =>
+          n.title.toLowerCase().includes(q) ||
+          n.body.toLowerCase().includes(q)
+      );
+    }
+
+    // 2. Date filter: All / Upcoming / Past
+    const now = new Date();
+    if (dateFilter === "upcoming") {
+      result = result.filter((n) => new Date(n.sentAt) > now);
+    } else if (dateFilter === "past") {
+      result = result.filter((n) => new Date(n.sentAt) <= now);
+    }
+
+    // 3. Target membership filter
+    if (targetFilter !== "all-residents") {
+      result = result.filter((n) => n.targetMembershipId === targetFilter);
+    }
+
+    // Sort: newest first
+    result.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
+
+    return result;
+  }, [notifications, searchQuery, dateFilter, targetFilter]);
+
+  // Format date to dd/mm/yyyy
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-[#005f63]">Notifications & Announcements</h2>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={markAllRead}>Mark all as read</Button>
-          <Button className="bg-orange-500 text-white hover:bg-orange-600" size="sm">New Announcement</Button>
-        </div>
-      </div>
+    <div className="space-y-6">
+      {/* ✅ FIXED HEADER — same style as member page */}
+      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de] shadow-b-sm">
+        <div className="w-full">
+          <h1 className="text-4xl font-black text-[#005f63]">Notifications & Announcements</h1>
+          <p className="mt-1 text-sm text-[#667777]">View and filter all system notifications and announcements.</p>
 
-      <div className="flex gap-2 border-b border-gray-200">
-        {[
-          { key: "all", label: `All (${items.length})` },
-          { key: "unread", label: `Unread (${items.filter((n: any) => !n.read).length})` },
-          { key: "alerts", label: "Alerts" },
-          { key: "info", label: "Info" },
-        ].map(f => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${filter === f.key ? "border-[#005f63] text-[#005f63]" : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+          {/* ✅ SEARCH BAR + FILTERS — FULL VERTICAL ALIGNMENT (TOP ↔ BOTTOM) */}
+          <div className="mt-4 flex items-stretch gap-4 w-full">
+            {/* Search Bar — full height container */}
+            <div className="flex-1">
+              <SearchBar
+                value={searchQuery}
+                onChange={setSearchQuery}
+                placeholder="Search notifications by title or message..."
+                className="h-full w-full rounded-full border border-[#005f63]/20"
+              />
+            </div>
 
-      {filtered.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500">
-          No notifications here.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((n: any) => (
-            <div
-              key={n.id}
-              onClick={() => markRead(n.id)}
-              className={`rounded-lg border p-4 transition-all cursor-pointer hover:shadow ${n.read ? "bg-white border-gray-200" : "bg-teal-50/50 border-teal-200"}`}
-            >
-              <div className="flex items-start gap-3">
-                <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${n.type === "alert" ? "bg-red-500" : "bg-teal-500"}`} />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <h3 className={`font-semibold ${n.read ? "text-gray-800" : "text-[#005f63]"}`}>{n.title}</h3>
-                    <span className="text-xs text-gray-500">{n.date}</span>
-                  </div>
-                  <p className="mt-1 text-sm text-gray-600">{n.message}</p>
-                </div>
+            {/* Filters — SAME HEIGHT, PERFECT TOP-TO-BOTTOM ALIGNMENT */}
+            <div className="flex gap-3">
+              {/* Date filter */}
+              <div className="relative h-full">
+                <select
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none whitespace-nowrap"
+                >
+                  <option value="all">All Notifications</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="past">Past</option>
+                </select>
+                <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+                <svg
+                  className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+
+              {/* ✅ Target Membership filter — shows "To:" by default, NOT in options; dropdown has All residents + memberships */}
+              <div className="relative h-full">
+                <select
+                  value={targetFilter}
+                  onChange={(e) => setTargetFilter(e.target.value)}
+                  className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none whitespace-nowrap"
+                >
+                  {/* Only shows "To:" when closed; NOT an option in the list */}
+                  <option value="all-residents" hidden>To:</option>
+                  <option value="all-residents">All residents</option>
+                  {memberships.map((m: any) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+                <Users className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+                <svg
+                  className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
               </div>
             </div>
-          ))}
+          </div>
+
+          <p className="mt-2 text-xs text-gray-500">
+            {filteredNotifications.length} of {notifications.length} notification(s) match
+          </p>
+        </div>
+      </div>
+
+      {/* ✅ NOTIFICATIONS LIST — ORIGINAL GAP KEPT, strong pop-up hover effect, darker white background */}
+      <div className="px-1 space-y-2">
+        {filteredNotifications.length === 0 ? (
+          <div className="rounded-3xl border border-dashed border-[#005f63]/20 bg-white p-10 text-center text-gray-500">
+            <Bell size={40} className="mx-auto mb-3 text-[#005f63]/40" />
+            <p>No notifications match your current filters.</p>
+          </div>
+        ) : (
+          filteredNotifications.map((n: any) => {
+            // Get target name: All residents or specific membership
+            const targetName = n.targetMembershipId
+              ? memberships.find((m: any) => m.id === n.targetMembershipId)?.name || "Unknown Group"
+              : "All residents";
+
+            return (
+              <div
+                key={n.id}
+                onClick={() => setSelectedNotification({ ...n, targetName })}
+                className="relative rounded-3xl bg-white px-6 py-4 border-l-4 border-l-[#ecd862] border-y border-r border-gray-200 cursor-pointer transition-all duration-300 ease-out hover:shadow-[0_20px_35px_-8px_rgba(0,0,0,0.25),0_10px_15px_-6px_rgba(0,0,0,0.10)] hover:-translate-y-1 hover:bg-gray-100"
+              >
+                <div className="flex items-center justify-between gap-4 w-full min-h-[44px]">
+                  {/* ✅ LEFT SECTION: To → Title → Description — aligned in one line, proper text size */}
+                  <div className="flex-1 min-w-0 flex items-center gap-2.5 text-base">
+                    <span className="font-medium text-gray-800 whitespace-nowrap">To:</span>
+                    <span className="text-gray-700 truncate">{highlightText(targetName, searchQuery)}</span>
+                    <span className="text-gray-400">•</span>
+                    <span className="font-semibold text-[#005f63] truncate">{highlightText(n.title, searchQuery)}</span>
+                    <span className="text-gray-600 truncate">— {highlightText(n.body, searchQuery)}</span>
+                  </div>
+
+                  {/* ✅ RIGHT SECTION: Date — dd/mm/yyyy format */}
+                  <div className="shrink-0 text-sm text-gray-500 whitespace-nowrap">
+                    {formatDate(n.sentAt)}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* ✅ POPUP MODAL — shows full details when card is clicked */}
+      {selectedNotification && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-y-auto shadow-2xl border-l-6 border-l-[#ecd862]">
+            {/* Header */}
+            <div className="sticky top-0 bg-white px-8 py-5 border-b border-gray-100 flex justify-between items-center rounded-t-3xl">
+              <h2 className="text-xl font-bold text-[#005f63]">Notification Details</h2>
+              <button
+                onClick={() => setSelectedNotification(null)}
+                className="text-gray-400 hover:text-gray-600 text-xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="px-8 py-6 space-y-5">
+              <div>
+                <label className="text-sm font-medium text-gray-500 block mb-1">To</label>
+                <p className="text-base text-gray-800 font-medium">{selectedNotification.targetName}</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-500 block mb-1">Title</label>
+                <p className="text-lg font-semibold text-[#005f63]">{selectedNotification.title}</p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-500 block mb-1">Message</label>
+                <p className="text-base text-gray-700 leading-relaxed whitespace-pre-wrap">
+                  {selectedNotification.body}
+                </p>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-gray-500 block mb-1">Date Sent</label>
+                <p className="text-base text-gray-600">{formatDate(selectedNotification.sentAt)}</p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-8 py-4 border-t border-gray-100 text-right rounded-b-3xl">
+              <button
+                onClick={() => setSelectedNotification(null)}
+                className="px-5 py-2 bg-[#005f63] text-white rounded-full hover:bg-[#004a4d] transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
+
 
 /* ---------------- Settings ---------------- */
 function SettingsView({ member }: any) {
