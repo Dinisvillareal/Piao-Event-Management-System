@@ -1,7 +1,19 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Filter, XCircle } from "lucide-react";
-import SearchBar from "../../../Components/UI/SearchBar";
-import { availableMemberships } from "../data/mockData";
+// Ensure this path matches your folder structure!
+import SearchBar from "../../../Components/UI/SearchBar"; 
+
+// ✅ 1. We brought back the missing array!
+const availableMemberships = [
+  "Verified Resident",
+  "Women's Association",
+  "Senior Citizen",
+  "Health Worker",
+  "Barangay Staff",
+  "Peace & Order Team",
+  "Treasurer",
+  "Secretary"
+];
 
 export default function ResidentsView() {
   const [residentSearch, setResidentSearch] = useState("");
@@ -211,9 +223,6 @@ export default function ResidentsView() {
                 <option value="no-account">No Account</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-              <svg className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
             </div>
           </div>
 
@@ -376,7 +385,8 @@ export default function ResidentsView() {
                   </label>
                   {editingResident.hasMemberships && (
                     <div className="pl-6 grid grid-cols-2 gap-2">
-                      {availableMemberships.map((mem, idx) => (
+                      {/* ✅ 2. We explicitly typed mem and idx here! */}
+                      {availableMemberships.map((mem: string, idx: number) => (
                         <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer">
                           <input type="checkbox" value={mem} checked={editingResident.selectedMemberships.includes(mem)} onChange={(e) => handleMembershipChange(e, true)} className="w-4 h-4 text-[#005f63]" />
                           <span>{mem}</span>
@@ -473,7 +483,8 @@ export default function ResidentsView() {
                   </label>
                   {newResident.hasMemberships && (
                     <div className="mt-3 pl-6 grid grid-cols-2 gap-2">
-                      {availableMemberships.map((mem, idx) => (
+                      {/* ✅ 3. We explicitly typed mem and idx here too! */}
+                      {availableMemberships.map((mem: string, idx: number) => (
                         <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer">
                           <input type="checkbox" value={mem} checked={newResident.selectedMemberships.includes(mem)} onChange={handleMembershipChange} className="w-4 h-4 text-[#005f63]" />
                           <span>{mem}</span>

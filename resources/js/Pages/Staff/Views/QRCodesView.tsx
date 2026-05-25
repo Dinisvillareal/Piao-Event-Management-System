@@ -1,6 +1,12 @@
 import React, { useState, useMemo } from "react";
 import { Pencil, Users, Download } from "lucide-react";
-import { Button, Input, FakeQR } from "../components/ui";
+import { Button, Input } from "../../../Components/UI/Core"; 
+import StaffFakeQR from "../StaffFakeQR"; // ✅ Using the Staff specific QR!
+
+const availableMemberships = [
+  "Verified Resident", "Women's Association", "Senior Citizen", 
+  "Health Worker", "Barangay Staff", "Peace & Order Team"
+];
 
 interface QRCodesViewProps {
   memberships: any[];
@@ -70,7 +76,8 @@ export default function QRCodesView({ memberships, highlightText }: QRCodesViewP
 
                     <div className="mt-6 grid grid-cols-[auto_1fr] gap-x-8 gap-y-4 items-start">
                       <div className="row-span-3 flex flex-col items-center gap-3">
-                        <FakeQR seed={m.codeId || m.id} large />
+                        {/* ✅ USING THE STAFF FAKEQR */}
+                        <StaffFakeQR seed={m.codeId || m.id} large />
                         <span className="text-xs font-mono font-bold text-gray-600">{highlightText(m.codeId || m.id, searchQuery)}</span>
                       </div>
 
