@@ -12,9 +12,9 @@ class UserSeeder extends Seeder
     {
         $users = [
 
-            // =====================
+            // =========================
             // 🔵 STAFF (10)
-            // =====================
+            // =========================
             [
                 'first_name' => 'Juan',
                 'last_name' => 'Santos',
@@ -22,7 +22,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09180000001',
                 'role' => 'Staff',
                 'has_account' => 1,
-                'password' => 'password123',
+                'password' => 'staff123',
             ],
             [
                 'first_name' => 'Maria',
@@ -31,6 +31,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09180000002',
                 'role' => 'Staff',
                 'has_account' => 0,
+                'password' => 'maria123',
             ],
             [
                 'first_name' => 'Carlos',
@@ -39,7 +40,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09180000003',
                 'role' => 'Staff',
                 'has_account' => 1,
-                'password' => 'password123',
+                'password' => 'carlos123',
             ],
             [
                 'first_name' => 'Anna',
@@ -48,6 +49,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09180000004',
                 'role' => 'Staff',
                 'has_account' => 0,
+                'password' => 'anna123',
             ],
             [
                 'first_name' => 'Mark',
@@ -56,7 +58,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09180000005',
                 'role' => 'Staff',
                 'has_account' => 1,
-                'password' => 'password123',
+                'password' => 'mark123',
             ],
             [
                 'first_name' => 'Lisa',
@@ -65,6 +67,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09180000006',
                 'role' => 'Staff',
                 'has_account' => 0,
+                'password' => 'lisa123',
             ],
             [
                 'first_name' => 'Tom',
@@ -73,7 +76,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09180000007',
                 'role' => 'Staff',
                 'has_account' => 1,
-                'password' => 'password123',
+                'password' => 'tom123',
             ],
             [
                 'first_name' => 'Sara',
@@ -82,6 +85,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09180000008',
                 'role' => 'Staff',
                 'has_account' => 0,
+                'password' => 'sara123',
             ],
             [
                 'first_name' => 'David',
@@ -90,7 +94,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09180000009',
                 'role' => 'Staff',
                 'has_account' => 1,
-                'password' => 'password123',
+                'password' => 'david123',
             ],
             [
                 'first_name' => 'Emily',
@@ -99,11 +103,12 @@ class UserSeeder extends Seeder
                 'contact_number' => '09180000010',
                 'role' => 'Staff',
                 'has_account' => 0,
+                'password' => 'emily123',
             ],
 
-            // =====================
+            // =========================
             // 🟢 RESIDENTS (10)
-            // =====================
+            // =========================
             [
                 'first_name' => 'Ana',
                 'last_name' => 'Santiago',
@@ -111,7 +116,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09190000001',
                 'role' => 'Resident',
                 'has_account' => 1,
-                'password' => 'password123',
+                'password' => 'ana123',
             ],
             [
                 'first_name' => 'Bea',
@@ -120,6 +125,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09190000002',
                 'role' => 'Resident',
                 'has_account' => 0,
+                'password' => 'bea123',
             ],
             [
                 'first_name' => 'Cathy',
@@ -128,7 +134,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09190000003',
                 'role' => 'Resident',
                 'has_account' => 1,
-                'password' => 'password123',
+                'password' => 'cathy123',
             ],
             [
                 'first_name' => 'Diana',
@@ -137,6 +143,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09190000004',
                 'role' => 'Resident',
                 'has_account' => 0,
+                'password' => 'diana123',
             ],
             [
                 'first_name' => 'Ella',
@@ -145,7 +152,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09190000005',
                 'role' => 'Resident',
                 'has_account' => 1,
-                'password' => 'password123',
+                'password' => 'ella123',
             ],
             [
                 'first_name' => 'Fiona',
@@ -154,6 +161,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09190000006',
                 'role' => 'Resident',
                 'has_account' => 0,
+                'password' => 'fiona123',
             ],
             [
                 'first_name' => 'Grace',
@@ -162,7 +170,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09190000007',
                 'role' => 'Resident',
                 'has_account' => 1,
-                'password' => 'password123',
+                'password' => 'grace123',
             ],
             [
                 'first_name' => 'Hannah',
@@ -171,6 +179,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09190000008',
                 'role' => 'Resident',
                 'has_account' => 0,
+                'password' => 'hannah123',
             ],
             [
                 'first_name' => 'Ivy',
@@ -179,7 +188,7 @@ class UserSeeder extends Seeder
                 'contact_number' => '09190000009',
                 'role' => 'Resident',
                 'has_account' => 1,
-                'password' => 'password123',
+                'password' => 'ivy123',
             ],
             [
                 'first_name' => 'Jane',
@@ -188,40 +197,36 @@ class UserSeeder extends Seeder
                 'contact_number' => '09190000010',
                 'role' => 'Resident',
                 'has_account' => 0,
+                'password' => 'jane123',
             ],
         ];
 
-        // =====================
-        // 💾 INSERT LOGIC
-        // =====================
-
-        $nextNumber = (User::withTrashed()->count()) + 1;
+        $next = User::withTrashed()->count() + 1;
 
         foreach ($users as $data) {
 
-            // PR number
-            $pr = 'PR-' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
-
-            // temp password
-            $tempPassword = 'temp-' . str_pad($nextNumber, 4, '0', STR_PAD_LEFT);
-
-            // safe password logic
-            $plainPassword = $data['has_account']
-                ? ($data['password'] ?? $tempPassword)
-                : $tempPassword;
+            $userCode = 'PR-' . str_pad($next, 4, '0', STR_PAD_LEFT);
 
             User::create([
-                'user_code' => $pr,
+                'user_code' => $userCode,
                 'first_name' => $data['first_name'],
                 'last_name' => $data['last_name'],
-                'middle_name' => $data['middle_name'] ?? null,
+                'middle_name' => $data['middle_name'],
                 'contact_number' => $data['contact_number'],
+
+                // no ftp upload in seeder
+                'validation_id' => null,
+
                 'role' => $data['role'],
-                'password' => Hash::make($plainPassword),
+
+                // always predefined password
+                'password' => Hash::make($data['password']),
+
+                // DO NOT AUTO CHANGE
                 'has_account' => $data['has_account'],
             ]);
 
-            $nextNumber++;
+            $next++;
         }
     }
 }
