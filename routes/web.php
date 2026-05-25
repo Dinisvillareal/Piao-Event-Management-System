@@ -6,6 +6,9 @@ use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\MembershipResidentController;
 use App\Http\Controllers\EventAttendanceController;
+use App\Models\Event;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 /*
 |--------------------------------------------------------------------------
@@ -103,8 +106,23 @@ Route::middleware('auth')->group(function () {
     */
 
     // EVENTS JSON DATA
-    Route::get('/events-data', [EventController::class, 'index']);
+    Route::get('/events-data', function () {
 
+        $user = Auth::user();
+
+        // FIX: user_id instead of resident_id
+        $membershipIds = DB::table('membership_residents')
+            ->where('user_id', $user->id)
+            ->pluck('membership_id');
+
+        $events = Event::whereIn('membership_id', $membershipIds)
+            ->orWhereNull('membership_id') // optional events
+            ->get();
+
+        return response()->json([
+            'data' => $events
+        ]);
+    });
     // EVENTS CRUD
     Route::post('/events', [EventController::class, 'store']);
     Route::put('/events/{id}', [EventController::class, 'update']);

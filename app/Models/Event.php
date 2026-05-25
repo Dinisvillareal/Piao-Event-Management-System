@@ -7,22 +7,21 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Event extends Model
 {
-     use HasFactory;
+    use HasFactory;
 
-     public $timestamps = false;
+    public $timestamps = false;
 
     protected $fillable = [
         'name',
         'description',
-        'location' ,
+        'location',
         'event_start',
         'event_end',
+        'membership_id'
     ];
-    
+
     public function attendances()
     {
         return $this->hasMany(EventAttendance::class);
     }
-
-
 }

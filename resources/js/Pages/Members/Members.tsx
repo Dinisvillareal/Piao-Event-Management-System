@@ -26,8 +26,10 @@ export default function MemberDashboard() {
   const [notifications, setNotifications] = useState<any[]>([]);
 
 
-  const allEvents = useMemo(() => [...upcomingEvents, ...pastEvents], [upcomingEvents, pastEvents]);
-
+  const allEvents = useMemo(() => [
+    ...(Array.isArray(upcomingEvents) ? upcomingEvents : []),
+    ...(Array.isArray(pastEvents) ? pastEvents : [])
+  ], [upcomingEvents, pastEvents]);
   // ─── POPSTATE (browser back/forward) ────────────────────────────────────────
   useEffect(() => {
     const handlePopState = () => {
@@ -126,45 +128,55 @@ export default function MemberDashboard() {
         console.error('Failed to fetch memberships:', err);
       });
   }, []);
-// fetch events and auto-create notifications
+  // fetch events and auto-create notifications
   useEffect(() => {
-  fetch("http://127.0.0.1:8000/events-data")
-    .then((res) => res.json())
-    .then((data) => {
-
-      const now = new Date();
-
-      const formattedEvents = data.data.map((event: any) => ({
-        id: event.id,
-        title: event.name,
-        date: event.event_start,
-        location: event.location,
-        description: event.description,
-      }));
-
-      const upcoming = formattedEvents.filter(
-        (e: any) => new Date(e.date) >= now
-      );
-
-      const past = formattedEvents.filter(
-        (e: any) => new Date(e.date) < now
-      );
-
-      setUpcomingEvents(upcoming);
-      setPastEvents(past);
-
-      // AUTO CREATE NOTIFICATIONS FROM EVENTS
-      const eventNotifications = upcoming.map((e: any) => ({
-        id: e.id,
-        title: `Upcoming Event: ${e.title}`,
-        body: `${e.description} at ${e.location}`,
-        sentAt: e.date,
-      }));
-
-      setNotifications(eventNotifications);
+    fetch("http://127.0.0.1:8000/events-data", {
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        "X-Requested-With": "XMLHttpRequest"
+      }
     })
-    .catch((err) => console.error("Failed to fetch events:", err));
-}, []);
+      .then((res) => res.json())
+      .then((data) => {
+
+        if (!data?.data) {
+          console.error("No events returned:", data);
+          return;
+        }
+        const now = new Date();
+
+        const formattedEvents = data.data.map((event: any) => ({
+          id: event.id,
+          title: event.name,
+          date: event.event_start,
+          location: event.location,
+          description: event.description,
+        }));
+
+        const upcoming = formattedEvents.filter(
+          (e: any) => new Date(e.date) >= now
+        );
+
+        const past = formattedEvents.filter(
+          (e: any) => new Date(e.date) < now
+        );
+
+        setUpcomingEvents(upcoming);
+        setPastEvents(past);
+
+
+        const eventNotifications = upcoming.map((e: any) => ({
+          id: e.id,
+          title: `Upcoming Event: ${e.title}`,
+          body: `${e.description} at ${e.location}`,
+          sentAt: e.date,
+        }));
+
+        setNotifications(eventNotifications);
+      })
+      .catch((err) => console.error("Failed to fetch events:", err));
+  }, []);
 
   // ─── FETCH USER'S MEMBERSHIP COUNT (for Dashboard summary card) ──────────────
   useEffect(() => {
@@ -263,7 +275,7 @@ export default function MemberDashboard() {
   };
 
   // ─── NOTIFICATIONS (hardcoded) ────────────────────────────────────────────────
-  
+
 
   // ─── LOADING SCREEN ───────────────────────────────────────────────────────────
   if (loading) {
