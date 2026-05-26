@@ -52,12 +52,14 @@ export default function ResidentsView() {
     return colors[name.length % colors.length];
   };
 
-  const highlightText = (text: string, query: string) => {
-    if (!query.trim()) return text;
+  // ✅ FIXED: safe from null/undefined
+  const highlightText = (text: string | null | undefined, query: string) => {
+    const safeText = text || "";
+    if (!query.trim()) return safeText;
     try {
       const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
-      const parts = text.split(regex);
-      return parts.map((part, i) =>
+      const parts = safeText.split(regex);
+      return parts.map((part, i: number) =>
         part.toLowerCase() === query.toLowerCase() ? (
           <mark key={i} className="bg-yellow-300 rounded-sm px-0.5">
             {part}
@@ -67,7 +69,7 @@ export default function ResidentsView() {
         )
       );
     } catch {
-      return text;
+      return safeText;
     }
   };
 
@@ -84,8 +86,8 @@ export default function ResidentsView() {
         firstName: item.first_name,
         middleName: item.middle_name,
         contactNumber: item.contact_number,
-        memberships: item.memberships.map((m: any) => m.name).join(", "),
-        role: item.role || "Resident",
+        memberships: item.memberships?.map((m: any) => m.name).join(", ") || "",
+        role: item.role,
         hasAccount: item.has_account,
         username: item.user_code,
         password: "",
@@ -111,6 +113,10 @@ export default function ResidentsView() {
     middleName: "",
     lastName: "",
     contactNumber: "",
+    role: "",
+    hasAccount: false,
+    username: "",
+    password: "",
     hasMemberships: false,
     selectedMemberships: [] as number[],
     photo: "",
@@ -143,9 +149,12 @@ export default function ResidentsView() {
     const errors: Record<string, string> = {};
     if (!newResident.firstName.trim()) errors.firstName = "First name is required";
     if (!newResident.lastName.trim()) errors.lastName = "Last name is required";
+    if (!newResident.role.trim()) errors.role = "Role is required";
     const raw = newResident.contactNumber.replace(/\D/g, "");
     if (!raw) errors.contactNumber = "Contact number is required";
     else if (raw.length !== 11) errors.contactNumber = "Must be exactly 11 digits";
+    if (newResident.hasAccount && !newResident.password.trim())
+      errors.password = "Password is required when account is enabled";
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -159,9 +168,9 @@ export default function ResidentsView() {
       middle_name: newResident.middleName,
       last_name: newResident.lastName,
       contact_number: newResident.contactNumber,
-      role: "Resident",
-      has_account: false,
-      password: "temp1234",
+      role: newResident.role,
+      has_account: newResident.hasAccount,
+      ...(newResident.hasAccount && { password: newResident.password }),
     };
 
     try {
@@ -191,7 +200,10 @@ export default function ResidentsView() {
         });
       }
 
-      setNewResident({ firstName: "", middleName: "", lastName: "", contactNumber: "", hasMemberships: false, selectedMemberships: [], photo: "" });
+      setNewResident({
+        firstName: "", middleName: "", lastName: "", contactNumber: "", role: "",
+        hasAccount: false, username: "", password: "", hasMemberships: false, selectedMemberships: [], photo: ""
+      });
       setFormErrors({});
       setShowAddForm(false);
       fetchResidents();
@@ -207,20 +219,22 @@ export default function ResidentsView() {
     middleName: "",
     lastName: "",
     contactNumber: "",
+    role: "",
     hasMemberships: false,
     selectedMemberships: [] as number[],
     hasAccount: false,
     username: "",
     password: "",
-    role: "Resident",
     passwordChangedByUser: false,
     photo: "",
+    is_deleted: false,
   });
 
   const validateEditForm = () => {
     const errors: Record<string, string> = {};
     if (!editingResident.firstName.trim()) errors.firstName = "First name is required";
     if (!editingResident.lastName.trim()) errors.lastName = "Last name is required";
+    if (!editingResident.role.trim()) errors.role = "Role is required";
     const raw = editingResident.contactNumber.replace(/\D/g, "");
     if (!raw) errors.contactNumber = "Contact number is required";
     else if (raw.length !== 11) errors.contactNumber = "Must be exactly 11 digits";
@@ -273,19 +287,13 @@ export default function ResidentsView() {
     }
   };
 
+  // ✅ Soft Delete
   const handleDeleteResident = async () => {
     if (!deleteRecord) return;
     const rec = residentsData.find((r) => r.id === deleteRecord);
     if (!rec) return;
 
     try {
-      await fetch(`/membership-residents/${rec.real_id}`, {
-        method: "DELETE",
-        headers: {
-          Accept: "application/json",
-          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
-        },
-      });
       await fetch(`/users/${rec.real_id}`, {
         method: "DELETE",
         headers: {
@@ -298,6 +306,22 @@ export default function ResidentsView() {
       fetchResidents();
     } catch (err) {
       console.error("Delete error:", err);
+    }
+  };
+
+  // ✅ Restore soft deleted record
+  const handleRestoreResident = async (realId: string) => {
+    try {
+      await fetch(`/users/${realId}/restore`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+        },
+      });
+      fetchResidents();
+    } catch (err) {
+      console.error("Restore error:", err);
     }
   };
 
@@ -352,14 +376,15 @@ export default function ResidentsView() {
       middleName: r.middleName,
       lastName: r.lastName,
       contactNumber: r.contactNumber,
+      role: r.role,
       hasMemberships: currentMemNames.length > 0,
       selectedMemberships: currentMemIds,
       hasAccount: r.hasAccount,
       username: r.username,
       password: r.password,
-      role: r.role,
       passwordChangedByUser: r.passwordChangedByUser,
       photo: r.photo,
+      is_deleted: r.is_deleted,
     };
     setEditingResident(state);
     setInitialEditData(JSON.parse(JSON.stringify(state)));
@@ -367,13 +392,8 @@ export default function ResidentsView() {
 
   const handleOpenAddForm = () => {
     const empty = {
-      firstName: "",
-      middleName: "",
-      lastName: "",
-      contactNumber: "",
-      hasMemberships: false,
-      selectedMemberships: [] as number[],
-      photo: "",
+      firstName: "", middleName: "", lastName: "", contactNumber: "", role: "",
+      hasAccount: false, username: "", password: "", hasMemberships: false, selectedMemberships: [], photo: ""
     };
     setNewResident(empty);
     setInitialAddData(JSON.parse(JSON.stringify(empty)));
@@ -403,6 +423,7 @@ export default function ResidentsView() {
     if (residentFilter === "staff") result = result.filter((r) => r.role === "Staff");
     if (residentFilter === "with-account") result = result.filter((r) => r.hasAccount);
     if (residentFilter === "no-account") result = result.filter((r) => !r.hasAccount);
+    if (residentFilter === "trashed") result = result.filter((r) => r.is_deleted);
     if (residentSearch.trim()) {
       const q = residentSearch.toLowerCase();
       result = result.filter((r) =>
@@ -419,7 +440,6 @@ export default function ResidentsView() {
     () => filteredResidents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
     [filteredResidents, currentPage]
   );
-
   useMemo(() => setCurrentPage(1), [residentSearch, residentFilter]);
 
   return (
@@ -440,10 +460,11 @@ export default function ResidentsView() {
                 className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:outline-none appearance-none"
               >
                 <option value="all">All Records</option>
-                <option value="residents">Residents</option>
-                <option value="staff">Staff</option>
+                <option value="residents">Role: Resident</option>
+                <option value="staff">Role: Staff</option>
                 <option value="with-account">Has Account</option>
                 <option value="no-account">No Account</option>
+                <option value="trashed">Trashed</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
@@ -461,7 +482,7 @@ export default function ResidentsView() {
             onClick={handleOpenAddForm}
             className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm"
           >
-            + Add New Resident
+            + Add New Record
           </button>
         </div>
         <div className="relative rounded-[20px] bg-white shadow-lg overflow-hidden">
@@ -491,25 +512,34 @@ export default function ResidentsView() {
                     const visible = allMems.slice(0, 2);
                     const extra = allMems.length - 2;
                     return (
-                      <tr key={r.id} className="border-b border-[#eee8e0] transition-all duration-200 hover:bg-teal-50/100 hover:shadow-md hover:rounded-lg">
-                        <td className="py-3 px-2 font-mono text-gray-700">{highlightText(r.id, residentSearch)}</td>
-                        <td className="py-3 px-2 font-medium text-gray-800">{highlightText(r.lastName, residentSearch)}</td>
-                        <td className="py-3 px-2 text-gray-700">{highlightText(r.firstName, residentSearch)}</td>
-                        <td className="py-3 px-2 text-gray-700">{highlightText(r.middleName, residentSearch)}</td>
-                        <td className="py-3 px-2 text-gray-600">{highlightText(r.contactNumber, residentSearch)}</td>
+                      <tr
+                        key={r.id}
+                        className={`border-b border-[#eee8e0] transition-all duration-200 hover:shadow-md hover:rounded-lg ${
+                          r.is_deleted ? "bg-gray-100 text-gray-400 line-through" : "hover:bg-teal-50/100"
+                        }`}
+                      >
+                        <td className="py-3 px-2 font-mono">{highlightText(r.id, residentSearch)}</td>
+                        <td className="py-3 px-2 font-medium">{highlightText(r.lastName, residentSearch)}</td>
+                        <td className="py-3 px-2">{highlightText(r.firstName, residentSearch)}</td>
+                        <td className="py-3 px-2">{highlightText(r.middleName, residentSearch)}</td>
+                        <td className="py-3 px-2">{highlightText(r.contactNumber, residentSearch)}</td>
                         <td className="py-3 px-2">
                           <div className="flex flex-wrap gap-1.5 items-center">
-                            {visible.map((m: string, i: number) => (
-                              <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>
-                                {highlightText(m, residentSearch)}
-                              </span>
-                            ))}
+               {visible.map((m: string, i: number) => (
+  <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>
+    {highlightText(m, residentSearch)}
+  </span>
+))}
                             {extra > 0 && <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">+{extra} more</span>}
                             {allMems.length === 0 && <span className="text-gray-400 text-xs">None</span>}
                           </div>
                         </td>
                         <td className="py-3 px-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${r.role === "Staff" ? "bg-orange-100 text-orange-800" : "bg-teal-50 text-teal-800"}`}>
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            r.role === "Staff" ? "bg-orange-100 text-orange-800" :
+                            r.role === "Resident" ? "bg-teal-50 text-teal-800" :
+                            "bg-gray-100 text-gray-800"
+                          }`}>
                             {highlightText(r.role, residentSearch)}
                             {r.passwordChangedByUser && <span className="ml-1 text-yellow-600 text-[10px] font-bold">🔒</span>}
                           </span>
@@ -524,12 +554,20 @@ export default function ResidentsView() {
                             <button onClick={() => setViewRecord(r.id)} className="p-2 rounded-full hover:bg-teal-50 transition" title="View">
                               <svg width="16" height="16" fill="none" stroke="#006666" strokeWidth={2} viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
                             </button>
-                            <button onClick={() => setEditRecord(r.id)} className="p-2 rounded-full hover:bg-orange-50 transition" title="Edit">
-                              <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
-                            </button>
-                            <button onClick={() => setDeleteRecord(r.id)} className="p-2 rounded-full hover:bg-red-50 transition" title="Delete">
-                              <svg width="16" height="16" fill="none" stroke="#ef4444" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
-                            </button>
+                            {!r.is_deleted ? (
+                              <>
+                                <button onClick={() => setEditRecord(r.id)} className="p-2 rounded-full hover:bg-orange-50 transition" title="Edit">
+                                  <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                </button>
+                                <button onClick={() => setDeleteRecord(r.id)} className="p-2 rounded-full hover:bg-red-50 transition" title="Delete">
+                                  <svg width="16" height="16" fill="none" stroke="#ef4444" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                                </button>
+                              </>
+                            ) : (
+                              <button onClick={() => handleRestoreResident(r.real_id)} className="p-2 rounded-full hover:bg-green-50 transition" title="Restore">
+                                <svg width="16" height="16" fill="none" stroke="#10b981" strokeWidth={2} viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L13 11h7V4l-2.26 2.26A8.25 8.25 0 0 0 12 3a8 8 0 1 0 8 8Z" /></svg>
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -554,6 +592,7 @@ export default function ResidentsView() {
                 <button onClick={() => setViewRecord(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
               </div>
               <div className="text-sm">
+                {r.is_deleted && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted</div>}
                 <div className="flex gap-6">
                   <div className="flex-1 space-y-2">
                     <p><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
@@ -561,7 +600,7 @@ export default function ResidentsView() {
                     <p><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
                     <p><strong className="text-[#005f63]">Role:</strong> {r.role} {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}</p>
                     <p><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
-                    {r.hasAccount && (<><p><strong className="text-[#005f63]">Username:</strong> {r.username}</p><p><strong className="text-[#005f63]">Password:</strong> {r.passwordChangedByUser ? "•••••••• (changed by user — hidden)" : r.password}</p></>)}
+                    {r.hasAccount && (<><p><strong className="text-[#005f63]">Username:</strong> {r.username}</p><p><strong className="text-[#005f63]">Password:</strong> {r.passwordChangedByUser ? "•••••••• (changed by user — hidden)" : r.password || "•••••••• (saved)"}</p></>)}
                   </div>
                   <div className="w-[160px]">
                     <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ minHeight: "180px" }}>
@@ -586,7 +625,7 @@ export default function ResidentsView() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-black text-[#005f63]">Add New Resident / Staff</h2>
+              <h2 className="text-2xl font-black text-[#005f63]">Add New Record</h2>
               <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
             </div>
             <form onSubmit={handleAddResident} className="space-y-4">
@@ -607,6 +646,21 @@ export default function ResidentsView() {
               </div>
 
               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                {/* ✅ HARDCODED COMBOBOX: Staff / Resident */}
+                    <select
+                    required
+                    value={newResident.role}
+                    onChange={(e) => setNewResident((p) => ({ ...p, role: e.target.value }))}
+                    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.role ? "border-red-500" : "border-gray-200"}`}
+                    >
+                    <option value="Resident">Resident</option>
+                    <option value="Staff">Staff</option>
+                    </select>
+                {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
                 <input
                   type="text"
@@ -617,6 +671,43 @@ export default function ResidentsView() {
                   placeholder="09XX-XXX-XXXX"
                 />
                 {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+              </div>
+
+              <div>
+                <label className="flex items-center gap-2 cursor-pointer mb-2">
+                  <input
+                    type="checkbox"
+                    checked={newResident.hasAccount}
+                    onChange={(e) => setNewResident(prev => ({ ...prev, hasAccount: e.target.checked }))}
+                    className="w-4 h-4 text-[#005f63]"
+                  />
+                  <span className="font-medium text-gray-700">Has Account?</span>
+                </label>
+
+                {newResident.hasAccount && (
+                  <div className="pl-6 space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                      <input
+                        type="text"
+                        value={newResident.username}
+                        onChange={(e) => setNewResident(prev => ({ ...prev, username: e.target.value }))}
+                        className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                      <input
+                        type="password"
+                        value={newResident.password}
+                        onChange={(e) => setNewResident(prev => ({ ...prev, password: e.target.value }))}
+                        className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.password ? "border-red-500" : "border-gray-200"}`}
+                        placeholder="Enter password here"
+                      />
+                      {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -695,10 +786,11 @@ export default function ResidentsView() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-black text-[#005f63]">Edit Resident / Staff</h2>
+              <h2 className="text-2xl font-black text-[#005f63]">Edit Record</h2>
               <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
             </div>
-            <form onSubmit={handleUpdateResident} className="space-y-4">
+            {editingResident.is_deleted && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted — editing disabled</div>}
+            <form onSubmit={handleUpdateResident} className="space-y-4" style={{ pointerEvents: editingResident.is_deleted ? "none" : "auto", opacity: editingResident.is_deleted ? 0.6 : 1 }}>
               <div className="grid md:grid-cols-3 gap-4">
                 {(["firstName", "middleName", "lastName"] as const).map((field) => (
                   <div key={field}>
@@ -713,6 +805,20 @@ export default function ResidentsView() {
                     {(formErrors as any)[field] && <p className="text-red-500 text-xs mt-1">{(formErrors as any)[field]}</p>}
                   </div>
                 ))}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                <select
+                required
+                value={editingResident.role}
+                onChange={(e) => setEditingResident((p) => ({ ...p, role: e.target.value }))}
+                className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.role ? "border-red-500" : "border-gray-200"}`}
+                >
+                <option value="Resident">Resident</option>
+                <option value="Staff">Staff</option>
+                </select>
+                {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
               </div>
 
               <div>
@@ -751,33 +857,15 @@ export default function ResidentsView() {
               </div>
 
               <div className="border-t border-b py-3 space-y-3">
-                <div className="flex items-center gap-4">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editingResident.role === "Staff"}
-                      onChange={(e) => setEditingResident(prev => ({
-                        ...prev,
-                        role: e.target.checked ? "Staff" : "Resident"
-                      }))}
-                      className="w-4 h-4 text-[#005f63]"
-                    />
-                    <span className="font-medium text-gray-700">Is Staff?</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editingResident.hasAccount}
-                      onChange={(e) => setEditingResident(prev => ({
-                        ...prev,
-                        hasAccount: e.target.checked
-                      }))}
-                      className="w-4 h-4 text-[#005f63]"
-                    />
-                    <span className="font-medium text-gray-700">Has Account?</span>
-                  </label>
-                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingResident.hasAccount}
+                    onChange={(e) => setEditingResident(prev => ({ ...prev, hasAccount: e.target.checked }))}
+                    className="w-4 h-4 text-[#005f63]"
+                  />
+                  <span className="font-medium text-gray-700">Has Account?</span>
+                </label>
 
                 {editingResident.hasAccount && (
                   <div className="pl-6 space-y-3">
@@ -786,10 +874,7 @@ export default function ResidentsView() {
                       <input
                         type="text"
                         value={editingResident.username}
-                        onChange={(e) => setEditingResident(prev => ({
-                          ...prev,
-                          username: e.target.value
-                        }))}
+                        onChange={(e) => setEditingResident(prev => ({ ...prev, username: e.target.value }))}
                         className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
                       />
                     </div>
@@ -798,10 +883,7 @@ export default function ResidentsView() {
                       <input
                         type="password"
                         value={editingResident.password}
-                        onChange={(e) => setEditingResident(prev => ({
-                          ...prev,
-                          password: e.target.value
-                        }))}
+                        onChange={(e) => setEditingResident(prev => ({ ...prev, password: e.target.value }))}
                         disabled={editingResident.passwordChangedByUser}
                         className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
                           editingResident.passwordChangedByUser
@@ -816,10 +898,7 @@ export default function ResidentsView() {
                       <input
                         type="checkbox"
                         checked={editingResident.passwordChangedByUser}
-                        onChange={(e) => setEditingResident(prev => ({
-                          ...prev,
-                          passwordChangedByUser: e.target.checked
-                        }))}
+                        onChange={(e) => setEditingResident(prev => ({ ...prev, passwordChangedByUser: e.target.checked }))}
                         className="w-4 h-4 text-[#005f63]"
                       />
                       <span className="text-sm text-gray-600">Password already changed by user</span>
@@ -829,12 +908,9 @@ export default function ResidentsView() {
 
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
-                    type="checkbox"
+                                        type="checkbox"
                     checked={editingResident.hasMemberships}
-                    onChange={(e) => setEditingResident(prev => ({
-                      ...prev,
-                      hasMemberships: e.target.checked
-                    }))}
+                    onChange={(e) => setEditingResident((p) => ({ ...p, hasMemberships: e.target.checked }))}
                     className="w-4 h-4 text-[#005f63]"
                   />
                   <span className="font-medium text-gray-700">Has Memberships?</span>
@@ -868,11 +944,7 @@ export default function ResidentsView() {
                 <button
                   type="submit"
                   disabled={!hasEditChanges}
-                  className={`px-5 py-2.5 rounded-full transition ${
-                    hasEditChanges
-                      ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
-                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                  }`}
+                  className={`px-5 py-2.5 rounded-full transition ${hasEditChanges ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
                 >
                   Update Record
                 </button>
@@ -885,73 +957,65 @@ export default function ResidentsView() {
       {/* Delete Confirmation Modal */}
       {deleteRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[20px] w-full max-w-md p-6 shadow-2xl">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path d="M12 9v6m0 4h.01M5.05 19h13.9a2 2 0 0 0 1.79-2.97L13.79 4.18a2 2 0 0 0-3.58 0L3.26 16.03A2 2 0 0 0 5.05 19z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Record</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                Are you sure you want to delete this resident/staff record? This action cannot be undone.
-              </p>
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={() => setDeleteRecord(null)}
-                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDeleteResident}
-                  className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
-                >
-                  Delete
-                </button>
-              </div>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-red-500">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Confirm Deletion</h3>
+            <p className="text-sm text-gray-600 mb-6">This action will move the record to trash. You can restore it later if needed.</p>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => setDeleteRecord(null)}
+                className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteResident}
+                className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Unsaved Changes Confirmation Modal */}
+      {/* Cancel Changes Confirmation Modal */}
       {showCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[20px] w-full max-w-md p-6 shadow-2xl">
-            <div className="text-center">
-              <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path d="M12 9v6m0 4h.01M5.05 19h13.9a2 2 0 0 0 1.79-2.97L13.79 4.18a2 2 0 0 0-3.58 0L3.26 16.03A2 2 0 0 0 5.05 19z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Unsaved Changes</h3>
-              <p className="text-sm text-gray-600 mb-6">
-                You have unsaved changes. Are you sure you want to leave without saving?
-              </p>
-              <div className="flex gap-3 justify-center">
-                <button
-                  onClick={() => setShowCancelConfirm(null)}
-                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-                >
-                  Stay
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCancelConfirm(null);
-                    if (showCancelConfirm === "edit") {
-                      setEditRecord(null);
-                      setFormErrors({});
-                    } else {
-                      setShowAddForm(false);
-                      setFormErrors({});
-                    }
-                  }}
-                  className="px-5 py-2.5 rounded-full bg-yellow-500 text-white hover:bg-yellow-600 transition"
-                >
-                  Discard
-                </button>
-              </div>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-amber-500">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0h.01M12 3v12m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-gray-800 mb-2">Unsaved Changes</h3>
+            <p className="text-sm text-gray-600 mb-6">You have unsaved changes. Are you sure you want to leave without saving?</p>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => setShowCancelConfirm(null)}
+                className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+              >
+                Continue Editing
+              </button>
+              <button
+                onClick={() => {
+                  setShowCancelConfirm(null);
+                  if (showCancelConfirm === "edit") {
+                    setEditRecord(null);
+                    setFormErrors({});
+                  } else {
+                    setShowAddForm(false);
+                    setFormErrors({});
+                  }
+                }}
+                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+              >
+                Discard Changes
+              </button>
             </div>
           </div>
         </div>
@@ -959,40 +1023,63 @@ export default function ResidentsView() {
 
       {/* Pagination Controls */}
       {totalPages > 1 && (
-        <div className="flex justify-center items-center gap-2 mt-6">
-          <button
-            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-            disabled={currentPage === 1}
-            className="p-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          >
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+        <div className="flex items-center justify-between px-1">
+          <p className="text-sm text-gray-600">
+            Page {currentPage} of {totalPages}
+          </p>
+          <div className="flex gap-2">
             <button
-              key={page}
-              onClick={() => setCurrentPage(page)}
-              className={`w-9 h-9 rounded-full text-sm font-medium transition ${
-                currentPage === page
-                  ? "bg-[#005f63] text-white"
-                  : "border border-gray-200 text-gray-700 hover:bg-gray-50"
-              }`}
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="p-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
             >
-              {page}
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              </svg>
             </button>
-          ))}
+            <button
+              onClick={() => setCurrentPage(prev => prev - 1)}
+              disabled={currentPage === 1}
+              className="p-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
 
-          <button
-            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-            disabled={currentPage === totalPages}
-            className="p-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
-          >
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={`w-9 h-9 rounded-full text-sm font-medium transition ${
+                  currentPage === page
+                    ? "bg-[#005f63] text-white"
+                    : "border border-gray-200 text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {page}
+              </button>
+            ))}
+
+            <button
+              onClick={() => setCurrentPage(prev => prev + 1)}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition"
+            >
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
     </div>

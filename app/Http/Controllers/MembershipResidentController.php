@@ -48,6 +48,7 @@ class MembershipResidentController extends Controller
                 'users.last_name',
                 'users.contact_number',
                 'users.has_account',
+                'users.role', // ✅ ADDED ROLE HERE
                 'users.deleted_at', // 🔥 show soft delete status
 
                 'memberships.id as membership_id',
@@ -67,6 +68,7 @@ class MembershipResidentController extends Controller
                     'last_name' => $first->last_name,
                     'contact_number' => $first->contact_number,
                     'has_account' => $first->has_account,
+                    'role' => $first->role, // ✅ RETURN ROLE IN RESPONSE
 
                     // 🔥 soft delete flag
                     'is_deleted' => $first->deleted_at ? true : false,
@@ -109,6 +111,7 @@ class MembershipResidentController extends Controller
                 'users.last_name',
                 'users.contact_number',
                 'users.has_account',
+                'users.role', // ✅ ADDED ROLE HERE
                 'users.deleted_at',
 
                 'memberships.id as membership_id',
@@ -133,6 +136,7 @@ class MembershipResidentController extends Controller
             'last_name' => $first->last_name,
             'contact_number' => $first->contact_number,
             'has_account' => $first->has_account,
+            'role' => $first->role, // ✅ RETURN ROLE IN RESPONSE
 
             // 🔥 soft delete status
             'is_deleted' => $first->deleted_at ? true : false,
@@ -261,6 +265,7 @@ class MembershipResidentController extends Controller
             'last_name' => $user->last_name,
             'contact_number' => $user->contact_number,
             'has_account' => $user->has_account,
+            'role' => $user->role, // ✅ ADDED ROLE HERE TOO
             'is_deleted' => $user->deleted_at ? true : false,
 
             'memberships' => $memberships->items(),
