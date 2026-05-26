@@ -1,19 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Filter, XCircle } from "lucide-react";
-// Ensure this path matches your folder structure!
-import SearchBar from "../../../Components/UI/SearchBar"; 
-
-// ✅ 1. We brought back the missing array!
-const availableMemberships = [
-  "Verified Resident",
-  "Women's Association",
-  "Senior Citizen",
-  "Health Worker",
-  "Barangay Staff",
-  "Peace & Order Team",
-  "Treasurer",
-  "Secretary"
-];
+import SearchBar from "../../../Components/UI/SearchBar";
 
 export default function ResidentsView() {
   const [residentSearch, setResidentSearch] = useState("");
@@ -25,12 +12,22 @@ export default function ResidentsView() {
   const [editRecord, setEditRecord] = useState<string | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<string | null>(null);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [residentsData, setResidentsData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  const [residentsData, setResidentsData] = useState([
-    { id: "R-001", lastName: "Santos", firstName: "Maria", middleName: "Reyes", contactNumber: "0917-123-4567", memberships: "Verified Resident, Women's Association, Senior Citizen, Health Worker", role: "Resident", hasAccount: true, username: "R-001", password: "temp1234", passwordChangedByUser: false, photo: "" },
-    { id: "S-001", lastName: "Dela Cruz", firstName: "Juan", middleName: "Garcia", contactNumber: "0918-987-6543", memberships: "Barangay Staff, Peace & Order Team, Treasurer", role: "Staff", hasAccount: true, username: "S-001", password: "temp5678", passwordChangedByUser: true, photo: "" },
-    { id: "R-002", lastName: "Reyes", firstName: "Ana", middleName: "Martinez", contactNumber: "0919-111-2222", memberships: "Senior Citizen, Health Worker", role: "Resident", hasAccount: false, username: "", password: "", passwordChangedByUser: false, photo: "" },
-  ]);
+  // ✅ Dynamic from API: {id, name} only
+  const [availableMemberships, setAvailableMemberships] = useState<Array<{ id: number; name: string }>>([]);
+
+  // ✅ Fetch memberships from API
+  useEffect(() => {
+    fetch("/memberships", { headers: { Accept: "application/json" } })
+      .then((res) => res.json())
+      .then((data) => {
+        const list = data.data ? data.data : data;
+        setAvailableMemberships(list);
+      })
+      .catch((err) => console.error("Error loading memberships:", err));
+  }, []);
 
   // Helpers
   const capitalizeName = (value: string) =>
@@ -44,7 +41,14 @@ export default function ResidentsView() {
   };
 
   const getMembershipBadgeStyle = (name: string) => {
-    const colors = ["bg-teal-50 text-teal-800", "bg-orange-50 text-orange-800", "bg-blue-50 text-blue-800", "bg-purple-50 text-purple-800", "bg-amber-50 text-amber-800", "bg-emerald-50 text-emerald-800"];
+    const colors = [
+      "bg-teal-50 text-teal-800",
+      "bg-orange-50 text-orange-800",
+      "bg-blue-50 text-blue-800",
+      "bg-purple-50 text-purple-800",
+      "bg-amber-50 text-amber-800",
+      "bg-emerald-50 text-emerald-800",
+    ];
     return colors[name.length % colors.length];
   };
 
@@ -54,18 +58,72 @@ export default function ResidentsView() {
       const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
       const parts = text.split(regex);
       return parts.map((part, i) =>
-        part.toLowerCase() === query.toLowerCase() ? <mark key={i} className="bg-yellow-300 rounded-sm px-0.5">{part}</mark> : part
+        part.toLowerCase() === query.toLowerCase() ? (
+          <mark key={i} className="bg-yellow-300 rounded-sm px-0.5">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
       );
-    } catch { return text; }
+    } catch {
+      return text;
+    }
   };
 
-  // New Resident Form
-  const [newResident, setNewResident] = useState({ firstName: "", middleName: "", lastName: "", contactNumber: "", hasMemberships: false, selectedMemberships: [] as string[], photo: "" });
+  // Fetch Residents
+  const fetchResidents = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/membership-residents", { headers: { Accept: "application/json" } });
+      const data = await res.json();
+      const formatted = data.map((item: any) => ({
+        id: item.user_code,
+        real_id: item.user_id,
+        lastName: item.last_name,
+        firstName: item.first_name,
+        middleName: item.middle_name,
+        contactNumber: item.contact_number,
+        memberships: item.memberships.map((m: any) => m.name).join(", "),
+        role: item.role || "Resident",
+        hasAccount: item.has_account,
+        username: item.user_code,
+        password: "",
+        passwordChangedByUser: false,
+        photo: "",
+        is_deleted: item.is_deleted,
+      }));
+      setResidentsData(formatted);
+    } catch (err) {
+      console.error("Error fetching residents:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchResidents();
+  }, []);
+
+  // Add Form
+  const [newResident, setNewResident] = useState({
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    contactNumber: "",
+    hasMemberships: false,
+    selectedMemberships: [] as number[],
+    photo: "",
+  });
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>, isEdit = false) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) { alert("Please upload an image file only."); e.target.value = ""; return; }
+    if (!file.type.startsWith("image/")) {
+      alert("Please upload an image file only.");
+      e.target.value = "";
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => {
       const photoUrl = ev.target?.result as string;
@@ -92,20 +150,72 @@ export default function ResidentsView() {
     return Object.keys(errors).length === 0;
   };
 
-  const handleAddResident = (e: React.FormEvent) => {
+  const handleAddResident = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateAddForm()) return;
-    const newId = residentsData.length > 0
-      ? `R-${String(Number(residentsData[residentsData.length - 1].id.split("-")[1]) + 1).padStart(3, "0")}`
-      : "R-001";
-    setResidentsData((prev) => [...prev, { id: newId, firstName: newResident.firstName, middleName: newResident.middleName, lastName: newResident.lastName, contactNumber: newResident.contactNumber, memberships: newResident.hasMemberships ? newResident.selectedMemberships.join(", ") : "", role: "Resident", hasAccount: false, username: "", password: "", passwordChangedByUser: false, photo: newResident.photo }]);
-    setNewResident({ firstName: "", middleName: "", lastName: "", contactNumber: "", hasMemberships: false, selectedMemberships: [], photo: "" });
-    setFormErrors({});
-    setShowAddForm(false);
+
+    const payload = {
+      first_name: newResident.firstName,
+      middle_name: newResident.middleName,
+      last_name: newResident.lastName,
+      contact_number: newResident.contactNumber,
+      role: "Resident",
+      has_account: false,
+      password: "temp1234",
+    };
+
+    try {
+      const res = await fetch("/users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+        },
+        body: JSON.stringify(payload),
+      });
+      const user = await res.json();
+
+      if (newResident.hasMemberships && newResident.selectedMemberships.length > 0) {
+        await fetch("/membership-residents", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+          },
+          body: JSON.stringify({
+            user_id: user.user.id,
+            membership_ids: newResident.selectedMemberships,
+          }),
+        });
+      }
+
+      setNewResident({ firstName: "", middleName: "", lastName: "", contactNumber: "", hasMemberships: false, selectedMemberships: [], photo: "" });
+      setFormErrors({});
+      setShowAddForm(false);
+      fetchResidents();
+    } catch (err) {
+      console.error("Add error:", err);
+    }
   };
 
   // Edit Form
-  const [editingResident, setEditingResident] = useState({ firstName: "", middleName: "", lastName: "", contactNumber: "", hasMemberships: false, selectedMemberships: [] as string[], hasAccount: false, username: "", password: "", role: "Resident", passwordChangedByUser: false, photo: "" });
+  const [editingResident, setEditingResident] = useState({
+    real_id: "",
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    contactNumber: "",
+    hasMemberships: false,
+    selectedMemberships: [] as number[],
+    hasAccount: false,
+    username: "",
+    password: "",
+    role: "Resident",
+    passwordChangedByUser: false,
+    photo: "",
+  });
 
   const validateEditForm = () => {
     const errors: Record<string, string> = {};
@@ -114,35 +224,99 @@ export default function ResidentsView() {
     const raw = editingResident.contactNumber.replace(/\D/g, "");
     if (!raw) errors.contactNumber = "Contact number is required";
     else if (raw.length !== 11) errors.contactNumber = "Must be exactly 11 digits";
-    if (editingResident.hasAccount && !editingResident.passwordChangedByUser && !editingResident.password.trim()) errors.password = "Password is required";
+    if (editingResident.hasAccount && !editingResident.passwordChangedByUser && !editingResident.password.trim())
+      errors.password = "Password is required";
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleUpdateResident = (e: React.FormEvent) => {
+  const handleUpdateResident = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editRecord || !validateEditForm()) return;
-    setResidentsData((prev) => prev.map((r) =>
-      r.id === editRecord
-        ? { ...r, firstName: editingResident.firstName, middleName: editingResident.middleName, lastName: editingResident.lastName, contactNumber: editingResident.contactNumber, memberships: editingResident.hasMemberships ? editingResident.selectedMemberships.join(", ") : "", role: r.passwordChangedByUser ? r.role : editingResident.role, hasAccount: editingResident.hasAccount, username: editingResident.hasAccount ? (r.username || r.id) : "", password: r.passwordChangedByUser ? r.password : editingResident.password, passwordChangedByUser: r.passwordChangedByUser, photo: editingResident.photo }
-        : r
-    ));
-    setEditRecord(null);
-    setFormErrors({});
+
+    try {
+      await fetch(`/users/${editingResident.real_id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+        },
+        body: JSON.stringify({
+          first_name: editingResident.firstName,
+          middle_name: editingResident.middleName,
+          last_name: editingResident.lastName,
+          contact_number: editingResident.contactNumber,
+          role: editingResident.role,
+          has_account: editingResident.hasAccount,
+          ...(editingResident.password && !editingResident.passwordChangedByUser && { password: editingResident.password }),
+        }),
+      });
+
+      await fetch(`/membership-residents/${editingResident.real_id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+        },
+        body: JSON.stringify({
+          membership_ids: editingResident.hasMemberships ? editingResident.selectedMemberships : [],
+        }),
+      });
+
+      setEditRecord(null);
+      setFormErrors({});
+      fetchResidents();
+    } catch (err) {
+      console.error("Update error:", err);
+    }
   };
 
-  const handleDeleteResident = () => {
+  const handleDeleteResident = async () => {
     if (!deleteRecord) return;
-    setResidentsData((prev) => prev.filter((r) => r.id !== deleteRecord));
-    setDeleteRecord(null);
+    const rec = residentsData.find((r) => r.id === deleteRecord);
+    if (!rec) return;
+
+    try {
+      await fetch(`/membership-residents/${rec.real_id}`, {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json",
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+        },
+      });
+      await fetch(`/users/${rec.real_id}`, {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json",
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+        },
+      });
+
+      setDeleteRecord(null);
+      fetchResidents();
+    } catch (err) {
+      console.error("Delete error:", err);
+    }
   };
 
   const handleMembershipChange = (e: React.ChangeEvent<HTMLInputElement>, isEdit = false) => {
-    const value = e.target.value;
+    const id = Number(e.target.value);
     if (isEdit) {
-      setEditingResident((prev) => ({ ...prev, selectedMemberships: prev.selectedMemberships.includes(value) ? prev.selectedMemberships.filter((m) => m !== value) : [...prev.selectedMemberships, value] }));
+      setEditingResident((prev) => ({
+        ...prev,
+        selectedMemberships: prev.selectedMemberships.includes(id)
+          ? prev.selectedMemberships.filter((m) => m !== id)
+          : [...prev.selectedMemberships, id],
+      }));
     } else {
-      setNewResident((prev) => ({ ...prev, selectedMemberships: prev.selectedMemberships.includes(value) ? prev.selectedMemberships.filter((m) => m !== value) : [...prev.selectedMemberships, value] }));
+      setNewResident((prev) => ({
+        ...prev,
+        selectedMemberships: prev.selectedMemberships.includes(id)
+          ? prev.selectedMemberships.filter((m) => m !== id)
+          : [...prev.selectedMemberships, id],
+      }));
     }
   };
 
@@ -151,20 +325,56 @@ export default function ResidentsView() {
   const [initialAddData, setInitialAddData] = useState<any>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState<"edit" | "add" | null>(null);
 
-  const hasEditChanges = useMemo(() => initialEditData ? JSON.stringify(initialEditData) !== JSON.stringify(editingResident) : false, [initialEditData, editingResident]);
-  const hasAddChanges = useMemo(() => initialAddData ? JSON.stringify(initialAddData) !== JSON.stringify(newResident) : false, [initialAddData, newResident]);
+  const hasEditChanges = useMemo(
+    () => (initialEditData ? JSON.stringify(initialEditData) !== JSON.stringify(editingResident) : false),
+    [initialEditData, editingResident]
+  );
+
+  const hasAddChanges = useMemo(
+    () => (initialAddData ? JSON.stringify(initialAddData) !== JSON.stringify(newResident) : false),
+    [initialAddData, newResident]
+  );
 
   useEffect(() => {
-    if (!editRecord) { setInitialEditData(null); return; }
+    if (!editRecord) {
+      setInitialEditData(null);
+      return;
+    }
     const r = residentsData.find((x) => x.id === editRecord);
     if (!r) return;
-    const state = { firstName: r.firstName, middleName: r.middleName, lastName: r.lastName, contactNumber: r.contactNumber, hasMemberships: r.memberships.trim().length > 0, selectedMemberships: r.memberships.split(",").map((m) => m.trim()).filter(Boolean), hasAccount: r.hasAccount, username: r.username, password: r.password, role: r.role, passwordChangedByUser: r.passwordChangedByUser, photo: r.photo };
+
+    const currentMemNames = r.memberships ? r.memberships.split(", ").filter(Boolean) : [];
+    const currentMemIds = availableMemberships.filter((m) => currentMemNames.includes(m.name)).map((m) => m.id);
+
+    const state = {
+      real_id: r.real_id,
+      firstName: r.firstName,
+      middleName: r.middleName,
+      lastName: r.lastName,
+      contactNumber: r.contactNumber,
+      hasMemberships: currentMemNames.length > 0,
+      selectedMemberships: currentMemIds,
+      hasAccount: r.hasAccount,
+      username: r.username,
+      password: r.password,
+      role: r.role,
+      passwordChangedByUser: r.passwordChangedByUser,
+      photo: r.photo,
+    };
     setEditingResident(state);
     setInitialEditData(JSON.parse(JSON.stringify(state)));
-  }, [editRecord, residentsData]);
+  }, [editRecord, residentsData, availableMemberships]);
 
   const handleOpenAddForm = () => {
-    const empty = { firstName: "", middleName: "", lastName: "", contactNumber: "", hasMemberships: false, selectedMemberships: [] as string[], photo: "" };
+    const empty = {
+      firstName: "",
+      middleName: "",
+      lastName: "",
+      contactNumber: "",
+      hasMemberships: false,
+      selectedMemberships: [] as number[],
+      photo: "",
+    };
     setNewResident(empty);
     setInitialAddData(JSON.parse(JSON.stringify(empty)));
     setShowAddForm(true);
@@ -172,12 +382,18 @@ export default function ResidentsView() {
 
   const handleCancelEdit = () => {
     if (hasEditChanges) setShowCancelConfirm("edit");
-    else { setEditRecord(null); setFormErrors({}); }
+    else {
+      setEditRecord(null);
+      setFormErrors({});
+    }
   };
 
   const handleCancelAdd = () => {
     if (hasAddChanges) setShowCancelConfirm("add");
-    else { setShowAddForm(false); setFormErrors({}); }
+    else {
+      setShowAddForm(false);
+      setFormErrors({});
+    }
   };
 
   // Filter + Pagination
@@ -189,13 +405,21 @@ export default function ResidentsView() {
     if (residentFilter === "no-account") result = result.filter((r) => !r.hasAccount);
     if (residentSearch.trim()) {
       const q = residentSearch.toLowerCase();
-      result = result.filter((r) => [r.id, r.lastName, r.firstName, r.middleName, r.contactNumber, r.memberships, r.role].some((f) => f.toLowerCase().includes(q)));
+      result = result.filter((r) =>
+        [r.id, r.lastName, r.firstName, r.middleName, r.contactNumber, r.memberships, r.role].some((f) =>
+          f?.toLowerCase().includes(q)
+        )
+      );
     }
     return result;
   }, [residentsData, residentFilter, residentSearch]);
 
   const totalPages = useMemo(() => Math.ceil(filteredResidents.length / itemsPerPage), [filteredResidents]);
-  const paginatedResidents = useMemo(() => filteredResidents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage), [filteredResidents, currentPage]);
+  const paginatedResidents = useMemo(
+    () => filteredResidents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
+    [filteredResidents, currentPage]
+  );
+
   useMemo(() => setCurrentPage(1), [residentSearch, residentFilter]);
 
   return (
@@ -205,7 +429,6 @@ export default function ResidentsView() {
         <div className="w-[1200px]">
           <h1 className="text-4xl font-black text-[#005f63]">Residents Master List</h1>
           <p className="text-sm text-[#667777] mt-1">Manage all registered residents, staff, and their account status.</p>
-
           <div className="mt-4 flex items-center gap-4 w-[1580px]">
             <div className="flex-1">
               <SearchBar value={residentSearch} onChange={setResidentSearch} placeholder="Search by ID, name, contact, role or membership..." />
@@ -225,7 +448,6 @@ export default function ResidentsView() {
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
           </div>
-
           <p className="mt-2 text-xs text-gray-500">
             {filteredResidents.length} of {residentsData.length} record(s) match — showing {itemsPerPage} per page.
           </p>
@@ -235,11 +457,13 @@ export default function ResidentsView() {
       {/* Table */}
       <div className="pl-1">
         <div className="flex justify-end mb-3">
-          <button onClick={handleOpenAddForm} className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm">
+          <button
+            onClick={handleOpenAddForm}
+            className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm"
+          >
             + Add New Resident
           </button>
         </div>
-
         <div className="relative rounded-[20px] bg-white shadow-lg overflow-hidden">
           <div className="h-1 w-full bg-gradient-to-r from-[#3d9085] via-[#FFC107] to-[#00897B] absolute top-0 left-0 right-0"></div>
           <div className="p-5 pt-6">
@@ -247,16 +471,23 @@ export default function ResidentsView() {
               <thead>
                 <tr className="border-b border-[#eee8e0]">
                   {["ID", "Last Name", "First Name", "Middle Name", "Contact Number", "Memberships", "Role", "Has Account?", "Actions"].map((h) => (
-                    <th key={h} className={`py-3 px-2 font-bold text-[#005f63] whitespace-nowrap ${h === "Actions" ? "text-right" : "text-left"}`}>{h}</th>
+                    <th
+                      key={h}
+                      className={`py-3 px-2 font-bold text-[#005f63] whitespace-nowrap ${h === "Actions" ? "text-right" : "text-left"}`}
+                    >
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {paginatedResidents.length === 0 ? (
+                {loading ? (
+                  <tr><td colSpan={9} className="py-6 text-center text-gray-500 italic">Loading...</td></tr>
+                ) : paginatedResidents.length === 0 ? (
                   <tr><td colSpan={9} className="py-6 text-center text-gray-500 italic">No records match your search or filter.</td></tr>
                 ) : (
                   paginatedResidents.map((r) => {
-                    const allMems = r.memberships ? r.memberships.split(",").map((m) => m.trim()).filter(Boolean) : [];
+                    const allMems = r.memberships ? r.memberships.split(", ").map((m: string) => m.trim()).filter(Boolean) : [];
                     const visible = allMems.slice(0, 2);
                     const extra = allMems.length - 2;
                     return (
@@ -268,7 +499,11 @@ export default function ResidentsView() {
                         <td className="py-3 px-2 text-gray-600">{highlightText(r.contactNumber, residentSearch)}</td>
                         <td className="py-3 px-2">
                           <div className="flex flex-wrap gap-1.5 items-center">
-                            {visible.map((m, i) => <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>{highlightText(m, residentSearch)}</span>)}
+                            {visible.map((m: string, i: number) => (
+                              <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>
+                                {highlightText(m, residentSearch)}
+                              </span>
+                            ))}
                             {extra > 0 && <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">+{extra} more</span>}
                             {allMems.length === 0 && <span className="text-gray-400 text-xs">None</span>}
                           </div>
@@ -305,229 +540,461 @@ export default function ResidentsView() {
             </table>
           </div>
         </div>
+      </div>
 
-        {/* View Modal */}
-        {viewRecord && (() => {
-          const r = residentsData.find((x) => x.id === viewRecord)!;
-          const allMems = r.memberships ? r.memberships.split(",").map((m) => m.trim()).filter(Boolean) : [];
-          return (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-              <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-black text-[#005f63]">Record Details</h2>
-                  <button onClick={() => setViewRecord(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
-                </div>
-                <div className="text-sm">
-                  <div className="flex gap-6">
-                    <div className="flex-1 space-y-2">
-                      <p><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
-                      <p><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
-                      <p><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
-                      <p><strong className="text-[#005f63]">Role:</strong> {r.role} {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}</p>
-                      <p><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
-                      {r.hasAccount && (<><p><strong className="text-[#005f63]">Username:</strong> {r.username}</p><p><strong className="text-[#005f63]">Password:</strong> {r.passwordChangedByUser ? "•••••••• (changed by user — hidden)" : r.password}</p></>)}
-                    </div>
-                    <div className="w-[160px]">
-                      <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ minHeight: "180px" }}>
-                        {r.photo ? <img src={r.photo} alt="ID Photo" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-2">No photo uploaded</div>}
-                      </div>
+      {/* View Modal */}
+      {viewRecord && (() => {
+        const r = residentsData.find((x) => x.id === viewRecord)!;
+        const allMems = r.memberships ? r.memberships.split(", ").map((m: string) => m.trim()).filter(Boolean) : [];
+        return (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+            <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-black text-[#005f63]">Record Details</h2>
+                <button onClick={() => setViewRecord(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+              </div>
+              <div className="text-sm">
+                <div className="flex gap-6">
+                  <div className="flex-1 space-y-2">
+                    <p><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
+                    <p><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
+                    <p><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
+                    <p><strong className="text-[#005f63]">Role:</strong> {r.role} {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}</p>
+                    <p><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
+                    {r.hasAccount && (<><p><strong className="text-[#005f63]">Username:</strong> {r.username}</p><p><strong className="text-[#005f63]">Password:</strong> {r.passwordChangedByUser ? "•••••••• (changed by user — hidden)" : r.password}</p></>)}
+                  </div>
+                  <div className="w-[160px]">
+                    <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ minHeight: "180px" }}>
+                      {r.photo ? <img src={r.photo} alt="ID Photo" className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-2">No photo uploaded</div>}
                     </div>
                   </div>
-                  <div className="mt-6">
-                    <strong className="text-[#005f63] block mb-2">Memberships:</strong>
-                    <div className="flex flex-wrap gap-1.5">
-                      {allMems.length > 0 ? allMems.map((m, i) => <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>{m}</span>) : <span className="text-gray-500">None</span>}
-                    </div>
+                </div>
+                <div className="mt-6">
+                  <strong className="text-[#005f63] block mb-2">Memberships:</strong>
+                  <div className="flex flex-wrap gap-1.5">
+                    {allMems.length > 0 ? allMems.map((m: string, i: number) => <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>{m}</span>) : <span className="text-gray-500">None</span>}
                   </div>
                 </div>
               </div>
             </div>
-          );
-        })()}
+          </div>
+        );
+      })()}
 
-        {/* Edit Modal */}
-        {editRecord && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-            <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-black text-[#005f63]">Edit Resident / Staff</h2>
-                <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+      {/* Add Modal */}
+      {showAddForm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-black text-[#005f63]">Add New Resident / Staff</h2>
+              <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+            </div>
+            <form onSubmit={handleAddResident} className="space-y-4">
+              <div className="grid md:grid-cols-3 gap-4">
+                {(["firstName", "middleName", "lastName"] as const).map((field) => (
+                  <div key={field}>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{field === "firstName" ? "First Name *" : field === "middleName" ? "Middle Name" : "Last Name *"}</label>
+                    <input
+                      type="text"
+                      required={field !== "middleName"}
+                      value={newResident[field]}
+                      onChange={(e) => setNewResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${(formErrors as any)[field] ? "border-red-500" : "border-gray-200"}`}
+                    />
+                    {(formErrors as any)[field] && <p className="text-red-500 text-xs mt-1">{(formErrors as any)[field]}</p>}
+                  </div>
+                ))}
               </div>
-              <form onSubmit={handleUpdateResident} className="space-y-4">
-                <div className="grid md:grid-cols-3 gap-4">
-                  {(["firstName", "middleName", "lastName"] as const).map((field) => (
-                    <div key={field}>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{field === "firstName" ? "First Name *" : field === "middleName" ? "Middle Name" : "Last Name *"}</label>
-                      <input type="text" required={field !== "middleName"} value={editingResident[field]} onChange={(e) => setEditingResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))} className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${(formErrors as any)[field] ? "border-red-500" : "border-gray-200"}`} />
-                      {(formErrors as any)[field] && <p className="text-red-500 text-xs mt-1">{(formErrors as any)[field]}</p>}
-                    </div>
-                  ))}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
-                  <input type="text" required value={editingResident.contactNumber} onChange={(e) => setEditingResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))} className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`} placeholder="09XX-XXX-XXXX" />
-                  {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ID Photo</label>
-                  <input type="file" accept="image/*" onChange={(e) => handlePhotoChange(e, true)} className="w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63]" />
-                  {editingResident.photo && (
-                    <div className="relative inline-block mt-2">
-                      <img src={editingResident.photo} alt="Preview" className="h-20 rounded border" />
-                      <button type="button" onClick={() => handleRemovePhoto(true)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold shadow">×</button>
-                    </div>
-                  )}
-                </div>
-                <div className="border-t border-b py-3 space-y-3">
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+                <input
+                  type="text"
+                  required
+                  value={newResident.contactNumber}
+                  onChange={(e) => setNewResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))}
+                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
+                  placeholder="09XX-XXX-XXXX"
+                />
+                {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ID Photo</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handlePhotoChange(e)}
+                  className="w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63]"
+                />
+                {newResident.photo && (
+                  <div className="relative inline-block mt-2">
+                    <img src={newResident.photo} alt="Preview" className="h-20 rounded border" />
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePhoto()}
+                      className="absolute -top-2 -right-2 bg-gray-200/70 text-gray-500 rounded-full w-6 h-6 flex items-center justify-center text-xs font-semibold border border-gray-300 hover:bg-gray-300/80 transition"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-b py-3 space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newResident.hasMemberships}
+                    onChange={(e) => setNewResident((p) => ({ ...p, hasMemberships: e.target.checked }))}
+                    className="w-4 h-4 text-[#005f63]"
+                  />
+                  <span className="font-medium text-gray-700">Has Memberships?</span>
+                </label>
+                {newResident.hasMemberships && (
+                  <div className="pl-6 grid grid-cols-2 gap-2">
+                    {availableMemberships.map((mem) => (
+                      <label key={mem.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          value={mem.id}
+                          checked={newResident.selectedMemberships.includes(mem.id)}
+                          onChange={(e) => handleMembershipChange(e)}
+                          className="w-4 h-4 text-[#005f63]"
+                        />
+                        <span>{mem.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleCancelAdd}
+                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!hasAddChanges}
+                  className={`px-5 py-2.5 rounded-full transition ${hasAddChanges ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+                >
+                  Save Record
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editRecord && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-black text-[#005f63]">Edit Resident / Staff</h2>
+              <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+            </div>
+            <form onSubmit={handleUpdateResident} className="space-y-4">
+              <div className="grid md:grid-cols-3 gap-4">
+                {(["firstName", "middleName", "lastName"] as const).map((field) => (
+                  <div key={field}>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{field === "firstName" ? "First Name *" : field === "middleName" ? "Middle Name" : "Last Name *"}</label>
+                    <input
+                      type="text"
+                      required={field !== "middleName"}
+                      value={editingResident[field]}
+                      onChange={(e) => setEditingResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${(formErrors as any)[field] ? "border-red-500" : "border-gray-200"}`}
+                    />
+                    {(formErrors as any)[field] && <p className="text-red-500 text-xs mt-1">{(formErrors as any)[field]}</p>}
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+                <input
+                  type="text"
+                  required
+                  value={editingResident.contactNumber}
+                  onChange={(e) => setEditingResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))}
+                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
+                  placeholder="09XX-XXX-XXXX"
+                />
+                {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">ID Photo</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handlePhotoChange(e, true)}
+                  className="w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63]"
+                />
+                {editingResident.photo && (
+                  <div className="relative inline-block mt-2">
+                    <img src={editingResident.photo} alt="Preview" className="h-20 rounded border" />
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePhoto(true)}
+                      className="absolute -top-2 -right-2 bg-gray-200/70 text-gray-500 rounded-full w-6 h-6 flex items-center justify-center text-xs font-semibold border border-gray-300 hover:bg-gray-300/80 transition"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-b py-3 space-y-3">
+                <div className="flex items-center gap-4">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={editingResident.hasMemberships} onChange={(e) => setEditingResident((p) => ({ ...p, hasMemberships: e.target.checked }))} className="w-4 h-4 text-[#005f63]" />
-                    <span className="font-medium text-gray-700">Has Memberships?</span>
+                    <input
+                      type="checkbox"
+                      checked={editingResident.role === "Staff"}
+                      onChange={(e) => setEditingResident(prev => ({
+                        ...prev,
+                        role: e.target.checked ? "Staff" : "Resident"
+                      }))}
+                      className="w-4 h-4 text-[#005f63]"
+                    />
+                    <span className="font-medium text-gray-700">Is Staff?</span>
                   </label>
-                  {editingResident.hasMemberships && (
-                    <div className="pl-6 grid grid-cols-2 gap-2">
-                      {/* ✅ 2. We explicitly typed mem and idx here! */}
-                      {availableMemberships.map((mem: string, idx: number) => (
-                        <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input type="checkbox" value={mem} checked={editingResident.selectedMemberships.includes(mem)} onChange={(e) => handleMembershipChange(e, true)} className="w-4 h-4 text-[#005f63]" />
-                          <span>{mem}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editingResident.hasAccount}
+                      onChange={(e) => setEditingResident(prev => ({
+                        ...prev,
+                        hasAccount: e.target.checked
+                      }))}
+                      className="w-4 h-4 text-[#005f63]"
+                    />
+                    <span className="font-medium text-gray-700">Has Account?</span>
+                  </label>
                 </div>
+
                 {editingResident.hasAccount && (
                   <div className="pl-6 space-y-3">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                      <input type="text" value={editingResident.username || editRecord} readOnly className="w-full rounded-full border border-gray-200 bg-gray-100 px-4 py-2.5 text-gray-600" />
-                      <p className="text-xs text-gray-500 mt-1">* Username is automatically set to ID and cannot be changed</p>
+                      <input
+                        type="text"
+                        value={editingResident.username}
+                        onChange={(e) => setEditingResident(prev => ({
+                          ...prev,
+                          username: e.target.value
+                        }))}
+                        className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                      />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                      <input type="text" value={editingResident.passwordChangedByUser ? "••••••••" : editingResident.password} onChange={(e) => !editingResident.passwordChangedByUser && setEditingResident((p) => ({ ...p, password: e.target.value }))} readOnly={editingResident.passwordChangedByUser} className={`w-full rounded-full border px-4 py-2.5 ${editingResident.passwordChangedByUser ? "bg-gray-100 text-gray-500 border-gray-200" : "border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"}`} />
-                      {editingResident.passwordChangedByUser ? <p className="text-xs text-gray-500 mt-1">* Password already changed by user</p> : formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                      <input
+                        type="password"
+                        value={editingResident.password}
+                        onChange={(e) => setEditingResident(prev => ({
+                          ...prev,
+                          password: e.target.value
+                        }))}
+                        disabled={editingResident.passwordChangedByUser}
+                        className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                          editingResident.passwordChangedByUser
+                            ? "bg-gray-100 text-gray-500 border-gray-200"
+                            : formErrors.password ? "border-red-500" : "border-gray-200"
+                        }`}
+                        placeholder={editingResident.passwordChangedByUser ? "Changed by user — cannot edit" : "Enter new password"}
+                      />
+                      {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                      <select required={editingResident.hasAccount} value={editingResident.role} onChange={(e) => setEditingResident((p) => ({ ...p, role: e.target.value }))} disabled={editingResident.passwordChangedByUser} className={`w-full rounded-full border px-4 py-2.5 focus:outline-none ${editingResident.passwordChangedByUser ? "bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed" : "border-gray-200 focus:ring-2 focus:ring-[#005f63]/30"}`}>
-                        <option value="Resident">Resident</option>
-                        <option value="Staff">Staff</option>
-                      </select>
-                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editingResident.passwordChangedByUser}
+                        onChange={(e) => setEditingResident(prev => ({
+                          ...prev,
+                          passwordChangedByUser: e.target.checked
+                        }))}
+                        className="w-4 h-4 text-[#005f63]"
+                      />
+                      <span className="text-sm text-gray-600">Password already changed by user</span>
+                    </label>
                   </div>
                 )}
-                <div className="flex justify-between gap-3 pt-2">
-                  <button type="button" onClick={handleCancelEdit} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
-                  <button type="submit" disabled={!hasEditChanges} className={`px-5 py-2.5 rounded-full transition ${hasEditChanges ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}>Save Changes</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
-        {/* Delete Confirm Modal */}
-        {deleteRecord && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-            <div className="bg-white rounded-[30px] w-full max-w-lg p-6 shadow-2xl">
-              <div className="flex items-center justify-between mb-4">
-                <div><p className="text-xl font-black text-[#b91c1c]">Confirm Delete</p><p className="text-sm text-gray-600 mt-1">This action cannot be undone.</p></div>
-                <button onClick={() => setDeleteRecord(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingResident.hasMemberships}
+                    onChange={(e) => setEditingResident(prev => ({
+                      ...prev,
+                      hasMemberships: e.target.checked
+                    }))}
+                    className="w-4 h-4 text-[#005f63]"
+                  />
+                  <span className="font-medium text-gray-700">Has Memberships?</span>
+                </label>
+                {editingResident.hasMemberships && (
+                  <div className="pl-6 grid grid-cols-2 gap-2">
+                    {availableMemberships.map((mem) => (
+                      <label key={mem.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <input
+                          type="checkbox"
+                          value={mem.id}
+                          checked={editingResident.selectedMemberships.includes(mem.id)}
+                          onChange={(e) => handleMembershipChange(e, true)}
+                          className="w-4 h-4 text-[#005f63]"
+                        />
+                        <span>{mem.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
-              <p className="text-sm text-gray-700 mb-5">Are you sure you want to delete record <strong>{deleteRecord}</strong>?</p>
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
-                <button type="button" onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">Delete</button>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Add Form Modal */}
-        {showAddForm && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-            <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-black text-[#005f63]">Add New Resident / Staff</h2>
-                <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+              <div className="flex justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!hasEditChanges}
+                  className={`px-5 py-2.5 rounded-full transition ${
+                    hasEditChanges
+                      ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
+                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  }`}
+                >
+                  Update Record
+                </button>
               </div>
-              <form onSubmit={handleAddResident} className="space-y-4">
-                <div className="grid md:grid-cols-3 gap-4">
-                  {(["firstName", "middleName", "lastName"] as const).map((field) => (
-                    <div key={field}>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">{field === "firstName" ? "First Name *" : field === "middleName" ? "Middle Name" : "Last Name *"}</label>
-                      <input type="text" required={field !== "middleName"} value={newResident[field]} onChange={(e) => setNewResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))} className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${(formErrors as any)[field] ? "border-red-500" : "border-gray-200"}`} />
-                      {(formErrors as any)[field] && <p className="text-red-500 text-xs mt-1">{(formErrors as any)[field]}</p>}
-                    </div>
-                  ))}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
-                  <input type="text" required value={newResident.contactNumber} onChange={(e) => setNewResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))} className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`} placeholder="09XX-XXX-XXXX" />
-                  {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">ID Photo</label>
-                  <input type="file" accept="image/*" onChange={handlePhotoChange} className="w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63]" />
-                  {newResident.photo && (
-                    <div className="relative inline-block mt-3">
-                      <img src={newResident.photo} alt="ID Preview" className="h-28 w-auto rounded-lg border border-gray-200 object-cover shadow-sm" />
-                      <button type="button" onClick={() => handleRemovePhoto(false)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold shadow-md hover:bg-red-600 transition">×</button>
-                    </div>
-                  )}
-                  <p className="text-xs text-gray-500 mt-1">* Only 1 image file allowed (JPG, PNG, GIF)</p>
-                </div>
-                <div className="border-t border-b py-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={newResident.hasMemberships} onChange={(e) => setNewResident((p) => ({ ...p, hasMemberships: e.target.checked }))} className="w-4 h-4 text-[#005f63]" />
-                    <span className="font-medium text-gray-700">Has Memberships?</span>
-                  </label>
-                  {newResident.hasMemberships && (
-                    <div className="mt-3 pl-6 grid grid-cols-2 gap-2">
-                      {/* ✅ 3. We explicitly typed mem and idx here too! */}
-                      {availableMemberships.map((mem: string, idx: number) => (
-                        <label key={idx} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input type="checkbox" value={mem} checked={newResident.selectedMemberships.includes(mem)} onChange={handleMembershipChange} className="w-4 h-4 text-[#005f63]" />
-                          <span>{mem}</span>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex justify-end gap-3 pt-2">
-                  <button type="button" onClick={handleCancelAdd} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
-                  <button type="submit" disabled={!hasAddChanges} className={`px-5 py-2.5 rounded-full transition ${hasAddChanges ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}>Save Record</button>
-                </div>
-              </form>
-            </div>
+            </form>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Unsaved Changes Confirm */}
-        {showCancelConfirm && (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4">
-            <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl">
-              <h3 className="text-lg font-bold text-gray-800 mb-2">Discard changes?</h3>
-              <p className="text-sm text-gray-600 mb-6">You have unsaved changes. If you leave now, your changes will be lost.</p>
-              <div className="flex justify-end gap-3">
-                <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Keep Editing</button>
-                <button onClick={() => { setShowCancelConfirm(null); if (showCancelConfirm === "edit") { setEditRecord(null); setFormErrors({}); } else { setShowAddForm(false); setFormErrors({}); } }} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">Discard</button>
+      {/* Delete Confirmation Modal */}
+      {deleteRecord && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[20px] w-full max-w-md p-6 shadow-2xl">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path d="M12 9v6m0 4h.01M5.05 19h13.9a2 2 0 0 0 1.79-2.97L13.79 4.18a2 2 0 0 0-3.58 0L3.26 16.03A2 2 0 0 0 5.05 19z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete Record</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                Are you sure you want to delete this resident/staff record? This action cannot be undone.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setDeleteRecord(null)}
+                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDeleteResident}
+                  className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 mt-8">
-            <button onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))} disabled={currentPage === 1} className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 hover:bg-orange-50 transition">Previous</button>
-            {Array.from({ length: totalPages }, (_, i) => (
-              <button key={i + 1} onClick={() => setCurrentPage(i + 1)} className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${currentPage === i + 1 ? "bg-[#005f63] text-white shadow-sm" : "bg-white border text-[#005f63] hover:bg-orange-50"}`}>{i + 1}</button>
-            ))}
-            <button onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))} disabled={currentPage === totalPages} className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 hover:bg-orange-50 transition">Next</button>
-            <span className="text-xs text-gray-600 ml-1.5">Page {currentPage} of {totalPages}</span>
+      {/* Unsaved Changes Confirmation Modal */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[20px] w-full max-w-md p-6 shadow-2xl">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path d="M12 9v6m0 4h.01M5.05 19h13.9a2 2 0 0 0 1.79-2.97L13.79 4.18a2 2 0 0 0-3.58 0L3.26 16.03A2 2 0 0 0 5.05 19z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900 mb-2">Unsaved Changes</h3>
+              <p className="text-sm text-gray-600 mb-6">
+                You have unsaved changes. Are you sure you want to leave without saving?
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setShowCancelConfirm(null)}
+                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+                >
+                  Stay
+                </button>
+                <button
+                  onClick={() => {
+                    setShowCancelConfirm(null);
+                    if (showCancelConfirm === "edit") {
+                      setEditRecord(null);
+                      setFormErrors({});
+                    } else {
+                      setShowAddForm(false);
+                      setFormErrors({});
+                    }
+                  }}
+                  className="px-5 py-2.5 rounded-full bg-yellow-500 text-white hover:bg-yellow-600 transition"
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex justify-center items-center gap-2 mt-6">
+          <button
+            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className="p-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+            <button
+              key={page}
+              onClick={() => setCurrentPage(page)}
+              className={`w-9 h-9 rounded-full text-sm font-medium transition ${
+                currentPage === page
+                  ? "bg-[#005f63] text-white"
+                  : "border border-gray-200 text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+
+          <button
+            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+            disabled={currentPage === totalPages}
+            className="p-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          >
+            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
