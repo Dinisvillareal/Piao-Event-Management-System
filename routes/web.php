@@ -133,4 +133,4 @@ Route::middleware('auth')->group(function () {
 // All API routes must be defined BEFORE this wildcard
 Route::get('/{any}', function () {
     return view('app');
-})->where('any', '.*');
+})->where('any', 'dashboard|scan|attendance|events|notify|settings|staff|residents|qr|memberships');
