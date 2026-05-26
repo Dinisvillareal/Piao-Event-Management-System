@@ -90,15 +90,22 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
   });
   const [memberName, setMemberName] = useState("");
   const [loading, setLoading] = useState(true);
-  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [appUrl, setAppUrl] = useState("");
-  const [recentActivities, setRecentActivities] = useState([
+  const [recentActivities] = useState([
     { action: "Scanned QR — Sign In", detail: "Maria Santos · General Assembly", staff: "Brgy. Captain", time: "2026-05-12 08:55" },
     { action: "Created Event", detail: "Senior Citizens Health Check", staff: "Brgy. Captain", time: "2026-05-06 11:02" },
     { action: "Sent Notification", detail: "General Assembly Reminder", staff: "Kagawad Lina", time: "2026-05-05 16:20" },
     { action: "Generated QR", detail: "SK Youth Council — 2 members", staff: "Brgy. Captain", time: "2026-05-05 10:11" },
     { action: "Added Resident", detail: "Liza Domingo (R-007)", staff: "Kagawad Lina", time: "2026-05-04 09:32" }
   ]);
+
+  const getCsrfToken = () => {
+    const token = document.cookie
+      .split('; ')
+      .find(row => row.startsWith('XSRF-TOKEN='))
+      ?.split('=')[1];
+    return token ? decodeURIComponent(token) : '';
+  };
 
   useEffect(() => {
     const url = `${window.location.protocol}//${window.location.host}`;
@@ -110,7 +117,8 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
       const response = await fetch('/me', {
         headers: {
           'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-XSRF-TOKEN': getCsrfToken()
         },
         credentials: 'include'
       });
@@ -139,12 +147,20 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
   const fetchAllStats = async () => {
     try {
       const residentsResponse = await fetch('/users?per_page=1', {
-        headers: { 'Accept': 'application/json' },
+        headers: { 
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-XSRF-TOKEN': getCsrfToken()
+        },
         credentials: 'include'
       });
       
       const membershipsResponse = await fetch('/api/memberships', {
-        headers: { 'Accept': 'application/json' },
+        headers: { 
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-XSRF-TOKEN': getCsrfToken()
+        },
         credentials: 'include'
       });
       
@@ -175,10 +191,7 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
 
   useEffect(() => {
     const loadDashboard = async () => {
-      if (isInitialLoad) {
-        setLoading(true);
-      }
-      
+      setLoading(true);
       try {
         await Promise.all([
           fetchCurrentUser(),
@@ -188,12 +201,11 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
         console.error('Error loading dashboard:', error);
       } finally {
         setLoading(false);
-        setIsInitialLoad(false);
       }
     };
     
     loadDashboard();
-  }, [upcomingEvents, pastEventsCount]);
+  }, []);
 
   const downloadQRCode = () => {
     const canvas = document.getElementById('system-qr-code') as HTMLCanvasElement;
@@ -210,7 +222,6 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
     }
   };
 
-  // ✅ Only 3 stat cards now
   const statsCards = [
     { 
       value: stats.residents, 
@@ -235,7 +246,7 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
     }
   ];
 
-  if (loading && isInitialLoad) {
+  if (loading) {
     return (
       <div className="flex justify-center items-center h-96">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
@@ -245,7 +256,6 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
 
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
       <div className="rounded-[30px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">
           STAFF CONSOLE
@@ -256,7 +266,6 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
         </p>
       </div>
 
-      {/* Stats Cards - 3 columns grid */}
       <div className="grid gap-4 md:grid-cols-3">
         {statsCards.map((item, idx) => (
           <button
@@ -275,9 +284,7 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
         ))}
       </div>
 
-      {/* 2 Column Section: System QR + Recent Activity */}
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Left: System QR Code */}
         <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
           <h2 className="text-2xl font-black text-[#005f63]">System QR Code</h2>
           <p className="text-[15px] mt-1 text-gray-600">
@@ -312,7 +319,6 @@ export default function DashboardView({ setActive, upcomingEvents = [], pastEven
           </div>
         </div>
 
-        {/* Right: Recent Activity */}
         <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
           <h2 className="text-2xl font-black text-[#005f63]">Recent Activity</h2>
           <p className="text-[15px] mt-1 text-gray-600">Latest staff actions in the system.</p>

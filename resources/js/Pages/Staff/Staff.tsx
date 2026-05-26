@@ -59,6 +59,39 @@ export const highlightText = (text: string, query: string) => {
 function Sidebar({ active, setActive }: { active: string; setActive: (key: string) => void }) {
   const [isOpen, setIsOpen] = useState(true);
 
+  const handleLogout = async () => {
+    console.log('Logging out...');
+    try {
+      const token = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('XSRF-TOKEN='))
+        ?.split('=')[1];
+      
+      const decodedToken = token ? decodeURIComponent(token) : '';
+
+      await fetch('/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-XSRF-TOKEN': decodedToken
+        }
+      });
+
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/';
+
+    } catch (err) {
+      console.error('Logout error:', err);
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/';
+    }
+  };
+
   return (
     <>
       <button onClick={() => setIsOpen(!isOpen)} className={`fixed top-4 z-50 bg-[#006666] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#005555] ${isOpen ? "left-[235px]" : "left-[50px]"}`}>
@@ -84,7 +117,10 @@ function Sidebar({ active, setActive }: { active: string; setActive: (key: strin
           </div>
         </div>
         <div className="border-t border-[#007777] p-2 shrink-0">
-          <button className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"}`} onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.href = "/"; }}>
+          <button 
+            className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"}`} 
+            onClick={handleLogout}
+          >
             <LogOut className="h-5 w-5 shrink-0" />
             <span className={`transition-all duration-300 whitespace-nowrap ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>Sign out</span>
           </button>

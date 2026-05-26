@@ -125,6 +125,7 @@
 //   );
 // }
 import React, { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Users, Plus, Pencil, Trash2 } from "lucide-react";
 import { Button, Input } from "../../../Components/UI/Core";
 
@@ -153,6 +154,18 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   });
 
   const itemsPerPage = 6;
+
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    if (showModal || showAddModal || showEditModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [showModal, showAddModal, showEditModal]);
 
   const fetchMemberships = async () => {
     setLoading(true);
@@ -489,20 +502,20 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm">
+    <div className="h-full flex flex-col">
+      {/* Fixed Header - Never scrolls */}
+      <div className="flex-shrink-0 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-black text-[#005f63]">Memberships</h1>
             <p className="text-sm text-[#667777] mt-1">Manage memberships and view assigned residents.</p>
           </div>
-          <Button 
+          <button
             onClick={() => setShowAddModal(true)}
-            className="bg-[#005f63] hover:bg-[#004a4d] text-white rounded-full"
+            className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm flex items-center gap-2"
           >
-            <Plus className="mr-2 h-4 w-4" /> Add Membership
-          </Button>
+            <Plus className="h-4 w-4" /> Add New Membership
+          </button>
         </div>
         <div className="mt-4">
           <Input 
@@ -516,8 +529,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         </p>
       </div>
 
-      {/* Membership Cards */}
-      <div className="pl-1">
+      {/* Scrollable Content Area - Cards scroll here, header stays fixed */}
+      <div className="flex-1 overflow-y-auto pl-1 pb-6">
         {filteredMemberships.length === 0 ? (
           <p className="text-center text-gray-500 py-12">No memberships found.</p>
         ) : (
@@ -585,35 +598,33 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             {/* Pagination */}
             {totalPages > 1 && (
               <div className="mt-8 flex items-center justify-center gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
-                  disabled={currentPage === 1} 
-                  className="h-8 w-8 p-0"
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
                 >
                   ←
-                </Button>
+                </button>
                 {Array.from({ length: totalPages }, (_, i) => (
-                  <Button 
-                    key={i} 
-                    variant={currentPage === i + 1 ? "default" : "outline"} 
-                    size="sm" 
-                    onClick={() => setCurrentPage(i + 1)} 
-                    className={`h-8 w-8 p-0 ${currentPage === i + 1 ? "bg-[#005f63] hover:bg-[#004a4d]" : ""}`}
+                  <button
+                    key={i}
+                    onClick={() => setCurrentPage(i + 1)}
+                    className={`h-8 w-8 rounded-lg text-sm font-semibold transition-all ${
+                      currentPage === i + 1
+                        ? "bg-[#005f63] text-white shadow-sm"
+                        : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
+                    }`}
                   >
                     {i + 1}
-                  </Button>
+                  </button>
                 ))}
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
-                  disabled={currentPage === totalPages} 
-                  className="h-8 w-8 p-0"
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
                 >
                   →
-                </Button>
+                </button>
               </div>
             )}
           </>
@@ -621,19 +632,20 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       </div>
 
       {/* View Members Modal */}
-      {showModal && selectedMembership && (
+      {showModal && selectedMembership && createPortal(
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleBackdropClick}
         >
-          <div className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl">
-            <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl relative">
+            <div className="bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-black text-[#005f63]">{selectedMembership.name}</h2>
+                <h2 className="text-xl font-bold text-gray-800">{selectedMembership.name}</h2>
                 <p className="text-sm text-gray-500 mt-0.5">{selectedMembership.description || 'No description'}</p>
               </div>
               <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -677,41 +689,34 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                           </p>
                         </div>
                       </div>
-                      <button 
-                        onClick={() => closeModal()}
-                        className="text-xs text-teal-600 hover:text-teal-800 font-medium px-3 py-1.5 rounded-full hover:bg-teal-100"
-                      >
-                       
-                      </button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            <div className="sticky bottom-0 bg-white px-6 py-4 border-t border-gray-100 flex justify-end">
-              <Button onClick={closeModal} className="bg-[#005f63] hover:bg-[#004a4d] text-white px-6">
+            <div className="bg-white px-6 py-4 border-t border-gray-100 flex justify-end">
+              <button onClick={closeModal} className="bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-lg text-sm font-medium transition">
                 Close
-              </Button>
+              </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Add Membership Modal */}
-      {showAddModal && (
+      {showAddModal && createPortal(
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleAddBackdropClick}
         >
-          <div className="bg-white rounded-3xl w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl">
-            <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-black text-[#005f63]">Add New Membership</h2>
-                <p className="text-sm text-gray-500 mt-0.5">Create a new membership type for residents.</p>
-              </div>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden shadow-2xl relative">
+            <div className="bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-800">Add New Membership</h2>
               <button onClick={closeAddModal} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -727,8 +732,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   required
                   value={newMembership.name}
                   onChange={(e) => setNewMembership(prev => ({ ...prev, name: e.target.value }))}
-                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                    addFormErrors.name ? "border-red-500" : "border-gray-200"
+                  className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                    addFormErrors.name ? "border-red-500" : "border-gray-300"
                   }`}
                   placeholder="e.g., Senior Citizen Program"
                 />
@@ -742,48 +747,46 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 <textarea
                   value={newMembership.description}
                   onChange={(e) => setNewMembership(prev => ({ ...prev, description: e.target.value }))}
-                  rows={4}
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 resize-none"
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 resize-none"
                   placeholder="Describe the membership benefits and requirements..."
                 />
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <Button
+                <button
                   type="button"
-                  variant="outline"
                   onClick={closeAddModal}
-                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
                 >
                   Cancel
-                </Button>
-                <Button
+                </button>
+                <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004d4d] disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-[#005f63] text-white hover:bg-[#004a4d] disabled:opacity-50 transition"
                 >
                   {isSubmitting ? "Adding..." : "Add Membership"}
-                </Button>
+                </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Edit Membership Modal */}
-      {showEditModal && editingMembership && (
+      {showEditModal && editingMembership && createPortal(
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleEditBackdropClick}
         >
-          <div className="bg-white rounded-3xl w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl">
-            <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-black text-[#005f63]">Edit Membership</h2>
-                <p className="text-sm text-gray-500 mt-0.5">Update membership name or description.</p>
-              </div>
+          <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden shadow-2xl relative">
+            <div className="bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-800">Edit Membership</h2>
               <button onClick={closeEditModal} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
@@ -799,8 +802,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   required
                   value={editingMembership.name}
                   onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, name: e.target.value }))}
-                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                    editFormErrors.name ? "border-red-500" : "border-gray-200"
+                  className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                    editFormErrors.name ? "border-red-500" : "border-gray-300"
                   }`}
                   placeholder="e.g., Senior Citizen Program"
                 />
@@ -814,32 +817,32 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 <textarea
                   value={editingMembership.description}
                   onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, description: e.target.value }))}
-                  rows={4}
-                  className="w-full rounded-2xl border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 resize-none"
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 resize-none"
                   placeholder="Describe the membership benefits and requirements..."
                 />
               </div>
 
               <div className="flex justify-end gap-3 pt-4">
-                <Button
+                <button
                   type="button"
-                  variant="outline"
                   onClick={closeEditModal}
-                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50"
+                  className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
                 >
                   Cancel
-                </Button>
-                <Button
+                </button>
+                <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004d4d] disabled:opacity-50"
+                  className="px-4 py-2 rounded-lg bg-[#005f63] text-white hover:bg-[#004a4d] disabled:opacity-50 transition"
                 >
                   {isSubmitting ? "Saving..." : "Save Changes"}
-                </Button>
+                </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
