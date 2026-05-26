@@ -9,7 +9,7 @@ class MembershipController extends Controller
 {
     public function index()
     {
-        $memberships = Membership::paginate(10);
+        $memberships = Membership::all();
         return response()->json($memberships);
     }
 
