@@ -20,17 +20,13 @@ Route::get('/', function () {
     return view('app');
 });
 
-Route::get('/{any}', function () {
-    return view('app');
-})->where('any', 'dashboard|qr|attendance|events|notify|settings|staff');
-
 /*
 |--------------------------------------------------------------------------
 | PUBLIC ROUTES
 |--------------------------------------------------------------------------
 */
 
-Route::post('/login', [UserController::class, 'login']);
+Route::post('/login', [UserController::class, 'login'])->name('login');
 
 /*
 |--------------------------------------------------------------------------
@@ -47,27 +43,21 @@ Route::middleware('auth')->group(function () {
     */
     Route::post('/logout', [UserController::class, 'logout']);
     Route::get('/me', [UserController::class, 'me']);
+    Route::post('/change-password', [UserController::class, 'changePassword']);
 
     /*
     |------------------------
-    | USERS (MERGED + CLEANED)
+    | USERS
     |------------------------
     */
+    Route::get('/users/all-for-memberships', [UserController::class, 'getAllForMemberships']);
     Route::get('/users', [UserController::class, 'index']);
-
     Route::get('/users/{id}', [UserController::class, 'show']);
-
     Route::post('/users', [UserController::class, 'store']);
-
     Route::put('/users/{id}', [UserController::class, 'update']);
-
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
-
-    // Role-based filters (FROM SECOND FILE - ADDED)
     Route::get('/users/staff', [UserController::class, 'staff']);
     Route::get('/users/resident', [UserController::class, 'resident']);
-
-    // Soft delete / restore / force delete (FROM SECOND FILE - ADDED)
     Route::get('/users/deleted', [UserController::class, 'deletedUsers']);
     Route::post('/users/{id}/restore', [UserController::class, 'restore']);
     Route::delete('/users/{id}/force-delete', [UserController::class, 'forceDelete']);
@@ -77,9 +67,8 @@ Route::middleware('auth')->group(function () {
     | MEMBERSHIPS
     |------------------------
     */
-    Route::resource('memberships', MembershipController::class);
-
-    Route::prefix('memberships')->group(function () {
+    Route::resource('api/memberships', MembershipController::class);
+    Route::prefix('api/memberships')->group(function () {
         Route::get('/paginated', [MembershipController::class, 'getPaginated']);
         Route::get('/simple', [MembershipController::class, 'getSimplePaginated']);
         Route::get('/cursor', [MembershipController::class, 'getCursorPaginated']);
@@ -104,26 +93,17 @@ Route::middleware('auth')->group(function () {
     | EVENTS
     |------------------------
     */
-
-    // EVENTS JSON DATA
     Route::get('/events-data', function () {
-
         $user = Auth::user();
-
-        // FIX: user_id instead of resident_id
         $membershipIds = DB::table('membership_residents')
             ->where('user_id', $user->id)
             ->pluck('membership_id');
-
         $events = Event::whereIn('membership_id', $membershipIds)
-            ->orWhereNull('membership_id') // optional events
+            ->orWhereNull('membership_id')
             ->get();
-
-        return response()->json([
-            'data' => $events
-        ]);
+        return response()->json(['data' => $events]);
     });
-    // EVENTS CRUD
+    
     Route::post('/events', [EventController::class, 'store']);
     Route::put('/events/{id}', [EventController::class, 'update']);
     Route::delete('/events/{id}', [EventController::class, 'destroy']);
@@ -148,3 +128,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/events/{id}/attendances', [EventAttendanceController::class, 'getEventAttendees']);
     Route::get('/users/{id}/attendances', [EventAttendanceController::class, 'getMemberHistory']);
 });
+
+// ✅✅✅ MOVED TO THE VERY BOTTOM - This is CRITICAL!
+// All API routes must be defined BEFORE this wildcard
+Route::get('/{any}', function () {
+    return view('app');
+})->where('any', '.*');

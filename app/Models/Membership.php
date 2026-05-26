@@ -16,6 +16,11 @@ class Membership extends Model
      */
     public function users(): BelongsToMany
     {
-        return $this->belongsToMany(User::class, 'membership_residents');
+        return $this->belongsToMany(
+            User::class, 
+            'membership_residents',
+            'membership_id',  // Foreign key on pivot table
+            'user_id'         // Related key on pivot table
+        );
     }
 }
