@@ -186,7 +186,7 @@ export default function LoginPage() {
     if (keptUser && keptAuth === 'true') {
       const user = JSON.parse(keptUser);
       if (user.role === 'Staff') {
-        window.location.href = '/staff';
+        window.location.href = '/';
       } else {
         window.location.href = '/dashboard';
       }
@@ -238,7 +238,7 @@ export default function LoginPage() {
         
         // Redirect based on user role
         if (data.user.role === 'Staff') {
-          window.location.href = '/staff';
+          window.location.href = '/';
         } else {
           window.location.href = '/dashboard';
         }

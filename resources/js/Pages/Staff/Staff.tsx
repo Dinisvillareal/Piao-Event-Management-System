@@ -149,7 +149,7 @@ export default function StaffDashboard() {
   ]);
 
   const allEvents = useMemo(() => [...upcomingEvents, ...pastEvents], [upcomingEvents, pastEvents]);
-  
+
   const handleDeleteEvent = (id: number) => {
     setUpcomingEvents(prev => prev.filter(e => e.id !== id));
     setPastEvents(prev => prev.filter(e => e.id !== id));
@@ -162,11 +162,11 @@ export default function StaffDashboard() {
     <div className="flex min-h-screen bg-[#fcfcf9] text-gray-900">
       {/* 1. Sidebar is back! */}
       <Sidebar active={active} setActive={setActive} />
-      
+
       <main className="flex-1">
         {/* 2. Top header is back! */}
         <TopHeader memberName={staff.name} role={staff.role} />
-        
+
         <div className="h-[calc(100vh-73px)] overflow-y-auto p-6 smooth-scroll">
           {active === "dashboard" && (
             <DashboardView memberName={staff.name.split(" ")[0]} membershipsCount={memberships.length} setActive={setActive} />
@@ -179,7 +179,7 @@ export default function StaffDashboard() {
           {active === "settings" && <SettingsView member={staff} />}
         </div>
       </main>
-      
+
       <style>{`
         .smooth-scroll { scroll-behavior: smooth !important; -webkit-overflow-scrolling: touch; }
         .smooth-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
