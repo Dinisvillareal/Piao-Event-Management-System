@@ -32,7 +32,7 @@
 //   return <MemberDashboard />;
 // }
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import MemberDashboard from "./Pages/Members/Members";
 import StaffDashboard from "./Pages/Staff/Staff";
@@ -47,9 +47,13 @@ if (rootElement) {
 export default function App() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const authCalledRef = useRef(false); // Prevent multiple auth calls
 
-  const checkAuth = async () => {
-    setLoading(true);
+  const checkAuth = useCallback(async () => {
+    // Prevent multiple simultaneous auth checks
+    if (authCalledRef.current) return;
+    authCalledRef.current = true;
+    
     try {
       const token = document.cookie
         .split('; ')
@@ -82,22 +86,13 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     checkAuth();
-    
-    // Re-check when page becomes visible
-    const handleVisibility = () => {
-      if (!document.hidden) {
-        checkAuth();
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, []);
+  }, [checkAuth]);
 
+  // Show loading spinner while checking auth
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-[#fcfcf9]">
@@ -106,13 +101,11 @@ export default function App() {
     );
   }
 
+  // Not authenticated - show login page
   if (!userRole) {
     return <LoginPage />;
   }
 
-  if (userRole === 'Staff') {
-    return <StaffDashboard />;
-  }
-
-  return <MemberDashboard />;
+  // Authenticated - show appropriate dashboard
+  return userRole === 'Staff' ? <StaffDashboard /> : <MemberDashboard />;
 }
