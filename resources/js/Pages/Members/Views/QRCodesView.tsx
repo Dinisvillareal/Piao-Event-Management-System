@@ -176,12 +176,13 @@ export default function QRCodesView({ highlightText }: any) {
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const itemsPerPage = 6;
+  const itemsPerPage = 4; // Reduced because we have less horizontal space
 
   const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
   const user = storedUser ? JSON.parse(storedUser) : null;
   const userId = user?.id;
   const user_code = user?.user_code;
+  const fullName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim();
 
   // Fetch ALL memberships for QR code (no search, no pagination)
   useEffect(() => {
@@ -247,9 +248,8 @@ export default function QRCodesView({ highlightText }: any) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
-        <p className="ml-3 text-gray-600">Loading...</p>
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
       </div>
     );
   }
@@ -297,103 +297,136 @@ export default function QRCodesView({ highlightText }: any) {
   // QR code uses MEMBERSHIP NAMES (not IDs)
   const qrData = JSON.stringify({
     user_code: user_code,
+    name: fullName,
     memberships: allMemberships.map((m: any) => m.name)
   });
 
   return (
-    <div className="space-y-6">
-      {/* STICKY HEADER - Contains both QR Code section AND My Memberships title */}
-      <div className="sticky top-0 z-10 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm">
-        <div>
-          <h1 className="text-4xl font-black text-[#005f63]">My QR Code</h1>
-          <p className="text-sm text-[#667777] mt-1">
-            Scan this QR code at events. One QR code for all your memberships.
-          </p>
-
-          <div className="mt-6">
-            <div className="bg-white p-4 rounded-2xl shadow-lg border border-gray-200 inline-block">
-              <QRCodeCanvas 
-                value={qrData} 
-                size={200} 
-                level="H" 
-                bgColor="#ffffff" 
-                fgColor="#095a5a" 
-              />
-            </div>
-          </div>
-
-          {/* SEARCH BAR */}
-          <div className="mt-8">
-            <SearchBar 
-              value={searchQuery} 
-              onChange={setSearchQuery} 
-              placeholder="Search your memberships by name…" 
-            />
-          </div>
-          <p className="mt-2 text-xs text-gray-500">
-            {displayMemberships.length} of {totalItems} membership(s) found.
-          </p>
-        </div>
-
-        {/* MY MEMBERSHIPS TITLE - Inside sticky header so it won't hide */}
-        <div className="mt-6">
-          <h1 className="text-4xl font-black text-[#005f63]">My Memberships</h1>
-        </div>
+    <div className="h-full flex flex-col">
+      {/* Header with title */}
+      <div className="flex-shrink-0 bg-[#fcfcf9] pt-2 pb-4 px-1">
+        <h1 className="text-4xl font-black text-[#005f63]">My e-Membership</h1>
+        <p className="text-sm text-[#667777] mt-1">
+          Your personal QR code and membership cards in one place.
+        </p>
       </div>
 
-      {/* MEMBERSHIPS LIST - Scrollable content */}
-      <div className="pl-1">
-        {displayMemberships.length === 0 ? (
-          <p className="text-gray-500 italic">No memberships match your search.</p>
-        ) : (
-          <>
-            <div className="flex flex-row flex-wrap gap-5">
-              {displayMemberships.map((m: any) => (
-                <div
-                  key={m.id}
-                  className="rounded-3xl border border-gray-200 bg-white overflow-hidden w-[780px] shrink-0 hover:shadow-xl transition-shadow duration-300"
-                >
-                  <div className="h-1.5 bg-gradient-to-r from-[#ff7a28] via-[#ff9a3c] to-[#ffd33d]"></div>
-                  <div className="p-5">
-                    <div>
-                      <h2 className="text-base font-bold text-[#006666]">
-                        {highlightText(m.name, searchQuery)}
-                      </h2>
-                      {m.description && (
-                        <p className="text-sm text-[#667777] mt-1">
-                          {highlightText(m.description, searchQuery)}
-                        </p>
-                      )}
-                    </div>
+      {/* Search Bar */}
+      <div className="flex-shrink-0 px-1 pb-4">
+        <SearchBar 
+          value={searchQuery} 
+          onChange={setSearchQuery} 
+          placeholder="Search your memberships by name…" 
+        />
+        <p className="mt-2 text-xs text-gray-500">
+          {displayMemberships.length} of {totalItems} membership(s) found
+        </p>
+      </div>
+
+      {/* Two Column Layout: QR Code (Left) + Memberships (Right) */}
+      <div className="flex-1 overflow-y-auto pb-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pr-2">
+          
+          {/* LEFT COLUMN - QR CODE SECTION */}
+          <div className="lg:col-span-1">
+            <div className="sticky top-0 bg-[#fcfcf9] rounded-2xl border border-gray-200 bg-white p-6 shadow-lg">
+              <div className="text-center">
+                <h2 className="text-xl font-bold text-[#005f63] mb-2">Your QR Code</h2>
+                <p className="text-xs text-gray-500 mb-4">
+                  Scan this code at events to verify your memberships
+                </p>
+                
+                <div className="flex justify-center">
+                  <div className="bg-white p-4 rounded-2xl shadow-lg border border-gray-200 inline-block">
+                    <QRCodeCanvas 
+                      value={qrData} 
+                      size={220} 
+                      level="H" 
+                      bgColor="#ffffff" 
+                      fgColor="#005f63" 
+                    />
                   </div>
                 </div>
-              ))}
-            </div>
-
-            {/* PAGINATION */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-8">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
-                  disabled={currentPage === 1}
-                  className="px-3 py-1 rounded-lg border bg-white text-[#005f63] text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
-                >
-                  Previous
-                </button>
-                <span className="text-sm text-gray-600">
-                  Page {currentPage} of {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(p + 1, totalPages))}
-                  disabled={currentPage === totalPages}
-                  className="px-3 py-1 rounded-lg border bg-white text-[#005f63] text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
-                >
-                  Next
-                </button>
+                
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-sm font-semibold text-gray-700">{fullName}</p>
+                  <p className="text-xs text-gray-500 font-mono">{user_code}</p>
+                  <p className="text-xs text-teal-600 mt-2">
+                    {allMemberships.length} active membership(s)
+                  </p>
+                </div>
               </div>
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN - MEMBERSHIP CARDS (2 columns inside) */}
+          <div className="lg:col-span-2">
+            {displayMemberships.length === 0 ? (
+              <div className="flex items-center justify-center h-64">
+                <p className="text-gray-500 italic">No memberships match your search.</p>
+              </div>
+            ) : (
+              <>
+                {/* Two-column grid for membership cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {displayMemberships.map((m: any) => (
+                    <div
+                      key={m.id}
+                      className="rounded-3xl border border-gray-200 bg-white overflow-hidden hover:shadow-2xl transition-shadow duration-300 w-full"
+                    >
+                      <div className="h-1.5 bg-gradient-to-r from-[#ff7a28] via-[#ff9a3c] to-[#ffd33d]"></div>
+                      <div className="p-5">
+                        <div>
+                          <h2 className="text-xl font-bold text-[#006666]">
+                            {highlightText(m.name, searchQuery)}
+                          </h2>
+                          {m.description && (
+                            <p className="text-sm text-[#667777] mt-2">
+                              {highlightText(m.description, searchQuery)}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="mt-8 flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
+                    >
+                      ←
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setCurrentPage(i + 1)}
+                        className={`h-8 w-8 rounded-lg text-sm font-semibold transition-all ${
+                          currentPage === i + 1
+                            ? "bg-[#005f63] text-white shadow-sm"
+                            : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
+                        }`}
+                      >
+                        {i + 1}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
+                    >
+                      →
+                    </button>
+                  </div>
+                )}
+              </>
             )}
-          </>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   );

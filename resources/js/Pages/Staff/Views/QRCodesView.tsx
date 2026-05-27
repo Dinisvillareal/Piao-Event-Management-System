@@ -126,8 +126,9 @@
 // }
 import React, { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Users, Plus, Pencil, Trash2 } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { Button, Input } from "../../../Components/UI/Core";
+import SearchBar from "../../../Components/UI/SearchBar"; 
 
 interface QRCodesViewProps {
   highlightText: (text: string, query: string) => React.ReactNode;
@@ -518,12 +519,9 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           </button>
         </div>
         <div className="mt-4">
-          <Input 
-            value={searchQuery} 
-            onChange={(e: any) => setSearchQuery(e.target.value)} 
-            placeholder="Search memberships by name or description…" 
-          />
-        </div>
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-[#005f63]/70" />
+          <SearchBar value={searchQuery} onChange={(value: string) => setSearchQuery(value)} placeholder="Search by ID, name, contact, role or membership..." />
+      </div>
         <p className="mt-2 text-xs text-gray-500">
           {filteredMemberships.length} membership(s) found
         </p>
@@ -535,14 +533,15 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           <p className="text-center text-gray-500 py-12">No memberships found.</p>
         ) : (
           <>
-            <div className="flex flex-row flex-wrap gap-5">
+            {/* Two-column grid layout for cards */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 pr-2">
               {paginatedMemberships.map((m) => {
                 const residentCount = getResidentsByMembership(m.name).length;
                 
                 return (
                   <div 
                     key={m.id} 
-                    className="rounded-3xl border border-gray-200 bg-white overflow-hidden w-[780px] shrink-0 hover:shadow-2xl transition-shadow duration-300"
+                    className="rounded-3xl border border-gray-200 bg-white overflow-hidden hover:shadow-2xl transition-shadow duration-300 w-full"
                   >
                     <div className="h-1.5 bg-gradient-to-r from-[#ff7a28] via-[#ff9a3c] to-[#ffd33d]"></div>
                     <div className="p-5">

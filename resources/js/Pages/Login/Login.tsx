@@ -177,21 +177,7 @@ export default function LoginPage() {
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
 
-  // Check for existing session on page load
-  useEffect(() => {
-    // Check BOTH storage locations
-    const keptUser = localStorage.getItem('user') || sessionStorage.getItem('user');
-    const keptAuth = localStorage.getItem('isAuthenticated') || sessionStorage.getItem('isAuthenticated');
-    
-    if (keptUser && keptAuth === 'true') {
-      const user = JSON.parse(keptUser);
-      if (user.role === 'Staff') {
-        window.location.href = '/';
-      } else {
-        window.location.href = '/dashboard';
-      }
-    }
-  }, []);
+  // REMOVED: The redirect useEffect that was causing infinite loops
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -224,7 +210,7 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // ✅ STORE IN BOTH localStorage AND sessionStorage
+        // Store user data
         localStorage.setItem('user', JSON.stringify(data.user));
         localStorage.setItem('isAuthenticated', 'true');
         sessionStorage.setItem('user', JSON.stringify(data.user));
@@ -346,7 +332,7 @@ export default function LoginPage() {
                   type="text"
                   name="username"
                   className="w-full mt-1 rounded-xl border px-3 py-2 text-sm shadow focus:ring-1 focus:border-teal-500 focus:ring-teal-400 placeholder-gray-600"
-                  placeholder="PR-000001"
+                  placeholder="PR-0001"
                   required
                   disabled={isLoading}
                 />
