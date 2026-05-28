@@ -130,8 +130,16 @@ import { Users, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { Button, Input } from "../../../Components/UI/Core";
 import SearchBar from "../../../Components/UI/SearchBar"; 
 
+
+export interface Membership { 
+  id: string | number; 
+  name: string; 
+  description: string; 
+}
+
 interface QRCodesViewProps {
   highlightText: (text: string, query: string) => React.ReactNode;
+  memberships: Membership[]; // Make sure this line is here!
 }
 
 export default function QRCodesView({ highlightText }: QRCodesViewProps) {

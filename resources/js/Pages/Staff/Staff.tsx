@@ -177,19 +177,42 @@ export default function StaffDashboard() {
 
   const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "STAFF / ADMIN" };
 
-  const [upcomingEvents, setUpcomingEvents] = useState([
-    { id: 1, title: "Barangay General Assembly", date: "2026-05-12 09:00", location: "Barangay Hall", description: "Quarterly assembly." }
-  ]);
-  const [pastEvents, setPastEvents] = useState([
-    { id: 6, title: "Monthly Assembly", date: "2026-05-08 09:00", location: "Barangay Hall", description: "Regular monthly meeting." }
-  ]);
+  // --- FETCH REAL EVENTS FROM LARAVEL ---
+  const [allEvents, setAllEvents] = useState<any[]>([]);
 
-  const allEvents = useMemo(() => [...upcomingEvents, ...pastEvents], [upcomingEvents, pastEvents]);
+  useEffect(() => {
+    const fetchRealEvents = async () => {
+      try {
+        // Calling the route from your web.php
+        const response = await fetch('/events-data'); 
+        const result = await response.json();
+        
+        if (result.data) {
+          // Format the database keys to match what your React views expect
+          const formattedEvents = result.data.map((dbEvent: any) => ({
+            id: dbEvent.id,
+            title: dbEvent.name, // Mapping DB 'name' to React 'title'
+            date: dbEvent.event_start,
+            location: dbEvent.location,
+            description: dbEvent.description,
+            membershipId: dbEvent.membership_id
+          }));
+          
+          setAllEvents(formattedEvents);
+        }
+      } catch (error) {
+        console.error("Error fetching events from database:", error);
+      }
+    };
 
-  const handleDeleteEvent = (id: number) => {
-    setUpcomingEvents(prev => prev.filter(e => e.id !== id));
-    setPastEvents(prev => prev.filter(e => e.id !== id));
+    fetchRealEvents();
+  }, []);
+
+  const handleDeleteEvent = (id: string | number) => {
+     setAllEvents(prev => prev.filter(e => e.id !== id));
   };
+
+ 
 
   const attended = attendanceRecords.filter(r => r.status === "complete").length;
   const missed = attendanceRecords.filter(r => r.status === "missed").length;
@@ -205,11 +228,11 @@ export default function StaffDashboard() {
 
         <div className="h-[calc(100vh-73px)] overflow-y-auto p-6 smooth-scroll">
           {active === "dashboard" && (
-            <DashboardView memberName={staff.name.split(" ")[0]} membershipsCount={memberships.length} setActive={setActive} />
+            <DashboardView membershipsCount={memberships.length} setActive={setActive} />
           )}
           {active === "scan" && <ScanView events={allEvents} residents={residents} memberships={memberships} />}
           {active === "residents" && <ResidentsView />}
-          {active === "memberships" && <QRCodesView memberships={memberships} highlightText={highlightText} />}
+          {active === "scan" && <ScanView events={allEvents} residents={residents} memberships={memberships} />}
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} />}
           {active === "notify" && <NotificationsView notifications={notifications} memberships={memberships} highlightText={highlightText} />}
           {active === "settings" && <SettingsView member={staff} />}
