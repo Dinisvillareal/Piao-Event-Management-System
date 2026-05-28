@@ -131,14 +131,13 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
 
   const navItems = [
     { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { key: "qr", label: "My QR Codes", icon: QrCode },
+    { key: "qr", label: "My QR Code", icon: QrCode },
     { key: "attendance", label: "Attendance", icon: ClipboardCheck },
     { key: "events", label: "Events", icon: CalendarDays },
     { key: "notify", label: "Notifications", icon: Bell },
     { key: "settings", label: "Settings", icon: Settings },
   ];
 
-  // LOGOUT FUNCTION
   const handleLogout = async () => {
     try {
       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
@@ -153,19 +152,14 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
           ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
         }
       });
-
-      // Clear all stored user data
-      localStorage.clear();
-      sessionStorage.clear();
-
-      // Redirect to login page
-      window.location.href = '/';
-
     } catch (err) {
       console.error('Logout error:', err);
-      // Force clear local data even if API fails
+    } finally {
+      // Clear ALL storage (safe because user is logging out)
       localStorage.clear();
       sessionStorage.clear();
+      
+      // Redirect to login page
       window.location.href = '/';
     }
   };

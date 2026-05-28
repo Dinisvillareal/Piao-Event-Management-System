@@ -162,7 +162,7 @@
 //     </div>
 //   );
 // }
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import SearchBar from "../../../Components/UI/SearchBar";
 import { QRCodeCanvas } from "qrcode.react";
 
@@ -176,7 +176,9 @@ export default function QRCodesView({ highlightText }: any) {
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const itemsPerPage = 4; // Reduced because we have less horizontal space
+  const [qrKey, setQrKey] = useState(0);
+  const itemsPerPage = 4;
+  const qrCodeRef = useRef<HTMLDivElement>(null);
 
   const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
   const user = storedUser ? JSON.parse(storedUser) : null;
@@ -184,7 +186,7 @@ export default function QRCodesView({ highlightText }: any) {
   const user_code = user?.user_code;
   const fullName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim();
 
-  // Fetch ALL memberships for QR code (no search, no pagination)
+  // Fetch ALL memberships for QR code
   useEffect(() => {
     if (!userId) return;
     
@@ -206,6 +208,7 @@ export default function QRCodesView({ highlightText }: any) {
         first_name: data.first_name,
         last_name: data.last_name
       });
+      setQrKey(prev => prev + 1);
     })
     .catch(err => {
       console.error('Failed to fetch all memberships:', err);
@@ -245,6 +248,47 @@ export default function QRCodesView({ highlightText }: any) {
     })
     .finally(() => setLoading(false));
   }, [userId, currentPage, searchQuery]);
+
+  const downloadQRCode = useCallback(async () => {
+    if (!qrCodeRef.current) {
+      alert("QR code container not found");
+      return;
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    const canvas = qrCodeRef.current.querySelector('canvas');
+    if (!canvas) {
+      alert("Canvas not found. Please try again.");
+      return;
+    }
+    
+    if (canvas.width === 0 || canvas.height === 0) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    try {
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      
+      if (!tempCtx) {
+        alert("Could not create canvas context");
+        return;
+      }
+      
+      tempCtx.drawImage(canvas, 0, 0);
+      
+      const link = document.createElement('a');
+      link.download = `qr-code-${user_code || 'membership'}.png`;
+      link.href = tempCanvas.toDataURL('image/png', 1.0);
+      link.click();
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('Failed to download QR code. Please try again.');
+    }
+  }, [user_code]);
 
   if (loading) {
     return (
@@ -294,7 +338,6 @@ export default function QRCodesView({ highlightText }: any) {
     );
   }
 
-  // QR code uses MEMBERSHIP NAMES (not IDs)
   const qrData = JSON.stringify({
     user_id: userId,
     user_code: user_code,
@@ -303,64 +346,77 @@ export default function QRCodesView({ highlightText }: any) {
   });
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header with title */}
-      <div className="flex-shrink-0 bg-[#fcfcf9] pt-2 pb-4 px-1">
-        <h1 className="text-4xl font-black text-[#005f63]">My e-Membership</h1>
-        <p className="text-sm text-[#667777] mt-1">
+    <div className="space-y-6">
+      {/* STICKY HEADER - exactly like EventsView example */}
+      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
+        <h1 className="text-4xl font-black text-[#005f63]">My QR Code and Memberships</h1>
+        <p className="mt-1 text-sm text-[#667777]">
           Your personal QR code and membership cards in one place.
         </p>
+
+        {/* Search Bar */}
+        <div className="mt-4">
+          <SearchBar 
+            value={searchQuery} 
+            onChange={setSearchQuery} 
+            placeholder="Search your memberships by name…" 
+          />
+          <p className="mt-2 text-xs text-gray-500">
+            {displayMemberships.length} of {totalItems} membership(s) found
+          </p>
+        </div>
       </div>
 
-      {/* Search Bar */}
-      <div className="flex-shrink-0 px-1 pb-4">
-        <SearchBar 
-          value={searchQuery} 
-          onChange={setSearchQuery} 
-          placeholder="Search your memberships by name…" 
-        />
-        <p className="mt-2 text-xs text-gray-500">
-          {displayMemberships.length} of {totalItems} membership(s) found
-        </p>
-      </div>
-
-      {/* Two Column Layout: QR Code (Left) + Memberships (Right) */}
-      <div className="flex-1 overflow-y-auto pb-6">
+      {/* SCROLLABLE CONTENT - only this scrolls */}
+      <div className="pl-1">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pr-2">
           
-          {/* LEFT COLUMN - QR CODE SECTION */}
+          {/* LEFT COLUMN - QR CODE SECTION (1/3 width) */}
           <div className="lg:col-span-1">
-            <div className="sticky top-0 bg-[#fcfcf9] rounded-2xl border border-gray-200 bg-white p-6 shadow-lg">
+            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-lg">
+              <p className="text-center mb-4 text-gray-500 text-sm">Scan this to events for attendance</p>
               <div className="text-center">
-                <h2 className="text-xl font-bold text-[#005f63] mb-2">Your QR Code</h2>
-                <p className="text-xs text-gray-500 mb-4">
-                  Scan this code at events to verify your memberships
-                </p>
-                
-                <div className="flex justify-center">
-                  <div className="bg-white p-4 rounded-2xl shadow-lg border border-gray-200 inline-block">
+                <div ref={qrCodeRef} className="flex justify-center">
+                  <div className="bg-white p-1 rounded-2xl shadow-lg border border-gray-200 inline-block">
                     <QRCodeCanvas 
+                      key={qrKey}
                       value={qrData} 
-                      size={220} 
+                      size={280} 
                       level="H" 
                       bgColor="#ffffff" 
-                      fgColor="#005f63" 
+                      fgColor="#005f63"
+                      includeMargin={true}
                     />
                   </div>
                 </div>
                 
-                <div className="mt-4 pt-4 border-t border-gray-100">
-                  <p className="text-sm font-semibold text-gray-700">{fullName}</p>
-                  <p className="text-xs text-gray-500 font-mono">{user_code}</p>
-                  <p className="text-xs text-teal-600 mt-2">
-                    {allMemberships.length} active membership(s)
-                  </p>
+                <div className="mt-6">
+                  <button
+                    onClick={downloadQRCode}
+                    className="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-full transition-colors duration-300 shadow-md w-[280px]"
+                  >
+                    <svg 
+                      className="inline-block w-5 h-5 mr-2 -mt-1" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24" 
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={2} 
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" 
+                      />
+                    </svg>
+                    Download QR Code
+                  </button>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* RIGHT COLUMN - MEMBERSHIP CARDS (2 columns inside) */}
+          {/* RIGHT COLUMN - MEMBERSHIP CARDS (2/3 width) */}
           <div className="lg:col-span-2">
             {displayMemberships.length === 0 ? (
               <div className="flex items-center justify-center h-64">
@@ -368,7 +424,6 @@ export default function QRCodesView({ highlightText }: any) {
               </div>
             ) : (
               <>
-                {/* Two-column grid for membership cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {displayMemberships.map((m: any) => (
                     <div
