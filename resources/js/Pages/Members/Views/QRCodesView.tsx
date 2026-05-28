@@ -162,7 +162,7 @@
 //     </div>
 //   );
 // }
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import SearchBar from "../../../Components/UI/SearchBar";
 import { QRCodeCanvas } from "qrcode.react";
 
@@ -176,7 +176,9 @@ export default function QRCodesView({ highlightText }: any) {
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const itemsPerPage = 4; // Reduced because we have less horizontal space
+  const [qrKey, setQrKey] = useState(0); // Force re-render of QR code
+  const itemsPerPage = 4;
+  const qrCodeRef = useRef<HTMLDivElement>(null);
 
   const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
   const user = storedUser ? JSON.parse(storedUser) : null;
@@ -206,6 +208,8 @@ export default function QRCodesView({ highlightText }: any) {
         first_name: data.first_name,
         last_name: data.last_name
       });
+      // Force QR code to re-render after data is loaded
+      setQrKey(prev => prev + 1);
     })
     .catch(err => {
       console.error('Failed to fetch all memberships:', err);
@@ -245,6 +249,52 @@ export default function QRCodesView({ highlightText }: any) {
     })
     .finally(() => setLoading(false));
   }, [userId, currentPage, searchQuery]);
+
+  const downloadQRCode = useCallback(async () => {
+    if (!qrCodeRef.current) {
+      alert("QR code container not found");
+      return;
+    }
+    
+    // Wait for the canvas to be fully rendered
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    const canvas = qrCodeRef.current.querySelector('canvas');
+    if (!canvas) {
+      alert("Canvas not found. Please try again.");
+      return;
+    }
+    
+    // Wait a bit more if canvas dimensions are zero
+    if (canvas.width === 0 || canvas.height === 0) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    try {
+      // Create a new canvas to ensure we get the exact image
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tempCtx = tempCanvas.getContext('2d');
+      
+      if (!tempCtx) {
+        alert("Could not create canvas context");
+        return;
+      }
+      
+      // Draw the QR code canvas onto our temp canvas
+      tempCtx.drawImage(canvas, 0, 0);
+      
+      // Download from temp canvas
+      const link = document.createElement('a');
+      link.download = `qr-code-${user_code || 'membership'}.png`;
+      link.href = tempCanvas.toDataURL('image/png', 1.0);
+      link.click();
+    } catch (err) {
+      console.error('Download failed:', err);
+      alert('Failed to download QR code. Please try again.');
+    }
+  }, [user_code]);
 
   if (loading) {
     return (
@@ -294,7 +344,7 @@ export default function QRCodesView({ highlightText }: any) {
     );
   }
 
-  // QR code uses MEMBERSHIP NAMES (not IDs)
+  // QR code uses MEMBERSHIP NAMES (not IDs) - clean JSON without spaces
   const qrData = JSON.stringify({
     user_code: user_code,
     name: fullName,
@@ -331,21 +381,47 @@ export default function QRCodesView({ highlightText }: any) {
           <div className="lg:col-span-1">
             <div className="sticky top-0 bg-[#fcfcf9] rounded-2xl border border-gray-200 bg-white p-6 shadow-lg">
               <div className="text-center">
-                <h2 className="text-xl font-bold text-[#005f63] mb-2">Your QR Code</h2>
+                <h2 className="text-xl font-bold text-[#005f63] mb-2">My QR Code</h2>
                 <p className="text-xs text-gray-500 mb-4">
                   Scan this code at events to verify your memberships
                 </p>
                 
-                <div className="flex justify-center">
-                  <div className="bg-white p-4 rounded-2xl shadow-lg border border-gray-200 inline-block">
+                <div ref={qrCodeRef} className="flex justify-center">
+                  <div className="bg-white p-1 rounded-2xl shadow-lg border border-gray-200 inline-block">
                     <QRCodeCanvas 
+                      key={qrKey}
                       value={qrData} 
                       size={220} 
                       level="H" 
                       bgColor="#ffffff" 
-                      fgColor="#005f63" 
+                      fgColor="#005f63"
+                      includeMargin={true}
                     />
                   </div>
+                </div>
+                
+                {/* Download QR Code Button */}
+                <div className="mt-4">
+                  <button
+                    onClick={downloadQRCode}
+                    className="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-full transition-colors duration-300 shadow-md"
+                  >
+                    <svg 
+                      className="inline-block w-5 h-5 mr-2 -mt-1" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24" 
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={2} 
+                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" 
+                      />
+                    </svg>
+                    Download QR Code
+                  </button>
                 </div>
                 
                 <div className="mt-4 pt-4 border-t border-gray-100">
