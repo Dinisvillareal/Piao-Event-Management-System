@@ -179,12 +179,38 @@ export default function QRCodesView({ highlightText }: any) {
   const [qrKey, setQrKey] = useState(0);
   const itemsPerPage = 4;
   const qrCodeRef = useRef<HTMLDivElement>(null);
+  const [qrSize, setQrSize] = useState(280);
 
   const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
   const user = storedUser ? JSON.parse(storedUser) : null;
   const userId = user?.id;
   const user_code = user?.user_code;
   const fullName = `${user?.first_name || ''} ${user?.last_name || ''}`.trim();
+
+  // Handle responsive QR size with better breakpoints
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth;
+      let newSize;
+      
+      if (width < 640) {
+        // Mobile: smaller QR code
+        newSize = Math.min(width - 80, 240);
+      } else if (width < 1024) {
+        // Tablet: medium QR code
+        newSize = Math.min(width - 100, 260);
+      } else {
+        // Desktop: full size
+        newSize = 280;
+      }
+      
+      setQrSize(Math.max(newSize, 180)); // Minimum size of 180px
+    };
+    
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Fetch ALL memberships for QR code
   useEffect(() => {
@@ -304,7 +330,7 @@ export default function QRCodesView({ highlightText }: any) {
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600">
           <p className="font-semibold">Access Denied</p>
           <p className="text-sm mt-1">{error}</p>
-          <div className="flex gap-3 mt-3">
+          <div className="flex gap-3 mt-3 flex-wrap">
             <button 
               onClick={() => window.location.reload()} 
               className="text-sm underline hover:text-red-800"
@@ -345,141 +371,181 @@ export default function QRCodesView({ highlightText }: any) {
   });
 
   return (
-    <div className="space-y-6">
-      {/* STICKY HEADER - exactly like EventsView example */}
-      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
-        <h1 className="text-4xl font-black text-[#005f63]">My QR Code and Memberships</h1>
-        <p className="mt-1 text-sm text-[#667777]">
-          Your personal QR code and membership cards in one place.
-        </p>
-
-        {/* Search Bar */}
-        <div className="mt-4">
-          <SearchBar 
-            value={searchQuery} 
-            onChange={setSearchQuery} 
-            placeholder="Search your memberships by name…" 
-          />
-          <p className="mt-2 text-xs text-gray-500">
-            {displayMemberships.length} of {totalItems} membership(s) found
+    <div className="bg-[#fcfcf9]">
+      {/* STICKY HEADER - matching EventsView style */}
+      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-4 sm:px-6 pt-2 pb-4 border-b border-[#ece7de]">
+        <div className="max-w-[1580px] mx-auto">
+          <h1 className="text-3xl sm:text-4xl font-black text-[#005f63]">
+            My QR Code and Memberships
+          </h1>
+          <p className="mt-1 text-sm text-[#667777]">
+            Your personal QR code and membership cards in one place.
           </p>
+
+          {/* Search Bar */}
+          <div className="mt-4">
+            <div className="w-full">
+              <SearchBar 
+                value={searchQuery} 
+                onChange={setSearchQuery} 
+                placeholder="Search your memberships by name…" 
+              />
+            </div>
+            <p className="mt-2 text-xs text-gray-500">
+              {displayMemberships.length} of {totalItems} membership(s) found
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* SCROLLABLE CONTENT - only this scrolls */}
-      <div className="pl-1">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 pr-2">
-          
-          {/* LEFT COLUMN - QR CODE SECTION (1/3 width) */}
-          <div className="lg:col-span-1">
-            <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-lg">
-              <p className="text-center mb-4 text-gray-500 text-sm">Scan this to events for attendance</p>
-              <div className="text-center">
-                <div ref={qrCodeRef} className="flex justify-center">
-                  <div className="bg-white p-1 rounded-2xl shadow-lg border border-gray-200 inline-block">
-                    <QRCodeCanvas 
-                      key={qrKey}
-                      value={qrData} 
-                      size={280} 
-                      level="H" 
-                      bgColor="#ffffff" 
-                      fgColor="#005f63"
-                      includeMargin={true}
-                    />
+      {/* SCROLLABLE CONTENT - with responsive padding */}
+      <div className="px-4 sm:px-6 mt-5">
+        <div className="max-w-[1580px] mx-auto">
+          <div className="flex flex-col lg:flex-row gap-6">
+            
+            {/* LEFT COLUMN - QR CODE SECTION (full width on mobile, 1/3 on desktop) */}
+            <div className="w-full lg:w-1/3">
+              <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-6 shadow-lg lg:sticky lg:top-24 overflow-hidden">
+                <p className="text-center mb-4 text-gray-500 text-sm">
+                  Scan this at events for attendance
+                </p>
+                <div className="text-center">
+                  {/* Fixed container with overflow handling */}
+                  <div className="flex justify-center overflow-x-auto">
+                    <div ref={qrCodeRef} className="flex justify-center items-center">
+                      <div className="bg-white p-2 rounded-2xl shadow-lg border border-gray-200 inline-flex">
+                        <QRCodeCanvas 
+                          key={qrKey}
+                          value={qrData} 
+                          size={qrSize} 
+                          level="H" 
+                          bgColor="#ffffff" 
+                          fgColor="#005f63"
+                          includeMargin={true}
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-                
-                <div className="mt-6">
-                  <button
-                    onClick={downloadQRCode}
-                    className="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-full transition-colors duration-300 shadow-md w-[280px]"
-                  >
-                    <svg 
-                      className="inline-block w-5 h-5 mr-2 -mt-1" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      viewBox="0 0 24 24" 
-                      xmlns="http://www.w3.org/2000/svg"
+                  
+                  <div className="mt-6">
+                    <button
+                      onClick={downloadQRCode}
+                      className="bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-full transition-colors duration-300 shadow-md w-full max-w-[280px] mx-auto block"
                     >
-                      <path 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round" 
-                        strokeWidth={2} 
-                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" 
-                      />
-                    </svg>
-                    Download QR Code
-                  </button>
+                      <svg 
+                        className="inline-block w-5 h-5 mr-2 -mt-1" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24" 
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          strokeWidth={2} 
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" 
+                        />
+                      </svg>
+                      Download QR Code
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* RIGHT COLUMN - MEMBERSHIP CARDS (2/3 width) */}
-          <div className="lg:col-span-2">
-            {displayMemberships.length === 0 ? (
-              <div className="flex items-center justify-center h-64">
-                <p className="text-gray-500 italic">No memberships match your search.</p>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  {displayMemberships.map((m: any) => (
-                    <div
-                      key={m.id}
-                      className="rounded-3xl border border-gray-200 bg-white overflow-hidden hover:shadow-2xl transition-shadow duration-300 w-full"
-                    >
-                      <div className="h-1.5 bg-gradient-to-r from-[#ff7a28] via-[#ff9a3c] to-[#ffd33d]"></div>
-                      <div className="p-5">
-                        <div>
-                          <h2 className="text-xl font-bold text-[#006666]">
-                            {highlightText(m.name, searchQuery)}
-                          </h2>
-                          {m.description && (
-                            <p className="text-sm text-[#667777] mt-2">
-                              {highlightText(m.description, searchQuery)}
-                            </p>
-                          )}
+            {/* RIGHT COLUMN - MEMBERSHIP CARDS (2/3 on desktop, 1 column on mobile) */}
+            <div className="w-full lg:w-2/3">
+              {displayMemberships.length === 0 ? (
+                <div className="flex items-center justify-center h-64">
+                  <p className="text-gray-500 italic">No memberships match your search.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Mobile: 1 column, Desktop: 2 columns */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {displayMemberships.map((m: any) => (
+                      <div
+                        key={m.id}
+                        className="rounded-3xl border border-gray-200 bg-white overflow-hidden hover:shadow-2xl transition-shadow duration-300 w-full"
+                      >
+                        <div className="h-1.5 bg-gradient-to-r from-[#ff7a28] via-[#ff9a3c] to-[#ffd33d]"></div>
+                        <div className="p-5">
+                          <div>
+                            <h2 className="text-xl font-bold text-[#006666] break-words">
+                              {highlightText(m.name, searchQuery)}
+                            </h2>
+                            {m.description && (
+                              <p className="text-sm text-[#667777] mt-2 break-words">
+                                {highlightText(m.description, searchQuery)}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="mt-8 flex items-center justify-center gap-2">
-                    <button
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
-                    >
-                      ←
-                    </button>
-                    {Array.from({ length: totalPages }, (_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setCurrentPage(i + 1)}
-                        className={`h-8 w-8 rounded-lg text-sm font-semibold transition-all ${
-                          currentPage === i + 1
-                            ? "bg-[#005f63] text-white shadow-sm"
-                            : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
-                        }`}
-                      >
-                        {i + 1}
-                      </button>
                     ))}
-                    <button
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
-                    >
-                      →
-                    </button>
                   </div>
-                )}
-              </>
-            )}
+
+                  {/* Pagination - responsive spacing */}
+                  {totalPages > 1 && (
+                    <div className="mt-8 flex items-center justify-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
+                      >
+                        ←
+                      </button>
+                      <div className="flex gap-2 flex-wrap justify-center">
+                        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                          let pageNum;
+                          if (totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (currentPage <= 3) {
+                            pageNum = i + 1;
+                          } else if (currentPage >= totalPages - 2) {
+                            pageNum = totalPages - 4 + i;
+                          } else {
+                            pageNum = currentPage - 2 + i;
+                          }
+                          
+                          return (
+                            <button
+                              key={pageNum}
+                              onClick={() => setCurrentPage(pageNum)}
+                              className={`h-8 w-8 rounded-lg text-sm font-semibold transition-all ${
+                                currentPage === pageNum
+                                  ? "bg-[#005f63] text-white shadow-sm"
+                                  : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        })}
+                        {totalPages > 5 && currentPage < totalPages - 2 && (
+                          <>
+                            <span className="text-gray-400">...</span>
+                            <button
+                              onClick={() => setCurrentPage(totalPages)}
+                              className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-semibold hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
+                            >
+                              {totalPages}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
+                      >
+                        →
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
