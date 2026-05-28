@@ -296,6 +296,7 @@ export default function QRCodesView({ highlightText }: any) {
 
   // QR code uses MEMBERSHIP NAMES (not IDs)
   const qrData = JSON.stringify({
+    user_id: userId,
     user_code: user_code,
     name: fullName,
     memberships: allMemberships.map((m: any) => m.name)

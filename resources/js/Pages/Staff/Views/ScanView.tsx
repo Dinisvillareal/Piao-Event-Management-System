@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Camera, CameraOff, CheckCircle, XCircle, LogIn, LogOut, Clock, UserCheck } from "lucide-react";
+import { Scanner } from '@yudiel/react-qr-scanner';
 // ✅ Correctly importing all UI components from our new Core file
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Input, Label, Select, SelectItem, Badge } from "../../../Components/UI/Core";
 
@@ -51,27 +52,39 @@ export default function ScanView({ events, residents, memberships }: any) {
     setNewEvent({ title: "", membershipId: "" });
   };
 
-  // ✅ Scan logic — check membership access
-  const simulateScan = (residentId: string) => {
-    const r = residents.find((x: any) => x.id === residentId)!;
-    const residentMemberships = memberships.filter((m: any) => m.memberIds.includes(residentId)).map((m: any) => m.id);
+  // ✅ NEW: This acts exactly like a real camera reading the QR JSON
+  const handleQRCodeScan = (qrString: string) => {
+    try {
+      // The QR code contains a JSON string, so we parse it back into an object
+      const data = JSON.parse(qrString);
 
-    let hasAccess = true;
-    let reason = "Open event — all residents allowed";
+      if (!data.user_id) {
+        alert("Invalid QR Code: Missing Database User ID.");
+        return;
+      }
 
-    if (requiredMs) {
-      hasAccess = residentMemberships.includes(requiredMs.id);
-      reason = hasAccess ? `Verified: member of ${requiredMs.name}` : `Denied: requires ${requiredMs.name} membership`;
+      let hasAccess = true;
+      let reason = "Open event — all residents allowed";
+
+      // If the event requires a specific membership, check if the QR data includes it
+      if (requiredMs) {
+        hasAccess = data.memberships.includes(requiredMs.name);
+        reason = hasAccess ? `Verified: member of ${requiredMs.name}` : `Denied: requires ${requiredMs.name} membership`;
+      }
+
+      // Set the scan result using the real data from the QR code
+      setScan({
+        ok: true,
+        residentId: data.user_id, // THIS IS THE REAL DATABASE ID!
+        residentName: data.name,
+        hasAccess,
+        reason,
+        memberships: data.memberships || []
+      });
+
+    } catch (e) {
+      alert("Invalid QR Code format. Could not read data.");
     }
-
-    setScan({
-      ok: true,
-      residentId: r.id,
-      residentName: r.name,
-      hasAccess,
-      reason,
-      memberships: residentMemberships
-    });
   };
 
   const isSignOutAllowed = (residentId: string) => {
@@ -87,41 +100,76 @@ export default function ScanView({ events, residents, memberships }: any) {
     return now >= closeTimeObj;
   };
 
-  const confirmAttendance = () => {
+  const confirmAttendance = async () => {
     if (!scan?.ok || !scan.hasAccess) return;
 
-    setAttendance(prev => {
-      const list = prev[eventId] ?? [];
-      const existing = list.find(e => e.residentId === scan!.residentId);
-      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    // 1. Determine the correct Laravel endpoint and method
+    const endpoint = scanMode === "in" ? "/attendance/time-in" : "/attendance/time-out";
+    const method = scanMode === "in" ? "POST" : "PUT";
 
-      if (scanMode === "in") {
-        if (existing) return prev;
-        return {
-          ...prev,
-          [eventId]: [...list, { residentId: scan!.residentId, residentName: scan!.residentName, timeIn: now, timeOut: null, status: "in" }]
-        };
+    try {
+      // 2. Grab the CSRF token for Laravel security
+      const token = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('XSRF-TOKEN='))
+        ?.split('=')[1];
+      const decodedToken = token ? decodeURIComponent(token) : '';
+
+      // 3. Send the request to the database
+      const response = await fetch(endpoint, {
+        method: method,
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-XSRF-TOKEN": decodedToken
+        },
+        body: JSON.stringify({
+          event_id: eventId,
+          user_id: scan.residentId // This comes from the scanned QR code
+        })
+      });
+
+      const result = await response.json();
+
+      // 4. Handle Backend Validation Errors (e.g., "Event hasn't started")
+      if (!response.ok) {
+        alert(result.message || "Failed to record attendance.");
+        return;
       }
 
-      if (scanMode === "out") {
-        if (!existing || !existing.timeIn) {
-          alert("You must Sign In first before Sign Out.");
-          return prev;
-        }
-        if (!isSignOutAllowed(scan.residentId)) {
-          alert(`Sign Out is only available after ${closingTime || "set closing time"}.`);
-          return prev;
-        }
-        return {
-          ...prev,
-          [eventId]: list.map(e => e.residentId === scan!.residentId ? { ...e, timeOut: now, status: "complete" } : e)
-        };
-      }
+      // 5. If successful, update the UI table instantly
+      setAttendance(prev => {
+        const list = prev[eventId] ?? [];
+        const existing = list.find(e => e.residentId === scan!.residentId);
+        const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-      return prev;
-    });
+        if (scanMode === "in") {
+          if (existing) return prev;
+          return {
+            ...prev,
+            [eventId]: [...list, { residentId: scan!.residentId, residentName: scan!.residentName, timeIn: now, timeOut: null, status: "in" }]
+          };
+        }
 
-    setScan(null);
+        if (scanMode === "out") {
+          return {
+            ...prev,
+            [eventId]: list.map(e => e.residentId === scan!.residentId ? { ...e, timeOut: now, status: "complete" } : e)
+          };
+        }
+
+        return prev;
+      });
+
+      // Clear the scanner
+      setScan(null);
+      alert(result.message || "Attendance recorded successfully!");
+
+    } catch (error) {
+      console.error("Attendance Error:", error);
+      alert("A network error occurred while connecting to the database.");
+    }
   };
 
   const setEventCloseTime = () => {
@@ -161,136 +209,40 @@ export default function ScanView({ events, residents, memberships }: any) {
           </CardHeader>
 
           <CardContent className="space-y-4 p-5 rounded-b-[30px]">
-            <div className="relative aspect-video overflow-hidden rounded-[30px] border-2 border-dashed border-[#e2e2dc] bg-gradient-to-br from-[#f4f4f0] to-[#ecece8]">
-                {isCameraOn ? (
-                    <>
-                    <div className="absolute inset-6 rounded-[30px] border-2 border-yellow-400/80" />
-                    <div className="absolute inset-x-6 top-1/2 h-0.5 animate-pulse bg-[#d0d0cb] shadow-[0_0_18px_rgba(208,208,203,0.5)]" />
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-xs text-white backdrop-blur">
-                        Scanning...
-                    </div>
-                    </>
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-[#888880] rounded-[30px]">
-                    <Camera size={40} className="mb-2 opacity-60" />
-                    <p>Camera off — click button to start</p>
-                    </div>
-                )}
-            </div>
-
-            <div className="flex gap-2">
-                <Button
-                    onClick={() => setScanMode("in")}
-                    className={`flex-1 rounded-[80px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
-                    ${scanMode === "in"
-                        ? "!bg-[#217676] !text-white hover:!bg-[#46a7a7] active:!bg-[#1a6060]"
-                        : "!bg-gray-100 !text-gray-600 hover:!bg-[#e0f2f2] hover:!text-[#217676] active:!bg-[#cceae]"
-                    }`}
-                >
-                    <LogIn size={16} className="mr-2" /> Sign In
-                </Button>
-
-                <Button
-                    onClick={() => setScanMode("out")}
-                    disabled={!canAccessSignOut()}
-                    className={`flex-1 rounded-[80px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
-                    ${scanMode === "out"
-                        ? "!bg-[#ff9a04] !text-white hover:!bg-[#ffbc57] active:!bg-[#cc7a00]"
-                        : "!bg-gray-100 !text-gray-600 hover:!bg-[#fff3e0] hover:!text-[#ff9a04] active:!bg-[#ffe0b2]"
-                    } ${!canAccessSignOut() ? "opacity-40 cursor-not-allowed" : ""}`}
-                >
-                    <LogOut size={16} className="mr-2" /> Sign Out
-                </Button>
-            </div>
-
-            <div>
-            <Label className="text-[15px] tracking-wider text-gray-500 font-semibold">Select Event</Label>
-            <Select
-              value={eventId}
-              onValueChange={(val: string) => {
-                  if (val === "add-new") setShowAddEvent(true);
-                  else setEventId(val);
-              }}
-              className={`mt-1.5 border-[#ddd5ca] rounded-[80px] text-[14px] [&_[data-selected]]:text-[#005f63] [&>span]:data-[state=closed]:text-[#005f63] transition-colors ${scanMode === "in" ? "text-[#005f63]" : "text-[#b86a00]"}`}
-            >
-                {events.map((e: any) => (
-                <SelectItem
-                    key={e.id}
-                    value={e.id}
-                    className={`text-[14px] ${e.title.includes("Open Event") ? "text-[#005f63]" : "text-gray-700"} ${scanMode === "in" ? "data-[highlighted]:bg-teal-100" : "data-[highlighted]:bg-orange-100"} data-[selected]:text-[#005f63]`}
-                >
-                    {e.title} {e.membershipId ? `· ${memberships.find((m:any) => m.id === e.membershipId)?.name}` : "· Open Event"}
-                </SelectItem>
-                ))}
-                <SelectItem value="add-new" className={`font-medium text-[14px] ${scanMode === "in" ? "text-teal-600 data-[highlighted]:bg-teal-100" : "text-orange-600 data-[highlighted]:bg-orange-100"}`}>
-                    + Add New Event
-                </SelectItem>
-            </Select>
-
-            {showAddEvent && (
-            <div className={`mt-3 p-3 border border-dashed rounded-[30px] space-y-2 ${scanMode === "in" ? "border-teal-300 bg-teal-50/50" : "border-orange-300 bg-orange-50/50"}`}>
-                <Input
-                    placeholder="Event Title"
-                    value={newEvent.title}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEvent({...newEvent, title: e.target.value})}
-                    className="rounded-[80px] border-[#ddd5ca] text-[14px] text-gray-700"
-                />
-                <Select
-                    value={newEvent.membershipId}
-                    onValueChange={(val: string) => setNewEvent({...newEvent, membershipId: val})}
-                    className="rounded-[80px] text-[14px] text-gray-700 [&_[data-selected]]:text-[#005f63] [&>span]:text-gray-700 [&>span]:data-[state=closed]:text-[#005f63]"
-                >
-                    <SelectItem value="" className={`rounded-[40px] text-[14px] text-[#005f63] ${scanMode === "in" ? "data-[highlighted]:bg-teal-100" : "data-[highlighted]:bg-orange-100"} data-[selected]:text-[#005f63]`}>
-                        Open Event (All can join)
-                    </SelectItem>
-                    {memberships.map((m: any) => (
-                      <SelectItem key={m.id} value={m.id} className={`rounded-[40px] text-[14px] text-gray-700 ${scanMode === "in" ? "data-[highlighted]:bg-teal-100" : "data-[highlighted]:bg-orange-100"} data-[selected]:text-[#005f63]`}>
-                          {m.name}
-                      </SelectItem>
-                    ))}
-                </Select>
-                <div className="flex gap-2">
-                    <Button size="sm" onClick={handleAddEvent} className={`text-white rounded-[80px] text-[12px] transition-colors ${scanMode === "in" ? "bg-[#1c6364] hover:bg-[#238588] active:bg-[#185455]" : "bg-[#d18513] hover:bg-[#ebaa48] active:bg-[#cc7a00]"}`}>
-                        Save
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setShowAddEvent(false)} className={`rounded-[80px] text-[12px] transition-colors ${scanMode === "in" ? "text-[#005f63] hover:bg-teal-100" : "text-[#b86a00] hover:bg-orange-100"}`}>
-                        Cancel
-                    </Button>
+            {/* REAL CAMERA VIEW */}
+            <div className="relative overflow-hidden rounded-[30px] border-2 border-dashed border-[#e2e2dc] bg-black">
+              {isCameraOn ? (
+                <div className="h-full w-full">
+                  <Scanner
+                    onScan={(result) => {
+                      // When the camera catches a QR code, it triggers our existing function!
+                      if (result && result.length > 0) {
+                        handleQRCodeScan(result[0].rawValue);
+                        // Optional: Automatically turn off the camera after a successful scan
+                        setIsCameraOn(false); 
+                      }
+                    }}
+                    onError={(error) => {
+                      console.log("Camera error:", error?.message);
+                    }}
+                    components={{
+                      finder: true,      // Shows the scanning square outline
+                    }}
+                    styles={{
+                      container: { width: '100%', height: '100%' },
+                      video: { objectFit: 'cover' }
+                    }}
+                  />
+                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs text-white backdrop-blur z-10">
+                    Scanning for QR...
+                  </div>
                 </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center aspect-video bg-gradient-to-br from-[#f4f4f0] to-[#ecece8] text-[#888880] h-full w-full">
+                  <Camera size={40} className="mb-2 opacity-60" />
+                  <p>Camera off — click button to start</p>
                 </div>
-            )}
-
-            {requiredMs && (
-                <p className={`mt-2 text-xs px-2 py-1 rounded-[40px] inline-flex items-center gap-1 transition-colors ${scanMode === "in" ? "text-teal-700 bg-teal-50" : "text-orange-700 bg-orange-50"}`}>
-                    <UserCheck size={12} /> Eligibility: <strong>{requiredMs.name}</strong> only
-                </p>
-                )}
-            </div>
-
-            <div className="flex gap-3 items-end">
-                <div className="flex-1">
-                    <Label className="text-[15px] tracking-wider text-gray-500 font-semibold">Attendance Closing Time</Label>
-                    <Input
-                    type="time"
-                    value={closingTime}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClosingTime(e.target.value)}
-                    className={`mt-1.5 border-[#ddd5ca] rounded-[80px] text-[14px] transition-colors ${scanMode === "in" ? "text-[#005f63] [&:not(:placeholder-shown)]:text-[#005f63]" : "text-[#b86a00] [&:not(:placeholder-shown)]:text-[#b86a00]"}`}
-                    />
-                </div>
-                <Button onClick={setEventCloseTime} className={`rounded-[80px] h-10 text-[14px] transition-colors ${scanMode === "in" ? "bg-[#5b9b9e] hover:bg-[#0f7a7c] text-white" : "bg-[#c9ab5a] hover:bg-[#fc9c0b] text-white"}`}>
-                    <Clock size={15} className="mr-1" /> Set
-                </Button>
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Test Scan (Select Resident)</p>
-              <div className="flex flex-wrap gap-2">
-                {residents.map((r: any) => (
-                    <Button key={r.id} variant="outline" size="sm" onClick={() => simulateScan(r.id)} className={`rounded-[30px] transition-colors ${scanMode === "in" ? "border-teal-500/30 text-teal-700 hover:bg-teal-50" : "border-orange-500/30 text-orange-700 hover:bg-orange-50"}`}>
-                        {r.name}
-                    </Button>
-                ))}
-              </div>
+              )}
             </div>
           </CardContent>
         </Card>
