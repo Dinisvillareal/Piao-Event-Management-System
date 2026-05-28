@@ -45,14 +45,41 @@ if (rootElement) {
 }
 
 export default function App() {
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const authCalledRef = useRef(false); // Prevent multiple auth calls
+  const [userRole, setUserRole] = useState<string | null>(() => {
+    // Initialize from storage immediately - NO FLASH
+    const sessionUser = sessionStorage.getItem('user');
+    if (sessionUser) {
+      try {
+        return JSON.parse(sessionUser).role;
+      } catch {
+        return null;
+      }
+    }
+    const localUser = localStorage.getItem('user');
+    if (localUser) {
+      try {
+        return JSON.parse(localUser).role;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  });
+  
+  const [loading, setLoading] = useState(false); // Start as false since we have initial state
+  const authCalledRef = useRef(false);
 
   const checkAuth = useCallback(async () => {
-    // Prevent multiple simultaneous auth checks
     if (authCalledRef.current) return;
     authCalledRef.current = true;
+    
+    // Only verify with backend if we have a stored user
+    const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
+    
+    if (!storedUser) {
+      setUserRole(null);
+      return;
+    }
     
     try {
       const token = document.cookie
@@ -69,22 +96,20 @@ export default function App() {
         }
       });
       
-      if (response.status === 401 || response.status === 419) {
+      if (response.ok) {
+        const user = await response.json();
+        setUserRole(user.role);
+      } else {
+        // Backend says not authenticated, clear storage
+        localStorage.removeItem('user');
+        localStorage.removeItem('isAuthenticated');
+        sessionStorage.removeItem('user');
+        sessionStorage.removeItem('isAuthenticated');
         setUserRole(null);
-        return;
       }
-      
-      if (!response.ok) {
-        throw new Error("Authentication failed");
-      }
-      
-      const user = await response.json();
-      setUserRole(user.role);
     } catch (error) {
       console.error("Auth error:", error);
-      setUserRole(null);
-    } finally {
-      setLoading(false);
+      // Don't clear on network error - keep existing state
     }
   }, []);
 
@@ -92,20 +117,11 @@ export default function App() {
     checkAuth();
   }, [checkAuth]);
 
-  // Show loading spinner while checking auth
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-[#fcfcf9]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
-      </div>
-    );
-  }
-
   // Not authenticated - show login page
   if (!userRole) {
     return <LoginPage />;
   }
 
-  // Authenticated - show appropriate dashboard
+  // Authenticated - show appropriate dashboard immediately (no flash)
   return userRole === 'Staff' ? <StaffDashboard /> : <MemberDashboard />;
 }
