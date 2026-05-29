@@ -245,15 +245,15 @@ export default function ScanView({ events, residents, memberships }: any) {
                 )}
               </div>
 
-            <div>
+           <div>
                 <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">2. Scan Mode</Label>
                 <div className="flex gap-2">
                   <Button 
                     onClick={() => setScanMode("in")} 
                     className={`flex-1 rounded-[30px] transition-all ${
                       scanMode === "in" 
-                        ? "bg-[#1f7a7a] text-white shadow-md hover:bg-[#145c5c]" 
-                        : "bg-[#f3f4f6] text-gray-400 hover:bg-gray-200 border-none shadow-none"
+                        ? "!bg-[#1f7a7a] !text-white shadow-md hover:!bg-[#145c5c]" 
+                        : "!bg-[#f3f4f6] !text-gray-400 hover:!bg-gray-200 border-none shadow-none"
                     }`}
                   >
                     → Sign In
@@ -262,8 +262,8 @@ export default function ScanView({ events, residents, memberships }: any) {
                     onClick={() => setScanMode("out")} 
                     className={`flex-1 rounded-[30px] transition-all ${
                       scanMode === "out" 
-                        ? "bg-orange-500 text-white shadow-md hover:bg-orange-600" 
-                        : "bg-[#f3f4f6] text-gray-400 hover:bg-gray-200 border-none shadow-none"
+                        ? "!bg-orange-500 !text-white shadow-md hover:!bg-orange-600" 
+                        : "!bg-[#f3f4f6] !text-gray-400 hover:!bg-gray-200 border-none shadow-none"
                     }`}
                   >
                     ← Sign Out
