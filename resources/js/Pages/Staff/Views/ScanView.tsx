@@ -245,13 +245,27 @@ export default function ScanView({ events, residents, memberships }: any) {
                 )}
               </div>
 
-              <div>
+            <div>
                 <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">2. Scan Mode</Label>
                 <div className="flex gap-2">
-                  <Button onClick={() => setScanMode("in")} className={`flex-1 rounded-[30px] ${scanMode === "in" ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md" : "bg-white text-gray-600 border hover:bg-gray-50"}`}>
+                  <Button 
+                    onClick={() => setScanMode("in")} 
+                    className={`flex-1 rounded-[30px] transition-all ${
+                      scanMode === "in" 
+                        ? "bg-[#1f7a7a] text-white shadow-md hover:bg-[#145c5c]" 
+                        : "bg-[#f3f4f6] text-gray-400 hover:bg-gray-200 border-none shadow-none"
+                    }`}
+                  >
                     → Sign In
                   </Button>
-                  <Button onClick={() => setScanMode("out")} className={`flex-1 rounded-[30px] ${scanMode === "out" ? "bg-orange-500 text-white hover:bg-orange-600 shadow-md" : "bg-white text-gray-600 border hover:bg-gray-50"}`}>
+                  <Button 
+                    onClick={() => setScanMode("out")} 
+                    className={`flex-1 rounded-[30px] transition-all ${
+                      scanMode === "out" 
+                        ? "bg-orange-500 text-white shadow-md hover:bg-orange-600" 
+                        : "bg-[#f3f4f6] text-gray-400 hover:bg-gray-200 border-none shadow-none"
+                    }`}
+                  >
                     ← Sign Out
                   </Button>
                 </div>
@@ -353,7 +367,7 @@ export default function ScanView({ events, residents, memberships }: any) {
               ) : (
                 <div className="space-y-3">
                   {attendance[eventId]!.map((rec, i) => (
-                    <div key={rec.residentId} className={`p-4 rounded-[20px] border flex items-center justify-between transition-colors ${rec.status === "complete" ? "bg-gray-50 border-gray-200" : "bg-blue-50 border-blue-100"}`}>
+                    <div key={rec.residentId} className={`p-4 rounded-[20px] border flex items-center justify-between transition-colors ${rec.status === "complete" ? "bg-gray-50 border-gray-200" : "bg-gray-50 border-gray-200"}`}>
                       <div>
                         <p className="font-bold text-gray-800">{i + 1}. {rec.residentName}</p>
                         <div className="flex gap-4 mt-1 text-xs text-gray-600 font-medium">
