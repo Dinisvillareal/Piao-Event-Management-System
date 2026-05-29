@@ -676,8 +676,24 @@ export default function ResidentsView() {
                               </button>
                             </>
                           ) : (
-                            <button onClick={() => handleRestoreResident(r.real_id)} className="p-2 rounded-full hover:bg-green-50 transition" title="Restore">
-                              <svg width="16" height="16" fill="none" stroke="#10b981" strokeWidth={2} viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L13 11h7V4l-2.26 2.26A8.25 8.25 0 0 0 12 3a8 8 0 1 0 8 8Z"/></svg>
+                            <button
+                            onClick={() => handleRestoreResident(r.real_id)}
+                            className="p-2 rounded-full text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors duration-200"
+                            title="Restore Record"
+                            >
+                            <svg
+                                width="16"
+                                height="16"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                viewBox="0 0 24 24"
+                            >
+                                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8v7h7" />
+                                <path d="M12 16v-6h-6" />
+                            </svg>
                             </button>
                           )}
                         </div>
@@ -740,226 +756,216 @@ export default function ResidentsView() {
       })()}
 
       {/* Add Modal */}
-      {showAddForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-black text-[#005f63]">Add New Record</h2>
-              <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
-            </div>
+      {/* Add Modal */}
+{showAddForm && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+    <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-black text-[#005f63]">Add New Record</h2>
+        <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+      </div>
 
-            {apiError && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>}
+      {apiError && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>}
 
-            <form onSubmit={handleAddResident} className="space-y-4">
-              <div className="grid md:grid-cols-3 gap-4">
-                {(["firstName","middleName","lastName"] as const).map((field) => (
-                  <div key={field}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {field === "firstName" ? "First Name *" : field === "middleName" ? "Middle Name" : "Last Name *"}
-                    </label>
-                    <input
-                      type="text"
-                      required={field !== "middleName"}
-                      value={newResident[field]}
-                      onChange={(e) => setNewResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors[field] ? "border-red-500" : "border-gray-200"}`}
-                    />
-                    {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
-                  </div>
-                ))}
-              </div>
+      <form onSubmit={handleAddResident} className="space-y-4">
+        <div className="grid md:grid-cols-3 gap-4">
+          {(["firstName","middleName","lastName"] as const).map((field) => (
+            <div key={field}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {field === "firstName" ? "First Name *" : field === "middleName" ? "Middle Name" : "Last Name *"}
+              </label>
+              <input
+                type="text"
+                required={field !== "middleName"}
+                value={newResident[field]}
+                onChange={(e) => setNewResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))}
+                className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors[field] ? "border-red-500" : "border-gray-200"}`}
+              />
+              {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+         </div>
+          ))}
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                <select
-                  required
-                  value={newResident.role}
-                  onChange={(e) => setNewResident((p) => ({ ...p, role: e.target.value }))}
-                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.role ? "border-red-500" : "border-gray-200"}`}
-                >
-                  <option value="Resident">Resident</option>
-                  <option value="Staff">Staff</option>
-                </select>
-                {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
-              </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+          <select
+            required
+            value={newResident.role}
+            onChange={(e) => setNewResident((p) => ({ ...p, role: e.target.value }))}
+            className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.role ? "border-red-500" : "border-gray-200"}`}
+          >
+            <option value="Resident">Resident</option>
+            <option value="Staff">Staff</option>
+          </select>
+          {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
-                <input
-                  type="text"
-                  required
-                  value={newResident.contactNumber}
-                  onChange={(e) => setNewResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))}
-                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
-                  placeholder="09XX-XXX-XXXX"
-                />
-                {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
-              </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+          <input
+            type="text"
+            required
+            value={newResident.contactNumber}
+            onChange={(e) => setNewResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))}
+            className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
+            placeholder="09XX-XXX-XXXX"
+          />
+          {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+        </div>
 
-              <div>
-                <label className="flex items-center gap-2 cursor-pointer mb-2">
-                  <input type="checkbox" checked={newResident.hasAccount} onChange={(e) => setNewResident((p) => ({ ...p, hasAccount: e.target.checked }))} className="w-4 h-4 text-[#005f63]" />
-                  <span className="font-medium text-gray-700">Has Account?</span>
-                </label>
-                {newResident.hasAccount && (
-                  <div className="pl-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                    <input
-                      type="password"
-                      value={newResident.password}
-                      onChange={(e) => setNewResident((p) => ({ ...p, password: e.target.value }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.password ? "border-red-500" : "border-gray-200"}`}
-                      placeholder="Enter password here"
-                    />
-                    {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
-                  </div>
-                )}
-              </div>
+        <div>
+          <label className="flex items-center gap-2 cursor-pointer mb-2">
+            <input
+              type="checkbox"
+              checked={newResident.hasAccount}
+              onChange={(e) => setNewResident((p) => ({ ...p, hasAccount: e.target.checked }))}
+              className="w-4 h-4 text-[#005f63]"
+            />
+            <span className="font-medium text-gray-700">Has Account?</span>
+          </label>
 
-              <PhotoField isEdit={false} />
-              <MembershipCheckboxes isEdit={false} />
-
-              <div className="flex justify-between gap-3 pt-2">
-                <button type="button" onClick={handleCancelAdd} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
-                <button
-                  type="submit"
-                  disabled={!hasAddChanges}
-                  className={`px-5 py-2.5 rounded-full transition ${hasAddChanges ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
-                >Save Record</button>
-              </div>
-            </form>
+          {/* Password field — ALWAYS visible and required */}
+          <div className="pl-6">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+            <input
+              type="password"
+              required
+              value={newResident.password}
+              onChange={(e) => setNewResident((p) => ({ ...p, password: e.target.value }))}
+              className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.password ? "border-red-500" : "border-gray-200"}`}
+              placeholder="Enter password here"
+            />
+            {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
           </div>
         </div>
-      )}
 
-      {/* Edit Modal */}
-      {editRecord && editingResident && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-black text-[#005f63]">Edit Record</h2>
-              <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
-            </div>
+        <PhotoField isEdit={false} />
+        <MembershipCheckboxes isEdit={false} />
 
-            {editingResident.is_deleted && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted — editing disabled</div>}
-            {apiError && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>}
-
-            <form
-              onSubmit={handleUpdateResident}
-              className="space-y-4"
-              style={{ pointerEvents: editingResident.is_deleted ? "none" : "auto", opacity: editingResident.is_deleted ? 0.6 : 1 }}
-            >
-              <div className="grid md:grid-cols-3 gap-4">
-                {(["firstName","middleName","lastName"] as const).map((field) => (
-                  <div key={field}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {field === "firstName" ? "First Name *" : field === "middleName" ? "Middle Name" : "Last Name *"}
-                    </label>
-                    <input
-                      type="text"
-                      required={field !== "middleName"}
-                      value={editingResident[field]}
-                      onChange={(e) => setEditingResident((p) => p ? { ...p, [field]: capitalizeName(e.target.value) } : p)}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors[field] ? "border-red-500" : "border-gray-200"}`}
-                    />
-                    {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
-                  </div>
-                ))}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-                <select
-                  required
-                  value={editingResident.role}
-                  onChange={(e) => setEditingResident((p) => p ? { ...p, role: e.target.value } : p)}
-                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.role ? "border-red-500" : "border-gray-200"}`}
-                >
-                  <option value="Resident">Resident</option>
-                  <option value="Staff">Staff</option>
-                </select>
-                {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
-                <input
-                  type="text"
-                  required
-                  value={editingResident.contactNumber}
-                  onChange={(e) => setEditingResident((p) => p ? { ...p, contactNumber: formatContactNumber(e.target.value) } : p)}
-                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
-                  placeholder="09XX-XXX-XXXX"
-                />
-                {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
-              </div>
-
-              <PhotoField isEdit={true} />
-
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={editingResident.hasAccount} onChange={(e) => setEditingResident((p) => p ? { ...p, hasAccount: e.target.checked } : p)} className="w-4 h-4 text-[#005f63]" />
-                  <span className="font-medium text-gray-700">Has Account?</span>
-                </label>
-                {editingResident.hasAccount && (
-                  <div className="pl-6 space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                      <input
-                        type="password"
-                        value={editingResident.password}
-                        onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
-                        disabled={editingResident.passwordChangedByUser}
-                        className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                          editingResident.passwordChangedByUser ? "bg-gray-100 text-gray-500 border-gray-200"
-                          : formErrors.password ? "border-red-500" : "border-gray-200"
-                        }`}
-                        placeholder={editingResident.passwordChangedByUser ? "Changed by user — cannot edit" : "Enter new password"}
-                      />
-                      {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
-                    </div>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={editingResident.passwordChangedByUser} onChange={(e) => setEditingResident((p) => p ? { ...p, passwordChangedByUser: e.target.checked } : p)} className="w-4 h-4 text-[#005f63]" />
-                      <span className="text-sm text-gray-600">Password already changed by user</span>
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <MembershipCheckboxes isEdit={true} />
-
-              <div className="flex justify-between gap-3 pt-2">
-                <button type="button" onClick={handleCancelEdit} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
-                <button
-                  type="submit"
-                  disabled={!hasEditChanges}
-                  className={`px-5 py-2.5 rounded-full transition ${hasEditChanges ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
-                >Update Record</button>
-              </div>
-            </form>
-          </div>
+        <div className="flex justify-between gap-3 pt-2">
+          <button type="button" onClick={handleCancelAdd} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+          <button
+            type="submit"
+            disabled={!hasAddChanges}
+            className={`px-5 py-2.5 rounded-full transition ${hasAddChanges ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+          >Save Record</button>
         </div>
-      )}
+      </form>
+    </div>
+  </div>
+)}
+     {/* Edit Modal */}
+{editRecord && editingResident && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+    <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-black text-[#005f63]">Edit Record</h2>
+        <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+      </div>
 
-      {/* Delete Confirmation Modal */}
-      {deleteRecord && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-4 text-red-500">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-              </svg>
+      {editingResident.is_deleted && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted — editing disabled</div>}
+      {apiError && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>}
+
+      <form
+        onSubmit={handleUpdateResident}
+        className="space-y-4"
+        style={{ pointerEvents: editingResident.is_deleted ? "none" : "auto", opacity: editingResident.is_deleted ? 0.6 : 1 }}
+      >
+        <div className="grid md:grid-cols-3 gap-4">
+          {(["firstName","middleName","lastName"] as const).map((field) => (
+            <div key={field}>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {field === "firstName" ? "First Name *" : field === "middleName" ? "Middle Name" : "Last Name *"}
+              </label>
+              <input
+                type="text"
+                required={field !== "middleName"}
+                value={editingResident[field]}
+                onChange={(e) => setEditingResident((p) => p ? { ...p, [field]: capitalizeName(e.target.value) } : p)}
+                className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors[field] ? "border-red-500" : "border-gray-200"}`}
+              />
+              {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
             </div>
-            <h3 className="text-xl font-bold text-gray-800 mb-2">Confirm Deletion</h3>
-            <p className="text-sm text-gray-600 mb-6">This action will move the record to trash. You can restore it later if needed.</p>
-            <div className="flex justify-center gap-4">
-              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
-              <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition">Delete</button>
+          ))}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+          <select
+            required
+            value={editingResident.role}
+            onChange={(e) => setEditingResident((p) => p ? { ...p, role: e.target.value } : p)}
+            className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.role ? "border-red-500" : "border-gray-200"}`}
+          >
+            <option value="Resident">Resident</option>
+            <option value="Staff">Staff</option>
+          </select>
+          {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+          <input
+            type="text"
+            required
+            value={editingResident.contactNumber}
+            onChange={(e) => setEditingResident((p) => p ? { ...p, contactNumber: formatContactNumber(e.target.value) } : p)}
+            className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
+            placeholder="09XX-XXX-XXXX"
+          />
+          {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+        </div>
+
+        <PhotoField isEdit={true} />
+
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={editingResident.hasAccount}
+              onChange={(e) => setEditingResident((p) => p ? { ...p, hasAccount: e.target.checked } : p)}
+              className="w-4 h-4 text-[#005f63]"
+            />
+            <span className="font-medium text-gray-700">Has Account?</span>
+          </label>
+
+          {/* ✅ PASSWORD ALWAYS VISIBLE & EDITABLE — even if unchecked */}
+          <div className="pl-6 space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+              <input
+                type="password"
+                value={editingResident.password}
+                onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
+                placeholder="Leave empty to keep current password"
+                className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                  editingResident.passwordChangedByUser ? "bg-gray-100 text-gray-500 border-gray-200" :
+                  formErrors.password ? "border-red-500" : "border-gray-200"
+                }`}
+                disabled={editingResident.passwordChangedByUser}
+              />
+              {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
+              {!editingResident.passwordChangedByUser && (
+                <p className="text-xs text-gray-500 mt-1">* Leave blank to keep existing password unchanged</p>
+              )}
             </div>
           </div>
         </div>
-      )}
 
+        <MembershipCheckboxes isEdit={true} />
+
+        <div className="flex justify-between gap-3 pt-2">
+          <button type="button" onClick={handleCancelEdit} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+          <button
+            type="submit"
+            disabled={!hasEditChanges}
+            className={`px-5 py-2.5 rounded-full transition ${hasEditChanges ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+          >Update Record</button>
+        </div>
+      </form>
+    </div>
+  </div>
+)}
       {/* Unsaved Changes Modal */}
       {showCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
