@@ -28,31 +28,60 @@ class UserController extends Controller
     }
 
     /**
-     * Upload file to FTP. Returns stored path string.
-     * Throws \Exception on failure so the outer DB transaction can roll back.
+     * Upload file to LOCAL public disk.
+     * Stored under storage/app/public/validation_ids/
+     * Accessible via /storage/validation_ids/<filename> after `php artisan storage:link`
+     *
+     * WHY CHANGED: Previously used Storage::disk('ftp') which requires a remote FTP server.
+     * Using Storage::disk('public') writes to storage/app/public/ which Laravel symlinks
+     * to public/storage/ — making files accessible via standard HTTP URLs with no extra config.
      */
-    private function ftpUpload($file): string
+    private function localUpload($file): string
     {
-        $filename = time() . '_' . $file->getClientOriginalName();
-        $path     = $file->storeAs('validation_ids', $filename, 'ftp');
+        // Sanitize filename: replace spaces and any character that isn't
+        // alphanumeric, dash, underscore, or dot with an underscore.
+        // e.g. "IT2228 - Activity Design It Fast.png" → "IT2228_-_Activity_Design_It_Fast.png"
+        // This prevents broken URLs caused by spaces or special characters.
+        $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $ext      = $file->getClientOriginalExtension();
+        $clean    = preg_replace('/[^A-Za-z0-9\-_.]/', '_', $original);
+        $filename = time() . '_' . $clean . '.' . $ext;
+
+        $path = $file->storeAs('validation_ids', $filename, 'public');
 
         if (!$path) {
-            throw new \Exception('FTP upload failed — storeAs() returned false.');
+            throw new \Exception('File upload failed — storeAs() returned false.');
         }
 
-        return $path;
+        return $path; // e.g. "validation_ids/1780042815_IT2228_-_Activity_Design_It_Fast.png"
     }
 
     /**
-     * Delete a file from FTP silently (don't crash if it's already gone).
+     * Delete a file from LOCAL public disk silently.
+     *
+     * WHY CHANGED: Same disk change as localUpload — must match the disk used to store the file.
      */
-    private function ftpDelete(string $path): void
+    private function localDelete(string $path): void
     {
         try {
-            Storage::disk('ftp')->delete($path);
+            Storage::disk('public')->delete($path);
         } catch (\Exception $e) {
-            \Log::warning("FTP delete failed for [{$path}]: " . $e->getMessage());
+            \Log::warning("Local file delete failed for [{$path}]: " . $e->getMessage());
         }
+    }
+
+    /**
+     * Return the full public URL for a stored validation_id path.
+     * Returns null if no path is stored.
+     *
+     * WHY ADDED: The frontend previously built the URL by concatenating VITE_FTP_URL + path.
+     * Now the backend returns the complete, ready-to-use URL so the frontend just uses it directly.
+     * Storage::disk('public')->url($path) returns e.g. "http://yourapp.test/storage/validation_ids/photo.jpg"
+     */
+    private function validationIdUrl(?string $path): ?string
+    {
+        if (!$path) return null;
+        return Storage::disk('public')->url($path);
     }
 
     // =========================
@@ -76,14 +105,13 @@ class UserController extends Controller
             $nextNum = $last ? ((int) str_replace('PR-', '', $last->user_code) + 1) : 1;
             $userCode = 'PR-' . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
 
-            // ── FTP upload (if file provided) ──────────────────────────────
+            // ── Local upload (if file provided) ────────────────────────────
+            // WHY: replaced $this->ftpUpload() with $this->localUpload()
             if ($request->hasFile('validation_id')) {
-                $path = $this->ftpUpload($request->file('validation_id'));
+                $path = $this->localUpload($request->file('validation_id'));
             }
 
             // ── Password ───────────────────────────────────────────────────
-            // Hash password whenever has_account=1 AND password is provided,
-            // regardless of role (frontend controls this).
             $hasAccount = filter_var($request->has_account, FILTER_VALIDATE_BOOLEAN);
             $password   = null;
 
@@ -98,7 +126,7 @@ class UserController extends Controller
                 'last_name'      => $request->last_name,
                 'middle_name'    => $request->middle_name,
                 'contact_number' => $request->contact_number,
-                'validation_id'  => $path,
+                'validation_id'  => $path, // stores the relative path, e.g. "validation_ids/file.jpg"
                 'role'           => $request->role,
                 'has_account'    => $hasAccount ? 1 : 0,
                 'password'       => $password,
@@ -125,7 +153,7 @@ class UserController extends Controller
 
             // Clean up uploaded file if DB failed
             if ($path) {
-                $this->ftpDelete($path);
+                $this->localDelete($path);
             }
 
             return response()->json([
@@ -251,15 +279,16 @@ class UserController extends Controller
                 $user->has_account = 1;
             }
 
-            // ── FTP file update ────────────────────────────────────────────
+            // ── Local file update ──────────────────────────────────────────
+            // WHY: replaced ftpDelete/ftpUpload with localDelete/localUpload
             if ($request->hasFile('validation_id')) {
 
                 // Delete old file first
                 if ($user->validation_id) {
-                    $this->ftpDelete($user->validation_id);
+                    $this->localDelete($user->validation_id);
                 }
 
-                $user->validation_id = $this->ftpUpload($request->file('validation_id'));
+                $user->validation_id = $this->localUpload($request->file('validation_id'));
             }
 
             $user->save();
@@ -338,8 +367,9 @@ class UserController extends Controller
 
             $user = User::onlyTrashed()->findOrFail($id);
 
+            // WHY: replaced ftpDelete with localDelete
             if ($user->validation_id) {
-                $this->ftpDelete($user->validation_id);
+                $this->localDelete($user->validation_id);
             }
 
             $user->memberships()->detach();

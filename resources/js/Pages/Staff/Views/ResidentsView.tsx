@@ -22,7 +22,7 @@ interface ResidentRow {
   password: string;
   passwordChangedByUser: boolean;
   photo: string;
-  is_deleted: boolean;
+  deleted_at: string | null; // ✅ From your database
 }
 
 type AddForm = {
@@ -49,7 +49,7 @@ type EditForm = {
   passwordChangedByUser: boolean;
   hasMemberships: boolean;
   selectedMemberships: number[];
-  is_deleted: boolean;
+  deleted_at: string | null; // ✅ From your database
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,19 +60,16 @@ const csrfToken = () =>
 const capitalizeName = (v: string) =>
   v.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
 
-// ✅ UPDATED: Strict format 09XX-XXX-XXXX
 const formatContactNumber = (v: string) => {
-  const digits = v.replace(/\D/g, "").slice(0, 11); // keep only first 11 digits
+  const digits = v.replace(/\D/g, "").slice(0, 11);
   if (digits.length === 0) return "";
   if (digits.length <= 4) return digits;
   if (digits.length <= 7) return `${digits.slice(0, 4)}-${digits.slice(4)}`;
   return `${digits.slice(0, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
 };
 
-// ✅ NEW: Format raw number when loading into forms/table
 const displayContact = (num: string) => formatContactNumber(num);
 
-// Safe JSON parse — handles 500s that return HTML/plain-text instead of JSON
 const safeParseJson = async (res: Response): Promise<any> => {
   const text = await res.text();
   try {
@@ -198,23 +195,21 @@ export default function ResidentsView() {
     try {
       const res  = await fetch("/membership-residents", { headers: { Accept: "application/json" } });
       const data = await res.json();
-      const ftpUrl = (import.meta as any).env?.VITE_FTP_URL ?? "";
 
       const formatted: ResidentRow[] = data.map((item: any) => ({
-        id:                    item.user_code,
-        real_id:               item.user_id,
-        lastName:              item.last_name,
-        firstName:             item.first_name,
-        middleName:            item.middle_name ?? "",
-        // ✅ UPDATED: Format contact number when loading data
-        contactNumber:         displayContact(item.contact_number ?? ""),
-        memberships:           (item.memberships ?? []).map((m: any) => m.name).join(", "),
-        role:                  item.role,
-        hasAccount:            Boolean(item.has_account),
-        password:              "",
-        passwordChangedByUser: false,
-        photo:                 item.validation_id ? `${ftpUrl}/${item.validation_id}` : "",
-        is_deleted:            Boolean(item.is_deleted),
+        id: item.user_code,
+        real_id: item.user_id,
+        lastName: item.last_name,
+        firstName: item.first_name,
+        middleName: item.middle_name ?? "",
+        contactNumber: displayContact(item.contact_number ?? ""),
+        memberships: (item.memberships ?? []).map((m: any) => m.name).join(", "),
+        role: item.role,
+        hasAccount: !!item.has_account,
+        password: "",
+        passwordChangedByUser: !!item.password_changed_by_user,
+        photo: item.validation_id_url,
+        deleted_at: item.deleted_at, // ✅ Direct from your DB
       }));
 
       setResidentsData(formatted);
@@ -307,7 +302,6 @@ export default function ResidentsView() {
     fd.append("first_name",     newResident.firstName);
     fd.append("middle_name",    newResident.middleName);
     fd.append("last_name",      newResident.lastName);
-    // ✅ Send only digits to server
     fd.append("contact_number", newResident.contactNumber.replace(/\D/g, ""));
     fd.append("role",           newResident.role);
     fd.append("has_account",    newResident.hasAccount ? "1" : "0");
@@ -334,10 +328,9 @@ export default function ResidentsView() {
         } else {
           setApiError(body.message ?? "Failed to save record.");
         }
-        return; // stay on modal so user can fix
+        return;
       }
 
-      // Close modal ONLY on success
       setShowAddForm(false);
       setFormErrors({});
       setApiError(null);
@@ -372,7 +365,6 @@ export default function ResidentsView() {
       firstName:             r.firstName,
       middleName:            r.middleName,
       lastName:              r.lastName,
-      // ✅ Already formatted, keep as-is
       contactNumber:         r.contactNumber,
       role:                  r.role,
       hasAccount:            r.hasAccount,
@@ -380,7 +372,7 @@ export default function ResidentsView() {
       passwordChangedByUser: r.passwordChangedByUser,
       hasMemberships:        memIds.length > 0,
       selectedMemberships:   memIds,
-      is_deleted:            r.is_deleted,
+      deleted_at:            r.deleted_at,
     };
 
     setEditingResident(state);
@@ -401,12 +393,10 @@ export default function ResidentsView() {
     fd.append("first_name",     editingResident.firstName);
     fd.append("middle_name",    editingResident.middleName);
     fd.append("last_name",      editingResident.lastName);
-    // ✅ Send only digits to server
     fd.append("contact_number", editingResident.contactNumber.replace(/\D/g, ""));
     fd.append("role",           editingResident.role);
     fd.append("has_account",    editingResident.hasAccount ? "1" : "0");
 
-    // ✅ Only send password if NOT empty and NOT changed by user
     if (editingResident.hasAccount && !editingResident.passwordChangedByUser && editingResident.password.trim()) {
       fd.append("password", editingResident.password);
     }
@@ -436,10 +426,9 @@ export default function ResidentsView() {
         } else {
           setApiError(body.message ?? "Failed to update record.");
         }
-        return; // stay on modal
+        return;
       }
 
-      // Close modal ONLY on success
       setEditRecord(null);
       setFormErrors({});
       setApiError(null);
@@ -463,17 +452,22 @@ export default function ResidentsView() {
 
       if (!res.ok) {
         const body = await safeParseJson(res);
-        console.error("Delete error:", body.message || res.statusText);
+        console.error("Delete error,:", body.message || res.statusText);
         return;
       }
 
-      // ✅ NEW LOGIC: After delete → clear storage and go to login
-      localStorage.removeItem('user');
-      localStorage.removeItem('isAuthenticated');
-      sessionStorage.removeItem('user');
-      sessionStorage.removeItem('isAuthenticated');
-      alert("Your account has been deleted successfully. You will be redirected to login.");
-      window.location.href = "/login";
+      // Only clear storage if deleting your own account
+      if (currentUserId === rec.real_id) {
+        localStorage.removeItem('user');
+        localStorage.removeItem('isAuthenticated');
+        sessionStorage.removeItem('user');
+        sessionStorage.removeItem('isAuthenticated');
+        alert("Your account has been deleted successfully. You will be redirected to login.");
+        window.location.href = "/login";
+      } else {
+        setDeleteRecord(null);
+        fetchResidents();
+      }
 
     } catch (e) {
       console.error("Delete error:", e);
@@ -524,7 +518,7 @@ export default function ResidentsView() {
     if (residentFilter === "staff")        r = r.filter((x) => x.role === "Staff");
     if (residentFilter === "with-account") r = r.filter((x) => x.hasAccount);
     if (residentFilter === "no-account")   r = r.filter((x) => !x.hasAccount);
-    if (residentFilter === "trashed")      r = r.filter((x) => x.is_deleted);
+    if (residentFilter === "trashed")      r = r.filter((x) => x.deleted_at !== null); // ✅ Filter deleted
     if (residentSearch.trim()) {
       const q = residentSearch.toLowerCase();
       r = r.filter((x) =>
@@ -679,14 +673,13 @@ export default function ResidentsView() {
                     <tr
                       key={r.id}
                       className={`border-b border-[#eee8e0] transition-all duration-200 hover:shadow-md hover:rounded-lg ${
-                        r.is_deleted ? "bg-gray-100 text-gray-400 line-through" : "hover:bg-teal-50/100"
+                        r.deleted_at !== null ? "bg-gray-200 text-gray-500 line-through opacity-70" : "hover:bg-teal-50/100"
                       }`}
                     >
                       <td className="py-3 px-2 font-mono">{highlightText(r.id, residentSearch)}</td>
                       <td className="py-3 px-2 font-medium">{highlightText(r.lastName, residentSearch)}</td>
                       <td className="py-3 px-2">{highlightText(r.firstName, residentSearch)}</td>
                       <td className="py-3 px-2">{highlightText(r.middleName, residentSearch)}</td>
-                      {/* ✅ Already formatted */}
                       <td className="py-3 px-2">{highlightText(r.contactNumber, residentSearch)}</td>
                       <td className="py-3 px-2">
                         <div className="flex flex-wrap gap-1.5 items-center">
@@ -718,7 +711,8 @@ export default function ResidentsView() {
                           <button onClick={() => setViewRecord(r.id)} className="p-2 rounded-full hover:bg-teal-50 transition" title="View">
                             <svg width="16" height="16" fill="none" stroke="#006666" strokeWidth={2} viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                           </button>
-                          {!r.is_deleted ? (
+
+                          {r.deleted_at === null ? (
                             <>
                               <button onClick={() => setEditRecord(r.id)} className="p-2 rounded-full hover:bg-orange-50 transition" title="Edit">
                                 <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -729,11 +723,11 @@ export default function ResidentsView() {
                             </>
                           ) : (
                             <button
-                            onClick={() => setRestoreRecord(r.real_id)}
-                            className="p-2 rounded-full text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors duration-200"
-                            title="Restore Record"
+                              onClick={() => setRestoreRecord(r.real_id)}
+                              className="p-2 rounded-full text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors duration-200"
+                              title="Restore Record"
                             >
-                            <svg
+                              <svg
                                 width="16"
                                 height="16"
                                 fill="none"
@@ -742,10 +736,10 @@ export default function ResidentsView() {
                                 strokeLinecap="round"
                                 strokeLinejoin="round"
                                 viewBox="0 0 24 24"
-                            >
+                              >
                                 <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8v7h7" />
                                 <path d="M12 16v-6h-6" />
-                            </svg>
+                              </svg>
                             </button>
                           )}
                         </div>
@@ -771,12 +765,11 @@ export default function ResidentsView() {
                 <button onClick={() => setViewRecord(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
               </div>
               <div className="text-sm">
-                {r.is_deleted && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted</div>}
+                {r.deleted_at !== null && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted</div>}
                 <div className="flex gap-6">
                   <div className="flex-1 space-y-2">
                     <p><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
                     <p><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
-                    {/* ✅ Already formatted */}
                     <p><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
                     <p><strong className="text-[#005f63]">Role:</strong> {r.role} {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}</p>
                     <p><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
@@ -877,7 +870,6 @@ export default function ResidentsView() {
             <span className="font-medium text-gray-700">Has Account?</span>
           </label>
 
-          {/* ✅ Password ALWAYS visible & required */}
           <div className="pl-6">
             <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
             <input
@@ -917,13 +909,13 @@ export default function ResidentsView() {
         <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
       </div>
 
-      {editingResident.is_deleted && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted — editing disabled</div>}
+      {editingResident.deleted_at !== null && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted — editing disabled</div>}
       {apiError && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>}
 
       <form
         onSubmit={handleUpdateResident}
         className="space-y-4"
-        style={{ pointerEvents: editingResident.is_deleted ? "none" : "auto", opacity: editingResident.is_deleted ? 0.6 : 1 }}
+        style={{ pointerEvents: editingResident.deleted_at !== null ? "none" : "auto", opacity: editingResident.deleted_at !== null ? 0.6 : 1 }}
       >
         <div className="grid md:grid-cols-3 gap-4">
           {(["firstName","middleName","lastName"] as const).map((field) => (
@@ -936,218 +928,164 @@ export default function ResidentsView() {
                 required={field !== "middleName"}
                 value={editingResident[field]}
                 onChange={(e) => setEditingResident((p) => p ? { ...p, [field]: capitalizeName(e.target.value) } : p)}
-                className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 {formErrors[field] ? "border-red-500" : "border-gray-200"}`}
+                className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors[field] ? "border-red-500" : "border-gray-200"}`}
               />
               {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
             </div>
           ))}
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
-          <select
-            required
-            value={editingResident.role}
-            onChange={(e) => setEditingResident((p) => p ? { ...p, role: e.target.value } : p)}
-            className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.role ? "border-red-500" : "border-gray-200"}`}
-          >
-            <option value="Resident">Resident</option>
-            <option value="Staff">Staff</option>
-          </select>
-          {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
-        </div>
+<div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+  <select
+    required
+    value={editingResident.role}
+    onChange={(e) => setEditingResident((p) => p ? { ...p, role: e.target.value } : p)}
+    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.role ? "border-red-500" : "border-gray-200"}`}
+  >
+    <option value="Resident">Resident</option>
+    <option value="Staff">Staff</option>
+  </select>
+  {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
+</div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
-          <input
-            type="text"
-            required
-            value={editingResident.contactNumber}
-            onChange={(e) => setEditingResident((p) => p ? { ...p, contactNumber: formatContactNumber(e.target.value) } : p)}
-            className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
-            placeholder="09XX-XXX-XXXX"
-            maxLength={13}
-          />
-          {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
-        </div>
+<div>
+  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+  <input
+    type="text"
+    required
+    value={editingResident.contactNumber}
+    onChange={(e) => setEditingResident((p) => p ? { ...p, contactNumber: formatContactNumber(e.target.value) } : p)}
+    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
+    placeholder="09XX-XXX-XXXX"
+    maxLength={13}
+  />
+  {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+</div>
 
-        <div className="space-y-3">
-          <label className="flex items-center gap-2 cursor-pointer mb-2">
-            <input
-              type="checkbox"
-              checked={editingResident.hasAccount}
-              onChange={(e) => setEditingResident((p) => p ? { ...p, hasAccount: e.target.checked } : p)}
-              className="w-4 h-4 text-[#005f63]"
-            />
-            <span className="font-medium text-gray-700">Has Account?</span>
-          </label>
+<div className="space-y-3">
+  <label className="flex items-center gap-2 cursor-pointer mb-2">
+    <input
+      type="checkbox"
+      checked={editingResident.hasAccount}
+      onChange={(e) => setEditingResident((p) => p ? { ...p, hasAccount: e.target.checked } : p)}
+      className="w-4 h-4 text-[#005f63]"
+      disabled={editingResident.passwordChangedByUser}
+    />
+    <span className="font-medium text-gray-700">Has Account?</span>
+    {editingResident.passwordChangedByUser && <span className="text-yellow-600 text-xs ml-2">(Locked — user changed password)</span>}
+  </label>
 
-          <div className="pl-6">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              value={editingResident.password}
-              onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value, passwordChangedByUser: false } : p)}
-              disabled={editingResident.passwordChangedByUser}
-              className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.password ? "border-red-500" : "border-gray-200"} ${editingResident.passwordChangedByUser ? "bg-gray-100 text-gray-500" : ""}`}
-              placeholder={editingResident.passwordChangedByUser ? "Changed by user — cannot edit" : "Leave blank to keep current"}
-            />
-            {editingResident.passwordChangedByUser && (
-              <p className="text-yellow-600 text-xs mt-1">🔒 This password was changed by the user and is locked</p>
-            )}
-            {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
-          </div>
-        </div>
-
-        <PhotoField isEdit={true} />
-        <MembershipCheckboxes isEdit={true} />
-
-        <div className="flex justify-between gap-3 pt-2">
-          <button
-            type="button"
-            onClick={handleCancelEdit}
-            className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!hasEditChanges || editingResident.is_deleted}
-            className={`px-5 py-2.5 rounded-full transition ${
-              hasEditChanges && !editingResident.is_deleted
-                ? "bg-[#005f63] text-white hover:bg-[#004d4d]"
-                : "bg-gray-200 text-gray-400 cursor-not-allowed"
-            }`}
-          >
-            Update Record
-          </button>
-        </div>
-      </form>
-    </div>
+  <div className="pl-6">
+    <label className="block text-sm font-medium text-gray-700 mb-1">Password {editingResident.hasAccount && !editingResident.passwordChangedByUser ? "*" : ""}</label>
+    <input
+      type="password"
+      required={editingResident.hasAccount && !editingResident.passwordChangedByUser}
+      value={editingResident.password}
+      onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
+      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.password ? "border-red-500" : "border-gray-200"}`}
+      placeholder={editingResident.passwordChangedByUser ? "Hidden — changed by user" : "Enter new or keep current"}
+      disabled={editingResident.passwordChangedByUser}
+    />
+    {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
   </div>
+</div>
+
+<PhotoField isEdit={true} />
+<MembershipCheckboxes isEdit={true} />
+
+<div className="flex justify-between gap-3 pt-2">
+  <button type="button" onClick={handleCancelEdit} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+  <button
+    type="submit"
+    disabled={!hasEditChanges || editingResident.deleted_at !== null}
+    className={`px-5 py-2.5 rounded-full transition ${hasEditChanges && editingResident.deleted_at === null ? "bg-[#005f63] text-white hover:bg-[#004d4d]" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
+  >
+    Update Record
+  </button>
+</div>
+</form>
+</div>
+</div>
 )}
 
-      {/* Cancel Confirmation Modal */}
-{showCancelConfirm && (
-  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4">
-    <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl text-center">
-      <h3 className="text-lg font-bold text-gray-800 mb-2">Discard changes?</h3>
-      <p className="text-sm text-gray-600 mb-6">You have unsaved changes. Are you sure you want to close this form?</p>
-      <div className="flex gap-3 justify-center">
-        <button
-          onClick={() => setShowCancelConfirm(null)}
-          className="px-5 py-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-        >
-          No, keep editing
-        </button>
-        <button
-          onClick={() => {
-            setShowCancelConfirm(null);
-            if (showCancelConfirm === "add") {
-              setShowAddForm(false);
-              setFormErrors({});
-              setApiError(null);
-            } else {
-              setEditRecord(null);
-              setFormErrors({});
-              setApiError(null);
-            }
-          }}
-          className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
-        >
-          Yes, discard
-        </button>
-      </div>
-    </div>
-  </div>
-)}
-
-      {/* Delete Confirmation Modal */}
+{/* Delete Confirm Modal */}
 {deleteRecord && (
-  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4">
-    <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl text-center">
-      <h3 className="text-lg font-bold text-red-600 mb-2">Delete Record?</h3>
-      <p className="text-sm text-gray-600 mb-6">This action cannot be undone. This record will be moved to trash.</p>
-      <div className="flex gap-3 justify-center">
-        <button
-          onClick={() => setDeleteRecord(null)}
-          className="px-5 py-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleDeleteResident}
-          className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
-        >
-          Yes, Delete
-        </button>
-      </div>
+<div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+  <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+    <h3 className="text-xl font-bold text-red-600 mb-3">Confirm Delete</h3>
+    <p className="text-gray-600 mb-5">Are you sure you want to move this record to trash? This can be restored later.</p>
+    <div className="flex justify-center gap-3">
+      <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+      <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">Yes, Delete</button>
     </div>
   </div>
+</div>
 )}
 
-      {/* Restore Confirmation Modal */}
+{/* Restore Confirm Modal */}
 {restoreRecord && (
-  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4">
-    <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl text-center">
-      <h3 className="text-lg font-bold text-emerald-600 mb-2">Restore Record?</h3>
-      <p className="text-sm text-gray-600 mb-6">This will restore the record back to active status.</p>
-      <div className="flex gap-3 justify-center">
-        <button
-          onClick={() => setRestoreRecord(null)}
-          className="px-5 py-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleRestoreResident}
-          className="px-5 py-2 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 transition"
-        >
-          Yes, Restore
-        </button>
-      </div>
+<div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+  <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+    <h3 className="text-xl font-bold text-emerald-600 mb-3">Confirm Restore</h3>
+    <p className="text-gray-600 mb-5">Restore this record from trash? It will be active again.</p>
+    <div className="flex justify-center gap-3">
+      <button onClick={() => setRestoreRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+      <button onClick={handleRestoreResident} className="px-5 py-2.5 rounded-full bg-emerald-600 text-white hover:bg-emerald-700 transition">Yes, Restore</button>
     </div>
   </div>
+</div>
 )}
 
-      {/* Pagination Controls */}
+{/* Cancel Changes Confirm */}
+{showCancelConfirm && (
+<div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+  <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+    <h3 className="text-xl font-bold text-amber-600 mb-3">Unsaved Changes</h3>
+    <p className="text-gray-600 mb-5">You have unsaved changes. Discard them and close?</p>
+    <div className="flex justify-center gap-3">
+      <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Stay</button>
+      <button onClick={() => {
+        setShowCancelConfirm(null);
+        if (showCancelConfirm === "add") { setShowAddForm(false); setFormErrors({}); setApiError(null); }
+        if (showCancelConfirm === "edit") { setEditRecord(null); setFormErrors({}); setApiError(null); }
+      }} className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition">Discard & Close</button>
+    </div>
+  </div>
+</div>
+)}
+
+{/* Pagination Controls */}
 {totalPages > 1 && (
-  <div className="flex items-center justify-between px-2">
-    <p className="text-sm text-gray-600">
-      Page {currentPage} of {totalPages}
-    </p>
-    <div className="flex gap-2">
-      <button
-        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-        disabled={currentPage === 1}
-        className="px-3 py-1 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        Previous
-      </button>
-      {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-        <button
-          key={page}
-          onClick={() => setCurrentPage(page)}
-          className={`w-8 h-8 rounded-full text-sm font-medium ${
-            currentPage === page
-              ? "bg-[#005f63] text-white"
-              : "border border-gray-200 text-gray-700 hover:bg-gray-50"
-          }`}
-        >
-          {page}
-        </button>
-      ))}
-      <button
-        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-        disabled={currentPage === totalPages}
-        className="px-3 py-1 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        Next
-      </button>
-    </div>
-  </div>
+<div className="flex items-center justify-center gap-2 mt-6">
+  <button
+    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+    disabled={currentPage === 1}
+    className="p-2 rounded-full border border-gray-200 hover:border-[#005f63] disabled:opacity-40 disabled:cursor-not-allowed"
+  >
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" /></svg>
+  </button>
+
+  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+    <button
+      key={page}
+      onClick={() => setCurrentPage(page)}
+      className={`w-9 h-9 rounded-full text-sm font-medium transition ${currentPage === page ? "bg-[#005f63] text-white" : "hover:bg-gray-100"}`}
+    >
+      {page}
+    </button>
+  ))}
+
+  <button
+    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+    disabled={currentPage === totalPages}
+    className="p-2 rounded-full border border-gray-200 hover:border-[#005f63] disabled:opacity-40 disabled:cursor-not-allowed"
+  >
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M9 5l7 7-7 7" /></svg>
+  </button>
+</div>
 )}
 
-    </div>
-  );
+</div>
+);
 }

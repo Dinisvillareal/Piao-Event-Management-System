@@ -28,66 +28,35 @@ class MembershipResidentController extends Controller
     // GET ALL USERS + MEMBERSHIPS (INCLUDING SOFT DELETED)
     // =========================
 
-    public function index()
-    {
-        if (!$this->isStaff()) {
-            return response()->json([
-                'message' => 'Unauthorized: Only staff can view all memberships'
-            ], 403);
-        }
+public function index()
+{
+   $users = User::with('memberships')->withTrashed()->get();
 
-        $users = DB::table('users')
-            // 🔥 NO whereNull(deleted_at) → includes deleted + active users
-            ->leftJoin('membership_residents', 'users.id', '=', 'membership_residents.user_id')
-            ->leftJoin('memberships', 'membership_residents.membership_id', '=', 'memberships.id')
-            ->select(
-                'users.id',
-                'users.user_code',
-                'users.first_name',
-                'users.middle_name',
-                'users.last_name',
-                'users.contact_number',
-                'users.has_account',
-                'users.role', // ✅ ADDED ROLE HERE
-                'users.deleted_at', // 🔥 show soft delete status
+    return response()->json(
+        $users->map(function ($user) {
 
-                'memberships.id as membership_id',
-                'memberships.name as membership_name'
-            )
-            ->get()
-            ->groupBy('id')
-            ->map(function ($items) {
+            return [
+                'user_id' => $user->id,
+                'user_code' => $user->user_code,
+                'first_name' => $user->first_name,
+                'middle_name' => $user->middle_name,
+                'last_name' => $user->last_name,
+                'contact_number' => $user->contact_number,
+                'role' => $user->role,
+                'has_account' => $user->has_account,
 
-                $first = $items->first();
+                // ✅ ONLY THIS — real soft delete column from your DB
+                'deleted_at' => $user->deleted_at,
 
-                return [
-                    'user_id' => $first->id,
-                    'user_code' => $first->user_code,
-                    'first_name' => $first->first_name,
-                    'middle_name' => $first->middle_name,
-                    'last_name' => $first->last_name,
-                    'contact_number' => $first->contact_number,
-                    'has_account' => $first->has_account,
-                    'role' => $first->role, // ✅ RETURN ROLE IN RESPONSE
-
-                    // 🔥 soft delete flag
-                    'is_deleted' => $first->deleted_at ? true : false,
-
-                    'memberships' => $items
-                        ->filter(fn ($i) => $i->membership_id)
-                        ->map(fn ($i) => [
-                            'id' => $i->membership_id,
-                            'name' => $i->membership_name,
-                        ])
-                        ->values()
-                ];
-            })
-            ->values();
-
-        return response()->json($users);
-    }
-
-    // =========================
+                'memberships' => $user->memberships,
+                'validation_id_url' => $user->validation_id
+                    ? asset('storage/' . $user->validation_id)
+                    : null,
+            ];
+        })
+    );
+}
+// =========================
     // SHOW SINGLE USER + MEMBERSHIPS (INCLUDING SOFT DELETED)
     // =========================
 
