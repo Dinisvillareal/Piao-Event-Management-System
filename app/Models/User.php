@@ -61,11 +61,6 @@ class User extends Authenticatable
 
     public function memberships()
     {
-        return $this->belongsToMany(
-            Membership::class,
-            'membership_residents',
-            'user_id',
-            'membership_id'
-        );
+         return $this->belongsToMany( Membership::class, 'membership_residents', 'user_id', 'membership_id' );
     }
 }
