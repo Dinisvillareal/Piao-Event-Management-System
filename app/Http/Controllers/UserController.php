@@ -391,6 +391,41 @@ class UserController extends Controller
     }
 
     // =========================
+// CHANGE PASSWORD
+// =========================
+
+public function changePassword(Request $request, $id)
+{
+    if (!$this->isOwnProfile($id) && !$this->isStaff()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
+    $request->validate([
+        'new_password' => 'required|string|min:8|confirmed',
+    ]);
+
+    DB::beginTransaction();
+
+    try {
+        $user              = User::findOrFail($id);
+        $user->password    = Hash::make($request->new_password);
+        $user->has_account = 1;
+        $user->save();
+
+        DB::commit();
+
+        return response()->json(['message' => 'Password updated successfully']);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'message' => 'Password update failed',
+            'error'   => $e->getMessage(),
+        ], 500);
+    }
+}
+
+    // =========================
     // LOGOUT
     // =========================
 

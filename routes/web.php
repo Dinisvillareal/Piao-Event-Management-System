@@ -225,6 +225,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/users/{id}/attendances',
         [EventAttendanceController::class, 'getMemberHistory']);
+
+    Route::patch('users/{id}/change-password', [UserController::class, 'changePassword']);
 });
 
 /*
