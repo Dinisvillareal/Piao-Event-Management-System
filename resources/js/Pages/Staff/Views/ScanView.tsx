@@ -357,7 +357,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                       <div>
                         <p className="font-bold text-gray-800">{i + 1}. {rec.residentName}</p>
                         <div className="flex gap-4 mt-1 text-xs text-gray-600 font-medium">
-                          <span className="flex items-center gap-1 text-teal-700"><LogIn size={14} /> {rec.timeIn || "—"}</span>
+                          <span className="flex items-center gap-1 text-blue-700"><LogIn size={14} /> {rec.timeIn || "—"}</span>
                           <span className="flex items-center gap-1 text-orange-700"><LogOut size={14} /> {rec.timeOut || "—"}</span>
                         </div>
                       </div>
