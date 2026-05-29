@@ -22,6 +22,7 @@
     },
     "dependencies": {
         "@tanstack/react-router": "^1.169.2",
+        "@yudiel/react-qr-scanner": "^2.6.0",
         "lucide-react": "^1.14.0",
         "qrcode.react": "^4.2.0",
         "react": "^19.2.5",

@@ -16,9 +16,7 @@ use Illuminate\Support\Facades\DB;
 |--------------------------------------------------------------------------
 */
 
-Route::get('/', function () {
-    return view('app');
-});
+
 
 /*
 |--------------------------------------------------------------------------
@@ -94,13 +92,16 @@ Route::middleware('auth')->group(function () {
     |------------------------
     */
     Route::get('/events-data', function () {
+        // If it's a staff member scanning, show ALL events
+        if (Auth::user()->role === 'Staff' || Auth::user()->role === 'STAFF / ADMIN') {
+            return response()->json(['data' => Event::all()]);
+        }
+
+        // Otherwise, keep the original resident filtering logic
         $user = Auth::user();
-        $membershipIds = DB::table('membership_residents')
-            ->where('user_id', $user->id)
-            ->pluck('membership_id');
-        $events = Event::whereIn('membership_id', $membershipIds)
-            ->orWhereNull('membership_id')
-            ->get();
+        $membershipIds = DB::table('membership_residents')->where('user_id', $user->id)->pluck('membership_id');
+        $events = Event::whereIn('membership_id', $membershipIds)->orWhereNull('membership_id')->get();
+        
         return response()->json(['data' => $events]);
     });
     
@@ -128,9 +129,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/events/{id}/attendances', [EventAttendanceController::class, 'getEventAttendees']);
     Route::get('/users/{id}/attendances', [EventAttendanceController::class, 'getMemberHistory']);
 });
-
-// ✅✅✅ MOVED TO THE VERY BOTTOM - This is CRITICAL!
-// All API routes must be defined BEFORE this wildcard
-Route::get('/{any}', function () {
+Route::get('/{path?}', function () {
     return view('app');
-})->where('any', '.*');
+})->where('path', '^(?!api).*$');

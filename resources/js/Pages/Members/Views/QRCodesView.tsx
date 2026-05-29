@@ -365,6 +365,7 @@ export default function QRCodesView({ highlightText }: any) {
   }
 
   const qrData = JSON.stringify({
+    user_id: userId,
     user_code: user_code,
     name: fullName,
     memberships: allMemberships.map((m: any) => m.name)
