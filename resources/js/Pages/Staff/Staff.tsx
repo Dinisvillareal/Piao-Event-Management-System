@@ -232,7 +232,7 @@ export default function StaffDashboard() {
           )}
           {active === "scan" && <ScanView events={allEvents} residents={residents} memberships={memberships} />}
           {active === "residents" && <ResidentsView />}
-          {active === "scan" && <ScanView events={allEvents} residents={residents} memberships={memberships} />}
+          {active === "memberships" && <QRCodesView memberships={memberships} highlightText={highlightText} />}
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} />}
           {active === "notify" && <NotificationsView notifications={notifications} memberships={memberships} highlightText={highlightText} />}
           {active === "settings" && <SettingsView member={staff} />}
