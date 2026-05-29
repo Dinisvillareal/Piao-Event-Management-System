@@ -1,18 +1,20 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+
+use App\Models\Event;
+
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\MembershipResidentController;
 use App\Http\Controllers\EventAttendanceController;
-use App\Models\Event;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 
 /*
 |--------------------------------------------------------------------------
-| FRONTEND
+| FRONTEND / REACT SPA
 |--------------------------------------------------------------------------
 */
 
@@ -22,15 +24,16 @@ Route::get('/', function () {
 
 /*
 |--------------------------------------------------------------------------
-| PUBLIC
+| PUBLIC ROUTES
 |--------------------------------------------------------------------------
 */
 
-Route::post('/login', [UserController::class, 'login']);
+Route::post('/login', [UserController::class, 'login'])
+    ->name('login');
 
 /*
 |--------------------------------------------------------------------------
-| AUTH ROUTES
+| PROTECTED ROUTES
 |--------------------------------------------------------------------------
 */
 
@@ -57,6 +60,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/users/all-for-memberships',
         [UserController::class, 'getAllForMemberships']);
 
+    Route::get('/users/staff',
+        [UserController::class, 'staff']);
+
+    Route::get('/users/resident',
+        [UserController::class, 'resident']);
+
+    Route::get('/users/deleted',
+        [UserController::class, 'deletedUsers']);
+
     Route::get('/users/{id}',
         [UserController::class, 'show']);
 
@@ -77,7 +89,7 @@ Route::middleware('auth')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | MEMBERSHIPS ONLY
+    | USER MEMBERSHIPS
     |--------------------------------------------------------------------------
     */
 
@@ -89,7 +101,34 @@ Route::middleware('auth')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | MEMBERSHIP QUERIES
+    | MEMBERSHIPS
+    |--------------------------------------------------------------------------
+    */
+
+    Route::resource('api/memberships',
+        MembershipController::class);
+
+    Route::prefix('api/memberships')->group(function () {
+
+        Route::get('/paginated',
+            [MembershipController::class, 'getPaginated']);
+
+        Route::get('/simple',
+            [MembershipController::class, 'getSimplePaginated']);
+
+        Route::get('/cursor',
+            [MembershipController::class, 'getCursorPaginated']);
+
+        Route::get('/search',
+            [MembershipController::class, 'searchPaginated']);
+
+        Route::get('/sort',
+            [MembershipController::class, 'sortPaginated']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | MEMBERSHIP RESIDENTS
     |--------------------------------------------------------------------------
     */
 
@@ -102,14 +141,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/membership-residents/{id}/memberships',
         [MembershipResidentController::class, 'getUserMembershipsPaginated']);
 
-    /*
-    |--------------------------------------------------------------------------
-    | MEMBERSHIPS
-    |--------------------------------------------------------------------------
-    */
+    Route::post('/membership-residents',
+        [MembershipResidentController::class, 'store']);
 
-    Route::resource('api/memberships',
-        MembershipController::class);
+    Route::put('/membership-residents/{id}',
+        [MembershipResidentController::class, 'update']);
+
+    Route::delete('/membership-residents/{id}',
+        [MembershipResidentController::class, 'destroy']);
 
     /*
     |--------------------------------------------------------------------------
@@ -121,6 +160,17 @@ Route::middleware('auth')->group(function () {
 
         $user = Auth::user();
 
+        // STAFF / ADMIN CAN SEE ALL EVENTS
+        if (
+            $user->role === 'Staff' ||
+            $user->role === 'STAFF / ADMIN'
+        ) {
+            return response()->json([
+                'data' => Event::all()
+            ]);
+        }
+
+        // RESIDENT FILTERING
         $membershipIds = DB::table('membership_residents')
             ->where('user_id', $user->id)
             ->pluck('membership_id');
@@ -164,6 +214,12 @@ Route::middleware('auth')->group(function () {
             [EventAttendanceController::class, 'getMemberHistory']);
     });
 
+    /*
+    |--------------------------------------------------------------------------
+    | DASHBOARD QUERIES
+    |--------------------------------------------------------------------------
+    */
+
     Route::get('/events/{id}/attendances',
         [EventAttendanceController::class, 'getEventAttendees']);
 
@@ -173,10 +229,10 @@ Route::middleware('auth')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| REACT SPA
+| REACT SPA FALLBACK
 |--------------------------------------------------------------------------
 */
 
-Route::get('/{any}', function () {
+Route::get('/{path?}', function () {
     return view('app');
-})->where('any', '.*');
+})->where('path', '^(?!api).*$');
