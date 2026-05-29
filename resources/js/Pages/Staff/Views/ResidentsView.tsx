@@ -263,34 +263,39 @@ export default function ResidentsView() {
   };
 
   // ─── Validation ───────────────────────────────────────────────────────────
-  const validateAdd = (): boolean => {
-    const err: Record<string, string> = {};
-    if (!newResident.firstName.trim()) err.firstName = "First name is required";
-    if (!newResident.lastName.trim())  err.lastName  = "Last name is required";
-    if (!newResident.role.trim())      err.role      = "Role is required";
-    const raw = newResident.contactNumber.replace(/\D/g, "");
-    if (!raw)                  err.contactNumber = "Contact number is required";
-    else if (raw.length !== 11) err.contactNumber = "Must be exactly 11 digits";
-    if (newResident.hasAccount && !newResident.password.trim())
-      err.password = "Password is required when account is enabled";
-    setFormErrors(err);
-    return Object.keys(err).length === 0;
-  };
+const validateAdd = (): boolean => {
+  const err: Record<string, string> = {};
+  if (!newResident.firstName.trim()) err.firstName = "First name is required";
+  if (!newResident.lastName.trim())  err.lastName  = "Last name is required";
+  if (!newResident.role.trim())      err.role      = "Role is required";
+  const raw = newResident.contactNumber.replace(/\D/g, "");
+  if (!raw)                    err.contactNumber = "Contact number is required";
+  else if (!raw.startsWith("09")) err.contactNumber = "Contact number must start with 09";
+  else if (raw.length !== 11)  err.contactNumber = "Must be exactly 11 digits";
+  if (newResident.hasAccount && !newResident.password.trim())
+    err.password = "Password is required when account is enabled";
+  if (!addPhotoFile) err.photo = "ID photo is required";  // ← ADD THIS
+  setFormErrors(err);
+  return Object.keys(err).length === 0;
+};
 
-  const validateEdit = (): boolean => {
-    if (!editingResident) return false;
-    const err: Record<string, string> = {};
-    if (!editingResident.firstName.trim()) err.firstName = "First name is required";
-    if (!editingResident.lastName.trim())  err.lastName  = "Last name is required";
-    if (!editingResident.role.trim())      err.role      = "Role is required";
-    const raw = editingResident.contactNumber.replace(/\D/g, "");
-    if (!raw)                  err.contactNumber = "Contact number is required";
-    else if (raw.length !== 11) err.contactNumber = "Must be exactly 11 digits";
-    if (editingResident.hasAccount && !editingResident.passwordChangedByUser && !editingResident.password.trim())
-      err.password = "Password is required";
-    setFormErrors(err);
-    return Object.keys(err).length === 0;
-  };
+const validateEdit = (): boolean => {
+  if (!editingResident) return false;
+  const err: Record<string, string> = {};
+  if (!editingResident.firstName.trim()) err.firstName = "First name is required";
+  if (!editingResident.lastName.trim())  err.lastName  = "Last name is required";
+  if (!editingResident.role.trim())      err.role      = "Role is required";
+  const raw = editingResident.contactNumber.replace(/\D/g, "");
+  if (!raw)                    err.contactNumber = "Contact number is required";
+  else if (!raw.startsWith("09")) err.contactNumber = "Contact number must start with 09";
+  else if (raw.length !== 11)  err.contactNumber = "Must be exactly 11 digits";
+  if (editingResident.hasAccount && !editingResident.passwordChangedByUser && !editingResident.password.trim())
+    err.password = "Password is required";
+  // Photo required only if no existing photo and no new file selected
+  if (!editPhotoFile && !editPhotoPreview) err.photo = "ID photo is required";  // ← ADD THIS
+  setFormErrors(err);
+  return Object.keys(err).length === 0;
+};
 
   // ─── ADD: POST /users ─────────────────────────────────────────────────────
   const handleAddResident = async (e: React.FormEvent) => {
@@ -581,31 +586,37 @@ export default function ResidentsView() {
     );
   };
 
-  const PhotoField = ({ isEdit }: { isEdit: boolean }) => {
-    const preview = isEdit ? editPhotoPreview : addPhotoPreview;
-    return (
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">ID Photo</label>
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => handlePhotoChange(e, isEdit)}
-          className="w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63]"
-        />
-        {preview && (
-          <div className="relative inline-block mt-2">
-            <img src={preview} alt="Preview" className="h-20 rounded border" />
-            <button
-              type="button"
-              onClick={() => handleRemovePhoto(isEdit)}
-              className="absolute -top-2 -right-2 bg-gray-200/70 text-gray-500 rounded-full w-6 h-6 flex items-center justify-center text-xs font-semibold border border-gray-300 hover:bg-gray-300/80 transition"
-            >✕</button>
-          </div>
-        )}
-      </div>
-    );
-  };
-
+const PhotoField = ({ isEdit }: { isEdit: boolean }) => {
+  const preview = isEdit ? editPhotoPreview : addPhotoPreview;
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">
+        ID Photo <span className="text-gray-900 font-bold">*</span>
+      </label>
+      <input
+        type="file"
+        accept="image/*"
+        onChange={(e) => handlePhotoChange(e, isEdit)}
+        className={`w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63] ${
+          formErrors.photo ? "border border-gray-900 rounded-lg p-1" : ""
+        }`}
+      />
+      {formErrors.photo && (
+        <p className="text-gray-900 text-xs mt-1 font-medium">⚠ {formErrors.photo}</p>
+      )}
+      {preview && (
+        <div className="relative inline-block mt-2">
+          <img src={preview} alt="Preview" className="h-20 rounded border" />
+          <button
+            type="button"
+            onClick={() => handleRemovePhoto(isEdit)}
+            className="absolute -top-2 -right-2 bg-gray-200/70 text-gray-500 rounded-full w-6 h-6 flex items-center justify-center text-xs font-semibold border border-gray-300 hover:bg-gray-300/80 transition"
+          >✕</button>
+        </div>
+      )}
+    </div>
+  );
+};
   // ─── JSX ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
@@ -846,8 +857,8 @@ export default function ResidentsView() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
-          <input
+        <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+        <input
             type="text"
             required
             value={newResident.contactNumber}
@@ -855,8 +866,12 @@ export default function ResidentsView() {
             className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
             placeholder="09XX-XXX-XXXX"
             maxLength={13}
-          />
-          {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+        />
+        {/* Live 09 warning */}
+        {newResident.contactNumber.length > 0 && !newResident.contactNumber.startsWith("09") && (
+            <p className="text-amber-500 text-xs mt-1">⚠ Number must start with 09</p>
+        )}
+        {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
         </div>
 
         <div className="space-y-3">
@@ -950,17 +965,46 @@ export default function ResidentsView() {
 </div>
 
 <div>
-  <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+  <label className="block text-sm font-medium text-gray-700 mb-1">
+    Contact Number *
+  </label>
+
   <input
     type="text"
     required
     value={editingResident.contactNumber}
-    onChange={(e) => setEditingResident((p) => p ? { ...p, contactNumber: formatContactNumber(e.target.value) } : p)}
-    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${formErrors.contactNumber ? "border-red-500" : "border-gray-200"}`}
+    onChange={(e) =>
+      setEditingResident((p) =>
+        p
+          ? {
+              ...p,
+              contactNumber: formatContactNumber(e.target.value),
+            }
+          : p
+      )
+    }
+    className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+      formErrors.contactNumber
+        ? "border-red-500"
+        : "border-gray-200"
+    }`}
     placeholder="09XX-XXX-XXXX"
     maxLength={13}
   />
-  {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+
+  {/* Live 09 warning */}
+  {editingResident.contactNumber.length > 0 &&
+    !editingResident.contactNumber.startsWith("09") && (
+      <p className="text-amber-500 text-xs mt-1">
+        ⚠ Number must start with 09
+      </p>
+    )}
+
+  {formErrors.contactNumber && (
+    <p className="text-red-500 text-xs mt-1">
+      {formErrors.contactNumber}
+    </p>
+  )}
 </div>
 
 <div className="space-y-3">
