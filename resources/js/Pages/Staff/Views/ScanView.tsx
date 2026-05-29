@@ -1,6 +1,6 @@
-import React, { useState } from "react";
-import { Camera, CameraOff, CheckCircle, XCircle, LogIn, LogOut, Clock, UserCheck } from "lucide-react";
-// ✅ Correctly importing all UI components from our new Core file
+import React, { useState, useEffect } from "react";
+import { Camera, CameraOff, CheckCircle, XCircle, LogIn, LogOut, Clock } from "lucide-react";
+import { Scanner } from '@yudiel/react-qr-scanner';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Input, Label, Select, SelectItem, Badge } from "../../../Components/UI/Core";
 
 type ScanResult = {
@@ -21,117 +21,180 @@ type AttendanceEntry = {
 };
 
 export default function ScanView({ events, residents, memberships }: any) {
-  const [eventId, setEventId] = useState(events[0]?.id || "");
+  const [eventId, setEventId] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [attendance, setAttendance] = useState<Record<string, AttendanceEntry[]>>({});
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [closingTime, setClosingTime] = useState("");
   const [scanMode, setScanMode] = useState<"in" | "out">("in");
-  const [showAddEvent, setShowAddEvent] = useState(false);
-  const [newEvent, setNewEvent] = useState({ title: "", membershipId: "" });
 
-  const ev = events.find((e: any) => e.id === eventId);
-  const requiredMs = ev?.membershipId ? memberships.find((m: any) => m.id === ev.membershipId) : null;
+  const ev = events?.find((e: any) => e.id === eventId);
+  const requiredMs = ev?.membershipId ? memberships?.find((m: any) => m.id === ev.membershipId) : null;
 
-  // ✅ Add new event logic
-  const handleAddEvent = () => {
-    if (!newEvent.title.trim()) return;
-    const newId = `event-${Date.now()}`;
-    events.push({
-      id: newId,
-      title: newEvent.title,
-      date: "",
-      location: "",
-      description: "",
-      membershipId: newEvent.membershipId || undefined,
-      attendees: []
-    });
-    setEventId(newId);
-    setShowAddEvent(false);
-    setNewEvent({ title: "", membershipId: "" });
-  };
-
-  // ✅ Scan logic — check membership access
-  const simulateScan = (residentId: string) => {
-    const r = residents.find((x: any) => x.id === residentId)!;
-    const residentMemberships = memberships.filter((m: any) => m.memberIds.includes(residentId)).map((m: any) => m.id);
-
-    let hasAccess = true;
-    let reason = "Open event — all residents allowed";
-
-    if (requiredMs) {
-      hasAccess = residentMemberships.includes(requiredMs.id);
-      reason = hasAccess ? `Verified: member of ${requiredMs.name}` : `Denied: requires ${requiredMs.name} membership`;
+  // ==========================================
+  // 1. AUTO-SELECT FIRST EVENT ON LOAD
+  // ==========================================
+  useEffect(() => {
+    if (events && events.length > 0 && !eventId) {
+      setEventId(events[0].id);
     }
+  }, [events]);
 
-    setScan({
-      ok: true,
-      residentId: r.id,
-      residentName: r.name,
-      hasAccess,
-      reason,
-      memberships: residentMemberships
-    });
+  // ==========================================
+  // 2. PERMANENT MEMORY: FETCH ATTENDANCE ON EVENT CHANGE
+  // ==========================================
+  useEffect(() => {
+    if (!eventId) return;
+
+    const fetchEventAttendance = async () => {
+      try {
+        const response = await fetch(`/events/${eventId}/attendances`, {
+          headers: {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Map backend data to our frontend state format
+          // Adjust 'record.user.first_name' based on your exact backend JSON response
+          const formattedAttendance = data.map((record: any) => ({
+            residentId: record.user_id,
+            residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
+            timeIn: record.time_in,
+            timeOut: record.time_out,
+            status: record.time_out ? "complete" : "in"
+          }));
+
+          setAttendance(prev => ({ ...prev, [eventId]: formattedAttendance }));
+        }
+      } catch (error) {
+        console.error("Failed to fetch attendance:", error);
+      }
+    };
+
+    fetchEventAttendance();
+  }, [eventId]); // Re-run this anytime the selected event changes!
+
+  // ==========================================
+  // 3. QR SCANNER LOGIC
+  // ==========================================
+  const handleQRCodeScan = (qrString: string) => {
+    try {
+      const data = JSON.parse(qrString);
+
+      if (!data.user_id) {
+        alert("Invalid QR Code: Missing Database User ID.");
+        return;
+      }
+
+      let hasAccess = true;
+      let reason = "Open event — all residents allowed";
+
+      if (requiredMs) {
+        hasAccess = data.memberships.includes(requiredMs.name);
+        reason = hasAccess ? `Verified: member of ${requiredMs.name}` : `Denied: requires ${requiredMs.name} membership`;
+      }
+
+      setScan({
+        ok: true,
+        residentId: data.user_id,
+        residentName: data.name,
+        hasAccess,
+        reason,
+        memberships: data.memberships || []
+      });
+
+    } catch (e) {
+      alert("Invalid QR Code format. Could not read data.");
+    }
   };
 
+  // ==========================================
+  // 4. SIGN OUT DEADLINE LOGIC
+  // ==========================================
   const isSignOutAllowed = (residentId: string) => {
-    const record = attendance[eventId]?.find(e => e.residentId === residentId);
-    if (!record || !record.timeIn) return false;
-    if (!closingTime) return true;
+    const record = attendance[eventId]?.find(e => e.residentId == residentId);
+    
+    // If they aren't signed in yet, they can't sign out!
+    if (!record || !record.timeIn) return false; 
+    
+    // If no closing time is set, they can sign out anytime.
+    if (!closingTime) return true; 
 
     const now = new Date();
     const [closeHour, closeMin] = closingTime.split(":").map(Number);
     const closeTimeObj = new Date();
     closeTimeObj.setHours(closeHour, closeMin, 0);
 
-    return now >= closeTimeObj;
+    // If you want a "Deadline" (Must leave BEFORE time): use <=
+    // If you want a "Bouncer" (Cannot leave UNTIL time): use >=
+    return now <= closeTimeObj; 
   };
 
-  const confirmAttendance = () => {
+  // ==========================================
+  // 5. SUBMIT TO DATABASE
+  // ==========================================
+  const confirmAttendance = async () => {
     if (!scan?.ok || !scan.hasAccess) return;
 
-    setAttendance(prev => {
-      const list = prev[eventId] ?? [];
-      const existing = list.find(e => e.residentId === scan!.residentId);
+    const endpoint = scanMode === "in" ? "/attendance/time-in" : "/attendance/time-out";
+    const method = scanMode === "in" ? "POST" : "PUT";
+
+    try {
+      const token = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('XSRF-TOKEN='))
+        ?.split('=')[1];
+      const decodedToken = token ? decodeURIComponent(token) : '';
+
+      const response = await fetch(endpoint, {
+        method: method,
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-XSRF-TOKEN": decodedToken
+        },
+        body: JSON.stringify({
+          event_id: eventId,
+          user_id: scan.residentId 
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(result.message || "Failed to record attendance.");
+        return;
+      }
+
+      // Update the UI instantly for a snappy user experience
       const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-      if (scanMode === "in") {
-        if (existing) return prev;
-        return {
-          ...prev,
-          [eventId]: [...list, { residentId: scan!.residentId, residentName: scan!.residentName, timeIn: now, timeOut: null, status: "in" }]
-        };
-      }
-
-      if (scanMode === "out") {
-        if (!existing || !existing.timeIn) {
-          alert("You must Sign In first before Sign Out.");
-          return prev;
+      setAttendance(prev => {
+        const list = prev[eventId] ?? [];
+        if (scanMode === "in") {
+          return {
+            ...prev,
+            [eventId]: [...list, { residentId: scan!.residentId, residentName: scan!.residentName, timeIn: now, timeOut: null, status: "in" }]
+          };
+        } else {
+          return {
+            ...prev,
+            [eventId]: list.map(e => e.residentId == scan!.residentId ? { ...e, timeOut: now, status: "complete" } : e)
+          };
         }
-        if (!isSignOutAllowed(scan.residentId)) {
-          alert(`Sign Out is only available after ${closingTime || "set closing time"}.`);
-          return prev;
-        }
-        return {
-          ...prev,
-          [eventId]: list.map(e => e.residentId === scan!.residentId ? { ...e, timeOut: now, status: "complete" } : e)
-        };
-      }
+      });
 
-      return prev;
-    });
+      setScan(null); // Clear the scanner for the next person
+      alert(result.message || "Attendance recorded successfully!");
 
-    setScan(null);
-  };
-
-  const setEventCloseTime = () => {
-    if (!closingTime) return;
-    alert(`Attendance for this event will close at ${closingTime}`);
-  };
-
-  const canAccessSignOut = () => {
-    const records = attendance[eventId] ?? [];
-    return records.some(r => r.timeIn && !r.timeOut);
+    } catch (error) {
+      console.error("Attendance Error:", error);
+      alert("A network error occurred while connecting to the database.");
+    }
   };
 
   return (
@@ -144,12 +207,14 @@ export default function ScanView({ events, residents, memberships }: any) {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+        
+        {/* LEFT COLUMN: SCANNER CONTROLS */}
         <Card className="overflow-hidden border-[#ddd5ca] rounded-[30px] shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="border-b border-[#ddd5ca] bg-white rounded-t-[30px]">
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-[#005f63] font-black text-[15px]">Camera Scanner</CardTitle>
-                <CardDescription className="text-[#667777] mt-1">One QR per resident — contains all their memberships</CardDescription>
+                <CardDescription className="text-[#667777] mt-1">One QR per resident</CardDescription>
               </div>
               <Button
                 onClick={() => setIsCameraOn(!isCameraOn)}
@@ -161,171 +226,115 @@ export default function ScanView({ events, residents, memberships }: any) {
           </CardHeader>
 
           <CardContent className="space-y-4 p-5 rounded-b-[30px]">
-            <div className="relative aspect-video overflow-hidden rounded-[30px] border-2 border-dashed border-[#e2e2dc] bg-gradient-to-br from-[#f4f4f0] to-[#ecece8]">
-                {isCameraOn ? (
-                    <>
-                    <div className="absolute inset-6 rounded-[30px] border-2 border-yellow-400/80" />
-                    <div className="absolute inset-x-6 top-1/2 h-0.5 animate-pulse bg-[#d0d0cb] shadow-[0_0_18px_rgba(208,208,203,0.5)]" />
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1 text-xs text-white backdrop-blur">
-                        Scanning...
-                    </div>
-                    </>
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-[#888880] rounded-[30px]">
-                    <Camera size={40} className="mb-2 opacity-60" />
-                    <p>Camera off — click button to start</p>
-                    </div>
-                )}
-            </div>
-
-            <div className="flex gap-2">
-                <Button
-                    onClick={() => setScanMode("in")}
-                    className={`flex-1 rounded-[80px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
-                    ${scanMode === "in"
-                        ? "!bg-[#217676] !text-white hover:!bg-[#46a7a7] active:!bg-[#1a6060]"
-                        : "!bg-gray-100 !text-gray-600 hover:!bg-[#e0f2f2] hover:!text-[#217676] active:!bg-[#cceae]"
-                    }`}
-                >
-                    <LogIn size={16} className="mr-2" /> Sign In
-                </Button>
-
-                <Button
-                    onClick={() => setScanMode("out")}
-                    disabled={!canAccessSignOut()}
-                    className={`flex-1 rounded-[80px] py-3 font-medium transition-all duration-150 !border-0 !outline-none !ring-0
-                    ${scanMode === "out"
-                        ? "!bg-[#ff9a04] !text-white hover:!bg-[#ffbc57] active:!bg-[#cc7a00]"
-                        : "!bg-gray-100 !text-gray-600 hover:!bg-[#fff3e0] hover:!text-[#ff9a04] active:!bg-[#ffe0b2]"
-                    } ${!canAccessSignOut() ? "opacity-40 cursor-not-allowed" : ""}`}
-                >
-                    <LogOut size={16} className="mr-2" /> Sign Out
-                </Button>
-            </div>
-
-            <div>
-            <Label className="text-[15px] tracking-wider text-gray-500 font-semibold">Select Event</Label>
-            <Select
-              value={eventId}
-              onValueChange={(val: string) => {
-                  if (val === "add-new") setShowAddEvent(true);
-                  else setEventId(val);
-              }}
-              className={`mt-1.5 border-[#ddd5ca] rounded-[80px] text-[14px] [&_[data-selected]]:text-[#005f63] [&>span]:data-[state=closed]:text-[#005f63] transition-colors ${scanMode === "in" ? "text-[#005f63]" : "text-[#b86a00]"}`}
-            >
-                {events.map((e: any) => (
-                <SelectItem
-                    key={e.id}
-                    value={e.id}
-                    className={`text-[14px] ${e.title.includes("Open Event") ? "text-[#005f63]" : "text-gray-700"} ${scanMode === "in" ? "data-[highlighted]:bg-teal-100" : "data-[highlighted]:bg-orange-100"} data-[selected]:text-[#005f63]`}
-                >
-                    {e.title} {e.membershipId ? `· ${memberships.find((m:any) => m.id === e.membershipId)?.name}` : "· Open Event"}
-                </SelectItem>
-                ))}
-                <SelectItem value="add-new" className={`font-medium text-[14px] ${scanMode === "in" ? "text-teal-600 data-[highlighted]:bg-teal-100" : "text-orange-600 data-[highlighted]:bg-orange-100"}`}>
-                    + Add New Event
-                </SelectItem>
-            </Select>
-
-            {showAddEvent && (
-            <div className={`mt-3 p-3 border border-dashed rounded-[30px] space-y-2 ${scanMode === "in" ? "border-teal-300 bg-teal-50/50" : "border-orange-300 bg-orange-50/50"}`}>
-                <Input
-                    placeholder="Event Title"
-                    value={newEvent.title}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewEvent({...newEvent, title: e.target.value})}
-                    className="rounded-[80px] border-[#ddd5ca] text-[14px] text-gray-700"
-                />
-                <Select
-                    value={newEvent.membershipId}
-                    onValueChange={(val: string) => setNewEvent({...newEvent, membershipId: val})}
-                    className="rounded-[80px] text-[14px] text-gray-700 [&_[data-selected]]:text-[#005f63] [&>span]:text-gray-700 [&>span]:data-[state=closed]:text-[#005f63]"
-                >
-                    <SelectItem value="" className={`rounded-[40px] text-[14px] text-[#005f63] ${scanMode === "in" ? "data-[highlighted]:bg-teal-100" : "data-[highlighted]:bg-orange-100"} data-[selected]:text-[#005f63]`}>
-                        Open Event (All can join)
+            
+            {/* Control Panel */}
+            <div className="mb-6 space-y-4 rounded-[20px] bg-gray-50 p-5 border border-gray-100 shadow-inner">
+              <div>
+                <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">1. Select Event</Label>
+                <Select value={eventId} onValueChange={setEventId}>
+                  {events?.map((e: any) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.title}
                     </SelectItem>
-                    {memberships.map((m: any) => (
-                      <SelectItem key={m.id} value={m.id} className={`rounded-[40px] text-[14px] text-gray-700 ${scanMode === "in" ? "data-[highlighted]:bg-teal-100" : "data-[highlighted]:bg-orange-100"} data-[selected]:text-[#005f63]`}>
-                          {m.name}
-                      </SelectItem>
-                    ))}
+                  ))}
                 </Select>
-                <div className="flex gap-2">
-                    <Button size="sm" onClick={handleAddEvent} className={`text-white rounded-[80px] text-[12px] transition-colors ${scanMode === "in" ? "bg-[#1c6364] hover:bg-[#238588] active:bg-[#185455]" : "bg-[#d18513] hover:bg-[#ebaa48] active:bg-[#cc7a00]"}`}>
-                        Save
-                    </Button>
-                    <Button size="sm" variant="ghost" onClick={() => setShowAddEvent(false)} className={`rounded-[80px] text-[12px] transition-colors ${scanMode === "in" ? "text-[#005f63] hover:bg-teal-100" : "text-[#b86a00] hover:bg-orange-100"}`}>
-                        Cancel
-                    </Button>
-                </div>
-                </div>
-            )}
-
-            {requiredMs && (
-                <p className={`mt-2 text-xs px-2 py-1 rounded-[40px] inline-flex items-center gap-1 transition-colors ${scanMode === "in" ? "text-teal-700 bg-teal-50" : "text-orange-700 bg-orange-50"}`}>
-                    <UserCheck size={12} /> Eligibility: <strong>{requiredMs.name}</strong> only
-                </p>
+                {requiredMs && (
+                  <Badge className="mt-2 bg-yellow-100 text-yellow-800">
+                    Eligibility: {requiredMs.name} only
+                  </Badge>
                 )}
-            </div>
-
-            <div className="flex gap-3 items-end">
-                <div className="flex-1">
-                    <Label className="text-[15px] tracking-wider text-gray-500 font-semibold">Attendance Closing Time</Label>
-                    <Input
-                    type="time"
-                    value={closingTime}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setClosingTime(e.target.value)}
-                    className={`mt-1.5 border-[#ddd5ca] rounded-[80px] text-[14px] transition-colors ${scanMode === "in" ? "text-[#005f63] [&:not(:placeholder-shown)]:text-[#005f63]" : "text-[#b86a00] [&:not(:placeholder-shown)]:text-[#b86a00]"}`}
-                    />
-                </div>
-                <Button onClick={setEventCloseTime} className={`rounded-[80px] h-10 text-[14px] transition-colors ${scanMode === "in" ? "bg-[#5b9b9e] hover:bg-[#0f7a7c] text-white" : "bg-[#c9ab5a] hover:bg-[#fc9c0b] text-white"}`}>
-                    <Clock size={15} className="mr-1" /> Set
-                </Button>
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Test Scan (Select Resident)</p>
-              <div className="flex flex-wrap gap-2">
-                {residents.map((r: any) => (
-                    <Button key={r.id} variant="outline" size="sm" onClick={() => simulateScan(r.id)} className={`rounded-[30px] transition-colors ${scanMode === "in" ? "border-teal-500/30 text-teal-700 hover:bg-teal-50" : "border-orange-500/30 text-orange-700 hover:bg-orange-50"}`}>
-                        {r.name}
-                    </Button>
-                ))}
               </div>
+
+              <div>
+                <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">2. Scan Mode</Label>
+                <div className="flex gap-2">
+                  <Button onClick={() => setScanMode("in")} className={`flex-1 rounded-[30px] ${scanMode === "in" ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md" : "bg-white text-gray-600 border hover:bg-gray-50"}`}>
+                    → Sign In
+                  </Button>
+                  <Button onClick={() => setScanMode("out")} className={`flex-1 rounded-[30px] ${scanMode === "out" ? "bg-orange-500 text-white hover:bg-orange-600 shadow-md" : "bg-white text-gray-600 border hover:bg-gray-50"}`}>
+                    ← Sign Out
+                  </Button>
+                </div>
+              </div>
+
+              {scanMode === "out" && (
+                <div className="flex gap-3 items-end pt-2 border-t border-gray-200 mt-4">
+                  <div className="flex-1">
+                    <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">Attendance Closing Time</Label>
+                    <Input type="time" value={closingTime} onChange={(e: any) => setClosingTime(e.target.value)} className="rounded-[30px]" />
+                  </div>
+                  <Button onClick={() => setClosingTime("")} className="bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-[30px]">
+                    Clear Time
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Camera View - Restored to a taller size! */}
+            <div className="relative overflow-hidden rounded-[30px] border-2 border-dashed border-gray-300 bg-black min-h-[400px]">
+              {isCameraOn ? (
+                <div className="h-full w-full absolute inset-0">
+                  <Scanner
+                    onScan={(result) => {
+                      if (result && result.length > 0) {
+                        handleQRCodeScan(result[0].rawValue);
+                        setIsCameraOn(false); 
+                      }
+                    }}
+                    onError={(error) => console.log("Camera error:", error?.message)}
+                    sound={false}
+                    components={{ finder: true }}
+                    styles={{ container: { width: '100%', height: '100%' }, video: { objectFit: 'cover' } }}
+                  />
+                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-2 text-sm text-white backdrop-blur z-10">
+                    Scanning for QR...
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full w-full absolute inset-0 bg-gray-100 text-gray-400">
+                  <Camera size={40} className="mb-2 opacity-60" />
+                  <p className="text-sm">Camera off — click button to start</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
+        {/* RIGHT COLUMN: RESULTS & ATTENDANCE */}
         <div className="space-y-4">
           <Card className="border-[#ddd5ca] rounded-[30px] shadow-sm">
             <CardHeader className="border-b border-[#ddd5ca] bg-white rounded-t-[30px]">
-              <CardTitle className={`font-black transition-colors ${scanMode === "in" ? "text-[#005f63]" : "text-[#005f63]"}`}>Scan Result</CardTitle>
+              <CardTitle className="font-black text-[#005f63]">Scan Result</CardTitle>
             </CardHeader>
-            <CardContent className="rounded-b-[30px]">
+            <CardContent className="rounded-b-[30px] p-5">
               {!scan ? (
                 <div className="rounded-[30px] border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
                   No scan performed yet.
                 </div>
               ) : (
-                <div className={`rounded-[30px] border p-4 transition-colors ${scan.hasAccess ? scanMode === "in" ? "border-teal-500/50 bg-teal-50" : "border-orange-500/50 bg-orange-50" : "border-red-500/40 bg-red-50"}`}>
-                <div className="flex items-start gap-3">
+                <div className={`rounded-[30px] border p-5 transition-colors ${scan.hasAccess ? scanMode === "in" ? "border-blue-500/50 bg-blue-50" : "border-orange-500/50 bg-orange-50" : "border-red-500/40 bg-red-50"}`}>
+                  <div className="flex items-start gap-3">
                     {scan.hasAccess
-                    ? (scanMode === "in" ? <CheckCircle className="text-teal-600 shrink-0" size={20} /> : <CheckCircle className="text-orange-600 shrink-0" size={20} />)
-                    : <XCircle className="text-red-600 shrink-0" size={20} />
+                      ? (scanMode === "in" ? <CheckCircle className="text-blue-600 shrink-0 mt-0.5" size={24} /> : <CheckCircle className="text-orange-600 shrink-0 mt-0.5" size={24} />)
+                      : <XCircle className="text-red-600 shrink-0 mt-0.5" size={24} />
                     }
                     <div>
-                    <p className={`text-lg font-bold ${scan.hasAccess ? scanMode === "in" ? "text-teal-800" : "text-orange-800" : "text-red-600"}`}>
-                        {scan.hasAccess ? `✓ ${scan.residentName}` : `✗ Denied — ${scan.residentName}`}
-                    </p>
-                      <p className="mt-1 text-sm text-gray-600">{scan.reason}</p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        Their memberships: {scan.memberships.map(id => memberships.find((m: any) => m.id === id)?.name).join(", ") || "None"}
+                      <p className={`text-xl font-bold ${scan.hasAccess ? scanMode === "in" ? "text-blue-800" : "text-orange-800" : "text-red-600"}`}>
+                        {scan.hasAccess ? `✓ ${scan.residentName}` : `✗ Denied`}
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-gray-700">{scan.reason}</p>
+                      <p className="mt-1 text-xs text-gray-500 italic">
+                        Scanned Memberships: {scan.memberships.join(", ") || "None"}
                       </p>
                     </div>
                   </div>
-
                   {scan.hasAccess && (
-                    <Button onClick={confirmAttendance} disabled={scanMode === "out" && !isSignOutAllowed(scan.residentId)} className={`mt-3 w-full text-white rounded-[80px] transition-colors ${scanMode === "in" ? "bg-[#227a7a] hover:bg-[#439e9e]" : "bg-[#fd9a06] hover:bg-[#ffb444]"} ${scanMode === "out" && !isSignOutAllowed(scan.residentId) ? "opacity-40 cursor-not-allowed" : ""}`}>
-                        Confirm {scanMode === "in" ? "Sign In" : "Sign Out"}
+                    <Button 
+                      onClick={confirmAttendance} 
+                      disabled={scanMode === "out" && !isSignOutAllowed(scan.residentId)} 
+                      className={`mt-4 w-full py-6 text-md font-bold text-white rounded-[80px] transition-all shadow-md ${scanMode === "in" ? "bg-blue-600 hover:bg-blue-700" : "bg-orange-500 hover:bg-orange-600"} ${scanMode === "out" && !isSignOutAllowed(scan.residentId) ? "opacity-50 cursor-not-allowed" : "hover:-translate-y-1"}`}
+                    >
+                      Confirm {scanMode === "in" ? "Sign In" : "Sign Out"}
                     </Button>
                   )}
                 </div>
@@ -335,24 +344,24 @@ export default function ScanView({ events, residents, memberships }: any) {
 
           <Card className="border-[#ddd5ca] rounded-[30px] shadow-sm">
             <CardHeader className="border-b border-[#ddd5ca] bg-white sticky top-0 z-10 rounded-t-[30px]">
-              <CardTitle className="font-black text-[#005f63]">Attendance · {ev?.title}</CardTitle>
-              <CardDescription className="text-[#667777] mt-1">{attendance[eventId]?.length ?? 0} record(s)</CardDescription>
+              <CardTitle className="font-black text-[#005f63]">Attendance Roster</CardTitle>
+              <CardDescription className="text-[#667777] mt-1">{attendance[eventId]?.length ?? 0} record(s) for this event</CardDescription>
             </CardHeader>
-            <CardContent className="max-h-[400px] overflow-y-auto smooth-scroll rounded-b-[30px]">
+            <CardContent className="max-h-[400px] overflow-y-auto smooth-scroll rounded-b-[30px] p-5">
               {!(attendance[eventId] ?? []).length ? (
-                <p className="rounded-[30px] border border-dashed border-gray-200 p-4 text-center text-xs text-gray-500">No attendees added yet.</p>
+                <p className="rounded-[30px] border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">No attendees yet.</p>
               ) : (
-                <div className="space-y-2 text-sm">
+                <div className="space-y-3">
                   {attendance[eventId]!.map((rec, i) => (
-                    <div key={rec.residentId} className={`p-3 rounded-[30px] border flex items-center justify-between transition-colors ${scanMode === "in" ? "bg-teal-50 border-teal-100" : "bg-orange-50 border-orange-100"}`}>
+                    <div key={rec.residentId} className={`p-4 rounded-[20px] border flex items-center justify-between transition-colors ${rec.status === "complete" ? "bg-gray-50 border-gray-200" : "bg-blue-50 border-blue-100"}`}>
                       <div>
-                        <p className="font-medium text-gray-800">{i + 1}. {rec.residentName}</p>
-                        <div className="flex gap-3 mt-1 text-xs text-gray-600">
-                          <span className="flex items-center gap-1"><LogIn size={12} /> {rec.timeIn || "—"}</span>
-                          <span className="flex items-center gap-1"><LogOut size={12} /> {rec.timeOut || "—"}</span>
+                        <p className="font-bold text-gray-800">{i + 1}. {rec.residentName}</p>
+                        <div className="flex gap-4 mt-1 text-xs text-gray-600 font-medium">
+                          <span className="flex items-center gap-1 text-blue-700"><LogIn size={14} /> {rec.timeIn || "—"}</span>
+                          <span className="flex items-center gap-1 text-orange-700"><LogOut size={14} /> {rec.timeOut || "—"}</span>
                         </div>
                       </div>
-                      <Badge className={`rounded-full px-2 py-0.5 text-xs font-medium ${rec.status === "complete" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}`}>
+                      <Badge className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider ${rec.status === "complete" ? "bg-gray-200 text-gray-600" : "bg-yellow-400 text-yellow-900 shadow-sm"}`}>
                         {rec.status === "complete" ? "Completed" : "Signed In"}
                       </Badge>
                     </div>

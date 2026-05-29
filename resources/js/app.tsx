@@ -32,12 +32,11 @@
 //   return <MemberDashboard />;
 // }
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import MemberDashboard from "./Pages/Members/Members";
 import StaffDashboard from "./Pages/Staff/Staff";
 import LoginPage from "./Pages/Login/Login";
-
 
 const rootElement = document.getElementById("app");
 
@@ -45,83 +44,84 @@ if (rootElement) {
   ReactDOM.createRoot(rootElement).render(<App />);
 }
 
-
 export default function App() {
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
-  const [userRole, setUserRole] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  // Listen for browser navigation
-  useEffect(() => {
-    const handleLocationChange = () => {
-      setCurrentPath(window.location.pathname);
-    };
-    window.addEventListener("popstate", handleLocationChange);
-    return () => window.removeEventListener("popstate", handleLocationChange);
-  }, []);
-
-  // Fetch user role
- // Fetch user role (Inside app.tsx)
-  useEffect(() => {
-    fetch('/me', {
-      credentials: 'include',
-      headers: { 
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    })
-    .then(async (res) => {
-      // USER NOT AUTHENTICATED OR TOKEN EXPIRED
-      if (res.status === 401 || res.status === 419) {
-        localStorage.clear();
-        sessionStorage.clear();
-        
-        setUserRole(null);
+  const [userRole, setUserRole] = useState<string | null>(() => {
+    // Initialize from storage immediately - NO FLASH
+    const sessionUser = sessionStorage.getItem('user');
+    if (sessionUser) {
+      try {
+        return JSON.parse(sessionUser).role;
+      } catch {
         return null;
       }
-
-      if (!res.ok) {
-        throw new Error("Authentication failed");
+    }
+    const localUser = localStorage.getItem('user');
+    if (localUser) {
+      try {
+        return JSON.parse(localUser).role;
+      } catch {
+        return null;
       }
+    }
+    return null;
+  });
+  
+  const [loading, setLoading] = useState(false); // Start as false since we have initial state
+  const authCalledRef = useRef(false);
 
-      return res.json();
-    })
-    .then((user) => {
-      if (!user) return;
-      setUserRole(user.role);
-    })
-    .catch((err) => {
-      console.error("Failed to fetch user:", err);
-      
-      // Nuclear cleanup on total failure
-      localStorage.clear();
-      sessionStorage.clear();
+  const checkAuth = useCallback(async () => {
+    if (authCalledRef.current) return;
+    authCalledRef.current = true;
+    
+    // Only verify with backend if we have a stored user
+    const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
+    
+    if (!storedUser) {
       setUserRole(null);
-    })
-    .finally(() => {
-      setLoading(false);
-    });
+      return;
+    }
+    
+    try {
+      const token = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('XSRF-TOKEN='))
+        ?.split('=')[1];
+
+      const response = await fetch('/me', {
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          ...(token && { 'X-XSRF-TOKEN': decodeURIComponent(token) })
+        }
+      });
+      
+      if (response.ok) {
+        const user = await response.json();
+        setUserRole(user.role);
+      } else {
+        // Backend says not authenticated, clear storage
+        localStorage.removeItem('user');
+        localStorage.removeItem('isAuthenticated');
+        sessionStorage.removeItem('user');
+        sessionStorage.removeItem('isAuthenticated');
+        setUserRole(null);
+      }
+    } catch (error) {
+      console.error("Auth error:", error);
+      // Don't clear on network error - keep existing state
+    }
   }, []);
 
-  // Show loading
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-[#fcfcf9]">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
-  // Not logged in
+  // Not authenticated - show login page
   if (!userRole) {
     return <LoginPage />;
   }
 
-  // Staff role - show staff dashboard
-  if (userRole === 'Staff') {
-    return <StaffDashboard />;
-  }
-
-  // Default: Member dashboard
-  return <MemberDashboard />;
+  // Authenticated - show appropriate dashboard immediately (no flash)
+  return userRole === 'Staff' ? <StaffDashboard /> : <MemberDashboard />;
 }

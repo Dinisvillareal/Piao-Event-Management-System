@@ -59,6 +59,39 @@ export const highlightText = (text: string, query: string) => {
 function Sidebar({ active, setActive }: { active: string; setActive: (key: string) => void }) {
   const [isOpen, setIsOpen] = useState(true);
 
+  const handleLogout = async () => {
+    console.log('Logging out...');
+    try {
+      const token = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('XSRF-TOKEN='))
+        ?.split('=')[1];
+      
+      const decodedToken = token ? decodeURIComponent(token) : '';
+
+      await fetch('/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-XSRF-TOKEN': decodedToken
+        }
+      });
+
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/';
+
+    } catch (err) {
+      console.error('Logout error:', err);
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.href = '/';
+    }
+  };
+
   return (
     <>
       <button onClick={() => setIsOpen(!isOpen)} className={`fixed top-4 z-50 bg-[#006666] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#005555] ${isOpen ? "left-[235px]" : "left-[50px]"}`}>
@@ -84,7 +117,10 @@ function Sidebar({ active, setActive }: { active: string; setActive: (key: strin
           </div>
         </div>
         <div className="border-t border-[#007777] p-2 shrink-0">
-          <button className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"}`} onClick={() => { localStorage.clear(); sessionStorage.clear(); window.location.href = "/"; }}>
+          <button 
+            className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"}`} 
+            onClick={handleLogout}
+          >
             <LogOut className="h-5 w-5 shrink-0" />
             <span className={`transition-all duration-300 whitespace-nowrap ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>Sign out</span>
           </button>
@@ -141,19 +177,42 @@ export default function StaffDashboard() {
 
   const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "STAFF / ADMIN" };
 
-  const [upcomingEvents, setUpcomingEvents] = useState([
-    { id: 1, title: "Barangay General Assembly", date: "2026-05-12 09:00", location: "Barangay Hall", description: "Quarterly assembly." }
-  ]);
-  const [pastEvents, setPastEvents] = useState([
-    { id: 6, title: "Monthly Assembly", date: "2026-05-08 09:00", location: "Barangay Hall", description: "Regular monthly meeting." }
-  ]);
+  // --- FETCH REAL EVENTS FROM LARAVEL ---
+  const [allEvents, setAllEvents] = useState<any[]>([]);
 
-  const allEvents = useMemo(() => [...upcomingEvents, ...pastEvents], [upcomingEvents, pastEvents]);
+  useEffect(() => {
+    const fetchRealEvents = async () => {
+      try {
+        // Calling the route from your web.php
+        const response = await fetch('/events-data'); 
+        const result = await response.json();
+        
+        if (result.data) {
+          // Format the database keys to match what your React views expect
+          const formattedEvents = result.data.map((dbEvent: any) => ({
+            id: dbEvent.id,
+            title: dbEvent.name, // Mapping DB 'name' to React 'title'
+            date: dbEvent.event_start,
+            location: dbEvent.location,
+            description: dbEvent.description,
+            membershipId: dbEvent.membership_id
+          }));
+          
+          setAllEvents(formattedEvents);
+        }
+      } catch (error) {
+        console.error("Error fetching events from database:", error);
+      }
+    };
 
-  const handleDeleteEvent = (id: number) => {
-    setUpcomingEvents(prev => prev.filter(e => e.id !== id));
-    setPastEvents(prev => prev.filter(e => e.id !== id));
+    fetchRealEvents();
+  }, []);
+
+  const handleDeleteEvent = (id: string | number) => {
+     setAllEvents(prev => prev.filter(e => e.id !== id));
   };
+
+ 
 
   const attended = attendanceRecords.filter(r => r.status === "complete").length;
   const missed = attendanceRecords.filter(r => r.status === "missed").length;
@@ -169,11 +228,11 @@ export default function StaffDashboard() {
 
         <div className="h-[calc(100vh-73px)] overflow-y-auto p-6 smooth-scroll">
           {active === "dashboard" && (
-            <DashboardView memberName={staff.name.split(" ")[0]} membershipsCount={memberships.length} setActive={setActive} />
+            <DashboardView membershipsCount={memberships.length} setActive={setActive} />
           )}
           {active === "scan" && <ScanView events={allEvents} residents={residents} memberships={memberships} />}
           {active === "residents" && <ResidentsView />}
-          {active === "memberships" && <QRCodesView memberships={memberships} highlightText={highlightText} />}
+          {active === "scan" && <ScanView events={allEvents} residents={residents} memberships={memberships} />}
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} />}
           {active === "notify" && <NotificationsView notifications={notifications} memberships={memberships} highlightText={highlightText} />}
           {active === "settings" && <SettingsView member={staff} />}

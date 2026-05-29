@@ -177,22 +177,6 @@ export default function LoginPage() {
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const contactRef = useRef<HTMLDivElement>(null);
 
-  // Check for existing session on page load
-  useEffect(() => {
-    // Check BOTH storage locations
-    const keptUser = localStorage.getItem('user') || sessionStorage.getItem('user');
-    const keptAuth = localStorage.getItem('isAuthenticated') || sessionStorage.getItem('isAuthenticated');
-    
-    if (keptUser && keptAuth === 'true') {
-      const user = JSON.parse(keptUser);
-      if (user.role === 'Staff') {
-        window.location.href = '/';
-      } else {
-        window.location.href = '/dashboard';
-      }
-    }
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
@@ -224,16 +208,17 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // ✅ STORE IN BOTH localStorage AND sessionStorage
-        localStorage.setItem('user', JSON.stringify(data.user));
-        localStorage.setItem('isAuthenticated', 'true');
-        sessionStorage.setItem('user', JSON.stringify(data.user));
-        sessionStorage.setItem('isAuthenticated', 'true');
+        // Clear both storages first
+        localStorage.clear();
+        sessionStorage.clear();
         
+        // Store based on checkbox - ONLY ONE STORAGE
         if (keepSignedIn) {
-          localStorage.setItem('keepSignedIn', 'true');
+          localStorage.setItem('user', JSON.stringify(data.user));
+          localStorage.setItem('isAuthenticated', 'true');
         } else {
-          sessionStorage.setItem('keepSignedIn', 'false');
+          sessionStorage.setItem('user', JSON.stringify(data.user));
+          sessionStorage.setItem('isAuthenticated', 'true');
         }
         
         // Redirect based on user role
@@ -281,13 +266,11 @@ export default function LoginPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-white text-gray-900">
-      {/* Background blobs */}
       <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-orange-300/40 blur-3xl" />
       <div className="absolute -right-32 top-40 h-96 w-96 rounded-full bg-yellow-300/40 blur-3xl" />
       <div className="absolute bottom-0 left-1/3 h-96 w-96 rounded-full bg-teal-300/40 blur-3xl" />
 
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-8 py-12">
-        {/* Navbar */}
         <nav className="flex items-center gap-3 mb-6">
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-yellow-400 text-white font-bold">
             B
@@ -303,7 +286,6 @@ export default function LoginPage() {
         </nav>
 
         <main className="grid flex-1 items-center gap-12 py-10 md:grid-cols-2">
-          {/* Left Info */}
           <div className="hidden md:block">
             <span className="inline-flex items-center gap-2 rounded-full bg-yellow-400 px-3 py-1 text-xs font-semibold text-black">
               <span className="h-2 w-2 rounded-full bg-orange-500" />
@@ -323,36 +305,31 @@ export default function LoginPage() {
             </p>
           </div>
 
-          {/* Login Card */}
           <div className="mx-auto w-full max-w-lg rounded-2xl border border-gray-300 bg-white p-10 shadow-lg">
             <h2 className="text-2xl font-bold text-teal-800">Sign in</h2>
             <p className="text-sm text-gray-700 mt-1">
               Sign in to your barangay account
             </p>
 
-            {/* Form */}
             <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-              {/* Error Message */}
               {error && (
                 <div className="rounded-xl bg-red-50 p-3 text-sm text-red-600 border border-red-200">
                   {error}
                 </div>
               )}
 
-              {/* Username */}
               <div>
                 <label className="text-sm font-semibold text-gray-800">Username</label>
                 <input
                   type="text"
                   name="username"
                   className="w-full mt-1 rounded-xl border px-3 py-2 text-sm shadow focus:ring-1 focus:border-teal-500 focus:ring-teal-400 placeholder-gray-600"
-                  placeholder="PR-000001"
+                  placeholder="PR-0001"
                   required
                   disabled={isLoading}
                 />
               </div>
 
-              {/* Password */}
               <div>
                 <div className="flex justify-between text-sm">
                   <label className="text-sm font-semibold text-gray-800">Password</label>
@@ -372,7 +349,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Checkbox */}
               <div className="flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -387,7 +363,6 @@ export default function LoginPage() {
                 </label>
               </div>
 
-              {/* Solid Orange Button */}
               <button
                 type="submit"
                 disabled={isLoading}
@@ -397,7 +372,6 @@ export default function LoginPage() {
                 {!isLoading && <ArrowRight className="h-5 w-5" />}
               </button>
 
-              {/* Contact Number Toggle */}
               <div className="relative flex justify-center mt-3" ref={contactRef}>
                 <p className="text-xs text-gray-600">
                   Need an account?{" "}
