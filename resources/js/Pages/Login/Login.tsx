@@ -181,14 +181,14 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     setError("");
-    
+
     const form = e.currentTarget;
     const username = (form.elements.namedItem('username') as HTMLInputElement).value;
     const password = (form.elements.namedItem('password') as HTMLInputElement).value;
-    
+
     try {
       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-      
+
       const response = await fetch('/login', {
         method: 'POST',
         credentials: 'include',
@@ -198,10 +198,10 @@ export default function LoginPage() {
           'X-Requested-With': 'XMLHttpRequest',
           ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
         },
-        body: JSON.stringify({ 
-          username, 
-          password, 
-          remember_me: keepSignedIn 
+        body: JSON.stringify({
+          username,
+          password,
+          remember_me: keepSignedIn
         })
       });
 
@@ -211,7 +211,7 @@ export default function LoginPage() {
         // Clear both storages first
         localStorage.clear();
         sessionStorage.clear();
-        
+
         // Store based on checkbox - ONLY ONE STORAGE
         if (keepSignedIn) {
           localStorage.setItem('user', JSON.stringify(data.user));
@@ -220,7 +220,7 @@ export default function LoginPage() {
           sessionStorage.setItem('user', JSON.stringify(data.user));
           sessionStorage.setItem('isAuthenticated', 'true');
         }
-        
+
         // Redirect based on user role
         if (data.user.role === 'Staff') {
           window.location.href = '/';
@@ -229,13 +229,20 @@ export default function LoginPage() {
         }
       } else {
         if (response.status === 401) {
-          setError("Invalid username or password");
+          // 🔥 CHECK IF ACCOUNT IS DELETED
+          if (data.message && data.message.includes('deleted')) {
+            alert("This account has been deleted. You cannot log in.");
+            // FORCE REDIRECT to login page
+            window.location.href = "/login";
+            return;
+          }
+          setError(data.message || "Invalid username or password");
         } else if (response.status === 419) {
           setError("Session expired. Please refresh the page");
         } else {
           setError(data.message || "Login failed");
         }
-        
+
         (form.elements.namedItem('password') as HTMLInputElement).value = '';
       }
     } catch (err) {

@@ -1,10 +1,10 @@
 // import React, { useState, useMemo } from "react";
 // import { Pencil, Users, Download } from "lucide-react";
-// import { Button, Input } from "../../../Components/UI/Core"; 
+// import { Button, Input } from "../../../Components/UI/Core";
 // import StaffFakeQR from "../StaffFakeQR"; // ✅ Using the Staff specific QR!
 
 // const availableMemberships = [
-//   "Verified Resident", "Women's Association", "Senior Citizen", 
+//   "Verified Resident", "Women's Association", "Senior Citizen",
 //   "Health Worker", "Barangay Staff", "Peace & Order Team"
 // ];
 
@@ -128,13 +128,13 @@ import React, { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Users, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { Button, Input } from "../../../Components/UI/Core";
-import SearchBar from "../../../Components/UI/SearchBar"; 
+import SearchBar from "../../../Components/UI/SearchBar";
 
 
-export interface Membership { 
-  id: string | number; 
-  name: string; 
-  description: string; 
+export interface Membership {
+  id: string | number;
+  name: string;
+  description: string;
 }
 
 interface QRCodesViewProps {
@@ -156,7 +156,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   const [addFormErrors, setAddFormErrors] = useState<Record<string, string>>({});
   const [editFormErrors, setEditFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const [newMembership, setNewMembership] = useState({
     name: "",
     description: ""
@@ -186,12 +186,12 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         },
         credentials: 'include'
       });
-      
+
       if (!response.ok) throw new Error('Failed to fetch');
-      
+
       const membershipsData = await response.json();
       setMemberships(membershipsData);
-      
+
     } catch (error) {
       console.error('Error fetching memberships:', error);
       setMemberships([]);
@@ -209,7 +209,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         },
         credentials: 'include'
       });
-      
+
       if (response.ok) {
         const data = await response.json();
         const residents = Array.isArray(data) ? data : (data.data || []);
@@ -232,24 +232,24 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   const handleAddMembership = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const errors: Record<string, string> = {};
     if (!newMembership.name.trim()) errors.name = "Membership name is required";
     if (newMembership.name.length < 3) errors.name = "Name must be at least 3 characters";
-    
+
     setAddFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
-    
+
     setIsSubmitting(true);
-    
+
     try {
       const token = document.cookie
         .split('; ')
         .find(row => row.startsWith('XSRF-TOKEN='))
         ?.split('=')[1];
-      
+
       const decodedToken = token ? decodeURIComponent(token) : '';
-      
+
       const response = await fetch('/api/memberships', {
         method: 'POST',
         credentials: 'include',
@@ -264,9 +264,9 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           description: newMembership.description
         })
       });
-      
+
       const result = await response.json();
-      
+
       if (response.ok) {
         alert('Membership added successfully!');
         setShowAddModal(false);
@@ -289,24 +289,24 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   const handleEditMembership = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const errors: Record<string, string> = {};
     if (!editingMembership.name.trim()) errors.name = "Membership name is required";
     if (editingMembership.name.length < 3) errors.name = "Name must be at least 3 characters";
-    
+
     setEditFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
-    
+
     setIsSubmitting(true);
-    
+
     try {
       const token = document.cookie
         .split('; ')
         .find(row => row.startsWith('XSRF-TOKEN='))
         ?.split('=')[1];
-      
+
       const decodedToken = token ? decodeURIComponent(token) : '';
-      
+
       const response = await fetch(`/api/memberships/${editingMembership.id}`, {
         method: 'PUT',
         credentials: 'include',
@@ -321,9 +321,9 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           description: editingMembership.description
         })
       });
-      
+
       const result = await response.json();
-      
+
       if (response.ok) {
         alert('Membership updated successfully!');
         setShowEditModal(false);
@@ -343,15 +343,15 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   const handleDeleteMembership = async (id: number, name: string) => {
     if (!confirm(`Are you sure you want to delete "${name}"? This action cannot be undone.`)) return;
-    
+
     try {
       const token = document.cookie
         .split('; ')
         .find(row => row.startsWith('XSRF-TOKEN='))
         ?.split('=')[1];
-      
+
       const decodedToken = token ? decodeURIComponent(token) : '';
-      
+
       const response = await fetch(`/api/memberships/${id}`, {
         method: 'DELETE',
         credentials: 'include',
@@ -361,7 +361,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           'X-XSRF-TOKEN': decodedToken
         }
       });
-      
+
       if (response.ok) {
         alert('Membership deleted successfully!');
         fetchMemberships();
@@ -387,15 +387,15 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   useEffect(() => {
     fetchMemberships();
     fetchAllResidents();
-    
+
     const handleRefresh = () => {
       fetchMemberships();
       fetchAllResidents();
     };
-    
+
     window.addEventListener('refreshMemberships', handleRefresh);
     window.addEventListener('resident-updated', handleRefresh);
-    
+
     return () => {
       window.removeEventListener('refreshMemberships', handleRefresh);
       window.removeEventListener('resident-updated', handleRefresh);
@@ -423,10 +423,10 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   const getResidentsByMembership = (membershipName: string) => {
     if (!allResidents.length) return [];
-    
+
     const filtered = allResidents.filter(resident => {
       let residentMembershipNames: string[] = [];
-      
+
       if (Array.isArray(resident.memberships)) {
         residentMembershipNames = resident.memberships.map((m: any) => m.name || m);
       } else if (resident.memberships && typeof resident.memberships === 'object') {
@@ -434,10 +434,10 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       } else if (typeof resident.memberships === 'string') {
         residentMembershipNames = resident.memberships.split(',').map((m: string) => m.trim());
       }
-      
+
       return residentMembershipNames.includes(membershipName);
     });
-    
+
     return filtered;
   };
 
@@ -546,10 +546,10 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
               {paginatedMemberships.map((m) => {
                 const residentCount = getResidentsByMembership(m.name).length;
-                
+
                 return (
-                  <div 
-                    key={m.id} 
+                  <div
+                    key={m.id}
                     className="rounded-2xl sm:rounded-3xl border border-gray-200 bg-white overflow-hidden hover:shadow-2xl transition-shadow duration-300 w-full"
                   >
                     <div className="h-1.5 bg-gradient-to-r from-[#ff7a28] via-[#ff9a3c] to-[#ffd33d]"></div>
@@ -587,9 +587,9 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">TOTAL MEMBERS</p>
                             <p className="font-medium text-gray-800 mt-0.5 text-sm sm:text-base">{residentCount} resident(s)</p>
                           </div>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
+                          <Button
+                            variant="outline"
+                            size="sm"
                             className="border-teal-500/30 text-teal-700 hover:bg-teal-50 w-full sm:w-auto justify-center"
                             onClick={() => handleViewMembers(m)}
                           >
@@ -625,7 +625,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                     } else {
                       pageNum = currentPage - 2 + i;
                     }
-                    
+
                     return (
                       <button
                         key={pageNum}
@@ -676,7 +676,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       {/* View Members Modal - Mobile optimized */}
       {showModal && selectedMembership && createPortal(
-        <div 
+        <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 sm:p-0"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleBackdropClick}
@@ -701,7 +701,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   {selectedMembership.residents.length} Resident(s)
                 </span>
               </div>
-              
+
               {selectedMembership.residents.length === 0 ? (
                 <div className="text-center py-8 sm:py-12">
                   <div className="text-gray-400 mb-2">
@@ -715,8 +715,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               ) : (
                 <div className="space-y-2">
                   {selectedMembership.residents.map((resident: any, idx: number) => (
-                    <div 
-                      key={resident.id || idx} 
+                    <div
+                      key={resident.id || idx}
                       className="flex items-center justify-between p-3 sm:p-4 rounded-xl bg-gray-50 hover:bg-teal-50 transition-all active:bg-teal-100"
                     >
                       <div className="flex items-center gap-3 sm:gap-4">
@@ -750,7 +750,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       {/* Add Membership Modal - Mobile optimized */}
       {showAddModal && createPortal(
-        <div 
+        <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleAddBackdropClick}
@@ -820,7 +820,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       {/* Edit Membership Modal - Mobile optimized */}
       {showEditModal && editingMembership && createPortal(
-        <div 
+        <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleEditBackdropClick}

@@ -33,19 +33,26 @@ class User extends Authenticatable
         'has_account' => 'boolean',
     ];
 
+    /**
+     * Automatically include in JSON responses
+     */
+    protected $appends = [
+        'validation_id_url'
+    ];
+
     // =====================
     // ACCESSOR
     // =====================
 
-    public function getValidationIdUrlAttribute()
+    /**
+     * Returns:
+     * http://127.0.0.1:8000/storage/validation_ids/file.png
+     */
+    public function getValidationIdUrlAttribute(): ?string
     {
-        if (!$this->validation_id) {
-            return null;
-        }
-
-        return Storage::disk('ftp')->url(
-            $this->validation_id
-        );
+        return $this->validation_id
+            ? Storage::disk('public')->url($this->validation_id)
+            : null;
     }
 
     // =====================
