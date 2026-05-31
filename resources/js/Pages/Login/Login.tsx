@@ -168,13 +168,93 @@
 //last working implementation
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowRight, Copy } from "lucide-react";
+import { ArrowRight, Copy, LayoutDashboard, Users } from "lucide-react";
 
+// ─── Staff Portal Selection Modal ─────────────────────────────────────────────
+function PortalSelectionModal({
+  userName,
+  onSelectStaff,
+  onSelectMember,
+}: {
+  userName: string;
+  onSelectStaff: () => void;
+  onSelectMember: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="bg-white rounded-[28px] w-full max-w-md shadow-2xl overflow-hidden">
+        {/* Top accent bar */}
+        <div className="h-1.5 w-full bg-gradient-to-r from-teal-500 via-yellow-400 to-orange-500" />
+
+        <div className="p-8">
+          {/* Header */}
+          <div className="text-center mb-6">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-400 to-yellow-300 text-white font-black text-xl mb-3 shadow-md">
+              B
+            </div>
+            <h2 className="text-xl font-black text-teal-800">Welcome back, {userName}!</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              You have both staff and member access. Where would you like to go?
+            </p>
+          </div>
+
+          {/* Choice buttons */}
+          <div className="space-y-3">
+            {/* Staff Portal */}
+            <button
+              onClick={onSelectStaff}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-orange-100 bg-orange-50 hover:border-orange-400 hover:bg-orange-100 transition-all duration-200 group text-left"
+            >
+              <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-orange-600 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                <LayoutDashboard className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-orange-800 text-sm">Staff Portal</p>
+                <p className="text-xs text-orange-600 mt-0.5">
+                  Manage residents, events, memberships & more
+                </p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-orange-400 group-hover:text-orange-600 group-hover:translate-x-1 transition-all" />
+            </button>
+
+            {/* Member Dashboard */}
+            <button
+              onClick={onSelectMember}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-teal-100 bg-teal-50 hover:border-teal-400 hover:bg-teal-100 transition-all duration-200 group text-left"
+            >
+              <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-teal-600 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                <Users className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-bold text-teal-800 text-sm">Member Dashboard</p>
+                <p className="text-xs text-teal-600 mt-0.5">
+                  View your memberships, events & attendance
+                </p>
+              </div>
+              <ArrowRight className="w-4 h-4 text-teal-400 group-hover:text-teal-600 group-hover:translate-x-1 transition-all" />
+            </button>
+          </div>
+
+          <p className="text-center text-xs text-gray-400 mt-5">
+            You can switch between portals anytime after logging in.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Login Page ───────────────────────────────────────────────────────────────
 export default function LoginPage() {
   const [showContact, setShowContact] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
+
+  // Portal selection modal state
+  const [showPortalModal, setShowPortalModal] = useState(false);
+  const [loggedInUser, setLoggedInUser] = useState<any>(null);
+
   const contactRef = useRef<HTMLDivElement>(null);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -183,26 +263,28 @@ export default function LoginPage() {
     setError("");
 
     const form = e.currentTarget;
-    const username = (form.elements.namedItem('username') as HTMLInputElement).value;
-    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
+    const username = (form.elements.namedItem("username") as HTMLInputElement).value;
+    const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
     try {
-      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+      const csrfToken = document
+        .querySelector('meta[name="csrf-token"]')
+        ?.getAttribute("content");
 
-      const response = await fetch('/login', {
-        method: 'POST',
-        credentials: 'include',
+      const response = await fetch("/login", {
+        method: "POST",
+        credentials: "include",
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          ...(csrfToken && { "X-CSRF-TOKEN": csrfToken }),
         },
         body: JSON.stringify({
           username,
           password,
-          remember_me: keepSignedIn
-        })
+          remember_me: keepSignedIn,
+        }),
       });
 
       const data = await response.json();
@@ -212,27 +294,29 @@ export default function LoginPage() {
         localStorage.clear();
         sessionStorage.clear();
 
-        // Store based on checkbox - ONLY ONE STORAGE
+        // Store based on checkbox
         if (keepSignedIn) {
-          localStorage.setItem('user', JSON.stringify(data.user));
-          localStorage.setItem('isAuthenticated', 'true');
+          localStorage.setItem("user", JSON.stringify(data.user));
+          localStorage.setItem("isAuthenticated", "true");
         } else {
-          sessionStorage.setItem('user', JSON.stringify(data.user));
-          sessionStorage.setItem('isAuthenticated', 'true');
+          sessionStorage.setItem("user", JSON.stringify(data.user));
+          sessionStorage.setItem("isAuthenticated", "true");
         }
 
-        // Redirect based on user role
-        if (data.user.role === 'Staff') {
-          window.location.href = '/';
-        } else {
-          window.location.href = '/dashboard';
+        // ── If Staff: show portal selection modal ──────────────────────
+        if (data.user.role === "Staff") {
+          setLoggedInUser(data.user);
+          setShowPortalModal(true);
+          setIsLoading(false);
+          return;
         }
+
+        // ── Regular resident (non-staff): go straight to member dashboard
+        window.location.href = "/dashboard";
       } else {
         if (response.status === 401) {
-          // 🔥 CHECK IF ACCOUNT IS DELETED
-          if (data.message && data.message.includes('deleted')) {
+          if (data.message && data.message.includes("deleted")) {
             alert("This account has been deleted. You cannot log in.");
-            // FORCE REDIRECT to login page
             window.location.href = "/login";
             return;
           }
@@ -243,13 +327,23 @@ export default function LoginPage() {
           setError(data.message || "Login failed");
         }
 
-        (form.elements.namedItem('password') as HTMLInputElement).value = '';
+        (form.elements.namedItem("password") as HTMLInputElement).value = "";
       }
     } catch (err) {
       setError("Network error. Please try again");
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleGoToStaff = () => {
+    setShowPortalModal(false);
+    window.location.href = "/";
+  };
+
+  const handleGoToMember = () => {
+    setShowPortalModal(false);
+    window.location.href = "/dashboard";
   };
 
   const contactNumber = "0917-123-4567";
@@ -261,7 +355,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (contactRef.current && !contactRef.current.contains(event.target as Node)) {
+      if (
+        contactRef.current &&
+        !contactRef.current.contains(event.target as Node)
+      ) {
         setShowContact(false);
       }
     };
@@ -273,6 +370,15 @@ export default function LoginPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-white text-gray-900">
+      {/* Portal selection modal — shown after staff login */}
+      {showPortalModal && loggedInUser && (
+        <PortalSelectionModal
+          userName={loggedInUser.first_name || loggedInUser.user_code}
+          onSelectStaff={handleGoToStaff}
+          onSelectMember={handleGoToMember}
+        />
+      )}
+
       <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-orange-300/40 blur-3xl" />
       <div className="absolute -right-32 top-40 h-96 w-96 rounded-full bg-yellow-300/40 blur-3xl" />
       <div className="absolute bottom-0 left-1/3 h-96 w-96 rounded-full bg-teal-300/40 blur-3xl" />
@@ -286,9 +392,7 @@ export default function LoginPage() {
             <p className="text-xs uppercase tracking-widest text-teal-800">
               Piao Barangay Portal
             </p>
-            <p className="text-base font-bold text-teal-900">
-              e-Membership System
-            </p>
+            <p className="text-base font-bold text-teal-900">e-Membership System</p>
           </div>
         </nav>
 
@@ -300,11 +404,13 @@ export default function LoginPage() {
             </span>
 
             <h1 className="mt-5 text-5xl font-black text-teal-800">
-              Sign in to your <span className="text-orange-500">barangay</span> account.
+              Sign in to your{" "}
+              <span className="text-orange-500">barangay</span> account.
             </h1>
 
             <p className="mt-5 max-w-md text-gray-700">
-              Manage events, register residents, and track attendance in one secure place built for your community.
+              Manage events, register residents, and track attendance in one
+              secure place built for your community.
             </p>
 
             <p className="mt-6 text-xs text-gray-500">
@@ -326,7 +432,9 @@ export default function LoginPage() {
               )}
 
               <div>
-                <label className="text-sm font-semibold text-gray-800">Username</label>
+                <label className="text-sm font-semibold text-gray-800">
+                  Username
+                </label>
                 <input
                   type="text"
                   name="username"
@@ -339,7 +447,9 @@ export default function LoginPage() {
 
               <div>
                 <div className="flex justify-between text-sm">
-                  <label className="text-sm font-semibold text-gray-800">Password</label>
+                  <label className="text-sm font-semibold text-gray-800">
+                    Password
+                  </label>
                   <span className="text-xs text-orange-500 cursor-pointer hover:underline">
                     Forgot?
                   </span>
@@ -411,3 +521,4 @@ export default function LoginPage() {
     </div>
   );
 }
+
