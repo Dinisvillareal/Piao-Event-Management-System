@@ -46,41 +46,30 @@ if (rootElement) {
 
 export default function App() {
   const [userRole, setUserRole] = useState<string | null>(() => {
-    // Initialize from storage immediately - NO FLASH
     const sessionUser = sessionStorage.getItem('user');
     if (sessionUser) {
-      try {
-        return JSON.parse(sessionUser).role;
-      } catch {
-        return null;
-      }
+      try { return JSON.parse(sessionUser).role; } catch { return null; }
     }
     const localUser = localStorage.getItem('user');
     if (localUser) {
-      try {
-        return JSON.parse(localUser).role;
-      } catch {
-        return null;
-      }
+      try { return JSON.parse(localUser).role; } catch { return null; }
     }
     return null;
   });
-  
-  const [loading, setLoading] = useState(false); // Start as false since we have initial state
+
+  const [loading, setLoading] = useState(false);
   const authCalledRef = useRef(false);
 
   const checkAuth = useCallback(async () => {
     if (authCalledRef.current) return;
     authCalledRef.current = true;
-    
-    // Only verify with backend if we have a stored user
+
     const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
-    
     if (!storedUser) {
       setUserRole(null);
       return;
     }
-    
+
     try {
       const token = document.cookie
         .split('; ')
@@ -95,12 +84,11 @@ export default function App() {
           ...(token && { 'X-XSRF-TOKEN': decodeURIComponent(token) })
         }
       });
-      
+
       if (response.ok) {
         const user = await response.json();
         setUserRole(user.role);
       } else {
-        // Backend says not authenticated, clear storage
         localStorage.removeItem('user');
         localStorage.removeItem('isAuthenticated');
         sessionStorage.removeItem('user');
@@ -109,7 +97,6 @@ export default function App() {
       }
     } catch (error) {
       console.error("Auth error:", error);
-      // Don't clear on network error - keep existing state
     }
   }, []);
 
@@ -117,11 +104,21 @@ export default function App() {
     checkAuth();
   }, [checkAuth]);
 
-  // Not authenticated - show login page
+  // Not authenticated — show login
   if (!userRole) {
     return <LoginPage />;
   }
 
-  // Authenticated - show appropriate dashboard immediately (no flash)
+  // ── Staff who explicitly navigated to /dashboard → show MemberDashboard ──
+  // This handles the case where a staff member chose "Member Dashboard"
+  // from the portal selection modal on login.
+  const path = window.location.pathname;
+  const isMemberRoute = path.startsWith('/dashboard');
+
+  if (userRole === 'Staff' && isMemberRoute) {
+    return <MemberDashboard />;
+  }
+
+  // Default: Staff → StaffDashboard, everyone else → MemberDashboard
   return userRole === 'Staff' ? <StaffDashboard /> : <MemberDashboard />;
 }
