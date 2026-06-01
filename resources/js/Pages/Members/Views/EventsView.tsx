@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Filter, MoreVertical } from "lucide-react";
+import { Filter } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
 interface Event {
@@ -8,36 +8,34 @@ interface Event {
   date: string;
   location: string;
   description: string;
+  membership_ids?: number[];
+  memberships?: { id: number; name: string }[];
 }
 
 interface EventsViewProps {
   allEvents: Event[];
-  upcomingEvents: Event[];
-  pastEvents: Event[];
-  onDeleteEvent: (id: number) => void;
+  allMemberships: { id: number; name: string }[];
   highlightText: (text: string, query: string) => React.ReactNode;
 }
 
 export default function EventsView({
   allEvents,
-  upcomingEvents,
-  pastEvents,
-  onDeleteEvent,
+  allMemberships,
   highlightText,
 }: EventsViewProps) {
-  // Moved the search, filter, and menu state here!
+  // Moved the search and filter state here!
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
-  const [eventMenuOpen, setEventMenuOpen] = useState<number | null>(null);
 
   // 1. Filter the events
   const filteredEvents = useMemo(() => {
+    const today = new Date();
     let result = allEvents;
 
     if (eventFilter === "upcoming") {
-      result = upcomingEvents;
+      result = allEvents.filter((e) => new Date(e.date) >= today);
     } else if (eventFilter === "past") {
-      result = pastEvents;
+      result = allEvents.filter((e) => new Date(e.date) < today);
     }
 
     if (eventSearch.trim()) {
@@ -55,7 +53,7 @@ export default function EventsView({
     result = [...result].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return result;
-  }, [allEvents, upcomingEvents, pastEvents, eventFilter, eventSearch]);
+  }, [allEvents, eventFilter, eventSearch]);
 
   // 2. Group the events by date
   const groupedEvents = useMemo(() => {
@@ -102,12 +100,6 @@ export default function EventsView({
 
     return Object.fromEntries(sortedGroups);
   }, [filteredEvents, eventFilter]);
-
-  // Handle delete and close the menu
-  const handleDelete = (id: number) => {
-    onDeleteEvent(id);
-    setEventMenuOpen(null);
-  };
 
   return (
     <div className="space-y-6">
@@ -160,40 +152,47 @@ export default function EventsView({
                   {dateLabel}
                 </h3>
                 <div className="grid gap-5 md:grid-cols-2">
-                  {eventsInGroup.map((e) => (
-                    <div
-                      key={e.id}
-                      className="relative rounded-2xl border-l-4 border-orange-400 bg-[#f8f3ee] p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
-                    >
-                      <div className="absolute top-4 right-4">
-                        <button
-                          onClick={() => setEventMenuOpen(eventMenuOpen === e.id ? null : e.id)}
-                          className="rounded-full p-2 transition-colors hover:bg-gray-100"
-                        >
-                          <MoreVertical className="h-5 w-5 text-gray-600" />
-                        </button>
-                        {eventMenuOpen === e.id && (
-                          <div className="absolute right-0 z-20 mt-1 w-28 rounded-md border bg-white shadow-lg">
-                            <button
-                              onClick={() => handleDelete(e.id)}
-                              className="w-full rounded-md px-3 py-2 text-left text-sm text-red-600 transition-colors hover:bg-red-200"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        )}
+                  {eventsInGroup.map((e) => {
+                    const memNames = Array.isArray(e.memberships) && e.memberships.length > 0
+                      ? e.memberships.map((m) => m.name)
+                      : Array.isArray(e.membership_ids)
+                        ? e.membership_ids.map((id) => allMemberships.find((m) => m.id === id)?.name).filter(Boolean) as string[]
+                        : [];
+
+                    return (
+                      <div
+                        key={e.id}
+                        className="relative rounded-2xl border-l-4 border-orange-400 bg-[#f8f3ee] p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
+                      >
+                        <h2 className="pr-8 text-lg font-bold text-[#005f63]">
+                          {highlightText(e.title, eventSearch)}
+                        </h2>
+                        <p className="mt-1 text-sm text-gray-500">
+                          {highlightText(e.date, eventSearch)} · {highlightText(e.location, eventSearch)}
+                        </p>
+                        <p className="mt-3 text-gray-700">
+                          {highlightText(e.description, eventSearch)}
+                        </p>
+
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                          {memNames.length > 0 ? (
+                            <>
+                              <span className="rounded-full bg-[#005f63]/10 px-3 py-1 text-xs font-semibold text-[#005f63] border border-[#005f63]/20">
+                                For: {memNames.join(", ")}
+                              </span>
+                              <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 border border-green-100">
+                                Included for your membership
+                              </span>
+                            </>
+                          ) : (
+                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 border border-gray-200">
+                              Open Event — All Residents
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <h2 className="pr-8 text-lg font-bold text-[#005f63]">
-                        {highlightText(e.title, eventSearch)}
-                      </h2>
-                      <p className="mt-1 text-sm text-gray-500">
-                        {highlightText(e.date, eventSearch)} · {highlightText(e.location, eventSearch)}
-                      </p>
-                      <p className="mt-3 text-gray-700">
-                        {highlightText(e.description, eventSearch)}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

@@ -7,10 +7,14 @@ interface MyEvent {
   id: number | string;
   title: string;
   date: string;
+  startDate?: string;
+  endDate?: string;
+  startTime: string;
+  endTime: string;
   location: string;
   description: string;
-  membershipId?: string;
-  membershipName?: string;
+  membershipIds?: (string | number)[];
+  membershipNames?: string[];
 }
 
 interface EventsViewProps {
@@ -23,63 +27,45 @@ interface EventsViewProps {
   attendanceRecords?: any[];
 }
 
-// ✅ Mock Data
-const mockResidents = [
-  { id: "res1", name: "Juan Dela Cruz", membershipIds: ["mem1"] },
-  { id: "res2", name: "Maria Santos", membershipIds: ["mem1", "mem2"] },
-  { id: "res3", name: "Roberto Reyes", membershipIds: ["mem2"] },
-  { id: "res4", name: "Ana Garcia", membershipIds: ["mem3"] },
-  { id: "res5", name: "Luis Torres", membershipIds: [] }, // No membership
-  { id: "res6", name: "Elena Cruz", membershipIds: ["mem1", "mem3"] },
-];
-
-const mockMemberships = [
-  { id: "mem1", name: "Women's Club" },
-  { id: "mem2", name: "Youth Organization" },
-  { id: "mem3", name: "Senior Citizens Group" },
-];
-
-const mockAttendanceRecords = [
-  // Event 1 records
-  { eventId: "EVT-1", residentId: "res1", timeIn: "08:05 AM", timeOut: "11:30 AM" }, // Complete
-  { eventId: "EVT-1", residentId: "res2", timeIn: "08:15 AM", timeOut: "" }, // Incomplete
-  { eventId: "EVT-1", residentId: "res6", timeIn: "", timeOut: "11:00 AM" }, // Incomplete
-  // Event 2 records
-  { eventId: "EVT-2", residentId: "res3", timeIn: "09:00 AM", timeOut: "01:00 PM" }, // Complete
-  { eventId: "EVT-2", residentId: "res2", timeIn: "09:10 AM", timeOut: "" }, // Incomplete
-  // Event 3 records
-  { eventId: "EVT-3", residentId: "res4", timeIn: "07:45 AM", timeOut: "04:15 PM" }, // Complete
-  { eventId: "EVT-3", residentId: "res5", timeIn: "", timeOut: "" }, // Missed
-];
-
 // ✅ Named export — NO duplicate default
 export function EventsView({
   allEvents,
   onDeleteEvent,
   onCreateEvent,
   highlightText,
-  residents = mockResidents,
-  memberships = mockMemberships,
-  attendanceRecords = mockAttendanceRecords,
+  residents = [],
+  memberships = [],
+  attendanceRecords = [],
 }: EventsViewProps) {
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [viewEv, setViewEv] = useState<MyEvent | null>(null);
   const [showAttendance, setShowAttendance] = useState<MyEvent | null>(null);
-  const [eventToDelete, setEventToDelete] = useState<number | string | null>(null); // for delete confirmation
+  const [eventToDelete, setEventToDelete] = useState<number | string | null>(null);
+  const [editingEvent, setEditingEvent] = useState<MyEvent | null>(null);
 
   const [localEvents, setLocalEvents] = useState<MyEvent[]>(allEvents);
 
   useEffect(() => {
     setLocalEvents(allEvents);
   }, [allEvents]);
+
+  const getXsrfToken = () => {
+    const token = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("XSRF-TOKEN="));
+    return token ? decodeURIComponent(token.split("=")[1]) : "";
+  };
+
   const [newEvent, setNewEvent] = useState({
     title: "",
-    date: "",
-    time: "",
+    startDate: "",
+    endDate: "",
+    startTime: "",
+    endTime: "",
     location: "",
     description: "",
-    membershipId: "",
+    membershipIds: [] as (string | number)[],
   });
 
   // ✅ Attendance search & filter state
@@ -102,13 +88,18 @@ export function EventsView({
     );
   };
 
+  const parseEventDate = (value: string) => {
+    if (!value) return new Date(0);
+    return new Date(value.replace(" ", "T"));
+  };
+
   const upcomingEvents = useMemo(
-    () => localEvents.filter((e) => new Date(e.date) >= new Date()),
+    () => localEvents.filter((e) => parseEventDate(e.date) >= new Date()),
     [localEvents]
   );
 
   const pastEvents = useMemo(
-    () => localEvents.filter((e) => new Date(e.date) < new Date()),
+    () => localEvents.filter((e) => parseEventDate(e.date) < new Date()),
     [localEvents]
   );
 
@@ -134,7 +125,7 @@ export function EventsView({
     }
 
     // SORT: NEWEST / LATEST DATE FIRST
-    result = [...result].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    result = [...result].sort((a, b) => parseEventDate(b.date).getTime() - parseEventDate(a.date).getTime());
 
     return result;
   }, [localEvents, upcomingEvents, pastEvents, eventFilter, eventSearch]);
@@ -147,7 +138,7 @@ export function EventsView({
     oneWeekFromNow.setDate(today.getDate() + 7);
 
     filteredEvents.forEach((e) => {
-      const eventDate = new Date(e.date);
+      const eventDate = parseEventDate(e.date);
       const dateOnly = e.date.split(" ")[0];
 
       let sectionKey: string;
@@ -185,32 +176,112 @@ export function EventsView({
     return Object.fromEntries(sortedGroups);
   }, [filteredEvents, eventFilter]);
 
-  // ─── CREATE EVENT ───────────────────────────────────────────
-  const handleCreateEvent = (e: React.FormEvent) => {
+  // ─── GET EVENT STATUS ───────────────────────────────────────────
+  const getEventStatus = (event: MyEvent) => {
+    const now = new Date();
+    const eventStart = new Date(`${event.startDate || event.date}T${event.startTime}`);
+    const eventEnd = new Date(`${event.endDate || event.date}T${event.endTime}`);
+
+    if (now >= eventEnd) return { label: "Ended", color: "bg-red-100 text-red-800" };
+    if (now >= eventStart) return { label: "Started", color: "bg-green-100 text-green-800" };
+    return { label: "Upcoming", color: "bg-blue-100 text-blue-800" };
+  };
+
+  // ─── CREATE / UPDATE EVENT ───────────────────────────────────────────
+  const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    const fullDate = `${newEvent.date} ${newEvent.time}`;
-    const membershipName = newEvent.membershipId
-      ? memberships.find((m: any) => m.id === newEvent.membershipId)?.name
-      : "Open Event (All Residents)";
 
-    const eventToAdd: MyEvent = {
-      id: `EVT-${Date.now()}`,
-      title: newEvent.title,
-      date: fullDate,
-      location: newEvent.location,
-      description: newEvent.description,
-      membershipId: newEvent.membershipId || "",
-      membershipName: membershipName,
-    };
-
-    if (onCreateEvent) {
-      onCreateEvent(eventToAdd);
-    } else {
-      setLocalEvents((prev) => [eventToAdd, ...prev]);
+    if (newEvent.endDate < newEvent.startDate) {
+      alert("End date cannot be before start date.");
+      return;
     }
 
-    // reset form
-    setNewEvent({ title: "", date: "", time: "", location: "", description: "", membershipId: "" });
+    const membershipIds = newEvent.membershipIds.map((id) => Number(id)).filter((id) => !isNaN(id));
+    const payload = {
+      name: newEvent.title,
+      description: newEvent.description,
+      location: newEvent.location,
+      event_start: `${newEvent.startDate} ${newEvent.startTime}:00`,
+      event_end: `${newEvent.endDate} ${newEvent.endTime}:00`,
+      membership_ids: membershipIds,
+    };
+
+    try {
+      const response = await fetch(editingEvent ? `/events/${editingEvent.id}` : "/events", {
+        method: editingEvent ? "PUT" : "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-XSRF-TOKEN": getXsrfToken(),
+        },
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(result.message || "Failed to save event");
+        return;
+      }
+
+      const savedEvent = result.event ?? result;
+      const savedMembershipIds = Array.isArray(savedEvent.membership_ids)
+        ? savedEvent.membership_ids.map((id: any) => Number(id)).filter((id: any) => !isNaN(id))
+        : [];
+      const membershipNames = Array.isArray(savedEvent.memberships)
+        ? savedEvent.memberships.map((m: any) => m.name)
+        : memberships
+            .filter((m: any) => savedMembershipIds.includes(m.id))
+            .map((m: any) => m.name);
+
+      const savedStartDate = savedEvent.event_start?.split(" ")[0] ?? newEvent.startDate;
+      const savedEndDate = savedEvent.event_end?.split(" ")[0] ?? newEvent.endDate;
+      const formattedEvent: MyEvent = {
+        id: savedEvent.id,
+        title: savedEvent.name,
+        date: savedEvent.event_start,
+        startDate: savedStartDate,
+        endDate: savedEndDate,
+        startTime: newEvent.startTime,
+        endTime: newEvent.endTime,
+        location: savedEvent.location,
+        description: savedEvent.description,
+        membershipIds: savedMembershipIds,
+        membershipNames,
+      };
+
+      if (editingEvent) {
+        setLocalEvents((prev) => prev.map((ev) => (ev.id === editingEvent.id ? formattedEvent : ev)));
+        setEditingEvent(null);
+      } else {
+        setLocalEvents((prev) => [formattedEvent, ...prev]);
+      }
+    } catch (error) {
+      console.error("Failed to save event:", error);
+      alert("Failed to save event");
+    } finally {
+      setNewEvent({ title: "", startDate: "", endDate: "", startTime: "", endTime: "", location: "", description: "", membershipIds: [] });
+    }
+  };
+
+  // ─── EDIT EVENT ───────────────────────────────────────────
+  const startEditEvent = (event: MyEvent) => {
+    setEditingEvent(event);
+    setNewEvent({
+      title: event.title,
+      startDate: event.startDate || event.date,
+      endDate: event.endDate || event.date,
+      startTime: event.startTime,
+      endTime: event.endTime,
+      location: event.location,
+      description: event.description,
+      membershipIds: event.membershipIds || [],
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingEvent(null);
+    setNewEvent({ title: "", startDate: "", endDate: "", startTime: "", endTime: "", location: "", description: "", membershipIds: [] });
   };
 
   // ─── DELETE CONFIRMATION HANDLERS ─────────────────────────────
@@ -225,18 +296,20 @@ export function EventsView({
     setEventToDelete(null);
   };
 
-  // ─── GET MEMBERS BELONGING TO SELECTED MEMBERSHIP ────────────
+  // ─── GET MEMBERS BELONGING TO SELECTED MEMBERSHIPS ────────────
   const getMembersForEvent = (event: MyEvent) => {
-    if (!event.membershipId) {
+    const membershipIds = event.membershipIds || [];
+    if (membershipIds.length === 0) {
       // Open Event → all residents
       return residents;
     }
-    // Only residents with this membershipId (supports single or multiple memberships)
-    return residents.filter((r: any) =>
-      Array.isArray(r.membershipIds)
-        ? r.membershipIds.includes(event.membershipId)
-        : r.membershipId === event.membershipId
-    );
+
+    return residents.filter((r: any) => {
+      if (Array.isArray(r.membershipIds)) {
+        return r.membershipIds.some((id: any) => membershipIds.includes(id));
+      }
+      return membershipIds.includes(r.membershipId);
+    });
   };
 
   // ─── GET FULL ATTENDANCE LIST: ALL ELIGIBLE MEMBERS ────────────
@@ -281,7 +354,7 @@ export function EventsView({
       <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
         <div className="w-full">
           <h1 className="text-4xl font-black text-[#005f63]">Events & Attendance</h1>
-          <p className="mt-1 text-sm text-[#667777]">Filter and view all, upcoming, and past events.</p>
+          <p className="mt-1 text-sm text-[#667777]">Filter and view all, upcoming, and past events. This event module is dynamic for staff and updates immediately.</p>
 
           <div className="mt-4 flex items-center gap-4 w-full">
             <div className="flex-1">
@@ -324,10 +397,10 @@ export function EventsView({
       <div className="flex gap-6 items-start px-1 w-full h-[calc(100vh-180px)]">
         {/* ✅ LEFT SIDE: CREATE EVENT FORM — FIXED / NOT SCROLLABLE */}
         <div className="w-1/2 h-100%">
-          <div className="bg-white rounded-3xl border border-gray-200 p-5 shadow-md h-full overflow-hidden">
-            <h2 className="text-xl font-bold text-[#005f63] mb-4">Create New Event</h2>
+          <div className="bg-white rounded-3xl border border-gray-200 p-5 shadow-md h-full overflow-hidden flex flex-col">
+            <h2 className="text-xl font-bold text-[#005f63] mb-4">{editingEvent ? "Edit Event" : "Create New Event"}</h2>
 
-            <form onSubmit={handleCreateEvent} className="space-y-5">
+            <form onSubmit={handleSaveEvent} className="space-y-4 flex-1 overflow-y-auto">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Event Title *</label>
                 <input
@@ -341,22 +414,45 @@ export function EventsView({
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Date *</label>
                   <input
                     type="date"
                     required
-                    value={newEvent.date}
-                    onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+                    value={newEvent.startDate}
+                    onChange={(e) => setNewEvent({ ...newEvent, startDate: e.target.value })}
                     className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Time *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={newEvent.endDate}
+                    onChange={(e) => setNewEvent({ ...newEvent, endDate: e.target.value })}
+                    className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Time *</label>
                   <input
                     type="time"
                     required
-                    value={newEvent.time}
-                    onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })}
+                    value={newEvent.startTime}
+                    onChange={(e) => setNewEvent({ ...newEvent, startTime: e.target.value })}
+                    className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Time *</label>
+                  <input
+                    type="time"
+                    required
+                    value={newEvent.endTime}
+                    onChange={(e) => setNewEvent({ ...newEvent, endTime: e.target.value })}
                     className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
                   />
                 </div>
@@ -379,39 +475,63 @@ export function EventsView({
                   value={newEvent.description}
                   onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })}
                   className="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
-                  rows={3}
+                  rows={2}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Target Members</label>
-                <select
-                  value={newEvent.membershipId}
-                  onChange={(e) => setNewEvent({ ...newEvent, membershipId: e.target.value })}
-                  className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
-                >
-                  <option value="">📢 Open Event (All residents)</option>
-                  {memberships.map((m: any) => (
-                    <option key={m.id} value={m.id}>
-                      🎯 {m.name}
-                    </option>
-                  ))}
-                </select>
-                {/* ✅ DYNAMIC TEXT CHANGES BASED ON SELECTED OPTION */}
-                <p className="text-xs text-gray-500 mt-1">
-                  {newEvent.membershipId
-                    ? `* Only members of "${memberships.find((m) => m.id === newEvent.membershipId)?.name || "this group"}" will be included`
-                    : "* All registered residents will be included"}
-                </p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Target Membership Groups</label>
+                <p className="text-xs text-gray-500 mb-2">Select any groups to target this event, or leave all unchecked to make it open to all residents.</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {memberships.length > 0 ? (
+                    memberships.map((m: any) => {
+                      const id = String(m.id);
+                      const checked = newEvent.membershipIds.map(String).includes(id);
+                      return (
+                        <label key={id} className="flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 hover:border-[#005f63]/40 transition-colors cursor-pointer">
+                          <input
+                            type="checkbox"
+                            value={id}
+                            checked={checked}
+                            onChange={(e) => {
+                              const membershipId = e.target.value;
+                              const selectedIds = newEvent.membershipIds.map(String);
+                              const isSelected = selectedIds.includes(membershipId);
+                              setNewEvent({
+                                ...newEvent,
+                                membershipIds: isSelected
+                                  ? newEvent.membershipIds.filter((item) => String(item) !== membershipId)
+                                  : [...newEvent.membershipIds, membershipId],
+                              });
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-[#005f63] focus:ring-[#005f63]/50"
+                          />
+                          <span className="text-sm text-gray-700">{m.name}</span>
+                        </label>
+                      );
+                    })
+                  ) : (
+                    <p className="text-sm text-gray-500">Loading membership groups...</p>
+                  )}
+                </div>
               </div>
 
-              <div className="pt-2">
+              <div className="pt-2 flex gap-2">
                 <button
                   type="submit"
-                  className="w-full py-2.5 rounded-full bg-[#3c9b9e] text-white font-bold hover:bg-[#2a6b6b] transition"
+                  className="flex-1 py-2.5 rounded-full bg-[#3c9b9e] text-white font-bold hover:bg-[#2a6b6b] transition"
                 >
-                  Post Event
+                  {editingEvent ? "Update Event" : "Post Event"}
                 </button>
+                {editingEvent && (
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="px-4 py-2.5 rounded-full bg-gray-300 text-gray-700 font-bold hover:bg-gray-400 transition"
+                  >
+                    Cancel
+                  </button>
+                )}
               </div>
             </form>
           </div>
@@ -432,6 +552,7 @@ export function EventsView({
                       const attendanceList = getFullAttendanceList(e.id, eligibleMembers);
                       const signedIn = attendanceList.filter((a: any) => a.timeIn).length;
                       const signedOut = attendanceList.filter((a: any) => a.timeOut).length;
+                      const status = getEventStatus(e);
 
                       return (
                         <div
@@ -439,6 +560,23 @@ export function EventsView({
                           className="relative rounded-2xl border-l-4 border-orange-400 bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
                         >
                           <div className="absolute top-4 right-4 flex items-center gap-2">
+                            {/* ✅ STATUS BADGE */}
+                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${status.color}`}>
+                              {status.label}
+                            </span>
+
+                            {/* ✅ EDIT BUTTON */}
+                            <button
+                              onClick={() => startEditEvent(e)}
+                              className="rounded-full p-2 text-blue-600 hover:bg-blue-100 transition-colors"
+                              title="Edit"
+                            >
+                              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                              </svg>
+                            </button>
+
                             {/* ✅ VIEW ICON — TEAL COLOR */}
                             <button
                               onClick={() => setViewEv(e)}
@@ -460,16 +598,30 @@ export function EventsView({
                             </button>
                           </div>
 
-                          <h2 className="pr-8 text-lg font-bold text-[#005f63]">{highlightText(e.title, eventSearch)}</h2>
+                          <h2 className="pr-32 text-lg font-bold text-[#005f63]">{highlightText(e.title, eventSearch)}</h2>
                           <p className="mt-1 text-sm text-gray-500">
-                            {highlightText(e.date, eventSearch)} · {highlightText(e.location, eventSearch)}
+                            {highlightText(
+                              e.startDate && e.endDate
+                                ? e.startDate === e.endDate
+                                  ? e.startDate
+                                  : `${e.startDate} - ${e.endDate}`
+                                : e.date,
+                              eventSearch
+                            )} · {e.startTime} to {e.endTime}
                           </p>
-                          <p className="mt-3 text-[14px] text-gray-700">{highlightText(e.description, eventSearch)}</p>
+                          <p className="mt-1 text-sm text-gray-500">{highlightText(e.location, eventSearch)}</p>
+                          <p className="mt-2 text-[14px] text-gray-700">{highlightText(e.description, eventSearch)}</p>
 
                           <div className="mt-3 pt-2 border-t border-gray-200 text-xs text-gray-500">
                             <span className="inline-block w-2 h-2 rounded-full bg-[#4eb4b8] mr-1"></span> {signedIn} Signed In |{" "}
-                            <span className="inline-block w-2 h-2 rounded-full bg-red-400 mr-1"></span> {signedOut} Signed Out |{" "}
-                            <span className="font-medium">{e.membershipName || "Open Event"}</span>
+                            <span className="inline-block w-2 h-2 rounded-full bg-red-400 mr-1"></span> {signedOut} Signed Out
+                            {(e.membershipNames?.length || 0) > 0 ? (
+                              <span className="ml-2 font-medium">
+                                • {e.membershipNames?.join(", ")}
+                              </span>
+                            ) : (
+                              <span className="ml-2 font-medium">• Open Event</span>
+                            )}
                           </div>
                         </div>
                       );
@@ -519,8 +671,9 @@ export function EventsView({
               <div>
                 <h2 className="text-2xl font-black text-[#005f63]">{viewEv.title}</h2>
                 <p className="text-sm text-gray-600 mt-1">
-                  {viewEv.date} • {viewEv.location}
+                  {viewEv.date} • {viewEv.startTime} to {viewEv.endTime}
                 </p>
+                <p className="text-sm text-gray-600">{viewEv.location}</p>
               </div>
               <button onClick={() => setViewEv(null)} className="text-gray-500 hover:text-gray-700">
                 <XCircle size={20} />
@@ -528,6 +681,16 @@ export function EventsView({
             </div>
 
             <div className="space-y-4">
+              {/* Status Badge */}
+              {(() => {
+                const status = getEventStatus(viewEv);
+                return (
+                  <div className={`px-3 py-2 rounded-full inline-block text-sm font-semibold ${status.color}`}>
+                    {status.label}
+                  </div>
+                );
+              })()}
+
               <div>
                 <h4 className="font-semibold text-gray-700 mb-1">Description</h4>
                 <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl">{viewEv.description || "—"}</p>
@@ -535,8 +698,10 @@ export function EventsView({
 
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-teal-50 rounded-xl p-3">
-                  <p className="text-xs text-teal-600 font-medium">Membership Type</p>
-                  <p className="font-bold text-teal-800">{viewEv.membershipName || "Open Event"}</p>
+                  <p className="text-xs text-teal-600 font-medium">Target Members</p>
+                  <p className="font-bold text-teal-800 text-sm">
+                    {(viewEv.membershipNames?.length || 0) > 0 ? viewEv.membershipNames?.join(", ") : "Open Event"}
+                  </p>
                 </div>
                 <div className="bg-green-50 rounded-xl p-3">
                   <p className="text-xs text-green-600 font-medium">Signed In</p>
