@@ -156,33 +156,8 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::get('/events-data', function () {
-
-        $user = Auth::user();
-
-        // STAFF / ADMIN CAN SEE ALL EVENTS
-        if (
-            $user->role === 'Staff' ||
-            $user->role === 'STAFF / ADMIN'
-        ) {
-            return response()->json([
-                'data' => Event::all()
-            ]);
-        }
-
-        // RESIDENT FILTERING
-        $membershipIds = DB::table('membership_residents')
-            ->where('user_id', $user->id)
-            ->pluck('membership_id');
-
-        $events = Event::whereIn('membership_id', $membershipIds)
-            ->orWhereNull('membership_id')
-            ->get();
-
-        return response()->json([
-            'data' => $events
-        ]);
-    });
+    Route::get('/events', [EventController::class, 'index']);
+    Route::get('/events-data', [EventController::class, 'data']);
 
     Route::post('/events',
         [EventController::class, 'store']);

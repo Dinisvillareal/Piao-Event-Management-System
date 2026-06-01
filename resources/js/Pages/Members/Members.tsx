@@ -25,6 +25,10 @@ export default function MemberDashboard() {
   const [pastEvents, setPastEvents] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
 
+  const parseApiDate = (value: string) => {
+    if (!value) return new Date(0);
+    return new Date(value.replace(" ", "T"));
+  };
 
   const allEvents = useMemo(() => [
     ...(Array.isArray(upcomingEvents) ? upcomingEvents : []),
@@ -128,54 +132,75 @@ export default function MemberDashboard() {
         console.error('Failed to fetch memberships:', err);
       });
   }, []);
-  // fetch events and auto-create notifications
+
+  // fetch events
   useEffect(() => {
-    fetch("http://127.0.0.1:8000/events-data", {
-      credentials: "include",
+    fetch('/events-data', {
+      credentials: 'include',
       headers: {
-        Accept: "application/json",
-        "X-Requested-With": "XMLHttpRequest"
-      }
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
     })
       .then((res) => res.json())
       .then((data) => {
-
         if (!data?.data) {
-          console.error("No events returned:", data);
+          console.error('No events returned:', data);
           return;
         }
+
         const now = new Date();
 
         const formattedEvents = data.data.map((event: any) => ({
           id: event.id,
           title: event.name,
           date: event.event_start,
+          event_start: event.event_start,
+          event_end: event.event_end,
           location: event.location,
           description: event.description,
+          membership_ids: Array.isArray(event.membership_ids) ? event.membership_ids : [],
+          memberships: Array.isArray(event.memberships) ? event.memberships : [],
         }));
 
         const upcoming = formattedEvents.filter(
-          (e: any) => new Date(e.date) >= now
+          (e: any) => parseApiDate(e.date) >= now
         );
 
         const past = formattedEvents.filter(
-          (e: any) => new Date(e.date) < now
+          (e: any) => parseApiDate(e.date) < now
         );
 
         setUpcomingEvents(upcoming);
         setPastEvents(past);
-
-
-        const eventNotifications = upcoming.map((e: any) => ({
-          id: e.id,
-          title: `Upcoming Event: ${e.title}`,
-          body: `${e.description} at ${e.location}`,
-          sentAt: e.date,
-        }));
-
-        setNotifications(eventNotifications);
       })
-      .catch((err) => console.error("Failed to fetch events:", err));
+      .catch((err) => console.error('Failed to fetch events:', err));
+  }, []);
+
+  // fetch notifications from backend
+  useEffect(() => {
+    fetch('/notifications', {
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data?.data) {
+          console.error('No notifications returned:', data);
+          return;
+        }
+
+        setNotifications(data.data.map((notification: any) => ({
+          id: notification.id,
+          title: notification.title,
+          body: notification.body,
+          sentAt: notification.created_at || notification.sentAt,
+        })));
+      })
+      .catch((err) => console.error('Failed to fetch notifications:', err));
   }, []);
 
   // ─── FETCH USER'S MEMBERSHIP COUNT (for Dashboard summary card) ──────────────
@@ -268,12 +293,6 @@ export default function MemberDashboard() {
     );
   };
 
-  // ─── DELETE EVENT ─────────────────────────────────────────────────────────────
-  const handleDeleteEvent = (id: number) => {
-    setUpcomingEvents(prev => prev.filter(e => e.id !== id));
-    setPastEvents(prev => prev.filter(e => e.id !== id));
-  };
-
   // ─── NOTIFICATIONS (hardcoded) ────────────────────────────────────────────────
 
 
@@ -338,9 +357,7 @@ export default function MemberDashboard() {
               {active === "events" && (
                 <EventsView
                   allEvents={allEvents}
-                  upcomingEvents={upcomingEvents}
-                  pastEvents={pastEvents}
-                  onDeleteEvent={handleDeleteEvent}
+                  allMemberships={memberships}
                   highlightText={highlightText}
                 />
               )}

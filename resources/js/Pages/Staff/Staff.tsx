@@ -177,27 +177,68 @@ export default function StaffDashboard() {
 
   const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "STAFF / ADMIN" };
 
-  // --- FETCH REAL EVENTS FROM LARAVEL ---
+  const [membershipOptions, setMembershipOptions] = useState<Membership[]>(memberships);
   const [allEvents, setAllEvents] = useState<any[]>([]);
+
+  const getMembershipName = (id: string | number | null | undefined) => {
+    if (!id) return "";
+    const found = membershipOptions.find((m) => String(m.id) === String(id));
+    return found?.name || "";
+  };
+
+  useEffect(() => {
+    const fetchMemberships = async () => {
+      try {
+        const response = await fetch('/api/memberships', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' }
+        });
+        const data = await response.json();
+        setMembershipOptions(data?.data ?? data ?? []);
+      } catch (error) {
+        console.error('Failed to fetch memberships:', error);
+        setMembershipOptions([]);
+      }
+    };
+
+    fetchMemberships();
+  }, []);
 
   useEffect(() => {
     const fetchRealEvents = async () => {
       try {
-        // Calling the route from your web.php
-        const response = await fetch('/events-data'); 
+        const response = await fetch('/events-data', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' }
+        });
         const result = await response.json();
-        
+
         if (result.data) {
-          // Format the database keys to match what your React views expect
-          const formattedEvents = result.data.map((dbEvent: any) => ({
+          const formattedEvents = result.data.map((dbEvent: any) => {
+          const membershipIds = Array.isArray(dbEvent.membership_ids) ? dbEvent.membership_ids : [];
+          const membershipNames = membershipIds
+            .map((id: any) => getMembershipName(id))
+            .filter(Boolean);
+          const startDate = dbEvent.event_start?.split(' ')[0] ?? '';
+          const endDate = dbEvent.event_end?.split(' ')[0] ?? startDate;
+          const startTime = dbEvent.event_start?.split(' ')[1]?.slice(0, 5) ?? '';
+          const endTime = dbEvent.event_end?.split(' ')[1]?.slice(0, 5) ?? '';
+
+          return {
             id: dbEvent.id,
-            title: dbEvent.name, // Mapping DB 'name' to React 'title'
+            title: dbEvent.name,
             date: dbEvent.event_start,
+            startDate,
+            endDate,
+            startTime,
+            endTime,
             location: dbEvent.location,
             description: dbEvent.description,
-            membershipId: dbEvent.membership_id
-          }));
-          
+            membershipIds,
+            membershipName: membershipNames.length > 0 ? membershipNames.join(', ') : 'Open to all',
+          };
+        });
+
           setAllEvents(formattedEvents);
         }
       } catch (error) {
@@ -206,10 +247,10 @@ export default function StaffDashboard() {
     };
 
     fetchRealEvents();
-  }, []);
+  }, [membershipOptions]);
 
   const handleDeleteEvent = (id: string | number) => {
-     setAllEvents(prev => prev.filter(e => e.id !== id));
+    setAllEvents((prev) => prev.filter((e) => e.id !== id));
   };
 
  
@@ -233,8 +274,8 @@ export default function StaffDashboard() {
           {active === "scan" && <ScanView events={allEvents} residents={residents} memberships={memberships} />}
           {active === "residents" && <ResidentsView />}
           {active === "memberships" && <QRCodesView memberships={memberships} highlightText={highlightText} />}
-          {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} />}
-          {active === "notify" && <NotificationsView notifications={notifications} memberships={memberships} highlightText={highlightText} />}
+          {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
+          {active === "notify" && <NotificationsView notifications={notifications} memberships={membershipOptions} highlightText={highlightText} />}
           {active === "settings" && <SettingsView member={staff} />}
         </div>
       </main>
