@@ -4,11 +4,12 @@ interface SearchBarProps {
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
+  className?: string;
 }
 
-export default function SearchBar({ value, onChange, placeholder }: SearchBarProps) {
+export default function SearchBar({ value, onChange, placeholder, className = "" }: SearchBarProps) {
   return (
-    <div className="relative w-full">
+    <div className={`relative w-full ${className}`}>
       <Search className="pointer-events-none absolute left-4 top-1/2 h-6 w-6 -translate-y-1/2 text-[#005f63]/70" />
       <input
         type="text"

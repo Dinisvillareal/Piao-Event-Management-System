@@ -8,7 +8,7 @@ import ResidentsView from "./Views/ResidentsView";
 import QRCodesView from "./Views/QRCodesView";
 import { EventsView } from "./Views/EventsView";
 import NotificationsView from "./Views/NotificationsView";
-import SettingsView from "./Views/SettingsView";
+import ActivityLogsView from "./Views/ActivityLogsView.tsx"; // ✅ Replaced SettingsView
 
 // --- TYPES & MOCK DATA ---
 export type Resident = { id: string; name: string; age: number; address: string; contact: string; };
@@ -34,6 +34,7 @@ export const attendanceRecords: AttendanceRecord[] = [
   { id: 1, eventTitle: "Barangay General Assembly", eventDate: "2026-05-12 09:00", location: "Barangay Hall", timeIn: "2026-05-12 08:55", timeOut: "2026-05-12 11:30", status: "complete" },
 ];
 
+// ✅ Updated NAV: "Activity Logs" instead of "Activity Logs / Settings"
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "scan", label: "QR Scanner", icon: ScanLine },
@@ -41,7 +42,7 @@ const NAV = [
   { key: "memberships", label: "Memberships", icon: Award },
   { key: "events", label: "Events & Attendance", icon: CalendarDays },
   { key: "notify", label: "Notifications", icon: Bell },
-  { key: "settings", label: "Settings", icon: Settings },
+  { key: "activitylogs", label: "Activity Logs", icon: Settings },
 ];
 
 export const highlightText = (text: string, query: string) => {
@@ -54,7 +55,7 @@ export const highlightText = (text: string, query: string) => {
 };
 
 // --------------------------
-// LAYOUT COMPONENTS (Embedded to avoid import errors)
+// LAYOUT COMPONENTS
 // --------------------------
 function Sidebar({ active, setActive }: { active: string; setActive: (key: string) => void }) {
   const [isOpen, setIsOpen] = useState(true);
@@ -66,7 +67,7 @@ function Sidebar({ active, setActive }: { active: string; setActive: (key: strin
         .split('; ')
         .find(row => row.startsWith('XSRF-TOKEN='))
         ?.split('=')[1];
-      
+
       const decodedToken = token ? decodeURIComponent(token) : '';
 
       await fetch('/logout', {
@@ -117,8 +118,8 @@ function Sidebar({ active, setActive }: { active: string; setActive: (key: strin
           </div>
         </div>
         <div className="border-t border-[#007777] p-2 shrink-0">
-          <button 
-            className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"}`} 
+          <button
+            className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"}`}
             onClick={handleLogout}
           >
             <LogOut className="h-5 w-5 shrink-0" />
@@ -253,18 +254,14 @@ export default function StaffDashboard() {
     setAllEvents((prev) => prev.filter((e) => e.id !== id));
   };
 
- 
-
   const attended = attendanceRecords.filter(r => r.status === "complete").length;
   const missed = attendanceRecords.filter(r => r.status === "missed").length;
 
   return (
     <div className="flex min-h-screen bg-[#fcfcf9] text-gray-900">
-      {/* 1. Sidebar is back! */}
       <Sidebar active={active} setActive={setActive} />
 
       <main className="flex-1">
-        {/* 2. Top header is back! */}
         <TopHeader memberName={staff.name} role={staff.role} />
 
         <div className="h-[calc(100vh-73px)] overflow-y-auto p-6 smooth-scroll">
@@ -276,7 +273,7 @@ export default function StaffDashboard() {
           {active === "memberships" && <QRCodesView memberships={memberships} highlightText={highlightText} />}
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
           {active === "notify" && <NotificationsView notifications={notifications} memberships={membershipOptions} highlightText={highlightText} />}
-          {active === "settings" && <SettingsView member={staff} />}
+          {active === "activitylogs" && <ActivityLogsView />} {/* ✅ Updated route */}
         </div>
       </main>
 
