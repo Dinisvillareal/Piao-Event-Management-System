@@ -56,14 +56,16 @@ export function EventsView({
   const [liveAttendances, setLiveAttendances] = useState<Record<string, any[]>>({});
 
   // ✅ NEW: Fetch live attendance when viewing an event
-  useEffect(() => {
-    const activeEvent = showAttendance || viewEv;
-    if (!activeEvent) return;
-    if (liveAttendances[activeEvent.id]) return; // Don't fetch if we already have it cached
+ useEffect(() => {
+    if (!localEvents || localEvents.length === 0) return;
 
-    const fetchLiveAttendance = async () => {
+    // Loop through all events and fetch their live attendance numbers
+    localEvents.forEach(async (event) => {
+      // Skip if we already fetched it to prevent endless reloading
+      if (liveAttendances[event.id]) return;
+
       try {
-        const response = await fetch(`/events/${activeEvent.id}/attendances`, {
+        const response = await fetch(`/events/${event.id}/attendances`, {
           headers: {
             "Accept": "application/json",
             "X-Requested-With": "XMLHttpRequest"
@@ -73,22 +75,21 @@ export function EventsView({
         if (response.ok) {
           const data = await response.json();
           const formatted = data.map((record: any) => ({
-            eventId: activeEvent.id,
+            eventId: event.id,
             residentId: record.user_id,
             residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
             timeIn: record.time_in,
             timeOut: record.time_out
           }));
           
-          setLiveAttendances(prev => ({ ...prev, [activeEvent.id]: formatted }));
+          // Update the state with the live data for this specific event
+          setLiveAttendances(prev => ({ ...prev, [event.id]: formatted }));
         }
       } catch (error) {
-        console.error("Failed to fetch live attendance:", error);
+        console.error("Failed to fetch live attendance for event:", event.id);
       }
-    };
-
-    fetchLiveAttendance();
-  }, [showAttendance, viewEv]);
+    });
+  }, [localEvents]);
 
   const getXsrfToken = () => {
     const token = document.cookie
