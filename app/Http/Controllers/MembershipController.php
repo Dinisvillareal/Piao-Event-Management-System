@@ -3,15 +3,38 @@
 namespace App\Http\Controllers;
 
 use App\Models\Membership;
+use App\Models\ActivityLog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class MembershipController extends Controller
 {
+    // =========================
+    // HELPERS
+    // =========================
+
+    private function createLog($action, $module, $description)
+    {
+        ActivityLog::create([
+            'user_code'   => auth()->user()?->user_code ?? 'SYSTEM',
+            'action'      => $action,
+            'module'      => $module,
+            'description' => $description,
+        ]);
+    }
+
+    // =========================
+    // GET ALL
+    // =========================
+
     public function index()
     {
-        $memberships = Membership::all();
-        return response()->json($memberships);
+        return response()->json(Membership::all());
     }
+
+    // =========================
+    // CREATE MEMBERSHIP
+    // =========================
 
     public function store(Request $request)
     {
@@ -20,19 +43,47 @@ class MembershipController extends Controller
             'description' => 'nullable|string'
         ]);
 
-        $membership = Membership::create([
-            'name' => $request->name,
-            'description' => $request->description
-        ]);
+        DB::beginTransaction();
 
-        return response()->json($membership, 201);
+        try {
+
+            $membership = Membership::create([
+                'name' => $request->name,
+                'description' => $request->description
+            ]);
+
+            $this->createLog(
+                'Create Membership',
+                'Membership',
+                "Created membership '{$membership->name}'"
+            );
+
+            DB::commit();
+
+            return response()->json($membership, 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to create membership',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
+
+    // =========================
+    // SHOW MEMBERSHIP
+    // =========================
 
     public function show($id)
     {
-        $membership = Membership::findOrFail($id);
-        return response()->json($membership);
+        return response()->json(Membership::findOrFail($id));
     }
+
+    // =========================
+    // UPDATE MEMBERSHIP
+    // =========================
 
     public function update(Request $request, $id)
     {
@@ -41,53 +92,106 @@ class MembershipController extends Controller
             'description' => 'nullable|string'
         ]);
 
-        $membership = Membership::findOrFail($id);
-        $membership->update([
-            'name' => $request->name,
-            'description' => $request->description
-        ]);
+        DB::beginTransaction();
 
-        return response()->json($membership);
+        try {
+
+            $membership = Membership::findOrFail($id);
+
+            $membership->update([
+                'name' => $request->name,
+                'description' => $request->description
+            ]);
+
+            $this->createLog(
+                'Update Membership',
+                'Membership',
+                "Updated membership '{$membership->name}'"
+            );
+
+            DB::commit();
+
+            return response()->json($membership);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to update membership',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
+
+    // =========================
+    // DELETE MEMBERSHIP
+    // =========================
 
     public function destroy($id)
     {
-        $membership = Membership::findOrFail($id);
-        $membership->delete();
+        DB::beginTransaction();
 
-        return response()->json(['message' => 'Membership deleted successfully']);
+        try {
+
+            $membership = Membership::findOrFail($id);
+
+            $name = $membership->name;
+
+            $membership->delete();
+
+            $this->createLog(
+                'Delete Membership',
+                'Membership',
+                "Deleted membership '{$name}'"
+            );
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Membership deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to delete membership',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
+
+    // =========================
+    // PAGINATION METHODS
+    // =========================
 
     public function getPaginated(Request $request)
     {
         $perPage = $request->get('per_page', 15);
-        $memberships = Membership::paginate($perPage);
-        return response()->json($memberships);
+        return response()->json(Membership::paginate($perPage));
     }
 
     public function getSimplePaginated()
     {
-        $memberships = Membership::simplePaginate(10);
-        return response()->json($memberships);
+        return response()->json(Membership::simplePaginate(10));
     }
 
     public function getCursorPaginated()
     {
-        $memberships = Membership::cursorPaginate(10);
-        return response()->json($memberships);
+        return response()->json(Membership::cursorPaginate(10));
     }
 
     public function searchPaginated(Request $request)
     {
         $search = $request->get('search');
         $perPage = $request->get('per_page', 10);
-        
-        $memberships = Membership::when($search, function($query, $search) {
+
+        $memberships = Membership::when($search, function ($query, $search) {
                 return $query->where('name', 'like', '%' . $search . '%')
                              ->orWhere('description', 'like', '%' . $search . '%');
             })
             ->paginate($perPage);
-        
+
         return response()->json($memberships);
     }
 
@@ -96,10 +200,9 @@ class MembershipController extends Controller
         $sortBy = $request->get('sort_by', 'id');
         $sortOrder = $request->get('sort_order', 'asc');
         $perPage = $request->get('per_page', 10);
-        
-        $memberships = Membership::orderBy($sortBy, $sortOrder)
-            ->paginate($perPage);
-        
-        return response()->json($memberships);
+
+        return response()->json(
+            Membership::orderBy($sortBy, $sortOrder)->paginate($perPage)
+        );
     }
 }
