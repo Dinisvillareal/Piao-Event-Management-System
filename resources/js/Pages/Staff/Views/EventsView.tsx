@@ -52,6 +52,45 @@ export function EventsView({
     setLocalEvents(allEvents);
   }, [allEvents]);
 
+  // ✅ NEW: State to store live attendance records fetched from the database
+  const [liveAttendances, setLiveAttendances] = useState<Record<string, any[]>>({});
+
+  // ✅ NEW: Fetch live attendance when viewing an event
+ useEffect(() => {
+    if (!localEvents || localEvents.length === 0) return;
+
+    // Loop through all events and fetch their live attendance numbers
+    localEvents.forEach(async (event) => {
+      // Skip if we already fetched it to prevent endless reloading
+      if (liveAttendances[event.id]) return;
+
+      try {
+        const response = await fetch(`/events/${event.id}/attendances`, {
+          headers: {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const formatted = data.map((record: any) => ({
+            eventId: event.id,
+            residentId: record.user_id,
+            residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
+            timeIn: record.time_in,
+            timeOut: record.time_out
+          }));
+          
+          // Update the state with the live data for this specific event
+          setLiveAttendances(prev => ({ ...prev, [event.id]: formatted }));
+        }
+      } catch (error) {
+        console.error("Failed to fetch live attendance for event:", event.id);
+      }
+    });
+  }, [localEvents]);
+
   const getXsrfToken = () => {
     const token = document.cookie
       .split("; ")
@@ -301,17 +340,35 @@ export function EventsView({
     });
   };
 
+
+ // ─── GET FULL ATTENDANCE LIST: COMBINE LIVE RECORDS & ELIGIBLE MEMBERS ────────────
   const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[]) => {
-    const recordsForEvent = attendanceRecords.filter((a: any) => a.eventId === eventId);
-    return eligibleMembers.map((member: any) => {
-      const record = recordsForEvent.find((r: any) => r.residentId === member.id);
-      return {
-        residentId: member.id,
-        residentName: member.name,
-        timeIn: record?.timeIn || "",
-        timeOut: record?.timeOut || "",
-      };
+    // 1. Use live fetched data if available, otherwise fallback to props
+    const recordsForEvent = liveAttendances[eventId] || attendanceRecords.filter((a: any) => a.eventId === eventId);
+
+    // 2. Start with everyone who actually has an attendance record in the database
+    const combinedList = recordsForEvent.map((record: any) => ({
+      residentId: record.residentId,
+      residentName: record.residentName,
+      timeIn: record.timeIn || "",
+      timeOut: record.timeOut || ""
+    }));
+
+    // 3. Add eligible members who did NOT sign in (so they show up as "Missed" instead of disappearing)
+    eligibleMembers.forEach((member: any) => {
+      if (!combinedList.some(item => item.residentId === member.id)) {
+        // Handle different possible name formats from the residents prop
+        const memberName = member.name || (member.first_name ? `${member.first_name} ${member.last_name}` : `Resident #${member.id}`);
+        combinedList.push({
+          residentId: member.id,
+          residentName: memberName,
+          timeIn: "",
+          timeOut: ""
+        });
+      }
     });
+
+    return combinedList;
   };
 
   const getAttendanceStatus = (record: any) => {
