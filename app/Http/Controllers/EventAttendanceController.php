@@ -3,174 +3,227 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use App\Models\EventAttendance;
 use App\Models\Event;
 use App\Models\User;
+use App\Models\ActivityLog;
 
 class EventAttendanceController extends Controller
 {
-    // TIME IN (When they scan the QR code to enter)
+    // =========================
+    // HELPERS
+    // =========================
+
+    private function createLog($action, $module, $description)
+    {
+        ActivityLog::create([
+            'user_code'   => auth()->user()?->user_code ?? 'SYSTEM',
+            'action'      => $action,
+            'module'      => $module,
+            'description' => $description,
+        ]);
+    }
+
+    private function determineStatus($timeIn, $timeOut)
+    {
+        if ($timeIn && $timeOut) return 'Complete';
+        return 'Incomplete';
+    }
+
+    // =========================
+    // TIME IN
+    // =========================
+
     public function timeIn(Request $request)
-{
-    $request->validate([
-        'event_id' => 'required|exists:events,id',
-        'user_id' => 'required|exists:users,id',
-    ]);
+    {
+        $request->validate([
+            'event_id' => 'required|exists:events,id',
+            'user_id' => 'required|exists:users,id',
+        ]);
 
-    $event = Event::findOrFail($request->event_id);
+        $event = Event::findOrFail($request->event_id);
 
-       
-        $currentTime = time(); 
-        
-       
+        $currentTime = time();
         $eventStart = strtotime($event->event_start);
         $eventEnd = strtotime($event->event_end);
 
-        // VALIDATION
         if ($currentTime < $eventStart) {
             return response()->json([
-                'message' => 'Sign-in is not available yet. This event has not started.'
+                'message' => 'Sign-in is not available yet.'
             ], 403);
         }
 
-        // VALIDATION
         if ($currentTime > $eventEnd) {
             return response()->json([
-                'message' => 'Sign-in is closed. This event has already ended.'
+                'message' => 'Sign-in is closed.'
             ], 403);
         }
 
-        
-        $attendance = EventAttendance::where('event_id', $request->event_id)
-            ->where('user_id', $request->user_id)
-            ->first();
+        DB::beginTransaction();
 
-    $attendance = EventAttendance::where('event_id', $request->event_id)
-        ->where('user_id', $request->user_id)
-        ->first();
+        try {
 
-    // If record already exists
-    if ($attendance) {
+            $attendance = EventAttendance::where('event_id', $request->event_id)
+                ->where('user_id', $request->user_id)
+                ->first();
 
-        // Prevent double time-in
-        if ($attendance->time_in) {
+            if ($attendance) {
+
+                if ($attendance->time_in) {
+                    return response()->json([
+                        'message' => 'Member already signed in.'
+                    ], 400);
+                }
+
+                $attendance->time_in = now();
+                $attendance->status = $this->determineStatus($attendance->time_in, $attendance->time_out);
+                $attendance->save();
+
+                $this->createLog(
+                    'Time In',
+                    'Event Attendance',
+                    "User {$attendance->user_id} signed in to event {$attendance->event_id}"
+                );
+
+                DB::commit();
+
+                return response()->json([
+                    'message' => 'Time-in successful!',
+                    'attendance' => $attendance
+                ]);
+            }
+
+            $attendance = EventAttendance::create([
+                'event_id' => $request->event_id,
+                'user_id' => $request->user_id,
+                'time_in' => now(),
+                'status' => 'Incomplete'
+            ]);
+
+            $this->createLog(
+                'Time In',
+                'Event Attendance',
+                "User {$attendance->user_id} signed in to event {$attendance->event_id}"
+            );
+
+            DB::commit();
+
             return response()->json([
-                'message' => 'Member already signed in.'
-            ], 400);
+                'message' => 'Time-in successful!',
+                'attendance' => $attendance
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Time-in failed',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        // Add time_in
-        $attendance->time_in = now();
-
-        // Update status
-        $attendance->status = $this->determineStatus(
-            $attendance->time_in,
-            $attendance->time_out
-        );
-
-        $attendance->save();
-
-        return response()->json([
-            'message' => 'Time-in successful!',
-            'attendance' => $attendance
-        ]);
     }
 
-    // Create new attendance
-    $attendance = EventAttendance::create([
-        'event_id' => $request->event_id,
-        'user_id' => $request->user_id,
-        'time_in' => now(),
-        'status' => 'Incomplete'
-    ]);
+    // =========================
+    // TIME OUT
+    // =========================
 
-    return response()->json([
-        'message' => 'Time-in successful!',
-        'attendance' => $attendance
-    ], 201);
-}
-
-    // TIME OUT (When they scan the QR code to leave)
     public function timeOut(Request $request)
-{
-    $request->validate([
-        'event_id' => 'required|exists:events,id',
-        'user_id' => 'required|exists:users,id',
-    ]);
-
-    $attendance = EventAttendance::where('event_id', $request->event_id)
-        ->where('user_id', $request->user_id)
-        ->first();
-
-    // If no record exists yet, create one
-    if (!$attendance) {
-
-        $attendance = EventAttendance::create([
-            'event_id' => $request->event_id,
-            'user_id' => $request->user_id,
-            'time_out' => now(),
-            'status' => 'Incomplete'
+    {
+        $request->validate([
+            'event_id' => 'required|exists:events,id',
+            'user_id' => 'required|exists:users,id',
         ]);
 
-        return response()->json([
-            'message' => 'Time-out recorded without time-in.',
-            'attendance' => $attendance
-        ], 201);
+        DB::beginTransaction();
+
+        try {
+
+            $attendance = EventAttendance::where('event_id', $request->event_id)
+                ->where('user_id', $request->user_id)
+                ->first();
+
+            if (!$attendance) {
+
+                $attendance = EventAttendance::create([
+                    'event_id' => $request->event_id,
+                    'user_id' => $request->user_id,
+                    'time_out' => now(),
+                    'status' => 'Incomplete'
+                ]);
+
+                $this->createLog(
+                    'Time Out',
+                    'Event Attendance',
+                    "User {$request->user_id} timed out without time-in on event {$request->event_id}"
+                );
+
+                DB::commit();
+
+                return response()->json([
+                    'message' => 'Time-out recorded without time-in.',
+                    'attendance' => $attendance
+                ], 201);
+            }
+
+            if ($attendance->time_out) {
+                return response()->json([
+                    'message' => 'Member already signed out.'
+                ], 400);
+            }
+
+            $attendance->time_out = now();
+            $attendance->status = $this->determineStatus($attendance->time_in, $attendance->time_out);
+            $attendance->save();
+
+            $this->createLog(
+                'Time Out',
+                'Event Attendance',
+                "User {$attendance->user_id} signed out of event {$attendance->event_id}"
+            );
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Time-out successful!',
+                'attendance' => $attendance
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Time-out failed',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
-    // Prevent double timeout
-    if ($attendance->time_out) {
-        return response()->json([
-            'message' => 'Member already signed out.'
-        ], 400);
-    }
+    // =========================
+    // EVENT ATTENDEES
+    // =========================
 
-    // Add timeout
-    $attendance->time_out = now();
-
-    // Update status
-    $attendance->status = $this->determineStatus(
-        $attendance->time_in,
-        $attendance->time_out
-    );
-
-    $attendance->save();
-
-    return response()->json([
-        'message' => 'Time-out successful!',
-        'attendance' => $attendance
-    ]);
-}
-
-    // GET ATTENDANCE FOR A SPECIFIC EVENT (For the Staff Dashboard)
     public function getEventAttendees($eventId)
     {
-        // This fetches the attendance records AND attaches the Member's info to it automatically
-        $attendances = EventAttendance::with('user')
-                                     ->where('event_id', $eventId)
-                                     ->orderBy('time_in', 'desc')
-                                     ->get();
-
-        return response()->json($attendances);
+        return response()->json(
+            EventAttendance::with('user')
+                ->where('event_id', $eventId)
+                ->orderBy('time_in', 'desc')
+                ->get()
+        );
     }
 
-    // GET ATTENDANCE FOR A SPECIFIC MEMBER (For the Member Dashboard)
+    // =========================
+    // MEMBER HISTORY
+    // =========================
+
     public function getMemberHistory($userId)
-{
-    $attendances = EventAttendance::with('event')  
-        ->where('user_id', $userId)
-        ->orderBy('time_in', 'desc')
-        ->get();
-
-    return response()->json($attendances);
-}
-
-    private function determineStatus($timeIn, $timeOut)
-{
-    if ($timeIn && $timeOut) {
-        return 'Complete';
+    {
+        return response()->json(
+            EventAttendance::with('event')
+                ->where('user_id', $userId)
+                ->orderBy('time_in', 'desc')
+                ->get()
+        );
     }
-
-    return 'Incomplete';
-}
 }

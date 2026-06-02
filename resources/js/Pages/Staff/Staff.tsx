@@ -9,6 +9,7 @@ import QRCodesView from "./Views/QRCodesView";
 import { EventsView } from "./Views/EventsView";
 import NotificationsView from "./Views/NotificationsView";
 import ActivityLogsView from "./Views/ActivityLogsView.tsx"; // ✅ Replaced SettingsView
+import { FileText } from "lucide-react";
 
 // --- TYPES & MOCK DATA ---
 export type Resident = { id: string; name: string; age: number; address: string; contact: string; };
@@ -42,7 +43,7 @@ const NAV = [
   { key: "memberships", label: "Memberships", icon: Award },
   { key: "events", label: "Events & Attendance", icon: CalendarDays },
   { key: "notify", label: "Notifications", icon: Bell },
-  { key: "activitylogs", label: "Activity Logs", icon: Settings },
+  { key: "activitylogs", label: "Activity Logs", icon: FileText },
 ];
 
 export const highlightText = (text: string, query: string) => {
