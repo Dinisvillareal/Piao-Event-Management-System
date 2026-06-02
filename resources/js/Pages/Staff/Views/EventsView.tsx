@@ -12,6 +12,7 @@ interface MyEvent {
   endTime: string;
   location: string;
   description: string;
+  notificationMessage?: string; // ✅ New field
   membershipIds?: (string | number)[];
   membershipNames?: string[];
 }
@@ -42,6 +43,8 @@ export function EventsView({
   const [eventToDelete, setEventToDelete] = useState<number | string | null>(null);
   const [editingEvent, setEditingEvent] = useState<MyEvent | null>(null);
   const [formOpen, setFormOpen] = useState(true); // toggle for the create/edit panel
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
 
   const [localEvents, setLocalEvents] = useState<MyEvent[]>(allEvents);
 
@@ -56,13 +59,14 @@ export function EventsView({
     return token ? decodeURIComponent(token.split("=")[1]) : "";
   };
 
-  // Simplified form: title, date, time (start), location, description, targetMembership
+  // ✅ Added notificationMessage to form state
   const [newEvent, setNewEvent] = useState({
     title: "",
     date: "",       // single date
     time: "",       // single start time
     location: "",
     description: "",
+    notificationMessage: "", // ✅ New field
     targetMembership: "all", // "all" or a membership id string
   });
 
@@ -177,6 +181,7 @@ export function EventsView({
     const payload = {
       name: newEvent.title,
       description: newEvent.description,
+      notification_message: newEvent.notificationMessage, // ✅ Send to backend
       location: newEvent.location,
       event_start: `${newEvent.date} ${newEvent.time}:00`,
       event_end: `${newEvent.date} ${newEvent.time}:00`,
@@ -225,6 +230,7 @@ export function EventsView({
         endTime: newEvent.time,
         location: savedEvent.location,
         description: savedEvent.description,
+        notificationMessage: savedEvent.notification_message ?? newEvent.notificationMessage, // ✅ Save it
         membershipIds: savedMembershipIds,
         membershipNames: membershipNames.length > 0 ? [membershipNames[0]] : [],
       };
@@ -235,11 +241,18 @@ export function EventsView({
       } else {
         setLocalEvents((prev) => [formattedEvent, ...prev]);
       }
+
+      // ✅ Optional: Pass up to parent if needed
+      if (onCreateEvent) onCreateEvent(formattedEvent);
+
     } catch (error) {
       console.error("Failed to save event:", error);
       alert("Failed to save event");
     } finally {
-      setNewEvent({ title: "", date: "", time: "", location: "", description: "", targetMembership: "all" });
+      setNewEvent({
+        title: "", date: "", time: "", location: "", description: "",
+        notificationMessage: "", targetMembership: "all"
+      });
     }
   };
 
@@ -256,13 +269,17 @@ export function EventsView({
       time: event.startTime,
       location: event.location,
       description: event.description,
+      notificationMessage: event.notificationMessage || "", // ✅ Load existing value
       targetMembership: currentMembershipId,
     });
   };
 
   const cancelEdit = () => {
     setEditingEvent(null);
-    setNewEvent({ title: "", date: "", time: "", location: "", description: "", targetMembership: "all" });
+    setNewEvent({
+      title: "", date: "", time: "", location: "", description: "",
+      notificationMessage: "", targetMembership: "all"
+    });
   };
 
   const confirmDelete = () => {
@@ -357,7 +374,7 @@ export function EventsView({
         {/* TOGGLE BUTTON — same style as sidebar chevron pill */}
         <button
           onClick={() => setFormOpen(!formOpen)}
-          className={`absolute top-2 z-50 bg-[#2d7474] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#216363] ${
+          className={`absolute top-2 z-50 bg-[#3f8383] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#216363] ${
             formOpen ? "left-[calc(50%-18px)]" : "left-0"
           }`}
           title={formOpen ? "Hide form" : "Show form"}
@@ -442,6 +459,21 @@ export function EventsView({
                 />
               </div>
 
+              {/* ✅ NEW: Notification Message Field */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
+                <textarea
+                  value={newEvent.notificationMessage}
+                  onChange={(e) => setNewEvent({ ...newEvent, notificationMessage: e.target.value })}
+                  placeholder="This message will be sent as a notification — it will NOT appear on the event card"
+                  className="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                  rows={2}
+                />
+                <p className="text-xs text-gray-400 mt-1 pl-2">
+                  Only shown in notifications, not in event details or cards.
+                </p>
+              </div>
+
               {/* Target Members — single dropdown */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Target Members *</label>
@@ -514,7 +546,7 @@ export function EventsView({
                       return (
                         <div
                           key={e.id}
-                          className="relative rounded-2xl border-l-4 border-orange-400 bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
+                          className="relative rounded-2xl border-l-4 border-[#f59e0b] bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
                         >
                           <div className="absolute top-4 right-4 flex items-center gap-2">
                             {/* STATUS BADGE — yellow for Upcoming, teal for Past/Ended */}
@@ -661,6 +693,16 @@ export function EventsView({
                 </p>
               </div>
 
+              {/* ✅ Only show notification message here, not on cards */}
+              {viewEv.notificationMessage && (
+                <div>
+                  <h4 className="font-semibold text-gray-700 mb-1">Notification Preview</h4>
+                  <p className="text-sm text-teal-700 bg-teal-50 p-3 rounded-xl border border-teal-100">
+                    {viewEv.notificationMessage}
+                  </p>
+                </div>
+              )}
+
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-teal-50 rounded-xl p-3">
                   <p className="text-xs text-teal-600 font-medium">Target Members</p>
@@ -686,7 +728,7 @@ export function EventsView({
 
               <button
                 onClick={() => setShowAttendance(viewEv)}
-                className="w-full bg-[#005f63] hover:bg-[#004a4d] text-white py-2.5 rounded-full font-medium transition"
+                className="w-full bg-[#005f63) hover:bg-[#004a4d] text-white py-2.5 rounded-full font-medium transition"
               >
                 View Attendance List
               </button>

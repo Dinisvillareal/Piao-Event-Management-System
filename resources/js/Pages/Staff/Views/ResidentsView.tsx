@@ -780,7 +780,7 @@ export default function ResidentsView() {
         </div>
 
         <div className="relative rounded-[20px] bg-white shadow-lg overflow-hidden">
-          <div className="h-1 w-full bg-gradient-to-r from-[#3d9085] via-[#FFC107] to-[#00897B] absolute top-0 left-0 right-0" />
+          <div className="h-1 w-full bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-1 absolute top-0 left-0 right-0" />
 
           {/* FIXED HEADER + SCROLLABLE BODY */}
           <div className="p-5 pt-6 max-h-[65vh] overflow-auto">
