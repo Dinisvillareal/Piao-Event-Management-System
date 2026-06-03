@@ -11,10 +11,6 @@ use App\Models\ActivityLog;
 
 class EventAttendanceController extends Controller
 {
-    // =========================
-    // HELPERS
-    // =========================
-
     private function createLog($action, $module, $description)
     {
         ActivityLog::create([
@@ -72,7 +68,8 @@ class EventAttendanceController extends Controller
                 }
 
                 $attendance->time_in = now();
-                $attendance->status = $this->determineStatus($attendance->time_in, $attendance->time_out);
+                // ✅ FIX: Change status from 'missed' to 'Incomplete'
+                $attendance->status = 'Incomplete';
                 $attendance->save();
 
                 // ✅ Log with Name, Event Title, and 'QR' module
@@ -86,6 +83,7 @@ class EventAttendanceController extends Controller
                 return response()->json(['message' => 'Time-in successful!', 'attendance' => $attendance]);
             }
 
+            // Fallback: Create record if doesn't exist (should not happen after fix)
             $attendance = EventAttendance::create([
                 'event_id' => $request->event_id,
                 'user_id' => $request->user_id,
@@ -109,10 +107,7 @@ class EventAttendanceController extends Controller
         }
     }
 
-    // =========================
-    // TIME OUT
-    // =========================
-
+    // ✅ FIXED: TIME OUT - sets status to 'Complete' when both times exist
     public function timeOut(Request $request)
     {
         $request->validate([
@@ -156,7 +151,8 @@ class EventAttendanceController extends Controller
             }
 
             $attendance->time_out = now();
-            $attendance->status = $this->determineStatus($attendance->time_in, $attendance->time_out);
+            // ✅ FIX: Set to Complete only if both time_in and time_out exist
+            $attendance->status = ($attendance->time_in && $attendance->time_out) ? 'Complete' : 'Incomplete';
             $attendance->save();
 
             // ✅ Log with Name, Event Title, and 'QR' module
@@ -187,10 +183,6 @@ class EventAttendanceController extends Controller
                 ->get()
         );
     }
-
-    // =========================
-    // MEMBER HISTORY
-    // =========================
 
     public function getMemberHistory($userId)
     {

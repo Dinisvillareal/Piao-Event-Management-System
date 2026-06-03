@@ -4,6 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 interface DashboardViewProps {
   setActive: (route: string) => void;
   membershipsCount: number;
+  eventsCount: number;  // ✅ ADD THIS - now required
   notifications?: any[];
   upcomingEvents?: any[];
   pastEventsCount?: number;
@@ -11,6 +12,7 @@ interface DashboardViewProps {
 
 export default function DashboardView({
   membershipsCount,
+  eventsCount,           // ✅ ADD THIS
   setActive,
   upcomingEvents = [],
   pastEventsCount = 0
@@ -18,7 +20,7 @@ export default function DashboardView({
   const [stats, setStats] = useState({
     residents: 0,
     memberships: 0,
-    events: 0
+    events: eventsCount  // ✅ USE THE PASSED EVENTS COUNT
   });
   const [memberName, setMemberName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -33,7 +35,6 @@ export default function DashboardView({
     return token ? decodeURIComponent(token) : '';
   };
 
-  // ✅ Format: "June 03, 2026 • 01:20:32 PM"
   const formatActivityDate = (dateString: string) => {
     const date = new Date(dateString);
     const options: Intl.DateTimeFormatOptions = {
@@ -88,7 +89,6 @@ export default function DashboardView({
     }
   };
 
-  // ✅ Fetch today's activity logs from the API
   const fetchRecentActivities = async () => {
     try {
       const response = await fetch('/activity-logs/today', {
@@ -149,7 +149,7 @@ export default function DashboardView({
       setStats({
         residents: totalResidents,
         memberships: totalMemberships,
-        events: (upcomingEvents?.length || 0) + (pastEventsCount || 0)
+        events: eventsCount  // ✅ USE THE PASSED EVENTS COUNT (from database)
       });
 
     } catch (error) {
@@ -164,7 +164,7 @@ export default function DashboardView({
         await Promise.all([
           fetchCurrentUser(),
           fetchAllStats(),
-          fetchRecentActivities(), // ✅ added here
+          fetchRecentActivities(),
         ]);
       } catch (error) {
         console.error('Error loading dashboard:', error);
@@ -174,21 +174,32 @@ export default function DashboardView({
     };
 
     loadDashboard();
-  }, []);
+  }, [eventsCount]); // ✅ Re-run when eventsCount changes (e.g., after event deletion)
 
   const downloadQRCode = () => {
-    const canvas = document.getElementById('system-qr-code') as HTMLCanvasElement;
-    if (canvas) {
-      const pngUrl = canvas
-        .toDataURL('image/png')
-        .replace('image/png', 'image/octet-stream');
+    const svgElement = document.getElementById('system-qr-code');
+    if (!svgElement) return;
+    
+    // Get the SVG element and its parent
+    const svgData = new XMLSerializer().serializeToString(svgElement);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx?.drawImage(img, 0, 0);
+      const pngUrl = canvas.toDataURL('image/png');
       const downloadLink = document.createElement('a');
       downloadLink.href = pngUrl;
       downloadLink.download = 'barangay-system-qr.png';
       document.body.appendChild(downloadLink);
       downloadLink.click();
       document.body.removeChild(downloadLink);
-    }
+    };
+    
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
   };
 
   const statsCards = [
@@ -211,7 +222,7 @@ export default function DashboardView({
       label: "EVENTS",
       gradient: "from-orange-400 to-yellow-300",
       route: "events",
-      description: "Total events"
+      description: "Total events (upcoming + past)"
     }
   ];
 
@@ -289,55 +300,53 @@ export default function DashboardView({
         </div>
 
         <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
-            <h2 className="text-2xl font-black text-[#005f63]">
-                Recent Activity
-            </h2>
+          <h2 className="text-2xl font-black text-[#005f63]">
+            Recent Activity
+          </h2>
 
-            <p className="text-[15px] mt-1 text-gray-600">
-                Latest staff actions in the system.
-            </p>
+          <p className="text-[15px] mt-1 text-gray-600">
+            Latest staff actions in the system.
+          </p>
 
-            <div className="mt-5 max-h-[260px] overflow-y-auto pr-2">
-                {recentActivities.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                    No recent activity to display
+          <div className="mt-5 max-h-[260px] overflow-y-auto pr-2">
+            {recentActivities.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                No recent activity to display
+              </div>
+            ) : (
+              recentActivities.map((act, i) => (
+                <div
+                  key={i}
+                  className={`relative pl-8 ${
+                    i !== recentActivities.length - 1 ? "pb-6" : ""
+                  }`}
+                >
+                  {i !== recentActivities.length - 1 && (
+                    <span className="absolute left-[8px] top-2 h-full w-[2px] bg-teal-300"></span>
+                  )}
+
+                  <span className="absolute left-[4px] top-2 w-[10px] h-[10px] rounded-full bg-orange-400 z-10"></span>
+
+                  <p className="text-[15px] font-semibold text-[#005f63] leading-tight">
+                    {act.action}
+                  </p>
+
+                  <p className="text-[11px] text-gray-600">
+                    {act.module} — {act.description}
+                  </p>
+
+                  <p className="text-[11px] text-gray-500">
+                    Staff: {act.user_code}
+                  </p>
+
+                  <p className="text-[11px] text-gray-500">
+                    {formatActivityDate(act.created_at)}
+                  </p>
                 </div>
-                ) : (
-                    recentActivities.map((act, i) => (
-                        <div
-                            key={i}
-                            className={`relative pl-8 ${
-                                i !== recentActivities.length - 1 ? "pb-6" : ""
-                            }`}
-                            >
-                            {/* Vertical line */}
-                            {i !== recentActivities.length - 1 && (
-                                <span className="absolute left-[8px] top-2 h-full w-[2px] bg-teal-300"></span>
-                            )}
-
-                            {/* Dot */}
-                            <span className="absolute left-[4px] top-2 w-[10px] h-[10px] rounded-full bg-orange-400 z-10"></span>
-
-                            <p className="text-[15px] font-semibold text-[#005f63] leading-tight">
-                                {act.action}
-                            </p>
-
-                            <p className="text-[11px] text-gray-600">
-                                {act.module} — {act.description}
-                            </p>
-
-                            <p className="text-[11px] text-gray-500">
-                                Staff: {act.user_code}
-                            </p>
-
-                            <p className="text-[11px] text-gray-500">
-                                {formatActivityDate(act.created_at)}
-                            </p>
-                        </div>
-                    ))
-                )}
-            </div>
+              ))
+            )}
           </div>
+        </div>
       </div>
     </div>
   );
