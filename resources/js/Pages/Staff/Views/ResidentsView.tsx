@@ -32,6 +32,8 @@ type AddForm = {
   role: string;
   hasMemberships: boolean;
   selectedMemberships: number[];
+  needAccount: boolean;
+  tempPassword: string;
 };
 
 type EditForm = {
@@ -47,6 +49,9 @@ type EditForm = {
   hasMemberships: boolean;
   selectedMemberships: number[];
   deleted_at: string | null;
+  // for no-account → need account flow
+  needAccount: boolean;
+  tempPassword: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -117,6 +122,8 @@ const emptyAdd = (): AddForm => ({
   role: "",
   hasMemberships: false,
   selectedMemberships: [],
+  needAccount: false,
+  tempPassword: "",
 });
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -127,9 +134,8 @@ export default function ResidentsView() {
   const [apiError, setApiError] = useState<string | null>(null);
 
   const [residentSearch, setResidentSearch] = useState("");
-  // Split into two separate filters
-  const [statusFilter, setStatusFilter] = useState("all"); // all | residents | staff | trashed
-  const [accountFilter, setAccountFilter] = useState("all"); // all | with-account | no-account
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [accountFilter, setAccountFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -301,6 +307,8 @@ export default function ResidentsView() {
     else if (!raw.startsWith("09")) err.contactNumber = "Contact number must start with 09";
     else if (raw.length !== 11) err.contactNumber = "Must be exactly 11 digits";
     if (!addPhotoFile) err.photo = "ID photo is required";
+    if (newResident.needAccount && !newResident.tempPassword.trim())
+      err.tempPassword = "Temporary password is required when enabling an account";
     setFormErrors(err);
     return Object.keys(err).length === 0;
   };
@@ -315,12 +323,9 @@ export default function ResidentsView() {
     if (!raw) err.contactNumber = "Contact number is required";
     else if (!raw.startsWith("09")) err.contactNumber = "Contact number must start with 09";
     else if (raw.length !== 11) err.contactNumber = "Must be exactly 11 digits";
-    if (
-      editingResident.hasAccount &&
-      !editingResident.passwordChangedByUser &&
-      !editingResident.password.trim()
-    )
-      err.password = "Password is required";
+    // If currently no account but staff checks "need account", require temp password
+    if (!editingResident.hasAccount && editingResident.needAccount && !editingResident.tempPassword.trim())
+      err.tempPassword = "Temporary password is required when enabling an account";
     if (!editPhotoFile && !editPhotoPreview) err.photo = "ID photo is required";
     setFormErrors(err);
     return Object.keys(err).length === 0;
@@ -338,7 +343,10 @@ export default function ResidentsView() {
     fd.append("last_name", newResident.lastName);
     fd.append("contact_number", newResident.contactNumber.replace(/\D/g, ""));
     fd.append("role", newResident.role);
-    fd.append("has_account", "0");
+    fd.append("has_account", newResident.needAccount ? "1" : "0");
+    if (newResident.needAccount && newResident.tempPassword.trim()) {
+      fd.append("password", newResident.tempPassword);
+    }
     if (addPhotoFile) fd.append("validation_id", addPhotoFile);
     if (newResident.hasMemberships && newResident.selectedMemberships.length > 0)
       newResident.selectedMemberships.forEach((id) => fd.append("membership_ids[]", String(id)));
@@ -406,6 +414,8 @@ export default function ResidentsView() {
       hasMemberships: memIds.length > 0,
       selectedMemberships: memIds,
       deleted_at: r.deleted_at,
+      needAccount: false,
+      tempPassword: "",
     };
 
     setEditingResident(state);
@@ -428,14 +438,19 @@ export default function ResidentsView() {
     fd.append("last_name", editingResident.lastName);
     fd.append("contact_number", editingResident.contactNumber.replace(/\D/g, ""));
     fd.append("role", editingResident.role);
-    fd.append("has_account", editingResident.hasAccount ? "1" : "0");
 
-    if (
-      editingResident.hasAccount &&
-      !editingResident.passwordChangedByUser &&
-      editingResident.password.trim()
-    ) {
-      fd.append("password", editingResident.password);
+    if (editingResident.hasAccount) {
+      // Already has account — keep has_account = 1, send new password if provided
+      fd.append("has_account", "1");
+      if (editingResident.password.trim()) {
+        fd.append("password", editingResident.password);
+      }
+    } else if (editingResident.needAccount) {
+      // No account yet, but staff is enabling one now
+      fd.append("has_account", "1");
+      fd.append("password", editingResident.tempPassword);
+    } else {
+      fd.append("has_account", "0");
     }
 
     if (editPhotoFile) fd.append("validation_id", editPhotoFile);
@@ -569,17 +584,14 @@ export default function ResidentsView() {
   const filteredResidents = useMemo(() => {
     let r = residentsData;
 
-    // Status / role / archive filter
     if (statusFilter === "residents") r = r.filter((x) => x.role === "Resident" && x.deleted_at === null);
     else if (statusFilter === "staff") r = r.filter((x) => x.role === "Staff" && x.deleted_at === null);
     else if (statusFilter === "trashed") r = r.filter((x) => x.deleted_at !== null);
-    else r = r.filter((x) => x.deleted_at === null); // "all" shows only active records
+    else r = r.filter((x) => x.deleted_at === null);
 
-    // Account filter
     if (accountFilter === "with-account") r = r.filter((x) => x.hasAccount);
     else if (accountFilter === "no-account") r = r.filter((x) => !x.hasAccount);
 
-    // Search
     if (residentSearch.trim()) {
       const q = residentSearch.toLowerCase();
       r = r.filter((x) =>
@@ -689,7 +701,6 @@ export default function ResidentsView() {
           <p className="text-sm text-[#667777] mt-1">
             Manage all registered residents, staff, and their account status.
           </p>
-          {/* ─── Two filter dropdowns + search ─── */}
           <div className="mt-4 flex items-center gap-4 w-[1580px]">
             <div className="flex-1">
               <SearchBar
@@ -698,7 +709,6 @@ export default function ResidentsView() {
                 placeholder="Search by ID, name, contact, role or membership..."
               />
             </div>
-            {/* Filter 1: Status / Role / Archive */}
             <div className="relative">
               <select
                 value={statusFilter}
@@ -712,7 +722,6 @@ export default function ResidentsView() {
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
-            {/* Filter 2: Account Status */}
             <div className="relative">
               <select
                 value={accountFilter}
@@ -734,7 +743,6 @@ export default function ResidentsView() {
 
       {/* Table */}
       <div className="pl-1">
-        {/* Pagination + Add New Record Button */}
         <div className="sticky top-[140px] z-10 flex items-center justify-between mb-3 bg-[#fcfcf9] py-2">
           {totalPages > 1 && (
             <div className="flex items-center justify-start gap-2">
@@ -782,7 +790,6 @@ export default function ResidentsView() {
         <div className="relative rounded-[20px] bg-white shadow-lg overflow-hidden">
           <div className="h-1 w-full bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-1 absolute top-0 left-0 right-0" />
 
-          {/* FIXED HEADER + SCROLLABLE BODY */}
           <div className="p-5 pt-6 max-h-[65vh] overflow-auto">
             <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: "1310px" }}>
               <colgroup>
@@ -921,7 +928,6 @@ export default function ResidentsView() {
                                 </button>
                               </>
                             ) : (
-                              /* ─── Restore: refresh/cycle icon in teal ─── */
                               <button
                                 onClick={() => setRestoreRecord(r.real_id)}
                                 className="p-2 rounded-full text-teal-600 hover:bg-teal-50 hover:text-teal-700 transition-colors duration-200"
@@ -937,7 +943,6 @@ export default function ResidentsView() {
                                   strokeLinejoin="round"
                                   viewBox="0 0 24 24"
                                 >
-                                  {/* Refresh / cycle icon */}
                                   <polyline points="23 4 23 10 17 10" />
                                   <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                                 </svg>
@@ -955,7 +960,7 @@ export default function ResidentsView() {
         </div>
       </div>
 
-      {/* View Modal */}
+      {/* ─── View Modal ───────────────────────────────────────────────────────── */}
       {viewRecord &&
         (() => {
           const r = residentsData.find((x) => x.id === viewRecord)!;
@@ -983,12 +988,6 @@ export default function ResidentsView() {
                         {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}
                       </p>
                       <p><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
-                      {r.hasAccount && (
-                        <p>
-                          <strong className="text-[#005f63]">Password:</strong>{" "}
-                          {r.passwordChangedByUser ? "•••••••• (changed by user — hidden)" : r.password || "•••••••• (saved)"}
-                        </p>
-                      )}
                     </div>
                     <div className="w-[160px]">
                       <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ minHeight: 180 }}>
@@ -1022,7 +1021,7 @@ export default function ResidentsView() {
           );
         })()}
 
-      {/* Add Modal */}
+      {/* ─── Add Modal ────────────────────────────────────────────────────────── */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1038,6 +1037,7 @@ export default function ResidentsView() {
             )}
 
             <form onSubmit={handleAddResident} className="space-y-4">
+              {/* Name fields */}
               <div className="grid md:grid-cols-3 gap-4">
                 {(["firstName", "middleName", "lastName"] as const).map((field) => (
                   <div key={field}>
@@ -1060,6 +1060,7 @@ export default function ResidentsView() {
                 ))}
               </div>
 
+              {/* Role */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                 <select
@@ -1079,6 +1080,7 @@ export default function ResidentsView() {
                 )}
               </div>
 
+              {/* Contact */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
                 <input
@@ -1101,7 +1103,80 @@ export default function ResidentsView() {
               </div>
 
               <PhotoField isEdit={false} />
-              <MembershipCheckboxes isEdit={false} />
+
+              {/* ─── Memberships + Need Account (same border section) ─── */}
+              <div className="border-t border-b py-3 space-y-3">
+                {/* Has Memberships */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newResident.hasMemberships}
+                    onChange={(e) => setNewResident((p) => ({ ...p, hasMemberships: e.target.checked }))}
+                    className="w-4 h-4 text-[#005f63]"
+                  />
+                  <span className="font-medium text-gray-700">Has Memberships?</span>
+                </label>
+
+                {newResident.hasMemberships &&
+                  (availableMemberships.length === 0 ? (
+                    <p className="pl-6 text-xs text-gray-400 italic">No memberships available.</p>
+                  ) : (
+                    <div className="pl-6 grid grid-cols-2 gap-2">
+                      {availableMemberships.map((mem) => (
+                        <label key={mem.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            value={mem.id}
+                            checked={newResident.selectedMemberships.includes(mem.id)}
+                            onChange={() => toggleMembership(mem.id, false)}
+                            className="w-4 h-4 text-[#005f63]"
+                          />
+                          <span>{mem.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+
+                {/* Need Account */}
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newResident.needAccount}
+                    onChange={(e) =>
+                      setNewResident((p) => ({
+                        ...p,
+                        needAccount: e.target.checked,
+                        tempPassword: e.target.checked ? p.tempPassword : "",
+                      }))
+                    }
+                    className="w-4 h-4 text-[#005f63]"
+                  />
+                  <span className="font-medium text-gray-700">Need Account?</span>
+                </label>
+
+                {newResident.needAccount && (
+                  <div className="pl-6 space-y-1">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Set a Temporary Password <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="password"
+                      value={newResident.tempPassword}
+                      onChange={(e) => setNewResident((p) => ({ ...p, tempPassword: e.target.value }))}
+                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                        formErrors.tempPassword ? "border-red-500" : "border-gray-200"
+                      }`}
+                      placeholder="Enter a temporary password"
+                    />
+                    {formErrors.tempPassword && (
+                      <p className="text-red-500 text-xs mt-1">{formErrors.tempPassword}</p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-1">
+                      The resident can log in with this password and change it later.
+                    </p>
+                  </div>
+                )}
+              </div>
 
               <div className="flex justify-between gap-3 pt-2">
                 <button
@@ -1126,7 +1201,7 @@ export default function ResidentsView() {
         </div>
       )}
 
-      {/* Edit Modal */}
+      {/* ─── Edit Modal ───────────────────────────────────────────────────────── */}
       {editRecord && editingResident && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -1154,6 +1229,7 @@ export default function ResidentsView() {
                 opacity: editingResident.deleted_at !== null ? 0.6 : 1,
               }}
             >
+              {/* Name fields */}
               <div className="grid md:grid-cols-3 gap-4">
                 {(["firstName", "middleName", "lastName"] as const).map((field) => (
                   <div key={field}>
@@ -1178,6 +1254,7 @@ export default function ResidentsView() {
                 ))}
               </div>
 
+              {/* Role */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                 <select
@@ -1196,6 +1273,7 @@ export default function ResidentsView() {
                 )}
               </div>
 
+              {/* Contact */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
                 <input
@@ -1220,146 +1298,138 @@ export default function ResidentsView() {
               </div>
 
               <PhotoField isEdit={true} />
-              <MembershipCheckboxes isEdit={true} />
 
-              {/* ─── Has Account section ─── */}
-              <div className="space-y-3">
-                <label className="flex items-center gap-2 cursor-pointer mb-2">
+              {/* ─── Memberships + Account section ─── */}
+              <div className="border-t border-b py-3 space-y-3">
+                {/* Has Memberships */}
+                <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={editingResident.hasAccount}
+                    checked={editingResident.hasMemberships}
                     onChange={(e) =>
-                      setEditingResident((p) => p ? { ...p, hasAccount: e.target.checked } : p)
+                      setEditingResident((p) => (p ? { ...p, hasMemberships: e.target.checked } : p))
                     }
                     className="w-4 h-4 text-[#005f63]"
-                    disabled={editingResident.passwordChangedByUser}
                   />
-                  <span className="font-medium text-gray-700">
-                    {editingResident.hasAccount ? "Has Account?" : "Need Account?"}
-                  </span>
-                  {editingResident.passwordChangedByUser && (
-                    <span className="text-yellow-600 text-xs ml-2 font-medium">
-                      (🔒 Locked — changed by user)
-                    </span>
-                  )}
+                  <span className="font-medium text-gray-700">Has Memberships?</span>
                 </label>
 
-                {/* ── Case 1: No account yet — show temporary password field ── */}
-                {!editingResident.hasAccount && (
-                  <div className="pl-6 space-y-3">
-                    <p className="text-xs text-gray-500 italic">
-                      Enabling an account will set a temporary password for this resident. Once enabled, they can log in and change it.
-                    </p>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Temporary Password <span className="text-gray-400 text-xs">(set when enabling account)</span>
-                      </label>
+                {editingResident.hasMemberships &&
+                  (availableMemberships.length === 0 ? (
+                    <p className="pl-6 text-xs text-gray-400 italic">No memberships available.</p>
+                  ) : (
+                    <div className="pl-6 grid grid-cols-2 gap-2">
+                      {availableMemberships.map((mem) => (
+                        <label key={mem.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input
+                            type="checkbox"
+                            value={mem.id}
+                            checked={editingResident.selectedMemberships.includes(mem.id)}
+                            onChange={() => toggleMembership(mem.id, true)}
+                            className="w-4 h-4 text-[#005f63]"
+                          />
+                          <span>{mem.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ))}
+
+                {/* ── Account section: branches on hasAccount ── */}
+                {editingResident.hasAccount ? (
+                  /* ── CASE: Already has an account ── */
+                  <div className="space-y-3">
+                    {/* Disabled "Has Account" checkbox */}
+                    <label className="flex items-center gap-2 cursor-not-allowed opacity-70">
                       <input
-                        type="password"
-                        value={editingResident.password}
-                        onChange={(e) =>
-                          setEditingResident((p) => p ? { ...p, password: e.target.value } : p)
-                        }
-                        className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                          formErrors.password ? "border-red-500" : "border-gray-200"
-                        }`}
-                        placeholder="Enter a temporary password"
+                        type="checkbox"
+                        checked={true}
+                        disabled
+                        className="w-4 h-4 text-[#005f63]"
                       />
-                      {formErrors.password && (
-                        <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>
-                      )}
+                      <span className="font-medium text-gray-700">Has Account</span>
+                    </label>
+
+                    <div className="pl-6 space-y-3">
+                      {/* Username — always disabled */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                        <input
+                          type="text"
+                          value={editingResident.id ?? `PR-${String(editingResident.real_id).padStart(4, "0")}`}
+                          disabled
+                          className="w-full rounded-full border px-4 py-2.5 bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed"
+                        />
+                      </div>
+
+                      {/* Password — editable (for when resident forgets password) */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Password{" "}
+                          <span className="text-gray-400 text-xs font-normal">
+                            (enter a new password to reset, or leave blank to keep current)
+                          </span>
+                        </label>
+                        <input
+                          type="password"
+                          value={editingResident.password}
+                          onChange={(e) =>
+                            setEditingResident((p) => p ? { ...p, password: e.target.value } : p)
+                          }
+                          className="w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 border-gray-200"
+                          placeholder="Enter new password to reset, or leave blank"
+                        />
+                        {formErrors.password && (
+                          <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                )}
-
-                {/* ── Case 2: Has account ── */}
-                {editingResident.hasAccount && (
-                  <div className="pl-6 space-y-3">
-                    {/* Username — always shown, always disabled */}
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                ) : (
+                  /* ── CASE: No account yet — same as Add form ── */
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
                       <input
-                        type="text"
-                        value={`PR-${String(editingResident.real_id).padStart(4, "0")}`}
-                        disabled
-                        className="w-full rounded-full border px-4 py-2.5 bg-gray-100 text-gray-600 border-gray-200"
+                        type="checkbox"
+                        checked={editingResident.needAccount}
+                        onChange={(e) =>
+                          setEditingResident((p) =>
+                            p
+                              ? {
+                                  ...p,
+                                  needAccount: e.target.checked,
+                                  tempPassword: e.target.checked ? p.tempPassword : "",
+                                }
+                              : p
+                          )
+                        }
+                        className="w-4 h-4 text-[#005f63]"
                       />
-                    </div>
+                      <span className="font-medium text-gray-700">Need Account?</span>
+                    </label>
 
-                    {/* ── Sub-case A: User changed their own password — both fields locked ── */}
-                    {editingResident.passwordChangedByUser ? (
-                      <>
-                        {/* Admin editable "new" password — shows as locked */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Password
-                            <span className="ml-2 text-yellow-600 text-xs font-medium">(🔒 Cannot edit — changed by user)</span>
-                          </label>
-                          <input
-                            type="password"
-                            value=""
-                            disabled
-                            className="w-full rounded-full border px-4 py-2.5 bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                            placeholder="Enter new or keep current password"
-                          />
-                        </div>
-                        {/* Hidden password display — user-set, locked */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Current Password (set by resident)
-                          </label>
-                          <input
-                            type="password"
-                            value="placeholder"
-                            disabled
-                            className="w-full rounded-full border px-4 py-2.5 bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed"
-                            placeholder="•••••••• (hidden — resident changed this)"
-                          />
-                          <p className="text-xs text-amber-600 mt-1">
-                            🔒 This password was changed by the resident and cannot be viewed or edited here.
-                          </p>
-                        </div>
-                      </>
-                    ) : (
-                      /* ── Sub-case B: Has account, resident hasn't changed password yet — show temporary password (disabled) ── */
-                      <>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Password <span className="text-red-500">*</span>
-                          </label>
-                          <input
-                            type="password"
-                            required
-                            value={editingResident.password}
-                            onChange={(e) =>
-                              setEditingResident((p) => p ? { ...p, password: e.target.value } : p)
-                            }
-                            className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                              formErrors.password ? "border-red-500" : "border-gray-200"
-                            }`}
-                            placeholder="Enter new or keep current password"
-                          />
-                          {formErrors.password && (
-                            <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>
-                          )}
-                        </div>
-                        {/* Temporary password display — read-only */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Temporary Password (not yet changed by resident)
-                          </label>
-                          <input
-                            type="text"
-                            value={editingResident.password || ""}
-                            disabled
-                            className="w-full rounded-full border px-4 py-2.5 bg-gray-50 text-gray-500 border-gray-200 cursor-not-allowed"
-                            placeholder="No temporary password set"
-                          />
-                          <p className="text-xs text-gray-400 mt-1">
-                            This is the admin-set temporary password. It is visible until the resident changes it on their own page.
-                          </p>
-                        </div>
-                      </>
+                    {editingResident.needAccount && (
+                      <div className="pl-6 space-y-1">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Set a Temporary Password <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="password"
+                          value={editingResident.tempPassword}
+                          onChange={(e) =>
+                            setEditingResident((p) => p ? { ...p, tempPassword: e.target.value } : p)
+                          }
+                          className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
+                            formErrors.tempPassword ? "border-red-500" : "border-gray-200"
+                          }`}
+                          placeholder="Enter a temporary password"
+                        />
+                        {formErrors.tempPassword && (
+                          <p className="text-red-500 text-xs mt-1">{formErrors.tempPassword}</p>
+                        )}
+                        <p className="text-xs text-gray-400 mt-1">
+                          The resident can log in with this password and change it later.
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}
@@ -1390,7 +1460,7 @@ export default function ResidentsView() {
         </div>
       )}
 
-      {/* Delete Confirm Modal */}
+      {/* ─── Delete Confirm Modal ─────────────────────────────────────────────── */}
       {deleteRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
@@ -1416,7 +1486,7 @@ export default function ResidentsView() {
         </div>
       )}
 
-      {/* Restore Confirm Modal — teal themed */}
+      {/* ─── Restore Confirm Modal ────────────────────────────────────────────── */}
       {restoreRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
@@ -1442,7 +1512,7 @@ export default function ResidentsView() {
         </div>
       )}
 
-      {/* Cancel Unsaved Changes Confirm Modal */}
+      {/* ─── Cancel Unsaved Changes Confirm Modal ─────────────────────────────── */}
       {showCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
