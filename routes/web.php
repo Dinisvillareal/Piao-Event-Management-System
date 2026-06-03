@@ -12,6 +12,7 @@ use App\Http\Controllers\EventController;
 use App\Http\Controllers\MembershipResidentController;
 use App\Http\Controllers\EventAttendanceController;
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -97,7 +98,7 @@ Route::middleware('auth')->group(function () {
     | EVENTS
     |--------------------------------------------------------------------------
     */
-    Route::get('/events', [EventController::class, 'index']);
+    //Route::get('/events', [EventController::class, 'index']);
     Route::get('/events-data', [EventController::class, 'data']);
     Route::post('/events', [EventController::class, 'store']);
     Route::put('/events/{id}', [EventController::class, 'update']);
@@ -130,6 +131,15 @@ Route::middleware('auth')->group(function () {
     */
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
     Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show']);
+
+    /* --------------------------------------------------------------------------
+    | NOTIFICATIONS
+    |-------------------------------------------------------------------------- */
+   Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/staff', [NotificationController::class, 'staffNotifications']);
+    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 });
 
 /*

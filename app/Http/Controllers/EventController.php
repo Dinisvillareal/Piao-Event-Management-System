@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Event;
+use App\Models\User;
+use App\Models\Notification;
+use App\Models\ActivityLog;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -20,11 +23,10 @@ class EventController extends Controller
 
         $perPage = $request->get('per_page', 20);
 
-        // Admin & Staff see all events
-        if (in_array($user->role, ['Admin', 'Staff', 'STAFF / ADMIN'])) {
+        // Staff see all events
+        if ($user->role === 'Staff') {
             $events = Event::paginate($perPage);
 
-            // Attach membership names to each event
             $events->getCollection()->transform(function ($event) {
                 $event->memberships = $event->memberships;
                 return $event;
@@ -33,13 +35,20 @@ class EventController extends Controller
             return response()->json($events);
         }
 
+        // Residents see events for their memberships or All Residents events
         $residentMembershipIds = DB::table('membership_residents')
             ->where('user_id', $user->id)
             ->pluck('membership_id')
             ->toArray();
 
-        $events = $this->getResidentEventQuery($residentMembershipIds)
-            ->paginate($perPage);
+        $events = Event::where(function ($q) use ($residentMembershipIds) {
+            $q->whereRaw('JSON_LENGTH(membership_ids) = 0')
+              ->orWhereNull('membership_ids');
+            
+            foreach ($residentMembershipIds as $mid) {
+                $q->orWhereJsonContains('membership_ids', $mid);
+            }
+        })->paginate($perPage);
 
         $events->getCollection()->transform(function ($event) {
             $event->memberships = $event->memberships;
@@ -57,7 +66,7 @@ class EventController extends Controller
             return response()->json(['message' => 'Unauthenticated'], 401);
         }
 
-        if (in_array($user->role, ['Admin', 'Staff', 'STAFF / ADMIN'])) {
+        if ($user->role === 'Staff') {
             $events = Event::all();
         } else {
             $residentMembershipIds = DB::table('membership_residents')
@@ -65,7 +74,14 @@ class EventController extends Controller
                 ->pluck('membership_id')
                 ->toArray();
 
-            $events = $this->getResidentEventQuery($residentMembershipIds)->get();
+            $events = Event::where(function ($q) use ($residentMembershipIds) {
+                $q->whereRaw('JSON_LENGTH(membership_ids) = 0')
+                  ->orWhereNull('membership_ids');
+                
+                foreach ($residentMembershipIds as $mid) {
+                    $q->orWhereJsonContains('membership_ids', $mid);
+                }
+            })->get();
         }
 
         $events->transform(function ($event) {
@@ -76,20 +92,6 @@ class EventController extends Controller
         return response()->json(['data' => $events]);
     }
 
-    protected function getResidentEventQuery(array $residentMembershipIds)
-    {
-        return Event::where(function ($q) use ($residentMembershipIds) {
-            $q->whereNull('membership_ids')
-              ->orWhereJsonLength('membership_ids', 0);
-
-            foreach ($residentMembershipIds as $mid) {
-                $q->orWhereJsonContains('membership_ids', $mid);
-                $q->orWhereJsonContains('membership_ids', (string) $mid);
-            }
-        });
-    }
-
-    // READ ALL (no pagination)
     public function list()
     {
         $events = Event::all();
@@ -102,7 +104,6 @@ class EventController extends Controller
         return response()->json($events);
     }
 
-    // READ ONE
     public function show($id)
     {
         $event = Event::findOrFail($id);
@@ -110,28 +111,39 @@ class EventController extends Controller
         return response()->json($event);
     }
 
-    // CREATE
     public function store(Request $request)
     {
         $request->validate([
-            'name'             => 'required|string|max:255',
-            'description'      => 'required|string',
-            'location'         => 'nullable|string|max:100',
-            'event_start'      => 'required|date',
-            'event_end'        => 'required|date|after:event_start',
-            'membership_ids'   => 'nullable|array',
-            'membership_ids.*' => 'integer|exists:memberships,id',
+            'name'                 => 'required|string|max:255',
+            'description'          => 'required|string',
+            'location'             => 'nullable|string|max:100',
+            'event_start'          => 'required|date',
+            'membership_ids'       => 'nullable|array',
+            'membership_ids.*'     => 'integer|exists:memberships,id',
+            'notification_message' => 'nullable|string|max:500',
         ]);
 
-        $membershipIds = array_map('intval', $request->membership_ids ?? []);
+        $membershipIds = $request->membership_ids ?? [];
 
         $event = Event::create([
-            'name'           => $request->name,
-            'description'    => $request->description,
-            'location'       => $request->location,
-            'event_start'    => $request->event_start,
-            'event_end'      => $request->event_end,
-            'membership_ids' => $membershipIds,
+            'name'                 => $request->name,
+            'description'          => $request->description,
+            'location'             => $request->location,
+            'event_start'          => $request->event_start,
+            'event_end'            => null,
+            'membership_ids'       => $membershipIds,
+            'notification_message' => $request->notification_message,
+        ]);
+
+        $this->sendEventNotifications($event, false);
+
+        ActivityLog::create([
+            'user_code'  => auth()->user()->user_code,
+            'action'     => 'Create',
+            'module'     => 'Events',
+            'description'=> "Created event: {$event->name}",
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $event->memberships = $event->memberships;
@@ -142,30 +154,44 @@ class EventController extends Controller
         ], 201);
     }
 
-    // UPDATE
     public function update(Request $request, $id)
     {
         $request->validate([
-            'name'             => 'required|string|max:255',
-            'description'      => 'required|string',
-            'location'         => 'nullable|string|max:100',
-            'event_start'      => 'required|date',
-            'event_end'        => 'required|date|after:event_start',
-            'membership_ids'   => 'nullable|array',
-            'membership_ids.*' => 'integer|exists:memberships,id',
+            'name'                 => 'required|string|max:255',
+            'description'          => 'required|string',
+            'location'             => 'nullable|string|max:100',
+            'event_start'          => 'required|date',
+            'membership_ids'       => 'nullable|array',
+            'membership_ids.*'     => 'integer|exists:memberships,id',
+            'notification_message' => 'nullable|string|max:500',
         ]);
 
         $event = Event::findOrFail($id);
-
-        $membershipIds = array_map('intval', $request->membership_ids ?? []);
+        
+        $originalMessage = $event->notification_message;
+        $membershipIds = $request->membership_ids ?? [];
 
         $event->update([
-            'name'           => $request->name,
-            'description'    => $request->description,
-            'location'       => $request->location,
-            'event_start'    => $request->event_start,
-            'event_end'      => $request->event_end,
-            'membership_ids' => $membershipIds,
+            'name'                 => $request->name,
+            'description'          => $request->description,
+            'location'             => $request->location,
+            'event_start'          => $request->event_start,
+            'membership_ids'       => $membershipIds,
+            'notification_message' => $request->notification_message,
+        ]);
+
+        // ONLY send notification if the message actually changed
+        if ($originalMessage != $request->notification_message) {
+            $this->sendEventNotifications($event, true);
+        }
+
+        ActivityLog::create([
+            'user_code'  => auth()->user()->user_code,
+            'action'     => 'Update',
+            'module'     => 'Events',
+            'description'=> "Updated event: {$event->name}",
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $event->memberships = $event->memberships;
@@ -176,11 +202,93 @@ class EventController extends Controller
         ]);
     }
 
-    // DELETE
     public function destroy($id)
     {
-        Event::findOrFail($id)->delete();
+        $event = Event::findOrFail($id);
+        $eventName = $event->name;
+        
+        Notification::where('event_id', $id)->delete();
+        $event->delete();
+
+        ActivityLog::create([
+            'user_code'  => auth()->user()->user_code,
+            'action'     => 'Delete',
+            'module'     => 'Events',
+            'description'=> "Deleted event: {$eventName}",
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         return response()->json(['message' => 'Event deleted successfully']);
     }
+
+    protected function sendEventNotifications(Event $event, $isUpdate = false)
+{
+    $membershipIds = $event->membership_ids ?? [];
+    
+    // Get targeted user IDs
+    if (empty($membershipIds)) {
+        $userIds = User::where('role', 'Resident')->pluck('id');
+    } else {
+        $userIds = DB::table('membership_residents')
+            ->whereIn('membership_id', $membershipIds)
+            ->pluck('user_id')
+            ->unique();
+    }
+
+    // Get the staff who created/updated the event - LAST NAME ONLY
+    $staff = auth()->user();
+    $staffName = 'Staff: ' . $staff->last_name;  // ← Only last name
+    
+    $title = $isUpdate ? 'Event Updated: ' . $event->name : 'New Event: ' . $event->name;
+    
+    // Format: "Santos • Pantawid Meeting — bring your qr code"
+    $messageWithStaff = $staffName . ' • ' . $event->name . ' — ' . ($event->notification_message ?? 'New event announced');
+
+    foreach ($userIds as $userId) {
+        if ($isUpdate) {
+            $notification = Notification::where('user_id', $userId)
+                ->where('event_id', $event->id)
+                ->first();
+            
+            if ($notification) {
+                $notification->update([
+                    'type'                   => 'event_updated',
+                    'title'                  => $title,
+                    'message'                => $messageWithStaff,
+                    'is_updated'             => true,
+                    'updated_at_notification' => now(),
+                    'read'                   => false,
+                    'updated_at'             => now(),
+                ]);
+            } else {
+                Notification::create([
+                    'user_id'                => $userId,
+                    'event_id'               => $event->id,
+                    'type'                   => 'event_updated',
+                    'title'                  => $title,
+                    'message'                => $messageWithStaff,
+                    'is_updated'             => true,
+                    'updated_at_notification' => now(),
+                    'read'                   => false,
+                    'created_at'             => now(),
+                    'updated_at'             => now(),
+                ]);
+            }
+        } else {
+            Notification::create([
+                'user_id'                => $userId,
+                'event_id'               => $event->id,
+                'type'                   => 'event_announcement',
+                'title'                  => $title,
+                'message'                => $messageWithStaff,
+                'is_updated'             => false,
+                'updated_at_notification' => null,
+                'read'                   => false,
+                'created_at'             => now(),
+                'updated_at'             => now(),
+            ]);
+        }
+    }
+}
 }
