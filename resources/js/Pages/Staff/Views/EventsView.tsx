@@ -6,13 +6,14 @@ interface MyEvent {
   id: number | string;
   title: string;
   date: string;
+  event_start?: string;
   startDate?: string;
   endDate?: string;
   startTime: string;
   endTime: string;
   location: string;
   description: string;
-  notificationMessage?: string; // ✅ New field
+  notificationMessage?: string;
   membershipIds?: (string | number)[];
   membershipNames?: string[];
 }
@@ -42,8 +43,9 @@ export function EventsView({
   const [showAttendance, setShowAttendance] = useState<MyEvent | null>(null);
   const [eventToDelete, setEventToDelete] = useState<number | string | null>(null);
   const [editingEvent, setEditingEvent] = useState<MyEvent | null>(null);
-  const [formOpen, setFormOpen] = useState(true); // toggle for the create/edit panel
+  const [formOpen, setFormOpen] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const itemsPerPage = 6;
 
   const [localEvents, setLocalEvents] = useState<MyEvent[]>(allEvents);
@@ -52,6 +54,40 @@ export function EventsView({
     setLocalEvents(allEvents);
   }, [allEvents]);
 
+  const [liveAttendances, setLiveAttendances] = useState<Record<string, any[]>>({});
+
+  useEffect(() => {
+    if (!localEvents || localEvents.length === 0) return;
+
+    localEvents.forEach(async (event) => {
+      if (liveAttendances[event.id]) return;
+
+      try {
+        const response = await fetch(`/events/${event.id}/attendances`, {
+          headers: {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          const formatted = data.map((record: any) => ({
+            eventId: event.id,
+            residentId: record.user_id,
+            residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
+            timeIn: record.time_in,
+            timeOut: record.time_out
+          }));
+          
+          setLiveAttendances(prev => ({ ...prev, [event.id]: formatted }));
+        }
+      } catch (error) {
+        console.error("Failed to fetch live attendance for event:", error);
+      }
+    });
+  }, [localEvents]);
+
   const getXsrfToken = () => {
     const token = document.cookie
       .split("; ")
@@ -59,19 +95,31 @@ export function EventsView({
     return token ? decodeURIComponent(token.split("=")[1]) : "";
   };
 
-  // ✅ Added notificationMessage to form state
   const [newEvent, setNewEvent] = useState({
     title: "",
-    date: "",       // single date
-    time: "",       // single start time
+    date: "",
+    time: "",
     location: "",
     description: "",
-    notificationMessage: "", // ✅ New field
-    targetMembership: "all", // "all" or a membership id string
+    notificationMessage: "",
+    targetMembership: "all",
   });
 
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState("all");
+
+  // Format time from "09:00" to "9:00 AM"
+  const formatTime = (timeStr: string | undefined): string => {
+    if (!timeStr) return "";
+    
+    const [hour, minute] = timeStr.split(':');
+    let hourNum = parseInt(hour, 10);
+    const ampm = hourNum >= 12 ? 'PM' : 'AM';
+    if (hourNum > 12) hourNum = hourNum - 12;
+    if (hourNum === 0) hourNum = 12;
+    
+    return `${hourNum}:${minute} ${ampm}`;
+  };
 
   const highlightAttendanceText = (text: string, query: string) => {
     if (!query.trim()) return text;
@@ -91,14 +139,13 @@ export function EventsView({
     return new Date(value.replace(" ", "T"));
   };
 
-  // Status: Past (before today) = teal badge, Upcoming (today or later) = yellow badge
   const getEventStatus = (event: MyEvent) => {
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset to midnight for date-only comparison
+    today.setHours(0, 0, 0, 0);
 
-    const eventDateStr = event.startDate || event.date.split(" ")[0];
+    const eventDateStr = event.startDate || event.date?.split(" ")[0] || "";
     const eventDate = new Date(eventDateStr);
-    eventDate.setHours(0, 0, 0, 0); // Reset to midnight for date-only comparison
+    eventDate.setHours(0, 0, 0, 0);
 
     if (eventDate < today) return { label: "Past", color: "bg-teal-100 text-teal-800" };
     return { label: "Upcoming", color: "bg-yellow-100 text-yellow-800" };
@@ -122,7 +169,7 @@ export function EventsView({
       result = result.filter(
         (e) =>
           e.title.toLowerCase().includes(q) ||
-          e.date.toLowerCase().includes(q) ||
+          (e.date && e.date.toLowerCase().includes(q)) ||
           e.location.toLowerCase().includes(q) ||
           e.description.toLowerCase().includes(q)
       );
@@ -142,7 +189,7 @@ export function EventsView({
 
     filteredEvents.forEach((e) => {
       const eventDate = parseEventDate(e.date);
-      const dateOnly = e.date.split(" ")[0];
+      const dateOnly = e.date?.split(" ")[0] || "";
       let sectionKey: string;
 
       if (eventFilter === "all") {
@@ -174,17 +221,18 @@ export function EventsView({
 
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    // Keep membership ids as strings (single target membership or empty for all)
     const membershipIds = newEvent.targetMembership === "all" ? [] : [newEvent.targetMembership];
 
-    const payload = {
+    const payload: any = {
       name: newEvent.title,
       description: newEvent.description,
-      notification_message: newEvent.notificationMessage, // ✅ Send to backend
+      notification_message: newEvent.notificationMessage,
       location: newEvent.location,
       event_start: `${newEvent.date} ${newEvent.time}:00`,
-      event_end: `${newEvent.date} ${newEvent.time}:00`,
       membership_ids: membershipIds,
     };
 
@@ -224,13 +272,14 @@ export function EventsView({
         id: savedEvent.id,
         title: savedEvent.name,
         date: savedEvent.event_start,
+        event_start: savedEvent.event_start,
         startDate: savedEvent.event_start?.split(" ")[0] ?? newEvent.date,
         endDate: savedEvent.event_end?.split(" ")[0] ?? newEvent.date,
         startTime: newEvent.time,
         endTime: newEvent.time,
         location: savedEvent.location,
         description: savedEvent.description,
-        notificationMessage: savedEvent.notification_message ?? newEvent.notificationMessage, // ✅ Save it
+        notificationMessage: savedEvent.notification_message ?? newEvent.notificationMessage,
         membershipIds: savedMembershipIds,
         membershipNames: membershipNames.length > 0 ? [membershipNames[0]] : [],
       };
@@ -242,39 +291,63 @@ export function EventsView({
         setLocalEvents((prev) => [formattedEvent, ...prev]);
       }
 
-      // ✅ Optional: Pass up to parent if needed
+      setNewEvent({
+        title: "", date: "", time: "", location: "", description: "",
+        notificationMessage: "", targetMembership: "all"
+      });
+
       if (onCreateEvent) onCreateEvent(formattedEvent);
+      alert(editingEvent ? "Event updated successfully!" : "Event created successfully!");
 
     } catch (error) {
       console.error("Failed to save event:", error);
       alert("Failed to save event");
     } finally {
-      setNewEvent({
-        title: "", date: "", time: "", location: "", description: "",
-        notificationMessage: "", targetMembership: "all"
-      });
+      setIsSubmitting(false);
     }
   };
 
   const startEditEvent = (event: MyEvent) => {
-    setEditingEvent(event);
-    setFormOpen(true);
+    if (editingEvent || isSubmitting) return;
+    
+    let eventDate = "";
+    let eventTime = "";
+    
+    if (event.event_start) {
+      const dateObj = new Date(event.event_start);
+      eventDate = dateObj.toISOString().split('T')[0];
+      eventTime = dateObj.toTimeString().slice(0, 5);
+    } 
+    else if (event.date) {
+      const parts = event.date.split(' ');
+      eventDate = parts[0];
+      eventTime = parts[1] ? parts[1].substring(0, 5) : "09:00";
+    }
+    else if (event.startDate && event.startTime) {
+      eventDate = event.startDate;
+      eventTime = event.startTime;
+    }
+    
     const currentMembershipId =
       event.membershipIds && event.membershipIds.length > 0
         ? String(event.membershipIds[0])
         : "all";
+    
+    setEditingEvent(event);
+    setFormOpen(true);
     setNewEvent({
       title: event.title,
-      date: event.startDate || event.date.split(" ")[0],
-      time: event.startTime,
+      date: eventDate,
+      time: eventTime,
       location: event.location,
       description: event.description,
-      notificationMessage: event.notificationMessage || "", // ✅ Load existing value
+      notificationMessage: event.notificationMessage || "",
       targetMembership: currentMembershipId,
     });
   };
 
   const cancelEdit = () => {
+    if (isSubmitting) return;
     setEditingEvent(null);
     setNewEvent({
       title: "", date: "", time: "", location: "", description: "",
@@ -302,16 +375,28 @@ export function EventsView({
   };
 
   const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[]) => {
-    const recordsForEvent = attendanceRecords.filter((a: any) => a.eventId === eventId);
-    return eligibleMembers.map((member: any) => {
-      const record = recordsForEvent.find((r: any) => r.residentId === member.id);
-      return {
-        residentId: member.id,
-        residentName: member.name,
-        timeIn: record?.timeIn || "",
-        timeOut: record?.timeOut || "",
-      };
+    const recordsForEvent = liveAttendances[eventId] || attendanceRecords.filter((a: any) => a.eventId === eventId);
+
+    const combinedList = recordsForEvent.map((record: any) => ({
+      residentId: record.residentId,
+      residentName: record.residentName,
+      timeIn: record.timeIn || "",
+      timeOut: record.timeOut || ""
+    }));
+
+    eligibleMembers.forEach((member: any) => {
+      if (!combinedList.some(item => item.residentId === member.id)) {
+        const memberName = member.name || (member.first_name ? `${member.first_name} ${member.last_name}` : `Resident #${member.id}`);
+        combinedList.push({
+          residentId: member.id,
+          residentName: memberName,
+          timeIn: "",
+          timeOut: ""
+        });
+      }
     });
+
+    return combinedList;
   };
 
   const getAttendanceStatus = (record: any) => {
@@ -371,7 +456,7 @@ export function EventsView({
       {/* MAIN LAYOUT */}
       <div className="relative flex gap-6 items-start px-1 w-full h-[calc(100vh-180px)]">
 
-        {/* TOGGLE BUTTON — same style as sidebar chevron pill */}
+        {/* TOGGLE BUTTON */}
         <button
           onClick={() => setFormOpen(!formOpen)}
           className={`absolute top-2 z-50 bg-[#3f8383] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#216363] ${
@@ -382,7 +467,7 @@ export function EventsView({
           {formOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
 
-        {/* LEFT: CREATE / EDIT FORM — collapsible */}
+        {/* LEFT: CREATE / EDIT FORM */}
         <div
           className={`transition-all duration-300 overflow-hidden shrink-0 ${
             formOpen ? "w-1/2 opacity-100" : "w-0 opacity-0"
@@ -394,7 +479,6 @@ export function EventsView({
             </h2>
 
             <form onSubmit={handleSaveEvent} className="space-y-4 flex-1 overflow-y-auto pr-1">
-              {/* Event Title */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Event Title *</label>
                 <input
@@ -407,7 +491,6 @@ export function EventsView({
                 />
               </div>
 
-              {/* Date */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
                 <input
@@ -420,7 +503,6 @@ export function EventsView({
                 <p className="text-xs text-gray-400 mt-1 pl-2">When will this event happen?</p>
               </div>
 
-              {/* Time */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Start Time *</label>
                 <input
@@ -433,7 +515,6 @@ export function EventsView({
                 <p className="text-xs text-gray-400 mt-1 pl-2">What time does it start?</p>
               </div>
 
-              {/* Location */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Location *</label>
                 <input
@@ -447,7 +528,6 @@ export function EventsView({
                 <p className="text-xs text-gray-400 mt-1 pl-2">Where will it be held?</p>
               </div>
 
-              {/* Description */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
                 <textarea
@@ -459,7 +539,6 @@ export function EventsView({
                 />
               </div>
 
-              {/* ✅ NEW: Notification Message Field */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Message</label>
                 <textarea
@@ -474,7 +553,6 @@ export function EventsView({
                 </p>
               </div>
 
-              {/* Target Members — single dropdown */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Target Members *</label>
                 <p className="text-xs text-gray-400 mb-2 pl-1">
@@ -499,19 +577,24 @@ export function EventsView({
                 </div>
               </div>
 
-              {/* Submit */}
               <div className="pt-2 flex gap-2">
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 rounded-full bg-[#3c9b9e] text-white font-bold hover:bg-[#2a6b6b] transition"
+                  disabled={isSubmitting}
+                  className={`flex-1 py-2.5 rounded-full font-bold transition ${
+                    isSubmitting 
+                      ? 'bg-gray-400 cursor-not-allowed' 
+                      : 'bg-[#3c9b9e] hover:bg-[#2a6b6b] text-white'
+                  }`}
                 >
-                  {editingEvent ? "Update Event" : "Post Event"}
+                  {isSubmitting ? "Saving..." : (editingEvent ? "Update Event" : "Post Event")}
                 </button>
                 {editingEvent && (
                   <button
                     type="button"
                     onClick={cancelEdit}
-                    className="px-6 py-2.5 rounded-full border border-gray-300 bg-gray-50 text-gray-600 font-normal hover:bg-gray-100 transition"
+                    disabled={isSubmitting}
+                    className="px-6 py-2.5 rounded-full border border-gray-300 bg-gray-50 text-gray-600 font-normal hover:bg-gray-100 transition disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -549,15 +632,14 @@ export function EventsView({
                           className="relative rounded-2xl border-l-4 border-[#f59e0b] bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
                         >
                           <div className="absolute top-4 right-4 flex items-center gap-2">
-                            {/* STATUS BADGE — yellow for Upcoming, teal for Past/Ended */}
                             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${status.color}`}>
                               {status.label}
                             </span>
 
-                            {/* EDIT BUTTON — orange */}
                             <button
                               onClick={() => startEditEvent(e)}
-                              className="rounded-full p-2 text-orange-500 hover:bg-orange-100 transition-colors"
+                              disabled={isSubmitting || !!editingEvent}
+                              className="rounded-full p-2 text-orange-500 hover:bg-orange-100 transition-colors disabled:opacity-50"
                               title="Edit"
                             >
                               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -566,7 +648,6 @@ export function EventsView({
                               </svg>
                             </button>
 
-                            {/* VIEW ICON — teal */}
                             <button
                               onClick={() => setViewEv(e)}
                               className="rounded-full p-2 text-[#005f63] hover:bg-[#005f63]/10 transition-colors"
@@ -575,7 +656,6 @@ export function EventsView({
                               <Eye className="h-[18px] w-[18px]" />
                             </button>
 
-                            {/* DELETE ICON — red */}
                             <button
                               onClick={() => setEventToDelete(e.id)}
                               className="p-2 rounded-full hover:bg-red-100 transition"
@@ -596,10 +676,10 @@ export function EventsView({
                                 ? e.startDate === e.endDate
                                   ? e.startDate
                                   : `${e.startDate} - ${e.endDate}`
-                                : e.date,
+                                : e.date || "",
                               eventSearch
                             )}{" "}
-                            · {e.startTime}
+                            · {formatTime(e.startTime)}
                           </p>
                           <p className="mt-1 text-sm text-gray-500">
                             {highlightText(e.location, eventSearch)}
@@ -608,7 +688,7 @@ export function EventsView({
                             {highlightText(e.description, eventSearch)}
                           </p>
 
-                            <div className="mt-3 pt-2 border-t border-gray-200 text-xs text-gray-500">
+                          <div className="mt-3 pt-2 border-t border-gray-200 text-xs text-gray-500">
                             <span className="inline-block w-2 h-2 rounded-full bg-[#4eb4b8] mr-1"></span>
                             {signedIn} Signed In |{" "}
                             <span className="inline-block w-2 h-2 rounded-full bg-red-400 mr-1"></span>
@@ -667,7 +747,7 @@ export function EventsView({
               <div>
                 <h2 className="text-2xl font-black text-[#005f63]">{viewEv.title}</h2>
                 <p className="text-sm text-gray-600 mt-1">
-                  {viewEv.startDate || viewEv.date} • {viewEv.startTime}
+                  {viewEv.startDate || viewEv.date} • {formatTime(viewEv.startTime)}
                 </p>
                 <p className="text-sm text-gray-600">{viewEv.location}</p>
               </div>
@@ -693,7 +773,6 @@ export function EventsView({
                 </p>
               </div>
 
-              {/* ✅ Only show notification message here, not on cards */}
               {viewEv.notificationMessage && (
                 <div>
                   <h4 className="font-semibold text-gray-700 mb-1">Notification Preview</h4>
@@ -728,7 +807,7 @@ export function EventsView({
 
               <button
                 onClick={() => setShowAttendance(viewEv)}
-                className="w-full bg-[#005f63) hover:bg-[#004a4d] text-white py-2.5 rounded-full font-medium transition"
+                className="w-full bg-[#005f63] hover:bg-[#004a4d] text-white py-2.5 rounded-full font-medium transition"
               >
                 View Attendance List
               </button>

@@ -217,29 +217,30 @@ export default function StaffDashboard() {
 
         if (result.data) {
           const formattedEvents = result.data.map((dbEvent: any) => {
-          const membershipIds = Array.isArray(dbEvent.membership_ids) ? dbEvent.membership_ids : [];
-          const membershipNames = membershipIds
-            .map((id: any) => getMembershipName(id))
-            .filter(Boolean);
-          const startDate = dbEvent.event_start?.split(' ')[0] ?? '';
-          const endDate = dbEvent.event_end?.split(' ')[0] ?? startDate;
-          const startTime = dbEvent.event_start?.split(' ')[1]?.slice(0, 5) ?? '';
-          const endTime = dbEvent.event_end?.split(' ')[1]?.slice(0, 5) ?? '';
+  const membershipIds = Array.isArray(dbEvent.membership_ids) ? dbEvent.membership_ids : [];
+  const membershipNames = membershipIds
+    .map((id: any) => getMembershipName(id))
+    .filter(Boolean);
+  const startDate = dbEvent.event_start?.split(' ')[0] ?? '';
+  const endDate = dbEvent.event_end?.split(' ')[0] ?? startDate;
+  const startTime = dbEvent.event_start?.split(' ')[1]?.slice(0, 5) ?? '';
+  const endTime = dbEvent.event_end?.split(' ')[1]?.slice(0, 5) ?? '';
 
-          return {
-            id: dbEvent.id,
-            title: dbEvent.name,
-            date: dbEvent.event_start,
-            startDate,
-            endDate,
-            startTime,
-            endTime,
-            location: dbEvent.location,
-            description: dbEvent.description,
-            membershipIds,
-            membershipName: membershipNames.length > 0 ? membershipNames.join(', ') : 'Open to all',
-          };
-        });
+  return {
+    id: dbEvent.id,
+    title: dbEvent.name,
+    date: dbEvent.event_start,
+    event_start: dbEvent.event_start,  // ← ADD THIS LINE
+    startDate,
+    endDate,
+    startTime,
+    endTime,
+    location: dbEvent.location,
+    description: dbEvent.description,
+    membershipIds,
+    membershipName: membershipNames.length > 0 ? membershipNames.join(', ') : 'Open to all',
+  };
+});
 
           setAllEvents(formattedEvents);
         }
