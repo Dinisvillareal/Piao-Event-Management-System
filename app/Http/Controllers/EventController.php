@@ -23,19 +23,11 @@ class EventController extends Controller
 
         $perPage = $request->get('per_page', 20);
 
-        // Staff see all events
         if ($user->role === 'Staff') {
             $events = Event::paginate($perPage);
-
-            $events->getCollection()->transform(function ($event) {
-                $event->memberships = $event->memberships;
-                return $event;
-            });
-
             return response()->json($events);
         }
 
-        // Residents see events for their memberships or All Residents events
         $residentMembershipIds = DB::table('membership_residents')
             ->where('user_id', $user->id)
             ->pluck('membership_id')
@@ -49,11 +41,6 @@ class EventController extends Controller
                 $q->orWhereJsonContains('membership_ids', $mid);
             }
         })->paginate($perPage);
-
-        $events->getCollection()->transform(function ($event) {
-            $event->memberships = $event->memberships;
-            return $event;
-        });
 
         return response()->json($events);
     }
@@ -84,30 +71,17 @@ class EventController extends Controller
             })->get();
         }
 
-        $events->transform(function ($event) {
-            $event->memberships = $event->memberships;
-            return $event;
-        });
-
         return response()->json(['data' => $events]);
     }
 
     public function list()
     {
-        $events = Event::all();
-
-        $events->transform(function ($event) {
-            $event->memberships = $event->memberships;
-            return $event;
-        });
-
-        return response()->json($events);
+        return response()->json(Event::all());
     }
 
     public function show($id)
     {
         $event = Event::findOrFail($id);
-        $event->memberships = $event->memberships;
         return response()->json($event);
     }
 
@@ -125,33 +99,44 @@ class EventController extends Controller
 
         $membershipIds = $request->membership_ids ?? [];
 
-        $event = Event::create([
-            'name'                 => $request->name,
-            'description'          => $request->description,
-            'location'             => $request->location,
-            'event_start'          => $request->event_start,
-            'event_end'            => null,
-            'membership_ids'       => $membershipIds,
-            'notification_message' => $request->notification_message,
-        ]);
+        DB::beginTransaction();
 
-        $this->sendEventNotifications($event, false);
+        try {
+            $event = Event::create([
+                'name'                 => $request->name,
+                'description'          => $request->description,
+                'location'             => $request->location,
+                'event_start'          => $request->event_start,
+                'event_end'            => null,
+                'membership_ids'       => $membershipIds,
+                'notification_message' => $request->notification_message,
+            ]);
 
-        ActivityLog::create([
-            'user_code'  => auth()->user()->user_code,
-            'action'     => 'Create',
-            'module'     => 'Events',
-            'description'=> "Created event: {$event->name}",
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+            // ✅ FIX #1: Create attendance records for all eligible residents
+            $event->createAttendanceRecords();
 
-        $event->memberships = $event->memberships;
+            $this->sendEventNotifications($event, false);
 
-        return response()->json([
-            'message' => 'Event created successfully',
-            'event'   => $event,
-        ], 201);
+            ActivityLog::create([
+                'user_code'  => auth()->user()->user_code,
+                'action'     => 'Create',
+                'module'     => 'Events',
+                'description'=> "Created event: {$event->name}",
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Event created successfully',
+                'event'   => $event,
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Failed to create event: ' . $e->getMessage()], 500);
+        }
     }
 
     public function update(Request $request, $id)
@@ -169,37 +154,52 @@ class EventController extends Controller
         $event = Event::findOrFail($id);
         
         $originalMessage = $event->notification_message;
-        $membershipIds = $request->membership_ids ?? [];
+        $originalMembershipIds = $event->membership_ids ?? [];
+        $newMembershipIds = $request->membership_ids ?? [];
+        
+        $membershipChanged = $originalMembershipIds != $newMembershipIds;
 
-        $event->update([
-            'name'                 => $request->name,
-            'description'          => $request->description,
-            'location'             => $request->location,
-            'event_start'          => $request->event_start,
-            'membership_ids'       => $membershipIds,
-            'notification_message' => $request->notification_message,
-        ]);
+        DB::beginTransaction();
 
-        // ONLY send notification if the message actually changed
-        if ($originalMessage != $request->notification_message) {
-            $this->sendEventNotifications($event, true);
+        try {
+            $event->update([
+                'name'                 => $request->name,
+                'description'          => $request->description,
+                'location'             => $request->location,
+                'event_start'          => $request->event_start,
+                'membership_ids'       => $newMembershipIds,
+                'notification_message' => $request->notification_message,
+            ]);
+
+            // ✅ FIX #2: Sync attendance records if membership changed
+            if ($membershipChanged) {
+                $event->syncAttendanceRecords();
+            }
+
+            if ($originalMessage != $request->notification_message) {
+                $this->sendEventNotifications($event, true);
+            }
+
+            ActivityLog::create([
+                'user_code'  => auth()->user()->user_code,
+                'action'     => 'Update',
+                'module'     => 'Events',
+                'description'=> "Updated event: {$event->name}",
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Event updated successfully',
+                'event'   => $event,
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Failed to update event: ' . $e->getMessage()], 500);
         }
-
-        ActivityLog::create([
-            'user_code'  => auth()->user()->user_code,
-            'action'     => 'Update',
-            'module'     => 'Events',
-            'description'=> "Updated event: {$event->name}",
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-
-        $event->memberships = $event->memberships;
-
-        return response()->json([
-            'message' => 'Event updated successfully',
-            'event'   => $event,
-        ]);
     }
 
     public function destroy($id)
@@ -207,88 +207,97 @@ class EventController extends Controller
         $event = Event::findOrFail($id);
         $eventName = $event->name;
         
-        Notification::where('event_id', $id)->delete();
-        $event->delete();
+        DB::beginTransaction();
+        
+        try {
+            // Delete associated notifications and attendance records
+            Notification::where('event_id', $id)->delete();
+            EventAttendance::where('event_id', $id)->delete();
+            
+            $event->delete();
 
-        ActivityLog::create([
-            'user_code'  => auth()->user()->user_code,
-            'action'     => 'Delete',
-            'module'     => 'Events',
-            'description'=> "Deleted event: {$eventName}",
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+            ActivityLog::create([
+                'user_code'  => auth()->user()->user_code,
+                'action'     => 'Delete',
+                'module'     => 'Events',
+                'description'=> "Deleted event: {$eventName}",
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
-        return response()->json(['message' => 'Event deleted successfully']);
+            DB::commit();
+
+            return response()->json(['message' => 'Event deleted successfully']);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Failed to delete event: ' . $e->getMessage()], 500);
+        }
     }
 
     protected function sendEventNotifications(Event $event, $isUpdate = false)
-{
-    $membershipIds = $event->membership_ids ?? [];
-    
-    // Get targeted user IDs
-    if (empty($membershipIds)) {
-        $userIds = User::where('role', 'Resident')->pluck('id');
-    } else {
-        $userIds = DB::table('membership_residents')
-            ->whereIn('membership_id', $membershipIds)
-            ->pluck('user_id')
-            ->unique();
-    }
+    {
+        $membershipIds = $event->membership_ids ?? [];
+        
+        if (empty($membershipIds)) {
+            $userIds = User::where('role', 'Resident')->pluck('id');
+        } else {
+            $userIds = DB::table('membership_residents')
+                ->whereIn('membership_id', $membershipIds)
+                ->pluck('user_id')
+                ->unique();
+        }
 
-    // Get the staff who created/updated the event - LAST NAME ONLY
-    $staff = auth()->user();
-    $staffName = 'Staff: ' . $staff->last_name;  // ← Only last name
-    
-    $title = $isUpdate ? 'Event Updated: ' . $event->name : 'New Event: ' . $event->name;
-    
-    // Format: "Santos • Pantawid Meeting — bring your qr code"
-    $messageWithStaff = $staffName . ' • ' . $event->name . ' — ' . ($event->notification_message ?? 'New event announced');
+        $staff = auth()->user();
+        $staffName = 'Staff: ' . $staff->last_name;
+        
+        $title = $isUpdate ? 'Event Updated: ' . $event->name : 'New Event: ' . $event->name;
+        $messageWithStaff = $staffName . ' • ' . $event->name . ' — ' . ($event->notification_message ?? 'New event announced');
 
-    foreach ($userIds as $userId) {
-        if ($isUpdate) {
-            $notification = Notification::where('user_id', $userId)
-                ->where('event_id', $event->id)
-                ->first();
-            
-            if ($notification) {
-                $notification->update([
-                    'type'                   => 'event_updated',
-                    'title'                  => $title,
-                    'message'                => $messageWithStaff,
-                    'is_updated'             => true,
-                    'updated_at_notification' => now(),
-                    'read'                   => false,
-                    'updated_at'             => now(),
-                ]);
+        foreach ($userIds as $userId) {
+            if ($isUpdate) {
+                $notification = Notification::where('user_id', $userId)
+                    ->where('event_id', $event->id)
+                    ->first();
+                
+                if ($notification) {
+                    $notification->update([
+                        'type'                   => 'event_updated',
+                        'title'                  => $title,
+                        'message'                => $messageWithStaff,
+                        'is_updated'             => true,
+                        'updated_at_notification' => now(),
+                        'read'                   => false,
+                        'updated_at'             => now(),
+                    ]);
+                } else {
+                    Notification::create([
+                        'user_id'                => $userId,
+                        'event_id'               => $event->id,
+                        'type'                   => 'event_updated',
+                        'title'                  => $title,
+                        'message'                => $messageWithStaff,
+                        'is_updated'             => true,
+                        'updated_at_notification' => now(),
+                        'read'                   => false,
+                        'created_at'             => now(),
+                        'updated_at'             => now(),
+                    ]);
+                }
             } else {
                 Notification::create([
                     'user_id'                => $userId,
                     'event_id'               => $event->id,
-                    'type'                   => 'event_updated',
+                    'type'                   => 'event_announcement',
                     'title'                  => $title,
                     'message'                => $messageWithStaff,
-                    'is_updated'             => true,
-                    'updated_at_notification' => now(),
+                    'is_updated'             => false,
+                    'updated_at_notification' => null,
                     'read'                   => false,
                     'created_at'             => now(),
                     'updated_at'             => now(),
                 ]);
             }
-        } else {
-            Notification::create([
-                'user_id'                => $userId,
-                'event_id'               => $event->id,
-                'type'                   => 'event_announcement',
-                'title'                  => $title,
-                'message'                => $messageWithStaff,
-                'is_updated'             => false,
-                'updated_at_notification' => null,
-                'read'                   => false,
-                'created_at'             => now(),
-                'updated_at'             => now(),
-            ]);
         }
     }
-}
 }

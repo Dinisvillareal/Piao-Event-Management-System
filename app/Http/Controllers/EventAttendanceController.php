@@ -11,10 +11,6 @@ use App\Models\ActivityLog;
 
 class EventAttendanceController extends Controller
 {
-    // =========================
-    // HELPERS
-    // =========================
-
     private function createLog($action, $module, $description)
     {
         ActivityLog::create([
@@ -25,16 +21,7 @@ class EventAttendanceController extends Controller
         ]);
     }
 
-    private function determineStatus($timeIn, $timeOut)
-    {
-        if ($timeIn && $timeOut) return 'Complete';
-        return 'Incomplete';
-    }
-
-    // =========================
-    // TIME IN
-    // =========================
-
+    // ✅ FIXED: TIME IN - updates status from 'missed' to 'Incomplete'
     public function timeIn(Request $request)
     {
         $request->validate([
@@ -49,35 +36,28 @@ class EventAttendanceController extends Controller
         $eventEnd = strtotime($event->event_end);
 
         if ($currentTime < $eventStart) {
-            return response()->json([
-                'message' => 'Sign-in is not available yet.'
-            ], 403);
+            return response()->json(['message' => 'Sign-in is not available yet.'], 403);
         }
 
         if ($currentTime > $eventEnd) {
-            return response()->json([
-                'message' => 'Sign-in is closed.'
-            ], 403);
+            return response()->json(['message' => 'Sign-in is closed.'], 403);
         }
 
         DB::beginTransaction();
 
         try {
-
             $attendance = EventAttendance::where('event_id', $request->event_id)
                 ->where('user_id', $request->user_id)
                 ->first();
 
             if ($attendance) {
-
                 if ($attendance->time_in) {
-                    return response()->json([
-                        'message' => 'Member already signed in.'
-                    ], 400);
+                    return response()->json(['message' => 'Member already signed in.'], 400);
                 }
 
                 $attendance->time_in = now();
-                $attendance->status = $this->determineStatus($attendance->time_in, $attendance->time_out);
+                // ✅ FIX: Change status from 'missed' to 'Incomplete'
+                $attendance->status = 'Incomplete';
                 $attendance->save();
 
                 $this->createLog(
@@ -94,6 +74,7 @@ class EventAttendanceController extends Controller
                 ]);
             }
 
+            // Fallback: Create record if doesn't exist (should not happen after fix)
             $attendance = EventAttendance::create([
                 'event_id' => $request->event_id,
                 'user_id' => $request->user_id,
@@ -116,18 +97,11 @@ class EventAttendanceController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-
-            return response()->json([
-                'message' => 'Time-in failed',
-                'error' => $e->getMessage()
-            ], 500);
+            return response()->json(['message' => 'Time-in failed', 'error' => $e->getMessage()], 500);
         }
     }
 
-    // =========================
-    // TIME OUT
-    // =========================
-
+    // ✅ FIXED: TIME OUT - sets status to 'Complete' when both times exist
     public function timeOut(Request $request)
     {
         $request->validate([
@@ -138,13 +112,11 @@ class EventAttendanceController extends Controller
         DB::beginTransaction();
 
         try {
-
             $attendance = EventAttendance::where('event_id', $request->event_id)
                 ->where('user_id', $request->user_id)
                 ->first();
 
             if (!$attendance) {
-
                 $attendance = EventAttendance::create([
                     'event_id' => $request->event_id,
                     'user_id' => $request->user_id,
@@ -167,13 +139,12 @@ class EventAttendanceController extends Controller
             }
 
             if ($attendance->time_out) {
-                return response()->json([
-                    'message' => 'Member already signed out.'
-                ], 400);
+                return response()->json(['message' => 'Member already signed out.'], 400);
             }
 
             $attendance->time_out = now();
-            $attendance->status = $this->determineStatus($attendance->time_in, $attendance->time_out);
+            // ✅ FIX: Set to Complete only if both time_in and time_out exist
+            $attendance->status = ($attendance->time_in && $attendance->time_out) ? 'Complete' : 'Incomplete';
             $attendance->save();
 
             $this->createLog(
@@ -191,17 +162,9 @@ class EventAttendanceController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-
-            return response()->json([
-                'message' => 'Time-out failed',
-                'error' => $e->getMessage()
-            ], 500);
+            return response()->json(['message' => 'Time-out failed', 'error' => $e->getMessage()], 500);
         }
     }
-
-    // =========================
-    // EVENT ATTENDEES
-    // =========================
 
     public function getEventAttendees($eventId)
     {
@@ -212,10 +175,6 @@ class EventAttendanceController extends Controller
                 ->get()
         );
     }
-
-    // =========================
-    // MEMBER HISTORY
-    // =========================
 
     public function getMemberHistory($userId)
     {
