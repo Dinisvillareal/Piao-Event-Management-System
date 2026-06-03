@@ -15,12 +15,9 @@ export default function MemberDashboard() {
   const [loading, setLoading] = useState(true);
   const [memberships, setMemberships] = useState([]);
   const [userMembershipsCount, setUserMembershipsCount] = useState(0);
-
-  // ✅ Properly typed — no more never[] error
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [attended, setAttended] = useState(0);
   const [missed, setMissed] = useState(0);
-
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [pastEvents, setPastEvents] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -34,6 +31,45 @@ export default function MemberDashboard() {
     ...(Array.isArray(upcomingEvents) ? upcomingEvents : []),
     ...(Array.isArray(pastEvents) ? pastEvents : [])
   ], [upcomingEvents, pastEvents]);
+
+  // Helper function to safely parse JSON responses
+  const safeJsonParse = async (response: Response) => {
+    const contentType = response.headers.get("content-type");
+    if (!contentType || !contentType.includes("application/json")) {
+      console.error("Expected JSON but got:", contentType);
+      throw new Error("Server returned HTML instead of JSON");
+    }
+    return response.json();
+  };
+
+  // Fetch notifications function (reusable)
+  const fetchNotifications = async () => {
+    try {
+      const response = await fetch('/notifications', {
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        credentials: 'include'
+      });
+      if (response.ok) {
+        const data = await safeJsonParse(response);
+        const notificationsData = data.data || data || [];
+        setNotifications(notificationsData.map((notification: any) => ({
+          id: notification.id,
+          title: notification.title,
+          message: notification.message || notification.body,
+          created_at: notification.created_at,
+          is_updated: notification.is_updated,
+          read: notification.read || false,
+          updated_at_notification: notification.updated_at_notification,
+        })));
+      }
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    }
+  };
+
   // ─── POPSTATE (browser back/forward) ────────────────────────────────────────
   useEffect(() => {
     const handlePopState = () => {
@@ -44,10 +80,15 @@ export default function MemberDashboard() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  // ─── FETCH LOGGED-IN USER ────────────────────────────────────────────────────
-
+  // ─── REFETCH NOTIFICATIONS WHEN RETURNING TO DASHBOARD ───────────────────────
   useEffect(() => {
+    if (active === "dashboard") {
+      fetchNotifications();
+    }
+  }, [active]);
 
+  // ─── FETCH LOGGED-IN USER ────────────────────────────────────────────────────
+  useEffect(() => {
     fetch('/me', {
       credentials: 'include',
       headers: {
@@ -55,85 +96,64 @@ export default function MemberDashboard() {
         'X-Requested-With': 'XMLHttpRequest'
       }
     })
-
       .then(async (res) => {
-
-        // USER NOT AUTHENTICATED
         if (res.status === 401 || res.status === 419) {
-
-          // Clear broken cache/session
           localStorage.clear();
           sessionStorage.clear();
-
-          // Clear cookies manually (best effort)
           document.cookie.split(";").forEach((cookie) => {
             document.cookie = cookie
               .replace(/^ +/, "")
-              .replace(
-                /=.*/,
-                "=;expires=" + new Date(0).toUTCString() + ";path=/"
-              );
+              .replace(/=.*/, "=;expires=" + new Date(0).toUTCString() + ";path=/");
           });
-
-          // Redirect to login page
           window.location.href = "/";
-
           return null;
         }
-
         if (!res.ok) {
           throw new Error("Authentication failed");
         }
-
-        return res.json();
+        return safeJsonParse(res);
       })
-
       .then((user) => {
-
         if (!user) return;
-
         setMember({
           id: user.id,
           name: `${user.first_name} ${user.last_name}`,
           first_name: user.first_name,
           last_name: user.last_name
         });
-
       })
-
       .catch((err) => {
-
         console.error("Failed to fetch user:", err);
-
-        // Prevent infinite reload loop
         localStorage.clear();
         sessionStorage.clear();
-
         window.location.href = "/";
       })
-
       .finally(() => {
         setLoading(false);
       });
-
   }, []);
 
   // ─── FETCH ALL MEMBERSHIP TYPES (for QR Codes view) ─────────────────────────
   useEffect(() => {
-    fetch('/memberships', {
+    fetch('/api/memberships', {
       credentials: 'include',
-      headers: { 'Accept': 'application/json' }
+      headers: { 
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
     })
-      .then(res => res.json())
-      .then(data => {
-        setMemberships(data.data);
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await safeJsonParse(res);
+        setMemberships(data.data || data || []);
       })
       .catch(err => {
         console.error('Failed to fetch memberships:', err);
+        setMemberships([]);
       });
   }, []);
 
-  // fetch events
+  // ─── FETCH EVENTS ───────────────────────────────────────────────────────────
   useEffect(() => {
     fetch('/events-data', {
       credentials: 'include',
@@ -142,8 +162,9 @@ export default function MemberDashboard() {
         'X-Requested-With': 'XMLHttpRequest',
       },
     })
-      .then((res) => res.json())
-      .then((data) => {
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await safeJsonParse(res);
         if (!data?.data) {
           console.error('No events returned:', data);
           return;
@@ -161,15 +182,14 @@ export default function MemberDashboard() {
           description: event.description,
           membership_ids: Array.isArray(event.membership_ids) ? event.membership_ids : [],
           memberships: Array.isArray(event.memberships) ? event.memberships : [],
+          notificationMessage: event.notification_message,
+          membershipNames: event.memberships?.map((m: any) => m.name) || [],
+          startDate: event.event_start?.split(" ")[0],
+          startTime: new Date(event.event_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         }));
 
-        const upcoming = formattedEvents.filter(
-          (e: any) => parseApiDate(e.date) >= now
-        );
-
-        const past = formattedEvents.filter(
-          (e: any) => parseApiDate(e.date) < now
-        );
+        const upcoming = formattedEvents.filter((e: any) => parseApiDate(e.date) >= now);
+        const past = formattedEvents.filter((e: any) => parseApiDate(e.date) < now);
 
         setUpcomingEvents(upcoming);
         setPastEvents(past);
@@ -177,42 +197,25 @@ export default function MemberDashboard() {
       .catch((err) => console.error('Failed to fetch events:', err));
   }, []);
 
-  // fetch notifications from backend
+  // ─── FETCH NOTIFICATIONS (initial) ──────────────────────────────────────────
   useEffect(() => {
-    fetch('/notifications', {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-      },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (!data?.data) {
-          console.error('No notifications returned:', data);
-          return;
-        }
-
-        setNotifications(data.data.map((notification: any) => ({
-          id: notification.id,
-          title: notification.title,
-          body: notification.body,
-          sentAt: notification.created_at || notification.sentAt,
-        })));
-      })
-      .catch((err) => console.error('Failed to fetch notifications:', err));
+    fetchNotifications();
   }, []);
 
-  // ─── FETCH USER'S MEMBERSHIP COUNT (for Dashboard summary card) ──────────────
+  // ─── FETCH USER'S MEMBERSHIP COUNT ──────────────────────────────────────────
   useEffect(() => {
     if (!member.id) return;
 
-    fetch(`/membership-residents/${member.id}/memberships?per_page=100`, {
+    fetch(`/membership-residents/${member.id}?per_page=100`, {
       credentials: 'include',
-      headers: { 'Accept': 'application/json' }
+      headers: { 
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
     })
-      .then(res => res.json())
-      .then(data => {
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await safeJsonParse(res);
         setUserMembershipsCount(data.total || data.memberships?.length || 0);
       })
       .catch(err => console.error('Failed to fetch user memberships count:', err));
@@ -222,26 +225,25 @@ export default function MemberDashboard() {
   useEffect(() => {
     if (!member.id) return;
 
-    // 1. UNIQUE CACHE KEY: Tie the cache to this specific user's ID
     const cacheKey = `attendance_cache_${member.id}`;
-
-    // 2. CHECK CACHE FIRST: Do we have saved data in sessionStorage?
     const cachedData = sessionStorage.getItem(cacheKey);
     if (cachedData) {
-      // If yes, instantly load it into the state! No spinner!
       const parsedData = JSON.parse(cachedData);
       setAttendanceRecords(parsedData.records);
       setAttended(parsedData.attended);
       setMissed(parsedData.missed);
     }
 
-    // 3. BACKGROUND FETCH: Secretly ask Laravel for fresh data anyway
     fetch(`/attendance/${member.id}`, {
       credentials: 'include',
-      headers: { 'Accept': 'application/json' }
+      headers: { 
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
     })
-      .then(res => res.json())
-      .then(data => {
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await safeJsonParse(res);
         if (!Array.isArray(data)) return;
 
         const records: AttendanceRecord[] = data.map((item: any) => ({
@@ -251,18 +253,16 @@ export default function MemberDashboard() {
           location: item.event?.location ?? '—',
           timeIn: item.time_in ?? '',
           timeOut: item.time_out ?? '',
-          status: (!item.time_in && !item.time_out) ? 'missed' : item.status?.toLowerCase() ?? 'incomplete',
+          status: (!item.time_in && !item.time_out) ? 'missed' : (item.status?.toLowerCase() ?? 'incomplete'),
         }));
 
         const attendedCount = records.filter(r => r.status === 'complete').length;
         const missedCount = records.filter(r => r.status === 'missed').length;
 
-        // Update the React UI with the fresh data
         setAttendanceRecords(records);
         setAttended(attendedCount);
         setMissed(missedCount);
 
-        // 4. UPDATE CACHE: Save this fresh data back into the browser's memory for next time
         sessionStorage.setItem(cacheKey, JSON.stringify({
           records: records,
           attended: attendedCount,
@@ -292,9 +292,6 @@ export default function MemberDashboard() {
       )
     );
   };
-
-  // ─── NOTIFICATIONS (hardcoded) ────────────────────────────────────────────────
-
 
   // ─── LOADING SCREEN ───────────────────────────────────────────────────────────
   if (loading) {
@@ -334,13 +331,13 @@ export default function MemberDashboard() {
                   notifications={notifications}
                   upcomingEvents={upcomingEvents}
                   pastEventsCount={pastEvents.length}
+                  highlightText={highlightText}
                 />
               )}
 
               {/* MY QR CODES */}
               {active === "qr" && (
                 <QRCodesView
-                  memberships={memberships}
                   highlightText={highlightText}
                 />
               )}
@@ -357,15 +354,14 @@ export default function MemberDashboard() {
               {active === "events" && (
                 <EventsView
                   allEvents={allEvents}
-                  allMemberships={memberships}
                   highlightText={highlightText}
+                  allMemberships={memberships}
                 />
               )}
 
               {/* NOTIFICATIONS */}
               {active === "notify" && (
                 <NotificationsView
-                  notifications={notifications}
                   highlightText={highlightText}
                 />
               )}
