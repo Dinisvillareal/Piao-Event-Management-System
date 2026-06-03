@@ -8,7 +8,7 @@ import ResidentsView from "./Views/ResidentsView";
 import QRCodesView from "./Views/QRCodesView";
 import { EventsView } from "./Views/EventsView";
 import NotificationsView from "./Views/NotificationsView";
-import ActivityLogsView from "./Views/ActivityLogsView.tsx"; // ✅ Replaced SettingsView
+import ActivityLogsView from "./Views/ActivityLogsView";
 import { FileText } from "lucide-react";
 
 // --- TYPES & MOCK DATA ---
@@ -35,7 +35,6 @@ export const attendanceRecords: AttendanceRecord[] = [
   { id: 1, eventTitle: "Barangay General Assembly", eventDate: "2026-05-12 09:00", location: "Barangay Hall", timeIn: "2026-05-12 08:55", timeOut: "2026-05-12 11:30", status: "complete" },
 ];
 
-// ✅ Updated NAV: "Activity Logs" instead of "Activity Logs / Settings"
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "scan", label: "QR Scanner", icon: ScanLine },
@@ -154,7 +153,6 @@ function TopHeader({ memberName, role }: { memberName: string; role: string }) {
 // MAIN COMPONENT
 // --------------------------
 export default function StaffDashboard() {
-  // Safe URL logic! If URL is /staff, it defaults to "dashboard"
   const getInitialActive = () => {
     const path = window.location.pathname;
     const lastSegment = path.split('/').pop() || "";
@@ -163,6 +161,12 @@ export default function StaffDashboard() {
   };
 
   const [active, setActiveState] = useState(getInitialActive());
+  
+  // ✅ NEW STATE FOR EVENTS COUNT
+  const [eventsCount, setEventsCount] = useState(0);
+  const [upcomingEventsList, setUpcomingEventsList] = useState<any[]>([]);
+  const [pastEventsCount, setPastEventsCount] = useState(0);
+  const [loadingEvents, setLoadingEvents] = useState(true);
 
   const setActive = (page: string) => {
     window.history.pushState({}, "", `/staff/${page}`);
@@ -187,6 +191,38 @@ export default function StaffDashboard() {
     const found = membershipOptions.find((m) => String(m.id) === String(id));
     return found?.name || "";
   };
+
+  // ✅ NEW: Fetch events count separately for dashboard
+  const fetchEventsCount = async () => {
+    try {
+      const response = await fetch('/events-data', {
+        credentials: 'include',
+        headers: { Accept: 'application/json' }
+      });
+      const result = await response.json();
+
+      if (result.data) {
+        const now = new Date();
+        const upcoming = result.data.filter((event: any) => new Date(event.event_start) >= now);
+        const past = result.data.filter((event: any) => new Date(event.event_start) < now);
+        
+        setEventsCount(result.data.length);
+        setUpcomingEventsList(upcoming);
+        setPastEventsCount(past.length);
+      }
+    } catch (error) {
+      console.error("Error fetching events count:", error);
+      setEventsCount(0);
+      setUpcomingEventsList([]);
+      setPastEventsCount(0);
+    } finally {
+      setLoadingEvents(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchEventsCount();
+  }, []);
 
   useEffect(() => {
     const fetchMemberships = async () => {
@@ -217,30 +253,30 @@ export default function StaffDashboard() {
 
         if (result.data) {
           const formattedEvents = result.data.map((dbEvent: any) => {
-  const membershipIds = Array.isArray(dbEvent.membership_ids) ? dbEvent.membership_ids : [];
-  const membershipNames = membershipIds
-    .map((id: any) => getMembershipName(id))
-    .filter(Boolean);
-  const startDate = dbEvent.event_start?.split(' ')[0] ?? '';
-  const endDate = dbEvent.event_end?.split(' ')[0] ?? startDate;
-  const startTime = dbEvent.event_start?.split(' ')[1]?.slice(0, 5) ?? '';
-  const endTime = dbEvent.event_end?.split(' ')[1]?.slice(0, 5) ?? '';
+            const membershipIds = Array.isArray(dbEvent.membership_ids) ? dbEvent.membership_ids : [];
+            const membershipNames = membershipIds
+              .map((id: any) => getMembershipName(id))
+              .filter(Boolean);
+            const startDate = dbEvent.event_start?.split(' ')[0] ?? '';
+            const endDate = dbEvent.event_end?.split(' ')[0] ?? startDate;
+            const startTime = dbEvent.event_start?.split(' ')[1]?.slice(0, 5) ?? '';
+            const endTime = dbEvent.event_end?.split(' ')[1]?.slice(0, 5) ?? '';
 
-  return {
-    id: dbEvent.id,
-    title: dbEvent.name,
-    date: dbEvent.event_start,
-    event_start: dbEvent.event_start,  // ← ADD THIS LINE
-    startDate,
-    endDate,
-    startTime,
-    endTime,
-    location: dbEvent.location,
-    description: dbEvent.description,
-    membershipIds,
-    membershipName: membershipNames.length > 0 ? membershipNames.join(', ') : 'Open to all',
-  };
-});
+            return {
+              id: dbEvent.id,
+              title: dbEvent.name,
+              date: dbEvent.event_start,
+              event_start: dbEvent.event_start,
+              startDate,
+              endDate,
+              startTime,
+              endTime,
+              location: dbEvent.location,
+              description: dbEvent.description,
+              membershipIds,
+              membershipName: membershipNames.length > 0 ? membershipNames.join(', ') : 'Open to all',
+            };
+          });
 
           setAllEvents(formattedEvents);
         }
@@ -254,6 +290,8 @@ export default function StaffDashboard() {
 
   const handleDeleteEvent = (id: string | number) => {
     setAllEvents((prev) => prev.filter((e) => e.id !== id));
+    // ✅ Also update events count after deletion
+    setEventsCount(prev => Math.max(0, prev - 1));
   };
 
   const attended = attendanceRecords.filter(r => r.status === "complete").length;
@@ -268,14 +306,20 @@ export default function StaffDashboard() {
 
         <div className="h-[calc(100vh-73px)] overflow-y-auto p-6 smooth-scroll">
           {active === "dashboard" && (
-            <DashboardView membershipsCount={memberships.length} setActive={setActive} />
+            <DashboardView 
+              membershipsCount={memberships.length}
+              eventsCount={eventsCount}           // ✅ PASS EVENTS COUNT
+              upcomingEvents={upcomingEventsList}  // ✅ PASS UPCOMING EVENTS
+              pastEventsCount={pastEventsCount}    // ✅ PASS PAST EVENTS COUNT
+              setActive={setActive}
+            />
           )}
           {active === "scan" && <ScanView events={allEvents} residents={residents} memberships={memberships} />}
           {active === "residents" && <ResidentsView />}
           {active === "memberships" && <QRCodesView memberships={memberships} highlightText={highlightText} />}
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
           {active === "notify" && <NotificationsView notifications={notifications} memberships={membershipOptions} highlightText={highlightText} />}
-          {active === "activitylogs" && <ActivityLogsView />} {/* ✅ Updated route */}
+          {active === "activitylogs" && <ActivityLogsView />}
         </div>
       </main>
 

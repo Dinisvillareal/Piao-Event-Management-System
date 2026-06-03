@@ -132,6 +132,81 @@ class Event extends Model
         $this->_cachedFormattedUpdatedNotification = null;
     }
 
+    // ✅ ADD THESE NEW METHODS FOR ATTENDANCE MANAGEMENT
+    
+    /**
+     * Get all residents eligible for this event
+     */
+    public function getEligibleResidents()
+    {
+        $membershipIds = $this->membership_ids ?? [];
+        
+        if (empty($membershipIds)) {
+            return User::where('role', 'Resident')->get();
+        }
+        
+        return User::where('role', 'Resident')
+            ->whereHas('memberships', function ($query) use ($membershipIds) {
+                $query->whereIn('membership_id', $membershipIds);
+            })
+            ->get();
+    }
+    
+    /**
+     * Create attendance records for all eligible residents (status = 'missed')
+     */
+    public function createAttendanceRecords()
+    {
+        $residents = $this->getEligibleResidents();
+        $now = now();
+        
+        $records = [];
+        foreach ($residents as $resident) {
+            $records[] = [
+                'event_id' => $this->id,
+                'user_id' => $resident->id,
+                'time_in' => null,
+                'time_out' => null,
+                'status' => 'missed',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        
+        if (!empty($records)) {
+            EventAttendance::insert($records);
+        }
+        
+        return count($records);
+    }
+    
+    /**
+     * Sync attendance records when membership changes
+     */
+    public function syncAttendanceRecords()
+    {
+        $eligibleResidentIds = $this->getEligibleResidents()->pluck('id')->toArray();
+        $existingResidentIds = $this->attendances()->pluck('user_id')->toArray();
+        
+        // Add records for new eligible residents
+        $newResidentIds = array_diff($eligibleResidentIds, $existingResidentIds);
+        foreach ($newResidentIds as $residentId) {
+            EventAttendance::create([
+                'event_id' => $this->id,
+                'user_id' => $residentId,
+                'time_in' => null,
+                'time_out' => null,
+                'status' => 'missed'
+            ]);
+        }
+        
+        // Remove records for residents no longer eligible
+        $removedResidentIds = array_diff($existingResidentIds, $eligibleResidentIds);
+        if (!empty($removedResidentIds)) {
+            $this->attendances()->whereIn('user_id', $removedResidentIds)->delete();
+        }
+    }
+
     protected function serializeDate(\DateTimeInterface $date)
     {
         return $date->format('Y-m-d H:i:s');

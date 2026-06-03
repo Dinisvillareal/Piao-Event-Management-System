@@ -108,7 +108,6 @@ export function EventsView({
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState("all");
 
-  // Format time from "09:00" to "9:00 AM"
   const formatTime = (timeStr: string | undefined): string => {
     if (!timeStr) return "";
     
@@ -134,36 +133,76 @@ export function EventsView({
     );
   };
 
+  // ✅ FIXED: Proper date parsing with validation
   const parseEventDate = (value: string) => {
     if (!value) return new Date(0);
-    return new Date(value.replace(" ", "T"));
+    
+    // Handle different date formats
+    let dateStr = value;
+    if (value.includes(" ")) {
+      dateStr = value.split(" ")[0];
+    }
+    
+    const date = new Date(dateStr);
+    return isNaN(date.getTime()) ? new Date(0) : date;
   };
 
+  // ✅ FIXED: Get event status with proper date handling
   const getEventStatus = (event: MyEvent) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-
-    const eventDateStr = event.startDate || event.date?.split(" ")[0] || "";
-    const eventDate = new Date(eventDateStr);
+    
+    // Try multiple possible date sources in order of priority
+    let dateValue = event.event_start || event.date || event.startDate;
+    
+    if (!dateValue) {
+      console.warn("No date found for event:", event.title);
+      return { label: "Upcoming", color: "bg-yellow-100 text-yellow-800" };
+    }
+    
+    // Extract just the date part (YYYY-MM-DD)
+    let dateStr = dateValue;
+    if (typeof dateValue === 'string' && dateValue.includes(" ")) {
+      dateStr = dateValue.split(" ")[0];
+    }
+    
+    const eventDate = new Date(dateStr);
+    
+    // Check if date is valid
+    if (isNaN(eventDate.getTime())) {
+      console.warn("Invalid date for event:", event.title, dateStr);
+      return { label: "Upcoming", color: "bg-yellow-100 text-yellow-800" };
+    }
+    
     eventDate.setHours(0, 0, 0, 0);
-
-    if (eventDate < today) return { label: "Past", color: "bg-teal-100 text-teal-800" };
+    
+    // Compare dates - Past if strictly before today
+    if (eventDate < today) {
+      return { label: "Past", color: "bg-teal-100 text-teal-800" };
+    }
+    
     return { label: "Upcoming", color: "bg-yellow-100 text-yellow-800" };
   };
 
-  const upcomingEvents = useMemo(() => {
-    return localEvents.filter((e) => getEventStatus(e).label !== "Past");
-  }, [localEvents]);
+  // ✅ FIXED: Get filter status for events (works with the filter dropdown)
+  const getFilterStatus = (event: MyEvent, filter: string): boolean => {
+    const status = getEventStatus(event);
+    
+    if (filter === "all") return true;
+    if (filter === "upcoming") return status.label === "Upcoming";
+    if (filter === "past") return status.label === "Past";
+    
+    return true;
+  };
 
-  const pastEvents = useMemo(() => {
-    return localEvents.filter((e) => getEventStatus(e).label === "Past");
-  }, [localEvents]);
-
+  // ✅ FIXED: Filtered events with proper status checking
   const filteredEvents = useMemo(() => {
-    let result = localEvents;
-    if (eventFilter === "upcoming") result = upcomingEvents;
-    else if (eventFilter === "past") result = pastEvents;
-
+    let result = [...localEvents];
+    
+    // Apply status filter
+    result = result.filter(event => getFilterStatus(event, eventFilter));
+    
+    // Apply search filter
     if (eventSearch.trim()) {
       const q = eventSearch.toLowerCase();
       result = result.filter(
@@ -174,17 +213,21 @@ export function EventsView({
           e.description.toLowerCase().includes(q)
       );
     }
-
+    
+    // Sort by date (most recent first)
     result = [...result].sort(
       (a, b) => parseEventDate(b.date).getTime() - parseEventDate(a.date).getTime()
     );
+    
     return result;
-  }, [localEvents, upcomingEvents, pastEvents, eventFilter, eventSearch]);
+  }, [localEvents, eventFilter, eventSearch]);
 
+  // ✅ FIXED: Group events by date for display
   const groupedEvents = useMemo(() => {
     const groups: Record<string, MyEvent[]> = {};
     const today = new Date();
-    const oneWeekFromNow = new Date();
+    today.setHours(0, 0, 0, 0);
+    const oneWeekFromNow = new Date(today);
     oneWeekFromNow.setDate(today.getDate() + 7);
 
     filteredEvents.forEach((e) => {
@@ -192,28 +235,45 @@ export function EventsView({
       const dateOnly = e.date?.split(" ")[0] || "";
       let sectionKey: string;
 
+      // For "All Events" view, group "This Week" separately
       if (eventFilter === "all") {
-        if (eventDate >= today && eventDate <= oneWeekFromNow) {
+        if (eventDate >= today && eventDate <= oneWeekFromNow && eventDate.getTime() !== 0) {
           sectionKey = "📅 This Week";
-        } else {
+        } else if (eventDate.getTime() !== 0) {
           sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
             weekday: "long", year: "numeric", month: "long", day: "numeric",
           });
+        } else {
+          sectionKey = "Unknown Date";
         }
       } else {
-        sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
-          weekday: "long", year: "numeric", month: "long", day: "numeric",
-        });
+        // For filtered views (upcoming/past), group by date
+        if (eventDate.getTime() !== 0) {
+          sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
+            weekday: "long", year: "numeric", month: "long", day: "numeric",
+          });
+        } else {
+          sectionKey = "Unknown Date";
+        }
       }
 
       if (!groups[sectionKey]) groups[sectionKey] = [];
       groups[sectionKey].push(e);
     });
 
+    // Sort groups
     const sortedGroups = Object.entries(groups).sort(([keyA], [keyB]) => {
       if (keyA === "📅 This Week") return -1;
       if (keyB === "📅 This Week") return 1;
-      return new Date(keyB).getTime() - new Date(keyA).getTime();
+      if (keyA === "Unknown Date") return 1;
+      if (keyB === "Unknown Date") return -1;
+      
+      const dateA = new Date(keyA);
+      const dateB = new Date(keyB);
+      if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+        return dateB.getTime() - dateA.getTime();
+      }
+      return 0;
     });
 
     return Object.fromEntries(sortedGroups);
@@ -414,6 +474,29 @@ export function EventsView({
     });
   };
 
+  // Debug useEffect - remove after testing
+  useEffect(() => {
+    console.log("=== EVENTS DEBUG ===");
+    console.log("Total events:", localEvents.length);
+    console.log("Event filter:", eventFilter);
+    
+    const upcoming = localEvents.filter(e => getEventStatus(e).label === "Upcoming");
+    const past = localEvents.filter(e => getEventStatus(e).label === "Past");
+    
+    console.log("Upcoming events:", upcoming.length);
+    console.log("Past events:", past.length);
+    
+    if (past.length > 0) {
+      console.log("Sample past event:", {
+        title: past[0].title,
+        date: past[0].date,
+        event_start: past[0].event_start,
+        startDate: past[0].startDate,
+        status: getEventStatus(past[0]).label
+      });
+    }
+  }, [localEvents, eventFilter]);
+
   return (
     <div className="space-y-6">
       {/* HEADER, SEARCH & FILTER */}
@@ -448,7 +531,7 @@ export function EventsView({
             </div>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            {filteredEvents.length} of {allEvents.length} event(s) match
+            {filteredEvents.length} of {localEvents.length} event(s) match
           </p>
         </div>
       </div>
@@ -607,7 +690,15 @@ export function EventsView({
         {/* RIGHT: EVENTS LIST */}
         <div className={`h-full overflow-y-auto pr-2 transition-all duration-300 ${formOpen ? "w-1/2" : "w-full pl-6"}`}>
           {filteredEvents.length === 0 ? (
-            <p className="text-gray-500 italic">No events match your search or filter.</p>
+            <div className="text-center py-12">
+              <p className="text-gray-500 italic">No events match your search or filter.</p>
+              {eventFilter === "past" && localEvents.length > 0 && (
+                <p className="text-sm text-gray-400 mt-2">
+                  You have {localEvents.filter(e => getEventStatus(e).label === "Past").length} past events in total.
+                  Try refreshing the page.
+                </p>
+              )}
+            </div>
           ) : (
             <div className="space-y-8">
               {Object.entries(groupedEvents).map(([dateLabel, eventsInGroup]) => (
