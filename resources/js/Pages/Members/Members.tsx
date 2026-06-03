@@ -11,7 +11,13 @@ import EventsView from "./Views/EventsView";
 export default function MemberDashboard() {
   const currentPath = window.location.pathname.replace('/', '');
   const [active, setActiveState] = useState(currentPath || "dashboard");
-  const [member, setMember] = useState({ id: "", name: "", first_name: "", last_name: "" });
+  const [member, setMember] = useState({ 
+    id: "", 
+    name: "", 
+    first_name: "", 
+    last_name: "",
+    user_code: "" 
+  });
   const [loading, setLoading] = useState(true);
   const [memberships, setMemberships] = useState([]);
   const [userMembershipsCount, setUserMembershipsCount] = useState(0);
@@ -119,7 +125,8 @@ export default function MemberDashboard() {
           id: user.id,
           name: `${user.first_name} ${user.last_name}`,
           first_name: user.first_name,
-          last_name: user.last_name
+          last_name: user.last_name,
+          user_code: user.user_code || ''
         });
       })
       .catch((err) => {
@@ -339,6 +346,9 @@ export default function MemberDashboard() {
               {active === "qr" && (
                 <QRCodesView
                   highlightText={highlightText}
+                  userId={member.id}
+                  userCode={member.user_code}
+                  fullName={member.name}
                 />
               )}
 
