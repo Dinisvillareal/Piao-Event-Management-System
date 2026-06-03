@@ -27,7 +27,7 @@ return new class extends Migration
             $table->enum('role', ['Staff', 'Resident'])
                 ->default('Resident');
 
-            $table->string('password', 255);
+            $table->string('password', 255)->nullable();
 
             // 0 = no account / 1 = active account
             $table->boolean('has_account')

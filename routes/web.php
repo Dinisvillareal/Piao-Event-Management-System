@@ -123,13 +123,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/events/{id}/attendances', [EventAttendanceController::class, 'getEventAttendees']);
     Route::get('/users/{id}/attendances', [EventAttendanceController::class, 'getMemberHistory']);
 
-    /*
-    |--------------------------------------------------------------------------
-    | ✅ FIX: ACTIVITY LOGS (MOVE INSIDE AUTH CORRECTLY)
-    |--------------------------------------------------------------------------
-    */
-    Route::get('/activity-logs', [ActivityLogController::class, 'index']);
-    Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show']);
+  /*
+|--------------------------------------------------------------------------
+| ACTIVITY LOGS
+|--------------------------------------------------------------------------
+*/
+Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+Route::get('/activity-logs/today', [ActivityLogController::class, 'today']); // ✅ BEFORE {id}
+Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show']);   // ✅ AFTER
 });
 
 /*
