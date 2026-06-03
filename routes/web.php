@@ -1,10 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-
-use App\Models\Event;
 
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\MembershipController;
@@ -30,8 +26,7 @@ Route::get('/', function () {
 |--------------------------------------------------------------------------
 */
 
-Route::post('/login', [UserController::class, 'login'])
-    ->name('login');
+Route::post('/login', [UserController::class, 'login'])->name('login');
 
 /*
 |--------------------------------------------------------------------------
@@ -98,7 +93,6 @@ Route::middleware('auth')->group(function () {
     | EVENTS
     |--------------------------------------------------------------------------
     */
-    //Route::get('/events', [EventController::class, 'index']);
     Route::get('/events-data', [EventController::class, 'data']);
     Route::post('/events', [EventController::class, 'store']);
     Route::put('/events/{id}', [EventController::class, 'update']);
@@ -126,16 +120,19 @@ Route::middleware('auth')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | ✅ FIX: ACTIVITY LOGS (MOVE INSIDE AUTH CORRECTLY)
+    | ACTIVITY LOGS
     |--------------------------------------------------------------------------
     */
     Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+    Route::get('/activity-logs/today', [ActivityLogController::class, 'today']);
     Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show']);
 
-    /* --------------------------------------------------------------------------
+    /*
+    |--------------------------------------------------------------------------
     | NOTIFICATIONS
-    |-------------------------------------------------------------------------- */
-   Route::get('/notifications', [NotificationController::class, 'index']);
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/staff', [NotificationController::class, 'staffNotifications']);
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
     Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
@@ -147,6 +144,7 @@ Route::middleware('auth')->group(function () {
 | REACT SPA FALLBACK
 |--------------------------------------------------------------------------
 */
+
 Route::get('/{path?}', function () {
     return view('app');
 })->where('path', '^(?!api).*$');

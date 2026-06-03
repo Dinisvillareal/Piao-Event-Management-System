@@ -1,20 +1,19 @@
-
 import React, { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
 
 interface DashboardViewProps {
-  setActive: (route: string) => void; 
-  membershipsCount: number;       
+  setActive: (route: string) => void;
+  membershipsCount: number;
   notifications?: any[];
   upcomingEvents?: any[];
   pastEventsCount?: number;
 }
 
-export default function DashboardView({ 
+export default function DashboardView({
   membershipsCount,
-  setActive, 
-  upcomingEvents = [], 
-  pastEventsCount = 0 
+  setActive,
+  upcomingEvents = [],
+  pastEventsCount = 0
 }: DashboardViewProps) {
   const [stats, setStats] = useState({
     residents: 0,
@@ -24,13 +23,7 @@ export default function DashboardView({
   const [memberName, setMemberName] = useState("");
   const [loading, setLoading] = useState(true);
   const [appUrl, setAppUrl] = useState("");
-  const [recentActivities] = useState([
-    { action: "Scanned QR — Sign In", detail: "Maria Santos · General Assembly", staff: "Brgy. Captain", time: "2026-05-12 08:55" },
-    { action: "Created Event", detail: "Senior Citizens Health Check", staff: "Brgy. Captain", time: "2026-05-06 11:02" },
-    { action: "Sent Notification", detail: "General Assembly Reminder", staff: "Kagawad Lina", time: "2026-05-05 16:20" },
-    { action: "Generated QR", detail: "SK Youth Council — 2 members", staff: "Brgy. Captain", time: "2026-05-05 10:11" },
-    { action: "Added Resident", detail: "Liza Domingo (R-007)", staff: "Kagawad Lina", time: "2026-05-04 09:32" }
-  ]);
+  const [recentActivities, setRecentActivities] = useState<any[]>([]);
 
   const getCsrfToken = () => {
     const token = document.cookie
@@ -38,6 +31,24 @@ export default function DashboardView({
       .find(row => row.startsWith('XSRF-TOKEN='))
       ?.split('=')[1];
     return token ? decodeURIComponent(token) : '';
+  };
+
+  // ✅ Format: "June 03, 2026 • 01:20:32 PM"
+  const formatActivityDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const options: Intl.DateTimeFormatOptions = {
+      year: 'numeric',
+      month: 'long',
+      day: '2-digit',
+    };
+    const datePart = date.toLocaleDateString('en-US', options);
+    const timePart = date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+    return `${datePart} • ${timePart}`;
   };
 
   useEffect(() => {
@@ -55,11 +66,11 @@ export default function DashboardView({
         },
         credentials: 'include'
       });
-      
+
       if (!response.ok) throw new Error('Failed to fetch user');
-      
+
       const user = await response.json();
-      
+
       let formattedName = "Staff";
       if (user.first_name && user.last_name) {
         formattedName = `${user.first_name} ${user.last_name}`;
@@ -68,55 +79,79 @@ export default function DashboardView({
       } else if (user.name) {
         formattedName = user.name;
       }
-      
+
       setMemberName(formattedName);
-      
+
     } catch (error) {
       console.error('Error fetching current user:', error);
       setMemberName("Staff");
     }
   };
 
+  // ✅ Fetch today's activity logs from the API
+  const fetchRecentActivities = async () => {
+    try {
+      const response = await fetch('/activity-logs/today', {
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-XSRF-TOKEN': getCsrfToken()
+        },
+        credentials: 'include'
+      });
+
+      if (!response.ok) throw new Error('Failed to fetch activity logs');
+
+      const result = await response.json();
+      const logs = result.data ?? result;
+
+      setRecentActivities(Array.isArray(logs) ? logs : []);
+    } catch (error) {
+      console.error('Error fetching activity logs:', error);
+      setRecentActivities([]);
+    }
+  };
+
   const fetchAllStats = async () => {
     try {
       const residentsResponse = await fetch('/users?per_page=1', {
-        headers: { 
+        headers: {
           'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest',
           'X-XSRF-TOKEN': getCsrfToken()
         },
         credentials: 'include'
       });
-      
+
       const membershipsResponse = await fetch('/api/memberships', {
-        headers: { 
+        headers: {
           'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest',
           'X-XSRF-TOKEN': getCsrfToken()
         },
         credentials: 'include'
       });
-      
+
       const [residentsResult, membershipsResult] = await Promise.all([
         residentsResponse.json(),
         membershipsResponse.json()
       ]);
-      
+
       const totalResidents = residentsResult.total || residentsResult.data?.length || 0;
-      
+
       let totalMemberships = 0;
       if (Array.isArray(membershipsResult)) {
         totalMemberships = membershipsResult.length;
       } else if (membershipsResult.data && Array.isArray(membershipsResult.data)) {
         totalMemberships = membershipsResult.data.length;
       }
-      
+
       setStats({
         residents: totalResidents,
         memberships: totalMemberships,
         events: (upcomingEvents?.length || 0) + (pastEventsCount || 0)
       });
-      
+
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
@@ -128,7 +163,8 @@ export default function DashboardView({
       try {
         await Promise.all([
           fetchCurrentUser(),
-          fetchAllStats()
+          fetchAllStats(),
+          fetchRecentActivities(), // ✅ added here
         ]);
       } catch (error) {
         console.error('Error loading dashboard:', error);
@@ -136,7 +172,7 @@ export default function DashboardView({
         setLoading(false);
       }
     };
-    
+
     loadDashboard();
   }, []);
 
@@ -156,24 +192,24 @@ export default function DashboardView({
   };
 
   const statsCards = [
-    { 
-      value: stats.residents, 
-      label: "RESIDENTS", 
-      gradient: "from-orange-400 to-yellow-300", 
+    {
+      value: stats.residents,
+      label: "RESIDENTS",
+      gradient: "from-orange-400 to-yellow-300",
       route: "residents",
       description: "Total registered residents"
     },
-    { 
-      value: stats.memberships, 
-      label: "MEMBERSHIPS", 
-      gradient: "from-[#067a7a] to-[#5fd3d3]", 
+    {
+      value: stats.memberships,
+      label: "MEMBERSHIPS",
+      gradient: "from-[#067a7a] to-[#5fd3d3]",
       route: "memberships",
       description: "Active membership types"
     },
-    { 
-      value: stats.events, 
-      label: "EVENTS", 
-      gradient: "from-orange-400 to-yellow-300", 
+    {
+      value: stats.events,
+      label: "EVENTS",
+      gradient: "from-orange-400 to-yellow-300",
       route: "events",
       description: "Total events"
     }
@@ -242,7 +278,7 @@ export default function DashboardView({
               <p className="text-sm text-gray-600 mt-1">
                 Print and post in public places — residents scan to access.
               </p>
-              <button 
+              <button
                 onClick={downloadQRCode}
                 className="mt-3 bg-orange-500 text-white px-4 py-2 rounded-[30px] text-sm font-medium hover:bg-orange-600 transition"
               >
@@ -253,30 +289,55 @@ export default function DashboardView({
         </div>
 
         <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
-          <h2 className="text-2xl font-black text-[#005f63]">Recent Activity</h2>
-          <p className="text-[15px] mt-1 text-gray-600">Latest staff actions in the system.</p>
+            <h2 className="text-2xl font-black text-[#005f63]">
+                Recent Activity
+            </h2>
 
-          <div className="mt-5 space-y-4 relative max-h-[260px] overflow-y-auto pr-2">
-            <div className="absolute left-[7px] top-2 bottom-2 w-0.5 bg-teal-500/40"></div>
+            <p className="text-[15px] mt-1 text-gray-600">
+                Latest staff actions in the system.
+            </p>
 
-            {recentActivities.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No recent activity to display
-              </div>
-            ) : (
-              recentActivities.map((act, i) => (
-                <div key={i} className="relative pl-6">
-                  <span className="absolute left-[4px] top-2 w-2 h-2 rounded-full bg-orange-400"></span>
-                  <p className="font-semibold text-[#005f63]">{act.action}</p>
-                  <p className="text-[11px] text-gray-600">{act.detail}</p>
-                  <p className="text-[11px] text-gray-500">
-                    Staff: {act.staff} · {act.time}
-                  </p>
+            <div className="mt-5 max-h-[260px] overflow-y-auto pr-2">
+                {recentActivities.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                    No recent activity to display
                 </div>
-              ))
-            )}
+                ) : (
+                    recentActivities.map((act, i) => (
+                        <div
+                            key={i}
+                            className={`relative pl-8 ${
+                                i !== recentActivities.length - 1 ? "pb-6" : ""
+                            }`}
+                            >
+                            {/* Vertical line */}
+                            {i !== recentActivities.length - 1 && (
+                                <span className="absolute left-[8px] top-2 h-full w-[2px] bg-teal-300"></span>
+                            )}
+
+                            {/* Dot */}
+                            <span className="absolute left-[4px] top-2 w-[10px] h-[10px] rounded-full bg-orange-400 z-10"></span>
+
+                            <p className="text-[15px] font-semibold text-[#005f63] leading-tight">
+                                {act.action}
+                            </p>
+
+                            <p className="text-[11px] text-gray-600">
+                                {act.module} — {act.description}
+                            </p>
+
+                            <p className="text-[11px] text-gray-500">
+                                Staff: {act.user_code}
+                            </p>
+
+                            <p className="text-[11px] text-gray-500">
+                                {formatActivityDate(act.created_at)}
+                            </p>
+                        </div>
+                    ))
+                )}
+            </div>
           </div>
-        </div>
       </div>
     </div>
   );
