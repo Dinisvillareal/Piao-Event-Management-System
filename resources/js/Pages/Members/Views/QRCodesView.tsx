@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import SearchBar from "../../../Components/UI/SearchBar";
 import { QRCodeCanvas } from "qrcode.react";
+import {QrCode} from "lucide-react";
 
-export default function QRCodesView({ highlightText }: any) {
+export default function QRCodesView({ highlightText, userId, userCode, fullName }: any) {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [allMemberships, setAllMemberships] = useState<any[]>([]);
@@ -11,28 +12,9 @@ export default function QRCodesView({ highlightText }: any) {
   const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userCode, setUserCode] = useState<string | null>(null);
-  const [fullName, setFullName] = useState("");
-  const [userMembershipIds, setUserMembershipIds] = useState<number[]>([]);
   const itemsPerPage = 4;
   const qrCodeRef = useRef<HTMLDivElement>(null);
   const [qrSize, setQrSize] = useState(280);
-
-  // Get user from storage ONCE on mount
-  useEffect(() => {
-    const storedUser = sessionStorage.getItem('user') || localStorage.getItem('user');
-    if (storedUser) {
-      try {
-        const user = JSON.parse(storedUser);
-        setUserId(user.id);
-        setUserCode(user.user_code);
-        setFullName(`${user.first_name || ''} ${user.last_name || ''}`.trim());
-      } catch (e) {
-        console.error('Failed to parse user:', e);
-      }
-    }
-  }, []);
 
   // Handle responsive QR size
   useEffect(() => {
@@ -56,108 +38,92 @@ export default function QRCodesView({ highlightText }: any) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // FIRST: Get user's membership IDs from membership-residents
+  // Main fetch effect - handles everything in one place
   useEffect(() => {
     if (!userId) return;
     
-    fetch(`/membership-residents/${userId}?per_page=100`, {
-      credentials: 'include',
-      headers: { 
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    })
-    .then(res => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    })
-    .then(data => {
-      // Extract membership IDs from the response
-      const membershipIds = (data.memberships || []).map((m: any) => m.id);
-      setUserMembershipIds(membershipIds);
-    })
-    .catch(err => {
-      console.error('Failed to fetch user memberships:', err);
-      setError(err.message);
-    });
-  }, [userId]);
-
-  // SECOND: Fetch ALL memberships from MembershipController with descriptions
-  useEffect(() => {
-    if (userMembershipIds.length === 0) return;
-    
-    fetch(`/api/memberships`, {
-      credentials: 'include',
-      headers: { 
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    })
-    .then(res => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    })
-    .then(data => {
-      // Filter memberships to only user's memberships
-      const allMembershipsList = Array.isArray(data) ? data : (data.data || []);
-      const userMemberships = allMembershipsList.filter((m: any) => 
-        userMembershipIds.includes(m.id)
-      );
-      setAllMemberships(userMemberships);
-    })
-    .catch(err => {
-      console.error('Failed to fetch all memberships:', err);
-      setError(err.message);
-    });
-  }, [userMembershipIds]);
-
-  // THIRD: Fetch paginated memberships for display (filtered by search)
-  useEffect(() => {
-    if (userMembershipIds.length === 0) return;
-    
-    // Fetch all memberships then filter and paginate client-side
-    fetch(`/api/memberships`, {
-      credentials: 'include',
-      headers: { 
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    })
-    .then(res => {
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    })
-    .then(data => {
-      const allMembershipsList = Array.isArray(data) ? data : (data.data || []);
-      
-      // Filter to user's memberships
-      let userMemberships = allMembershipsList.filter((m: any) => 
-        userMembershipIds.includes(m.id)
-      );
-      
-      // Apply search filter
-      if (searchQuery) {
-        userMemberships = userMemberships.filter((m: any) =>
-          m.name.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-      }
-      
-      setTotalItems(userMemberships.length);
-      setTotalPages(Math.ceil(userMemberships.length / itemsPerPage));
-      
-      // Paginate
-      const start = (currentPage - 1) * itemsPerPage;
-      const paginated = userMemberships.slice(start, start + itemsPerPage);
-      setDisplayMemberships(paginated);
+    const fetchMemberships = async () => {
+      setLoading(true);
       setError(null);
-      setLoading(false);
-    })
-    .catch(err => {
-      console.error('Failed to fetch:', err);
-      setError(err.message);
-      setLoading(false);
-    });
-  }, [userId, userMembershipIds, currentPage, searchQuery]);
+      
+      try {
+        // Get user's membership IDs
+        const membershipRes = await fetch(`/membership-residents/${userId}?per_page=100`, {
+          credentials: 'include',
+          headers: { 
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+        
+        if (!membershipRes.ok) throw new Error(`HTTP ${membershipRes.status}`);
+        const membershipData = await membershipRes.json();
+        const membershipIds = (membershipData.memberships || []).map((m: any) => m.id);
+        
+        // If no memberships, show empty state immediately
+        if (membershipIds.length === 0) {
+          setAllMemberships([]);
+          setDisplayMemberships([]);
+          setTotalItems(0);
+          setTotalPages(1);
+          setLoading(false);
+          return;
+        }
+        
+        // Fetch all memberships
+        const allMembershipsRes = await fetch(`/api/memberships`, {
+          credentials: 'include',
+          headers: { 
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest'
+          }
+        });
+        
+        if (!allMembershipsRes.ok) throw new Error(`HTTP ${allMembershipsRes.status}`);
+        const allMembershipsData = await allMembershipsRes.json();
+        const allMembershipsList = Array.isArray(allMembershipsData) ? allMembershipsData : (allMembershipsData.data || []);
+        
+        // Filter to user's memberships
+        const userMemberships = allMembershipsList.filter((m: any) => 
+          membershipIds.includes(m.id)
+        );
+        
+        setAllMemberships(userMemberships);
+        
+        // Apply search filter
+        let filtered = userMemberships;
+        if (searchQuery) {
+          filtered = userMemberships.filter((m: any) =>
+            m.name.toLowerCase().includes(searchQuery.toLowerCase())
+          );
+        }
+        
+        setTotalItems(filtered.length);
+        const newTotalPages = Math.ceil(filtered.length / itemsPerPage);
+        setTotalPages(newTotalPages);
+        
+        // Reset to page 1 if current page is out of bounds
+        let safePage = currentPage;
+        if (currentPage > newTotalPages && newTotalPages > 0) {
+          safePage = 1;
+          setCurrentPage(1);
+        }
+        
+        // Paginate
+        const start = (safePage - 1) * itemsPerPage;
+        const paginated = filtered.slice(start, start + itemsPerPage);
+        setDisplayMemberships(paginated);
+        
+      } catch (err) {
+        console.error('Failed to fetch memberships:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load memberships');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchMemberships();
+  }, [userId, searchQuery, currentPage, itemsPerPage]);
 
   const downloadQRCode = useCallback(() => {
     if (!qrCodeRef.current) {
@@ -182,18 +148,20 @@ export default function QRCodesView({ highlightText }: any) {
     }
   }, [userCode]);
 
-  // Memoize QR data
+  // Memoize QR data - only create if user has memberships
   const qrData = useMemo(() => {
-    if (!userId || !userCode || allMemberships.length === 0) return null;
+    if (!userId || !userCode || !fullName || allMemberships.length === 0) return null;
     
     return JSON.stringify({
       user_id: userId,
       user_code: userCode,
       name: fullName,
-      memberships: allMemberships.map((m: any) => m.name)
+      memberships: allMemberships.map((m: any) => m.name),
+      timestamp: Date.now()
     });
   }, [userId, userCode, fullName, allMemberships]);
 
+  // Loading state
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -202,6 +170,7 @@ export default function QRCodesView({ highlightText }: any) {
     );
   }
 
+  // Error state
   if (error) {
     return (
       <div className="p-5">
@@ -230,18 +199,20 @@ export default function QRCodesView({ highlightText }: any) {
             Your personal QR code and membership cards in one place.
           </p>
 
-          <div className="mt-4">
-            <div className="w-full">
-              <SearchBar 
-                value={searchQuery} 
-                onChange={setSearchQuery} 
-                placeholder="Search your memberships by name…" 
-              />
+          {allMemberships.length > 0 && (
+            <div className="mt-4">
+              <div className="w-full">
+                <SearchBar 
+                  value={searchQuery} 
+                  onChange={setSearchQuery} 
+                  placeholder="Search your memberships by name…" 
+                />
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                {displayMemberships.length} of {totalItems} membership(s) found
+              </p>
             </div>
-            <p className="mt-2 text-xs text-gray-500">
-              {displayMemberships.length} of {totalItems} membership(s) found
-            </p>
-          </div>
+          )}
         </div>
       </div>
 
@@ -259,7 +230,7 @@ export default function QRCodesView({ highlightText }: any) {
                   <div className="flex justify-center overflow-x-auto">
                     <div ref={qrCodeRef} className="flex justify-center items-center">
                       <div className="bg-white p-2 rounded-2xl shadow:sm border border-gray-500 inline-flex">
-                        {qrData && (
+                        {qrData ? (
                           <QRCodeCanvas 
                             value={qrData} 
                             size={qrSize} 
@@ -268,6 +239,12 @@ export default function QRCodesView({ highlightText }: any) {
                             fgColor="#005f63"
                             includeMargin={true}
                           />
+                        ) : (
+                          <div className="text-center py-8 px-4">
+                            <QrCode className="mx-auto mb-3 text-gray-300" size={48} />
+                            <p className="text-gray-500 text-sm">No memberships yet</p>
+                            <p className="text-gray-400 text-xs mt-1">QR code will appear once you have memberships</p>
+                          </div>
                         )}
                       </div>
                     </div>
@@ -276,7 +253,12 @@ export default function QRCodesView({ highlightText }: any) {
                   <div className="mt-6">
                     <button
                       onClick={downloadQRCode}
-                      className="bg-[#005f63] hover:bg-orange-600 text-white font-semibold py-3 px-6 rounded-full transition-colors duration-300 shadow-md w-full max-w-[280px] mx-auto block"
+                      disabled={!qrData}
+                      className={`font-semibold py-3 px-6 rounded-full transition-colors duration-300 shadow-md w-full max-w-[280px] mx-auto block ${
+                        qrData 
+                          ? 'bg-[#005f63] hover:bg-orange-600 text-white cursor-pointer' 
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      }`}
                     >
                       <svg 
                         className="inline-block w-5 h-5 mr-2 -mt-1" 
@@ -301,9 +283,33 @@ export default function QRCodesView({ highlightText }: any) {
 
             {/* RIGHT COLUMN - MEMBERSHIP CARDS */}
             <div className="w-full lg:w-2/3">
-              {displayMemberships.length === 0 ? (
-                <div className="flex items-center justify-center h-64">
-                  <p className="text-gray-500 italic">No memberships match your search.</p>
+              {allMemberships.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-96 bg-white rounded-xl border border-gray-200 shadow-sm">
+                  <svg className="w-24 h-24 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">No Memberships Yet</h3>
+                  <p className="text-gray-500 text-center max-w-md">
+                    You don't have any memberships at the moment. 
+                    Once you're enrolled in a program, your membership cards will appear here.
+                  </p>
+                  <div className="mt-6 text-sm text-[#667777] bg-gray-50 px-4 py-2 rounded-lg">
+                    💡 Need assistance? Contact your barangay office
+                  </div>
+                </div>
+              ) : displayMemberships.length === 0 && searchQuery ? (
+                <div className="flex flex-col items-center justify-center h-64 bg-white rounded-xl border border-gray-200">
+                  <svg className="w-16 h-16 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <p className="text-gray-500 text-lg">No matching memberships found</p>
+                  <p className="text-gray-400 text-sm mt-1">Try a different search term</p>
+                  <button 
+                    onClick={() => setSearchQuery("")}
+                    className="mt-4 text-[#005f63] hover:text-orange-600 text-sm font-medium"
+                  >
+                    Clear search
+                  </button>
                 </div>
               ) : (
                 <>
