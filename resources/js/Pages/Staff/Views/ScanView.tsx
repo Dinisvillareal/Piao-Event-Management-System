@@ -26,6 +26,7 @@ export default function ScanView({ events, residents, memberships }: any) {
   const [attendance, setAttendance] = useState<Record<string, AttendanceEntry[]>>({});
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [closingTime, setClosingTime] = useState("");
+  const [isDeadlineActive, setIsDeadlineActive] = useState(false);
   const [scanMode, setScanMode] = useState<"in" | "out">("in");
 
   const ev = events?.find((e: any) => e.id === eventId);
@@ -81,6 +82,35 @@ export default function ScanView({ events, residents, memberships }: any) {
   // ==========================================
   // 3. QR SCANNER LOGIC
   // ==========================================
+
+  useEffect(() => {
+    // Don't run the timer if the scanner isn't locked in
+    if (!isDeadlineActive || !closingTime) return;
+
+    const timer = setInterval(() => {
+      // 1. Get the REAL computer time right now in HH:MM (24-hour format)
+      const now = new Date();
+      const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      // 2. Compare it directly to the time you put in the input box
+      if (currentHHMM >= closingTime) {
+        
+        // TIME IS UP! Execute the automatic shift change:
+        setScan(null);              // Clear the screen
+        setScanMode("out");         // Flip to Sign Out mode
+        setIsDeadlineActive(false); // Unlock the system
+        setClosingTime("");         // Clear the time input
+
+        // Add a tiny microsecond delay so the screen visually flips BEFORE the alert pops up
+        setTimeout(() => {
+          alert("The Sign-In deadline has passed! The scanner has automatically switched to Sign Out mode.");
+        }, 100);
+      }
+    }, 1000); // Checks the clock every 1 second
+
+    return () => clearInterval(timer);
+  }, [isDeadlineActive, closingTime, scanMode]);
+
   const handleQRCodeScan = (qrString: string) => {
     try {
       const data = JSON.parse(qrString);
@@ -117,24 +147,16 @@ export default function ScanView({ events, residents, memberships }: any) {
   // 4. ATTENDANCE DEADLINE & VALIDATION LOGIC
   // ==========================================
   
-  // 1. Checks if current time is past the global closing time
-  const isPastClosingTime = () => {
-    if (!closingTime) return false; 
+ const isPastClosingTime = () => {
+    if (!isDeadlineActive || !closingTime) return false; 
     
     const now = new Date();
-    const [closeHour, closeMin] = closingTime.split(":").map(Number);
+    const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     
-    const closeTimeObj = new Date();
-    closeTimeObj.setHours(closeHour, closeMin, 0, 0); 
-    
-    return now > closeTimeObj; 
+    return currentHHMM >= closingTime; 
   };
 
-  // 2. Checks if resident is eligible to sign out (must be signed in first)
-  const canSignOut = (residentId: string) => {
-    const record = attendance[eventId]?.find(e => e.residentId == residentId);
-    return !!(record && record.timeIn); 
-  };
+ 
   // ==========================================
   // 5. SUBMIT TO DATABASE
   // ==========================================
@@ -173,14 +195,28 @@ export default function ScanView({ events, residents, memberships }: any) {
       }
 
       // Update the UI instantly for a snappy user experience
-      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+     const d = new Date();
+     const now = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
       setAttendance(prev => {
         const list = prev[eventId] ?? [];
+        
         if (scanMode === "in") {
-          return {
-            ...prev,
-            [eventId]: [...list, { residentId: scan!.residentId, residentName: scan!.residentName, timeIn: now, timeOut: null, status: "in" }]
-          };
+          // Check if a pre-populated "missed" record already exists for this resident
+          const residentExists = list.some(e => e.residentId == scan!.residentId);
+          
+          if (residentExists) {
+            // They exist! Just update their existing row with the sign-out time
+            return {
+              ...prev,
+              [eventId]: list.map(e => e.residentId == scan!.residentId ? { ...e, timeOut: now, status: "complete" } : e)
+            };
+          } else {
+            // They skipped sign-in! Create a brand new row with a blank timeIn
+            return {
+              ...prev,
+              [eventId]: [...list, { residentId: scan!.residentId, residentName: scan!.residentName, timeIn: null, timeOut: now, status: "complete" }]
+            };
+          }
         } else {
           return {
             ...prev,
@@ -219,7 +255,12 @@ export default function ScanView({ events, residents, memberships }: any) {
               </div>
               <Button
                 onClick={() => setIsCameraOn(!isCameraOn)}
-                className={`rounded-full w-10 h-10 p-0 flex items-center justify-center ${isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#005f63] hover:bg-[#217676]"}`}
+                disabled={!isDeadlineActive}
+                className={`rounded-full w-10 h-10 p-0 flex items-center justify-center transition-all ${
+                  !isDeadlineActive 
+                    ? "bg-gray-300 cursor-not-allowed opacity-50" 
+                    : isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#005f63] hover:bg-[#217676]"
+                }`}
               >
                 {isCameraOn ? <CameraOff size={18} /> : <Camera size={18} />}
               </Button>
@@ -246,33 +287,35 @@ export default function ScanView({ events, residents, memberships }: any) {
                 )}
               </div>
 
-           <div>
+          <div>
                 <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">2. Scan Mode</Label>
                 <div className="flex gap-2">
                   <Button 
                     onClick={() => setScanMode("in")} 
+                    disabled={isDeadlineActive && !isPastClosingTime()}
                     className={`flex-1 rounded-[30px] transition-all ${
                       scanMode === "in" 
                         ? "!bg-[#1f7a7a] !text-white shadow-md hover:!bg-[#145c5c]" 
                         : "!bg-[#f3f4f6] !text-gray-400 hover:!bg-gray-200 border-none shadow-none"
-                    }`}
+                    } ${isDeadlineActive && !isPastClosingTime() ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     → Sign In
                   </Button>
                   <Button 
                     onClick={() => setScanMode("out")} 
+                    disabled={isDeadlineActive && !isPastClosingTime()}
                     className={`flex-1 rounded-[30px] transition-all ${
                       scanMode === "out" 
                         ? "!bg-orange-500 !text-white shadow-md hover:!bg-orange-600" 
                         : "!bg-[#f3f4f6] !text-gray-400 hover:!bg-gray-200 border-none shadow-none"
-                    }`}
+                    } ${isDeadlineActive && !isPastClosingTime() ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     ← Sign Out
                   </Button>
                 </div>
               </div>
 
-              {/* Attendance Closing Time - Now visible globally for BOTH modes */}
+             {/* Attendance Closing Time */}
               <div className="pt-2 border-t border-gray-200 mt-4">
                 <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">
                   Attendance Closing Time
@@ -281,15 +324,28 @@ export default function ScanView({ events, residents, memberships }: any) {
                   <Input 
                     type="time" 
                     value={closingTime} 
-                    onChange={(e: any) => setClosingTime(e.target.value)} 
-                    className="flex-1 rounded-md" 
+                    onChange={(e: any) => {
+                      setClosingTime(e.target.value);
+                      setIsDeadlineActive(false);
+                    }} 
+                    disabled={isDeadlineActive}
+                    className="flex-1 rounded-md disabled:bg-gray-100 disabled:text-gray-500" 
                   />
-                  <Button 
-                    onClick={() => setClosingTime("")} 
-                    className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-6 rounded-md"
-                  >
-                    Clear Time
-                  </Button>
+                  {!isDeadlineActive ? (
+                    <Button 
+                      onClick={() => closingTime ? setIsDeadlineActive(true) : alert("Please select a time first.")} 
+                      className="bg-[#005f63] hover:bg-[#217676] text-white px-6 rounded-md shadow-sm"
+                    >
+                      Set Time
+                    </Button>
+                  ) : (
+                    <Button 
+                      disabled={true} 
+                      className="bg-gray-100 text-gray-500 border border-gray-200 px-6 rounded-md cursor-not-allowed shadow-inner"
+                    >
+                      Locked 🔒
+                    </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -353,13 +409,24 @@ export default function ScanView({ events, residents, memberships }: any) {
                     </div>
                   </div>
                   {scan.hasAccess && (
-                    <Button 
-                      onClick={confirmAttendance} 
-                      disabled={scanMode === "out" && !canSignOut(scan.residentId)} 
-                      className={`mt-4 w-full py-6 text-md font-bold text-white rounded-[80px] transition-all shadow-md ${scanMode === "in" ? "bg-blue-600 hover:bg-blue-700" : "bg-orange-500 hover:bg-orange-600"} ${scanMode === "out" && !canSignOut(scan.residentId) ? "opacity-50 cursor-not-allowed" : "hover:-translate-y-1"}`}
-                    >
-                      Confirm {scanMode === "in" ? "Sign In" : "Sign Out"}
-                    </Button>
+                  <>
+                      {scanMode === "in" && !isDeadlineActive ? (
+                        <div className="mt-4 p-3 bg-orange-100 border border-orange-300 text-orange-800 rounded-[15px] text-center font-bold text-sm shadow-sm">
+                          🔒 Please set a Closing Time to unlock Sign Ins.
+                        </div>
+                      ) : isPastClosingTime() && scanMode === "in" ? (
+                        <div className="mt-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded-[15px] text-center font-bold text-sm shadow-sm">
+                          ⚠️ Deadline Passed ({closingTime}) — Sign In is Closed
+                        </div>
+                      ) : (
+                      <Button 
+                        onClick={confirmAttendance} 
+                        className={`mt-4 w-full py-6 text-md font-bold text-white rounded-[80px] transition-all shadow-md hover:-translate-y-1 ${scanMode === "in" ? "bg-blue-600 hover:bg-blue-700" : "bg-orange-500 hover:bg-orange-600"}`}
+                      >
+                        Confirm {scanMode === "in" ? "Sign In" : "Sign Out"}
+                      </Button>
+                      )}
+                    </>
                   )}
                 </div>
               )}
