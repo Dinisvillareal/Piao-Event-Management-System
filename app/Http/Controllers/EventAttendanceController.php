@@ -45,14 +45,18 @@ class EventAttendanceController extends Controller
 
         $currentTime = time();
         $eventStart = strtotime($event->event_start);
-        $eventEnd = strtotime($event->event_end);
 
+        // 1. Always check if it's too early
         if ($currentTime < $eventStart) {
             return response()->json(['message' => 'Sign-in is not available yet.'], 403);
         }
 
-        if ($currentTime > $eventEnd) {
-            return response()->json(['message' => 'Sign-in is closed.'], 403);
+        // 2. ONLY check if it's too late IF the event actually has an end time
+        if ($event->event_end) {
+            $eventEnd = strtotime($event->event_end);
+            if ($currentTime > $eventEnd) {
+                return response()->json(['message' => 'Sign-in is closed.'], 403);
+            }
         }
 
         DB::beginTransaction();
