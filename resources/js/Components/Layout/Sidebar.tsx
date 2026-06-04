@@ -119,7 +119,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react";
 
 interface SidebarProps {
   active: string;

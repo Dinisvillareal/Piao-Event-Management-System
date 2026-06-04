@@ -11,7 +11,13 @@ import EventsView from "./Views/EventsView";
 export default function MemberDashboard() {
   const currentPath = window.location.pathname.replace('/', '');
   const [active, setActiveState] = useState(currentPath || "dashboard");
-  const [member, setMember] = useState({ id: "", name: "", first_name: "", last_name: "" });
+  const [member, setMember] = useState({ 
+    id: "", 
+    name: "", 
+    first_name: "", 
+    last_name: "",
+    user_code: "" 
+  });
   const [loading, setLoading] = useState(true);
   const [memberships, setMemberships] = useState([]);
   const [userMembershipsCount, setUserMembershipsCount] = useState(0);
@@ -119,7 +125,8 @@ export default function MemberDashboard() {
           id: user.id,
           name: `${user.first_name} ${user.last_name}`,
           first_name: user.first_name,
-          last_name: user.last_name
+          last_name: user.last_name,
+          user_code: user.user_code || ''
         });
       })
       .catch((err) => {
@@ -155,11 +162,15 @@ export default function MemberDashboard() {
 
   // ─── FETCH EVENTS ───────────────────────────────────────────────────────────
   useEffect(() => {
+    // ✅ NEW: Get portal mode from storage
+    const portalMode = localStorage.getItem("portalMode") || sessionStorage.getItem("portalMode") || "member";
+    
     fetch('/events-data', {
       credentials: 'include',
       headers: {
         Accept: 'application/json',
         'X-Requested-With': 'XMLHttpRequest',
+        'X-Portal-Mode': portalMode,  // ✅ NEW: Send portal mode to backend
       },
     })
       .then(async (res) => {
@@ -248,12 +259,12 @@ export default function MemberDashboard() {
 
         const records: AttendanceRecord[] = data.map((item: any) => ({
           id: item.id,
-          eventTitle: item.event?.name ?? '—',
-          eventDate: item.event?.event_start ?? '',
-          location: item.event?.location ?? '—',
-          timeIn: item.time_in ?? '',
-          timeOut: item.time_out ?? '',
-          status: (!item.time_in && !item.time_out) ? 'missed' : (item.status?.toLowerCase() ?? 'incomplete'),
+          eventTitle: item.eventTitle ?? '—',      // ✅ Direct property
+          eventDate: item.eventDate ?? '',          // ✅ Direct property
+          location: item.location ?? '—',           // ✅ Direct property
+          timeIn: item.timeIn ?? '',
+          timeOut: item.timeOut ?? '',
+          status: (!item.timeIn && !item.timeOut) ? 'missed' : (item.status?.toLowerCase() ?? 'incomplete'),
         }));
 
         const attendedCount = records.filter(r => r.status === 'complete').length;
@@ -272,7 +283,7 @@ export default function MemberDashboard() {
       .catch(err => console.error('Failed to fetch attendance:', err));
   }, [member.id]);
 
-  // ─── NAVIGATION ──────────────────────────────────────────────────────────────
+  // ─── NAVIGATION ────────────────────────────────────────────────────────────
   const setActive = (page: string) => {
     const url = page === "dashboard" ? "/" : `/${page}`;
     window.history.pushState({}, "", url);
@@ -305,7 +316,7 @@ export default function MemberDashboard() {
     );
   }
 
-  // ─── RENDER ───────────────────────────────────────────────────────────────────
+  // ─── RENDER ──────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#fcfcf9] text-gray-900">
       <div className="flex min-h-screen">
@@ -339,6 +350,9 @@ export default function MemberDashboard() {
               {active === "qr" && (
                 <QRCodesView
                   highlightText={highlightText}
+                  userId={member.id}
+                  userCode={member.user_code}
+                  fullName={member.name}
                 />
               )}
 

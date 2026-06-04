@@ -461,4 +461,50 @@ class UserController extends Controller
             $request->user()->load('memberships')
         );
     }
+
+    // Add this method to your UserController.php after the index() method
+
+public function getAllForMemberships()
+{
+    if (!$this->isStaff()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
+    try {
+        $users = User::withTrashed()
+            ->with('memberships')
+            ->get();
+
+        return response()->json(
+            $users->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'user_code' => $user->user_code,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'middle_name' => $user->middle_name,
+                    'contact_number' => $user->contact_number,
+                    'role' => $user->role,
+                    'has_account' => $user->has_account,
+                    'deleted_at' => $user->deleted_at,
+                    'memberships' => $user->memberships->map(function ($membership) {
+                        return [
+                            'id' => $membership->id,
+                            'name' => $membership->name,
+                            'description' => $membership->description,
+                        ];
+                    }),
+                    'validation_id_url' => $user->validation_id_url,
+                ];
+            })
+        );
+        
+    } catch (\Exception $e) {
+        \Log::error('getAllForMemberships error: ' . $e->getMessage());
+        return response()->json([
+            'message' => 'Failed to fetch users for memberships',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
 }

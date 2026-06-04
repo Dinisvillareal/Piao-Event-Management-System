@@ -4,12 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;  // ✅ NEW: Add this import
 
 class Event extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;  // ✅ NEW: Add SoftDeletes trait
 
-    public $timestamps = false;
+    public $timestamps = false;  // Keep as is - events don't track created_at/updated_at
 
     protected $fillable = [
         'name',
@@ -132,11 +133,6 @@ class Event extends Model
         $this->_cachedFormattedUpdatedNotification = null;
     }
 
-    // ✅ ADD THESE NEW METHODS FOR ATTENDANCE MANAGEMENT
-    
-    /**
-     * Get all residents eligible for this event
-     */
     public function getEligibleResidents()
     {
         $membershipIds = $this->membership_ids ?? [];
@@ -152,9 +148,6 @@ class Event extends Model
             ->get();
     }
     
-    /**
-     * Create attendance records for all eligible residents (status = 'missed')
-     */
     public function createAttendanceRecords()
     {
         $residents = $this->getEligibleResidents();
@@ -180,9 +173,6 @@ class Event extends Model
         return count($records);
     }
     
-    /**
-     * Sync attendance records when membership changes
-     */
     public function syncAttendanceRecords()
     {
         $eligibleResidentIds = $this->getEligibleResidents()->pluck('id')->toArray();

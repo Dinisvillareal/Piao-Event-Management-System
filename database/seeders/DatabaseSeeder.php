@@ -23,12 +23,11 @@ class DatabaseSeeder extends Seeder
         $this->call([
             MembershipSeeder::class,
         ]);
-
-        $this->call([
-            EventSeeder::class,
-        ]);
         $this->call([
             MembershipResidentSeeder::class,
+        ]);
+        $this->call([
+            EventSeeder::class,
         ]);
         $this->call([
             EventAttendanceSeeder::class,
