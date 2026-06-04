@@ -10,7 +10,7 @@ class MembershipResidentSeeder extends Seeder
     public function run(): void
     {
         $data = [
-
+            ['user_id' => 1, 'membership_id' => 1],
             ['user_id' => 11, 'membership_id' => 1],
             ['user_id' => 11, 'membership_id' => 2],
             ['user_id' => 11, 'membership_id' => 3],

@@ -3,7 +3,7 @@ import { Filter, Users, Bell } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
 interface Membership {
-    id: number;
+    id: string | number;  // ✅ Accept both string and number
     name: string;
     description: string;
 }
@@ -30,11 +30,11 @@ interface Notification {
 }
 
 interface NotificationsViewProps {
-    memberships: Membership[];
+    memberships?: Membership[];  // ✅ Made optional
     highlightText: (text: string, query: string) => React.ReactNode;
 }
 
-export default function NotificationsView({ memberships, highlightText }: NotificationsViewProps) {
+export default function NotificationsView({ memberships = [], highlightText }: NotificationsViewProps) {
     const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [searchQuery, setSearchQuery] = useState<string>("");
@@ -113,7 +113,6 @@ export default function NotificationsView({ memberships, highlightText }: Notifi
         return `${day}/${month}/${year}`;
     };
 
-    // Parse message to extract event title and actual message
     const parseMessage = (notification: Notification): { title: string; actualMessage: string } => {
         const message = notification.message;
         
