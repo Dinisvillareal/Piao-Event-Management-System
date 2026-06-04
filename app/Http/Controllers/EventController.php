@@ -110,10 +110,13 @@ class EventController extends Controller
             ]);
 
             $event->createAttendanceRecords();
+
+            // Send notifications
             $this->sendEventNotifications($event, false);
 
             DB::commit();
 
+            // Event Log
             ActivityLog::create([
                 'user_code'   => auth()->user()->user_code,
                 'action'      => 'Create',
@@ -123,6 +126,18 @@ class EventController extends Controller
                 'updated_at'  => now(),
             ]);
 
+            // Notification Log
+            if (!empty($event->notification_message)) {
+                ActivityLog::create([
+                    'user_code'   => auth()->user()->user_code,
+                    'action'      => 'Create',
+                    'module'      => 'Notifications',
+                    'description' => "Sent notification for event: {$event->name}",
+                    'created_at'  => now()->addMilliseconds(500),
+                    'updated_at'  => now()->addMilliseconds(500),
+                ]);
+            }
+
             return response()->json([
                 'message' => 'Event created successfully',
                 'event'   => $event,
@@ -130,116 +145,146 @@ class EventController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Failed to create event: ' . $e->getMessage()
             ], 500);
         }
     }
 
-    public function update(Request $request, $id)
-    {
-        $request->validate([
-            'name'                 => 'required|string|max:255',
-            'description'          => 'required|string',
-            'location'             => 'nullable|string|max:100',
-            'event_start'          => 'required|date',
-            'membership_ids'       => 'nullable|array',
-            'membership_ids.*'     => 'integer|exists:memberships,id',
-            'notification_message' => 'nullable|string|max:500',
+public function update(Request $request, $id)
+{
+    $request->validate([
+        'name'                 => 'required|string|max:255',
+        'description'          => 'required|string',
+        'location'             => 'nullable|string|max:100',
+        'event_start'          => 'required|date',
+        'membership_ids'       => 'nullable|array',
+        'membership_ids.*'     => 'integer|exists:memberships,id',
+        'notification_message' => 'nullable|string|max:500',
+    ]);
+
+    $event = Event::findOrFail($id);
+
+    $originalMessage = $event->notification_message;
+    $originalMembershipIds = $event->membership_ids ?? [];
+    $newMembershipIds = $request->membership_ids ?? [];
+
+    $membershipChanged = $originalMembershipIds != $newMembershipIds;
+
+    DB::beginTransaction();
+
+    try {
+        $event->update([
+            'name'                 => $request->name,
+            'description'          => $request->description,
+            'location'             => $request->location,
+            'event_start'          => $request->event_start,
+            'membership_ids'       => $newMembershipIds,
+            'notification_message' => $request->notification_message,
         ]);
 
-        $event = Event::findOrFail($id);
+        if ($membershipChanged) {
+            $event->syncAttendanceRecords();
+        }
 
-        $originalMessage = $event->notification_message;
-        $originalMembershipIds = $event->membership_ids ?? [];
-        $newMembershipIds = $request->membership_ids ?? [];
+        $notificationUpdated = false;
 
-        $membershipChanged = $originalMembershipIds != $newMembershipIds;
+        if ($originalMessage != $request->notification_message) {
+            $this->sendEventNotifications($event, true);
+            $notificationUpdated = true;
+        }
 
-        DB::beginTransaction();
+        DB::commit();
 
-        try {
-            $event->update([
-                'name'                 => $request->name,
-                'description'          => $request->description,
-                'location'             => $request->location,
-                'event_start'          => $request->event_start,
-                'membership_ids'       => $newMembershipIds,
-                'notification_message' => $request->notification_message,
-            ]);
+        // Event Log
+        ActivityLog::create([
+            'user_code'   => auth()->user()->user_code,
+            'action'      => 'Update',
+            'module'      => 'Events',
+            'description' => "Updated event: {$event->name}",
+            'created_at'  => now()->addMilliseconds(500),
+            'updated_at'  => now()->addMilliseconds(500),
+        ]);
 
-            if ($membershipChanged) {
-                $event->syncAttendanceRecords();
-            }
-
-            if ($originalMessage != $request->notification_message) {
-                $this->sendEventNotifications($event, true);
-            }
-
-            DB::commit();
-
+        // Notification Log
+        if ($notificationUpdated) {
             ActivityLog::create([
                 'user_code'   => auth()->user()->user_code,
                 'action'      => 'Update',
-                'module'      => 'Events',
-                'description' => "Updated event: {$event->name}",
-                'created_at'  => now(),
-                'updated_at'  => now(),
-            ]);
-
-            return response()->json([
-                'message' => 'Event updated successfully',
-                'event'   => $event,
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Failed to update event: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    public function destroy($id)
-    {
-        $event = Event::findOrFail($id);
-        $eventName = $event->name;
-
-        DB::beginTransaction();
-
-        try {
-            Notification::where('event_id', $id)->delete();
-            EventAttendance::where('event_id', $id)->delete();
-            $event->delete();
-
-            DB::commit();
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Failed to delete event: ' . $e->getMessage()
-            ], 500);
-        }
-
-        try {
-            ActivityLog::create([
-                'user_code'   => $user->user_code,
-                'action'      => 'Delete',
-                'module'      => 'Events',
-                'description' => "Deleted event: {$eventName}",
-                'created_at'  => now(),
-                'updated_at'  => now(),
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'log_error' => $e->getMessage()
+                'module'      => 'Notifications',
+                'description' => "Updated notification for event: {$event->name}",
+                'created_at'  => now()->addMilliseconds(500),
+                'updated_at'  => now()->addMilliseconds(500),
             ]);
         }
 
         return response()->json([
+            'message' => 'Event updated successfully',
+            'event'   => $event,
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+
+        return response()->json([
+            'message' => 'Failed to update event: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+public function destroy($id)
+{
+    $user = auth()->user();
+
+    $event = Event::findOrFail($id);
+    $eventName = $event->name;
+
+    DB::beginTransaction();
+
+    try {
+        // 1. Delete related notifications
+        Notification::where('event_id', $id)->delete();
+
+        // 2. Delete attendance records
+        EventAttendance::where('event_id', $id)->delete();
+
+        // 3. Delete event
+        $event->delete();
+
+        // 4. Activity Logs (IMPORTANT: BEFORE COMMIT)
+        ActivityLog::create([
+            'user_code'   => $user->user_code,
+            'action'      => 'Delete',
+            'module'      => 'Events',
+            'description' => "Deleted event: {$eventName}",
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+
+        ActivityLog::create([
+            'user_code'   => $user->user_code,
+            'action'      => 'Delete',
+            'module'      => 'Notifications',
+            'description' => "Deleted notifications for event: {$eventName}",
+            'created_at'  => now()->addMilliseconds(500),
+            'updated_at'  => now()->addMilliseconds(500),
+        ]);
+
+        DB::commit();
+
+        return response()->json([
             'message' => 'Event deleted successfully'
         ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+
+        return response()->json([
+            'message' => 'Failed to delete event: ' . $e->getMessage()
+        ], 500);
     }
+}
 
     protected function sendEventNotifications(Event $event, $isUpdate = false)
     {

@@ -48,7 +48,7 @@ export default function ActivityLogsView() {
   // =========================
   const mapType = (module: string): Activity["type"] => {
     switch (module) {
-      case "Event":
+      case "Events":
         return "event";
       case "User":
         return "resident";
@@ -58,6 +58,8 @@ export default function ActivityLogsView() {
         return "system";
       case "QR":
         return "scan";
+        case "Notifications":
+        return "notification";
       default:
         return "system";
     }
@@ -66,47 +68,48 @@ export default function ActivityLogsView() {
   // =========================
   // FETCH DATA
   // =========================
-  const fetchActivities = async (page = 1) => {
-    try {
-      const res = await fetch(`/activity-logs?page=${page}&limit=${itemsPerPage}`);
-      const json = await res.json();
-      const logs = json.data ?? json ?? [];
+const fetchActivities = async (page = 1) => {
+  try {
+    const res = await fetch(`/activity-logs?page=${page}&limit=${itemsPerPage}`);
+    const json = await res.json();
+    const logs = json.data ?? json ?? [];
 
-      if (!Array.isArray(logs)) {
-        throw new Error("Invalid API response format");
-      }
-
-      const formatted: Activity[] = logs.map((log: any) => ({
-        id: log.id,
-        action: log.action,
-        module: log.module,
-        description: log.description,
-        user_code: log.user_code,
-        created_at: log.created_at,
-        type: mapType(log.module),
-      }));
-
-      const sorted = formatted.sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() -
-          new Date(a.created_at).getTime()
-      );
-
-      if (page === 1) {
-        setActivities(sorted);
-      } else {
-        setActivities(prev => [...prev, ...sorted]);
-      }
-
-      setHasMore(sorted.length === itemsPerPage);
-    } catch (err) {
-      console.error("Error loading activity logs:", err);
-      if (page === 1) setActivities([]);
-    } finally {
-      setLoading(false);
-      setIsLoadingMore(false);
+    if (!Array.isArray(logs)) {
+      throw new Error("Invalid API response format");
     }
-  };
+
+    const formatted: Activity[] = logs.map((log: any) => ({
+      id: log.id,
+      action: log.action,
+      module: log.module,
+      description: log.description,
+      user_code: log.user_code,
+      created_at: log.created_at,
+      type: mapType(log.module),
+    }));
+
+    // ✅ FIXED SORT (Events FIRST, Notifications SECOND)
+    const sorted = formatted.sort(
+    (a, b) =>
+        new Date(b.created_at).getTime() -
+        new Date(a.created_at).getTime()
+    );
+
+    if (page === 1) {
+      setActivities(sorted);
+    } else {
+      setActivities((prev) => [...prev, ...sorted]);
+    }
+
+    setHasMore(sorted.length === itemsPerPage);
+  } catch (err) {
+    console.error("Error loading activity logs:", err);
+    if (page === 1) setActivities([]);
+  } finally {
+    setLoading(false);
+    setIsLoadingMore(false);
+  }
+};
 
   // Initial load
   useEffect(() => {
