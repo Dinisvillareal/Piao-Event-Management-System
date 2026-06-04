@@ -713,7 +713,7 @@ export default function ResidentsView() {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:outline-none appearance-none"
+                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:outline-none appearance-none"
               >
                 <option value="all">All Records</option>
                 <option value="residents">Role: Resident</option>
@@ -726,7 +726,7 @@ export default function ResidentsView() {
               <select
                 value={accountFilter}
                 onChange={(e) => setAccountFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:outline-none appearance-none"
+                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:outline-none appearance-none"
               >
                 <option value="all">All Accounts</option>
                 <option value="with-account">Has Account</option>
@@ -745,40 +745,62 @@ export default function ResidentsView() {
       <div className="pl-1">
         <div className="sticky top-[140px] z-10 flex items-center justify-between mb-3 bg-[#fcfcf9] py-2">
           {totalPages > 1 && (
-            <div className="flex items-center justify-start gap-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="p-2 rounded-full border border-gray-200 hover:border-[#005f63] disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path d="M15 19l-7-7 7-7" />
-                </svg>
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+            <div className="flex items-center gap-2 flex-wrap">
                 <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`w-8 h-8 rounded-full text-sm font-medium transition ${
-                    currentPage === page
-                      ? "bg-[#005f63] text-white"
-                      : "hover:bg-gray-100 text-gray-700"
-                  }`}
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
                 >
-                  {page}
+                ←
                 </button>
-              ))}
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                <div className="flex gap-2 flex-wrap justify-center">
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                    pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                    } else {
+                    pageNum = currentPage - 2 + i;
+                    }
+
+                    return (
+                    <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`h-8 w-8 rounded-full text-sm font-semibold transition-all active:scale-95 ${
+                        currentPage === pageNum
+                            ? "bg-[#005f63] text-white shadow-sm"
+                            : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
+                        }`}
+                    >
+                        {pageNum}
+                    </button>
+                    );
+                })}
+                {totalPages > 5 && currentPage < totalPages - 2 && (
+                    <>
+                    <span className="text-gray-400">...</span>
+                    <button
+                        onClick={() => setCurrentPage(totalPages)}
+                        className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-semibold hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                    >
+                        {totalPages}
+                    </button>
+                    </>
+                )}
+                </div>
+                <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
-                className="p-2 rounded-full border border-gray-200 hover:border-[#005f63] disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
+                className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                →
+                </button>
             </div>
-          )}
+            )}
           <button
             onClick={handleOpenAddForm}
             className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm ml-auto"
@@ -1355,7 +1377,7 @@ export default function ResidentsView() {
                         <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
                         <input
                           type="text"
-                          value={editingResident.id ?? `PR-${String(editingResident.real_id).padStart(4, "0")}`}
+                          value={`PR-${String(editingResident.real_id).padStart(4, "0")}`}
                           disabled
                           className="w-full rounded-full border px-4 py-2.5 bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed"
                         />
