@@ -139,7 +139,7 @@ export interface Membership {
 
 interface QRCodesViewProps {
   highlightText: (text: string, query: string) => React.ReactNode;
-  memberships: Membership[]; // Make sure this line is here!
+  memberships?: Membership[]; // Make sure this line is here!
 }
 
 export default function QRCodesView({ highlightText }: QRCodesViewProps) {
@@ -519,13 +519,6 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">Memberships</h1>
             <p className="text-xs sm:text-sm text-[#667777] mt-1">Manage memberships and view assigned residents.</p>
           </div>
-          {/* Desktop button - hidden on mobile */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="hidden sm:flex bg-[#005f63] hover:bg-[#004a4d] text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-medium transition shadow-sm items-center gap-2 text-sm sm:text-base"
-          >
-            <Plus className="h-4 w-4" /> Add New Membership
-          </button>
         </div>
         <div className="mt-4 relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70" />
@@ -534,6 +527,15 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         <p className="mt-2 text-xs text-gray-500">
           {filteredMemberships.length} membership(s) found
         </p>
+         {/* Desktop button - hidden on mobile */}
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="hidden sm:block ml-auto mb-5 bg-[#005f63] hover:bg-[#004a4d] text-white px-4 mt-5 sm:px-5 py-2 sm:py-2.5 rounded-full font-medium transition shadow-sm items-center gap-2 text-sm sm:text-base"
+          >
+            <div className="flex items-center gap-2">
+              <Plus className="h-4 w-4" /> Add New Membership
+            </div>
+          </button>
       </div>
 
       {/* Scrollable Content Area - Cards scroll here, header stays fixed */}
@@ -569,14 +571,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                             className="p-2 rounded-full hover:bg-orange-50 transition text-orange-600 active:bg-orange-100"
                             title="Edit Membership"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
                           </button>
                           <button
                             onClick={() => handleDeleteMembership(m.id, m.name)}
                             className="p-2 rounded-full hover:bg-red-50 transition text-red-500 active:bg-red-100"
                             title="Delete Membership"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <svg width="16" height="16" fill="none" stroke="#ef4444" strokeWidth={2} viewBox="0 0 24 24">
+                              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
                           </button>
                         </div>
                       </div>

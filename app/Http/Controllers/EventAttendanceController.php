@@ -21,7 +21,7 @@ class EventAttendanceController extends Controller
         ]);
     }
 
-    // ✅ FIXED: TIME IN - updates status from 'missed' to 'Incomplete'
+    // TIME IN - updates status from 'missed' to 'Incomplete'
     public function timeIn(Request $request)
     {
         $request->validate([
@@ -56,7 +56,6 @@ class EventAttendanceController extends Controller
                 }
 
                 $attendance->time_in = now();
-                // ✅ FIX: Change status from 'missed' to 'Incomplete'
                 $attendance->status = 'Incomplete';
                 $attendance->save();
 
@@ -74,7 +73,6 @@ class EventAttendanceController extends Controller
                 ]);
             }
 
-            // Fallback: Create record if doesn't exist (should not happen after fix)
             $attendance = EventAttendance::create([
                 'event_id' => $request->event_id,
                 'user_id' => $request->user_id,
@@ -101,7 +99,7 @@ class EventAttendanceController extends Controller
         }
     }
 
-    // ✅ FIXED: TIME OUT - sets status to 'Complete' when both times exist
+    // TIME OUT - sets status to 'Complete' when both times exist
     public function timeOut(Request $request)
     {
         $request->validate([
@@ -143,7 +141,6 @@ class EventAttendanceController extends Controller
             }
 
             $attendance->time_out = now();
-            // ✅ FIX: Set to Complete only if both time_in and time_out exist
             $attendance->status = ($attendance->time_in && $attendance->time_out) ? 'Complete' : 'Incomplete';
             $attendance->save();
 
@@ -176,13 +173,27 @@ class EventAttendanceController extends Controller
         );
     }
 
-    public function getMemberHistory($userId)
-    {
-        return response()->json(
-            EventAttendance::with('event')
-                ->where('user_id', $userId)
-                ->orderBy('time_in', 'desc')
-                ->get()
-        );
-    }
+   public function getMemberHistory($userId)
+{
+    $attendances = EventAttendance::where('user_id', $userId)
+        ->with('event')  // ✅ ADD THIS - LOADS THE EVENT RELATIONSHIP
+        ->orderBy('time_in', 'desc')
+        ->get()
+        ->map(function ($attendance) {
+            $isEventDeleted = is_null($attendance->event);
+            
+            return [
+                'id' => $attendance->id,
+                'eventTitle' => $isEventDeleted ? '' : $attendance->event->name,
+                'eventDate' => $isEventDeleted ? '' : $attendance->event->event_start,
+                'location' => $isEventDeleted ? '' : $attendance->event->location,
+                'timeIn' => $attendance->time_in,
+                'timeOut' => $attendance->time_out,
+                'status' => $attendance->status,
+                'isEventDeleted' => $isEventDeleted,
+            ];
+        });
+    
+    return response()->json($attendances);
+}
 }
