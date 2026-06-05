@@ -207,7 +207,7 @@ const fetchActivities = async (page = 1) => {
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">
           SYSTEM HISTORY
         </p>
-        <h1 className="mt-2 text-4xl font-black">Activity Logs 📋</h1>
+        <h1 className="mt-2 text-4xl font-black">Activity Logs</h1>
         <p className="mt-2 text-base text-white/90">
           Complete record of all actions and changes made in the system.
         </p>
