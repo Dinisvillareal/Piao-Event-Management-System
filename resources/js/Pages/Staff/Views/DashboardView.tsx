@@ -179,13 +179,13 @@ export default function DashboardView({
   const downloadQRCode = () => {
     const svgElement = document.getElementById('system-qr-code');
     if (!svgElement) return;
-    
+
     // Get the SVG element and its parent
     const svgData = new XMLSerializer().serializeToString(svgElement);
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const img = new Image();
-    
+
     img.onload = () => {
       canvas.width = img.width;
       canvas.height = img.height;
@@ -198,7 +198,7 @@ export default function DashboardView({
       downloadLink.click();
       document.body.removeChild(downloadLink);
     };
-    
+
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
   };
 
@@ -327,7 +327,7 @@ export default function DashboardView({
 
                   <span className="absolute left-[4px] top-2 w-[10px] h-[10px] rounded-full bg-orange-400 z-10"></span>
 
-                  <p className="text-[15px] font-semibold text-[#005f63] leading-tight">
+                  <p className="text-[14px] font-semibold text-[#005f63] leading-tight">
                     {act.action}
                   </p>
 

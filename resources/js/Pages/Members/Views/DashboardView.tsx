@@ -54,12 +54,12 @@ export default function DashboardView({
 
   const parseMessage = (message: string): { staffName: string; title: string; actualMessage: string } => {
     if (!message) return { staffName: '', title: '', actualMessage: '' };
-    
+
     const parts = message.split(' • ');
     if (parts.length >= 2) {
       const staffName = parts[0];
       const rest = parts.slice(1).join(' • ');
-      
+
       if (rest.includes(' — ')) {
         const restParts = rest.split(' — ');
         const title = restParts[0];
@@ -85,7 +85,7 @@ export default function DashboardView({
 
   return (
     <>
-      <div className="rounded-[24px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
+      <div className="rounded-[30px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">
           Member Dashboard
         </p>
@@ -100,26 +100,29 @@ export default function DashboardView({
           value={membershipsCount}
           title="Verified Memberships"
           gradient="from-orange-400 to-yellow-300"
+          description="Membership programs you are enrolled in"
           onClick={() => setActive("qr")}
         />
         <SummaryCard
           value={attendedCount}
           title="Events Attended"
           gradient="from-[#067a7a] to-[#5fd3d3]"
+          description="Events you have successfully checked in to"
           onClick={() => setActive("events")}
         />
         <SummaryCard
           value={missedCount}
           title="Events Missed"
           gradient="from-yellow-300 to-orange-400"
+          description="Scheduled events you did not attend"
           onClick={() => setActive("events")}
         />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        
-        {/* Latest Notifications - Only UNREAD notifications */}
-        <div className="rounded-[22px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
+
+        {/* Latest Notifications Card */}
+        <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-black text-[#005f63]">Latest Notifications</h2>
@@ -145,11 +148,11 @@ export default function DashboardView({
             ) : (
               unreadNotifications.map((item) => {
                 const { staffName, title, actualMessage } = parseMessage(item.message);
-                
+
                 return (
                   <div
                     key={item.id}
-                    className="relative rounded-xl px-4 py-3 border-l-4 border-l-[#ecd862] bg-[#f7f2e8] transition-all duration-300"
+                    className="relative rounded-2xl px-4 py-3 border-l-4 border-l-[#ecd862] bg-[#fef8e8] transition-all duration-300"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0 flex items-center gap-2 text-sm flex-wrap">
@@ -182,8 +185,8 @@ export default function DashboardView({
           </div>
         </div>
 
-        {/* Upcoming Events - Clickable */}
-        <div className="rounded-[22px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
+        {/* Upcoming Events Card */}
+        <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-black text-[#005f63]">Upcoming Events</h2>
@@ -211,7 +214,7 @@ export default function DashboardView({
                 <div
                   key={e.id}
                   onClick={() => setActive("events")}
-                  className="rounded-xl border-l-4 border-orange-400 bg-[#f8f3ee] p-3 transition-all duration-200 hover:shadow-md hover:-translate-y-[1px] cursor-pointer"
+                  className="rounded-3xl border-l-4 border-[#f8e67d] bg-white p-3 transition-all duration-200 hover:shadow-md hover:-translate-y-[1px] cursor-pointer"
                 >
                   <h3 className="text-base font-bold text-[#005f63] line-clamp-1">{e.title}</h3>
                   <p className="mt-1 text-xs text-gray-500">{e.date} · {e.location}</p>

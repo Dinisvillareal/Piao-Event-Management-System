@@ -81,7 +81,7 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
               <select
                 value={attendanceFilter}
                 onChange={(e) => setAttendanceFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
+                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
               >
                 <option value="all">All Records</option>
                 <option value="complete">Complete (In & Out)</option>
@@ -109,27 +109,27 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
             {paginatedAttendance.map((rec) => (
               <div
                 key={rec.id}
-                className="rounded-2xl border-l-4 border-orange-400 bg-[#faf8f4] px-6 py-4 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200 flex items-center justify-between gap-4"
+                className="rounded-3xl border-l-4 border-[#ecbd3b] bg-white px-6 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200 flex items-center justify-between gap-4"
               >
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-[#005f63]">{highlightText(rec.eventTitle, attendanceSearch)}</h3>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <h3 className="text-base font-bold text-[#005f63]">{highlightText(rec.eventTitle, attendanceSearch)}</h3>
+                  <p className="text-[13px] text-gray-500 mt-1">
                     {rec.eventDate} · {rec.location}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-6">
                   <div className="text-right">
-                    <span className="text-xs text-gray-500">In:</span>
-                    <span className={`ml-1.5 text-sm font-medium px-2 py-0.5 rounded-full ${
+                    <span className="text-[13px] text-gray-500">In:</span>
+                    <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${
                       rec.timeIn ? 'text-teal-700 bg-teal-50' : 'text-gray-400 bg-gray-50 italic'
                     }`}>
                       {rec.timeIn || '—'}
                     </span>
                   </div>
                   <div className="text-right">
-                    <span className="text-xs text-gray-500">Out:</span>
-                    <span className={`ml-1.5 text-sm font-medium px-2 py-0.5 rounded-full ${
+                    <span className="text-[13px] text-gray-500">Out:</span>
+                    <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${
                       rec.timeOut ? 'text-orange-700 bg-orange-50' : 'text-gray-400 bg-gray-50 italic'
                     }`}>
                       {rec.timeOut || '—'}

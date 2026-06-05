@@ -542,7 +542,7 @@ export function EventsView({
         {/* TOGGLE BUTTON */}
         <button
           onClick={() => setFormOpen(!formOpen)}
-          className={`absolute top-2 z-50 bg-[#3f8383] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#216363] ${
+          className={`absolute top-2 z-50 bg-[#359ca0] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#2a7d82] ${
             formOpen ? "left-[calc(50%-18px)]" : "left-0"
           }`}
           title={formOpen ? "Hide form" : "Show form"}
@@ -556,7 +556,7 @@ export function EventsView({
             formOpen ? "w-1/2 opacity-100" : "w-0 opacity-0"
           }`}
         >
-          <div className="bg-white rounded-3xl border border-gray-200 p-5 shadow-md h-full overflow-hidden flex flex-col">
+          <div className="bg-white rounded-3xl border-gray-200 p-5 shadow-md h-full overflow-hidden flex flex-col">
             <h2 className="text-xl font-bold text-[#005f63] mb-4">
               {editingEvent ? "Edit Event" : "Create New Event"}
             </h2>
@@ -667,7 +667,7 @@ export function EventsView({
                   className={`flex-1 py-2.5 rounded-full font-bold transition ${
                     isSubmitting
                       ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-[#3c9b9e] hover:bg-[#2a6b6b] text-white'
+                      : 'bg-[#359ca0] hover:bg-[#2a7d82] text-white'
                   }`}
                 >
                   {isSubmitting ? "Saving..." : (editingEvent ? "Update Event" : "Post Event")}
@@ -720,7 +720,7 @@ export function EventsView({
                       return (
                         <div
                           key={e.id}
-                          className="relative rounded-2xl border-l-4 border-[#f59e0b] bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
+                          className="relative rounded-2xl border-l-4 border-[#f8e67d] bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
                         >
                           <div className="absolute top-4 right-4 flex items-center gap-2">
                             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${status.color}`}>
@@ -758,7 +758,7 @@ export function EventsView({
                             </button>
                           </div>
 
-                          <h2 className="pr-32 text-lg font-bold text-[#005f63]">
+                          <h2 className="pr-32 text-base font-bold text-[#005f63]">
                             {highlightText(e.title, eventSearch)}
                           </h2>
                           <p className="mt-1 text-sm text-gray-500">
@@ -898,7 +898,7 @@ export function EventsView({
 
               <button
                 onClick={() => setShowAttendance(viewEv)}
-                className="w-full bg-[#005f63] hover:bg-[#004a4d] text-white py-2.5 rounded-full font-medium transition"
+                className="w-full bg-[#f3b94e] hover:bg-[#ff9736] text-white py-2.5 rounded-full font-medium transition"
               >
                 View Attendance List
               </button>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { LayoutDashboard, ScanLine, Users, Award, CalendarDays, Bell, Settings, ChevronLeft, ChevronRight, LogOut, SquareMenu, FileText } from "lucide-react";
+import { LayoutDashboard, ScanLine, Users, Award, CalendarDays, Bell, Settings, ChevronLeft, ChevronRight, LogOut, SquareMenu, FileText, Archive, ChevronDown, ChevronUp } from "lucide-react";
 
 // --- VIEW IMPORTS ---
 import DashboardView from "./Views/DashboardView";
@@ -15,6 +15,13 @@ export type Resident = { id: string; name: string; age: number; address: string;
 export type Membership = { id: string; name: string; description: string; codeId?: string; note?: string; verified?: boolean; memberIds: string[]; };
 export type Notification = { id: number; title: string; body: string; sentAt: string; };
 export type AttendanceRecord = { id: number; eventTitle: string; eventDate: string; location: string; timeIn: string; timeOut: string; status: string; };
+export type TrashedItem = {
+  id: string | number;
+  type: 'event' | 'resident' | 'membership' | 'notification';
+  name: string;
+  deletedAt: string;
+  deletedBy: string;
+};
 
 export const residents: Resident[] = [
   { id: "RES-001", name: "Juan Dela Cruz", age: 42, address: "Purok 1, Brgy. Piao", contact: "09123456789" },
@@ -34,6 +41,7 @@ export const attendanceRecords: AttendanceRecord[] = [
   { id: 1, eventTitle: "Barangay General Assembly", eventDate: "2026-05-12 09:00", location: "Barangay Hall", timeIn: "2026-05-12 08:55", timeOut: "2026-05-12 11:30", status: "complete" },
 ];
 
+// --- NAVIGATION CONFIG ---
 const NAV = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "scan", label: "QR Scanner", icon: ScanLine },
@@ -41,7 +49,11 @@ const NAV = [
   { key: "memberships", label: "Memberships", icon: Award },
   { key: "events", label: "Events & Attendance", icon: CalendarDays },
   { key: "notify", label: "Notifications", icon: Bell },
+];
+
+const SETTINGS_NAV = [
   { key: "activitylogs", label: "Activity Logs", icon: FileText },
+  { key: "archive", label: "Trash / Archive", icon: Archive },
 ];
 
 export const highlightText = (text: string, query: string) => {
@@ -53,11 +65,49 @@ export const highlightText = (text: string, query: string) => {
   );
 };
 
+// --- ARCHIVE VIEW COMPONENT ---
+function ArchiveView({ trashedItems }: { trashedItems: TrashedItem[] }) {
+  return (
+    <div className="p-4 bg-white rounded-lg shadow">
+      <h2 className="text-xl font-bold mb-4 text-[#005f63]">Trash / Archive</h2>
+      <p className="text-sm text-gray-600 mb-6">All deleted records are stored here.</p>
+
+      {trashedItems.length === 0 ? (
+        <p className="text-gray-500 italic">No deleted items found.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-gray-50">
+                <th className="text-left p-3 font-medium">Type</th>
+                <th className="text-left p-3 font-medium">Name / Title</th>
+                <th className="text-left p-3 font-medium">Deleted At</th>
+                <th className="text-left p-3 font-medium">Deleted By</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trashedItems.map(item => (
+                <tr key={item.id} className="border-b hover:bg-gray-50">
+                  <td className="p-3 capitalize">{item.type}</td>
+                  <td className="p-3">{item.name}</td>
+                  <td className="p-3">{item.deletedAt}</td>
+                  <td className="p-3">{item.deletedBy}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --------------------------
 // LAYOUT COMPONENTS
 // --------------------------
 function Sidebar({ active, setActive }: { active: string; setActive: (key: string) => void }) {
   const [isOpen, setIsOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const handleLogout = async () => {
     console.log('Logging out...');
@@ -108,17 +158,46 @@ function Sidebar({ active, setActive }: { active: string; setActive: (key: strin
         <div className="flex-1 px-2 py-5 overflow-y-auto smooth-scroll">
           <p className={`mb-3 px-3 text-sm font-semibold text-white/60 transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0"}`}>Staff Console</p>
           <div className="space-y-1.5">
+            {/* MAIN NAVIGATION */}
             {NAV.map((item) => (
-              <button key={item.key} onClick={() => setActive(item.key)} className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} ${active === item.key ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]" : "text-white/80 hover:bg-[#007777] hover:text-white"}`}>
+              <button key={item.key} onClick={() => setActive(item.key)} className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} ${active === item.key ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]" : "text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1"}`}>
                 <item.icon className="h-5 w-5 shrink-0" />
                 <span className={`transition-all duration-300 whitespace-nowrap ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>{item.label}</span>
               </button>
             ))}
+
+            {/* SETTINGS WITH SUBMENU */}
+            <div className="space-y-1">
+              <button
+                onClick={() => setSettingsOpen(!settingsOpen)}
+                className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1`}
+              >
+                <Settings className="h-5 w-5 shrink-0" />
+                <span className={`transition-all duration-300 whitespace-nowrap flex-1 text-left ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>Settings</span>
+                {isOpen && (settingsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />)}
+              </button>
+
+              {/* SUB NAVIGATION */}
+              {settingsOpen && (
+                <div className={`pl-${isOpen ? '6' : '0'} space-y-1 mt-1`}>
+                  {SETTINGS_NAV.map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => setActive(item.key)}
+                      className={`flex items-center w-full rounded-[20px] py-2.5 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} ${active === item.key ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]" : "text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1"}`}
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span className={`transition-all duration-300 whitespace-nowrap ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <div className="border-t border-[#007777] p-2 shrink-0">
           <button
-            className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"}`}
+            className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white hover:translate-x-1 ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"}`}
             onClick={handleLogout}
           >
             <LogOut className="h-5 w-5 shrink-0" />
@@ -155,16 +234,17 @@ export default function StaffDashboard() {
   const getInitialActive = () => {
     const path = window.location.pathname;
     const lastSegment = path.split('/').pop() || "";
-    const validKeys = NAV.map(n => n.key);
+    const validKeys = [...NAV.map(n => n.key), ...SETTINGS_NAV.map(n => n.key)];
     return validKeys.includes(lastSegment) ? lastSegment : "dashboard";
   };
 
   const [active, setActiveState] = useState(getInitialActive());
-  
+
   const [eventsCount, setEventsCount] = useState(0);
   const [upcomingEventsList, setUpcomingEventsList] = useState<any[]>([]);
   const [pastEventsCount, setPastEventsCount] = useState(0);
   const [loadingEvents, setLoadingEvents] = useState(true);
+  const [trashedItems, setTrashedItems] = useState<TrashedItem[]>([]);
 
   const setActive = (page: string) => {
     window.history.pushState({}, "", `/staff/${page}`);
@@ -181,7 +261,7 @@ export default function StaffDashboard() {
 
   const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "STAFF / ADMIN" };
 
-  const [membershipOptions, setMembershipOptions] = useState<Membership[]>([]); // ✅ Initialize as empty array
+  const [membershipOptions, setMembershipOptions] = useState<Membership[]>([]);
   const [allEvents, setAllEvents] = useState<any[]>([]);
 
   const getMembershipName = (id: string | number | null | undefined) => {
@@ -202,7 +282,7 @@ export default function StaffDashboard() {
         const now = new Date();
         const upcoming = result.data.filter((event: any) => new Date(event.event_start) >= now);
         const past = result.data.filter((event: any) => new Date(event.event_start) < now);
-        
+
         setEventsCount(result.data.length);
         setUpcomingEventsList(upcoming);
         setPastEventsCount(past.length);
@@ -217,8 +297,24 @@ export default function StaffDashboard() {
     }
   };
 
+  // Fetch trashed/deleted items
+  const fetchTrashedItems = async () => {
+    try {
+      const response = await fetch('/api/trashed', {
+        credentials: 'include',
+        headers: { Accept: 'application/json' }
+      });
+      const data = await response.json();
+      setTrashedItems(data.data || []);
+    } catch (error) {
+      console.error("Error fetching trashed items:", error);
+      setTrashedItems([]);
+    }
+  };
+
   useEffect(() => {
     fetchEventsCount();
+    fetchTrashedItems();
   }, []);
 
   useEffect(() => {
@@ -286,7 +382,7 @@ export default function StaffDashboard() {
   }, [membershipOptions]);
 
   const handleDeleteEvent = async (id: string | number) => {
-    if (!window.confirm('Delete this event? It can be restored from activity logs.')) {
+    if (!window.confirm('Delete this event? It will be moved to Trash.')) {
       return;
     }
 
@@ -315,10 +411,25 @@ export default function StaffDashboard() {
         return;
       }
 
+      // Add to trash list
+      const deletedEvent = allEvents.find(e => e.id === id);
+      if (deletedEvent) {
+        setTrashedItems(prev => [
+          ...prev,
+          {
+            id: deletedEvent.id,
+            type: 'event',
+            name: deletedEvent.title,
+            deletedAt: new Date().toLocaleString(),
+            deletedBy: staff.name
+          }
+        ]);
+      }
+
       setAllEvents((prev) => prev.filter((e) => e.id !== id));
       setEventsCount(prev => Math.max(0, prev - 1));
-      
-      alert('Event deleted successfully!');
+
+      alert('Event moved to Trash successfully!');
     } catch (error) {
       console.error('Error deleting event:', error);
       alert('Error deleting event');
@@ -337,7 +448,7 @@ export default function StaffDashboard() {
 
         <div className="h-[calc(100vh-73px)] overflow-y-auto p-6 smooth-scroll">
           {active === "dashboard" && (
-            <DashboardView 
+            <DashboardView
               membershipsCount={memberships.length}
               eventsCount={eventsCount}
               upcomingEvents={upcomingEventsList}
@@ -351,6 +462,7 @@ export default function StaffDashboard() {
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
           {active === "notify" && <NotificationsView memberships={membershipOptions} highlightText={highlightText} />}
           {active === "activitylogs" && <ActivityLogsView />}
+          {active === "archive" && <ArchiveView trashedItems={trashedItems} />}
         </div>
       </main>
 
