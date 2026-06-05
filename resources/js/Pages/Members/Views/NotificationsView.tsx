@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import SearchBar from "../../../Components/UI/SearchBar";
-import { Bell, XCircle } from "lucide-react";
+import { Bell, XCircle, AlertTriangle } from "lucide-react";
 import { createPortal } from "react-dom";
 
 interface Notification {
@@ -11,6 +11,7 @@ interface Notification {
     is_updated: boolean;
     updated_at_notification: string | null;
     read: boolean;
+    type?: string; // Add this for event_deleted type
     event?: {
         id: number;
         name: string;
@@ -18,6 +19,7 @@ interface Notification {
         location: string;
         event_start: string;
         event_end: string | null;
+        deleted_at?: string | null; // For soft-deleted events
     };
 }
 
@@ -31,7 +33,6 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
     const [notificationSearch, setNotificationSearch] = useState("");
     const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
 
-    // Prevent body scroll when modal is open
     useEffect(() => {
         if (selectedNotification) {
             document.body.style.overflow = 'hidden';
@@ -107,6 +108,13 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
         if (!notification.read) {
             markAsRead(notification.id);
         }
+        
+        // ✅ Check if event is deleted before opening modal
+        if (notification.type === 'event_deleted' || !notification.event || notification.event?.deleted_at) {
+            alert('⚠️ We apologize for the inconvenience.\n\nThis event has been cancelled or deleted.\nNo further details are available.');
+            return;
+        }
+        
         setSelectedNotification(notification);
     };
 
@@ -179,6 +187,11 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
         );
     }
 
+    // ✅ Check if event is deleted for styling
+    const isEventDeleted = (notification: Notification) => {
+        return notification.type === 'event_deleted' || !notification.event || notification.event?.deleted_at;
+    };
+
     return (
         <div className="space-y-6">
             <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
@@ -208,33 +221,45 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                 ) : (
                     filteredNotifications.map((n) => {
                         const isRead = n.read;
+                        const isDeleted = isEventDeleted(n);
                         const { staffName, title, actualMessage } = parseMessage(n.message);
                         
                         return (
                             <div
                                 key={n.id}
                                 onClick={() => handleNotificationClick(n)}
-                                className={`relative rounded-3xl px-6 py-4 border-l-4 border-l-[#ecd862] border-y border-r border-gray-200 cursor-pointer transition-all duration-300 ease-out hover:shadow-[0_20px_35px_-8px_rgba(0,0,0,0.25)] hover:-translate-y-1 ${
-                                    !isRead
+                                className={`relative rounded-3xl px-6 py-4 border-l-4 transition-all duration-300 ease-out ${
+                                    isDeleted 
+                                        ? 'border-l-gray-400 bg-gray-100 opacity-75 cursor-not-allowed'
+                                        : 'border-l-[#ecd862] cursor-pointer hover:shadow-[0_20px_35px_-8px_rgba(0,0,0,0.25)] hover:-translate-y-1'
+                                } border-y border-r border-gray-200 ${
+                                    !isRead && !isDeleted
                                         ? 'bg-[#f7f2e8] hover:bg-[#fef8e8]'
                                         : 'bg-white hover:bg-gray-50'
                                 }`}
                             >
                                 <div className="flex items-center justify-between gap-4 w-full min-h-[44px]">
                                     <div className="flex-1 min-w-0 flex items-center gap-2.5 text-base flex-wrap sm:flex-nowrap">
-                                        {staffName && (
+                                        {isDeleted && (
+                                            <span className="bg-red-100 text-red-600 text-xs px-2 py-1 rounded-full flex items-center gap-1 shrink-0">
+                                                <AlertTriangle size={12} />
+                                                Cancelled
+                                            </span>
+                                        )}
+                                        
+                                        {staffName && !isDeleted && (
                                             <span className={`whitespace-nowrap shrink-0 ${!isRead ? 'font-bold text-gray-900' : 'text-gray-600'}`}>
                                                 {highlightText(staffName, notificationSearch)}
                                             </span>
                                         )}
                                         
-                                        {staffName && <span className="text-gray-400 shrink-0">•</span>}
+                                        {staffName && !isDeleted && <span className="text-gray-400 shrink-0">•</span>}
                                         
-                                        <span className={`truncate ${!isRead ? 'font-bold text-[#005f63]' : 'font-semibold text-[#005f63]'}`}>
+                                        <span className={`truncate ${!isRead && !isDeleted ? 'font-bold text-[#005f63]' : isDeleted ? 'text-gray-500 line-through' : 'font-semibold text-[#005f63]'}`}>
                                             {highlightText(title, notificationSearch)}
                                         </span>
                                         
-                                        {actualMessage && (
+                                        {actualMessage && !isDeleted && (
                                             <>
                                                 <span className="text-gray-400 shrink-0">—</span>
                                                 <span className={`truncate ${!isRead ? 'text-gray-800' : 'text-gray-600'}`}>
@@ -244,18 +269,24 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                         )}
                                     </div>
                                     
-                                    <div className={`shrink-0 text-sm whitespace-nowrap ${!isRead ? 'font-bold text-gray-700' : 'text-gray-400'}`}>
+                                    <div className={`shrink-0 text-sm whitespace-nowrap ${!isRead && !isDeleted ? 'font-bold text-gray-700' : 'text-gray-400'}`}>
                                         {formatDate(n.created_at)}
                                     </div>
                                 </div>
+                                
+                                {isDeleted && (
+                                    <p className="text-sm text-gray-400 mt-2 pl-2">
+                                        This event has been cancelled. We apologize for the inconvenience.
+                                    </p>
+                                )}
                             </div>
                         );
                     })
                 )}
             </div>
 
-            {/* Event Details Modal */}
-            {selectedNotification && selectedNotification.event && createPortal(
+            {/* Event Details Modal - Only shows for non-deleted events */}
+            {selectedNotification && selectedNotification.event && !selectedNotification.event.deleted_at && (
                 <div
                     className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 sm:p-0"
                     style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
@@ -300,8 +331,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                             </div>
                         </div>
                     </div>
-                </div>,
-                document.body
+                </div>
             )}
         </div>
     );

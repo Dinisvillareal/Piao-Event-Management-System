@@ -69,7 +69,7 @@ export function EventsView({
             "X-Requested-With": "XMLHttpRequest"
           }
         });
-        
+
         if (response.ok) {
           const data = await response.json();
           const formatted = data.map((record: any) => ({
@@ -79,7 +79,7 @@ export function EventsView({
             timeIn: record.time_in,
             timeOut: record.time_out
           }));
-          
+
           setLiveAttendances(prev => ({ ...prev, [event.id]: formatted }));
         }
       } catch (error) {
@@ -110,13 +110,13 @@ export function EventsView({
 
   const formatTime = (timeStr: string | undefined): string => {
     if (!timeStr) return "";
-    
+
     const [hour, minute] = timeStr.split(':');
     let hourNum = parseInt(hour, 10);
     const ampm = hourNum >= 12 ? 'PM' : 'AM';
     if (hourNum > 12) hourNum = hourNum - 12;
     if (hourNum === 0) hourNum = 12;
-    
+
     return `${hourNum}:${minute} ${ampm}`;
   };
 
@@ -136,13 +136,13 @@ export function EventsView({
   // ✅ FIXED: Proper date parsing with validation
   const parseEventDate = (value: string) => {
     if (!value) return new Date(0);
-    
+
     // Handle different date formats
     let dateStr = value;
     if (value.includes(" ")) {
       dateStr = value.split(" ")[0];
     }
-    
+
     const date = new Date(dateStr);
     return isNaN(date.getTime()) ? new Date(0) : date;
   };
@@ -151,57 +151,57 @@ export function EventsView({
   const getEventStatus = (event: MyEvent) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     // Try multiple possible date sources in order of priority
     let dateValue = event.event_start || event.date || event.startDate;
-    
+
     if (!dateValue) {
       console.warn("No date found for event:", event.title);
       return { label: "Upcoming", color: "bg-yellow-100 text-yellow-800" };
     }
-    
+
     // Extract just the date part (YYYY-MM-DD)
     let dateStr = dateValue;
     if (typeof dateValue === 'string' && dateValue.includes(" ")) {
       dateStr = dateValue.split(" ")[0];
     }
-    
+
     const eventDate = new Date(dateStr);
-    
+
     // Check if date is valid
     if (isNaN(eventDate.getTime())) {
       console.warn("Invalid date for event:", event.title, dateStr);
       return { label: "Upcoming", color: "bg-yellow-100 text-yellow-800" };
     }
-    
+
     eventDate.setHours(0, 0, 0, 0);
-    
+
     // Compare dates - Past if strictly before today
     if (eventDate < today) {
       return { label: "Past", color: "bg-teal-100 text-teal-800" };
     }
-    
+
     return { label: "Upcoming", color: "bg-yellow-100 text-yellow-800" };
   };
 
   // ✅ FIXED: Get filter status for events (works with the filter dropdown)
   const getFilterStatus = (event: MyEvent, filter: string): boolean => {
     const status = getEventStatus(event);
-    
+
     if (filter === "all") return true;
     if (filter === "upcoming") return status.label === "Upcoming";
     if (filter === "past") return status.label === "Past";
-    
+
     return true;
   };
 
   // ✅ FIXED: Filtered events with proper status checking
   const filteredEvents = useMemo(() => {
     let result = [...localEvents];
-    
+
     // Apply status filter
     result = result.filter(event => getFilterStatus(event, eventFilter));
-    
+
     // Apply search filter
     if (eventSearch.trim()) {
       const q = eventSearch.toLowerCase();
@@ -213,12 +213,12 @@ export function EventsView({
           e.description.toLowerCase().includes(q)
       );
     }
-    
+
     // Sort by date (most recent first)
     result = [...result].sort(
       (a, b) => parseEventDate(b.date).getTime() - parseEventDate(a.date).getTime()
     );
-    
+
     return result;
   }, [localEvents, eventFilter, eventSearch]);
 
@@ -267,7 +267,7 @@ export function EventsView({
       if (keyB === "📅 This Week") return 1;
       if (keyA === "Unknown Date") return 1;
       if (keyB === "Unknown Date") return -1;
-      
+
       const dateA = new Date(keyA);
       const dateB = new Date(keyB);
       if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
@@ -281,7 +281,7 @@ export function EventsView({
 
   const handleSaveEvent = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (isSubmitting) return;
     setIsSubmitting(true);
 
@@ -369,15 +369,15 @@ export function EventsView({
 
   const startEditEvent = (event: MyEvent) => {
     if (editingEvent || isSubmitting) return;
-    
+
     let eventDate = "";
     let eventTime = "";
-    
+
     if (event.event_start) {
       const dateObj = new Date(event.event_start);
       eventDate = dateObj.toISOString().split('T')[0];
       eventTime = dateObj.toTimeString().slice(0, 5);
-    } 
+    }
     else if (event.date) {
       const parts = event.date.split(' ');
       eventDate = parts[0];
@@ -387,12 +387,12 @@ export function EventsView({
       eventDate = event.startDate;
       eventTime = event.startTime;
     }
-    
+
     const currentMembershipId =
       event.membershipIds && event.membershipIds.length > 0
         ? String(event.membershipIds[0])
         : "all";
-    
+
     setEditingEvent(event);
     setFormOpen(true);
     setNewEvent({
@@ -479,13 +479,13 @@ export function EventsView({
     console.log("=== EVENTS DEBUG ===");
     console.log("Total events:", localEvents.length);
     console.log("Event filter:", eventFilter);
-    
+
     const upcoming = localEvents.filter(e => getEventStatus(e).label === "Upcoming");
     const past = localEvents.filter(e => getEventStatus(e).label === "Past");
-    
+
     console.log("Upcoming events:", upcoming.length);
     console.log("Past events:", past.length);
-    
+
     if (past.length > 0) {
       console.log("Sample past event:", {
         title: past[0].title,
@@ -518,7 +518,7 @@ export function EventsView({
               <select
                 value={eventFilter}
                 onChange={(e) => setEventFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
+                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
               >
                 <option value="all">All Events</option>
                 <option value="upcoming">Upcoming Events</option>
@@ -665,8 +665,8 @@ export function EventsView({
                   type="submit"
                   disabled={isSubmitting}
                   className={`flex-1 py-2.5 rounded-full font-bold transition ${
-                    isSubmitting 
-                      ? 'bg-gray-400 cursor-not-allowed' 
+                    isSubmitting
+                      ? 'bg-gray-400 cursor-not-allowed'
                       : 'bg-[#3c9b9e] hover:bg-[#2a6b6b] text-white'
                   }`}
                 >

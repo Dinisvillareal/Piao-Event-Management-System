@@ -1,129 +1,3 @@
-// import React, { useState, useMemo } from "react";
-// import { Pencil, Users, Download } from "lucide-react";
-// import { Button, Input } from "../../../Components/UI/Core";
-// import StaffFakeQR from "../StaffFakeQR"; // ✅ Using the Staff specific QR!
-
-// const availableMemberships = [
-//   "Verified Resident", "Women's Association", "Senior Citizen",
-//   "Health Worker", "Barangay Staff", "Peace & Order Team"
-// ];
-
-// interface QRCodesViewProps {
-//   memberships: any[];
-//   highlightText: (text: string, query: string) => React.ReactNode;
-// }
-
-// export default function QRCodesView({ memberships, highlightText }: QRCodesViewProps) {
-//   const [searchQuery, setSearchQuery] = useState("");
-//   const [currentPage, setCurrentPage] = useState(1);
-//   const itemsPerPage = 6;
-
-//   const filteredMemberships = useMemo(() => {
-//     if (!searchQuery.trim()) return memberships;
-//     const q = searchQuery.toLowerCase();
-//     return memberships.filter(
-//       (m: any) =>
-//         m.name.toLowerCase().includes(q) ||
-//         m.description.toLowerCase().includes(q) ||
-//         m.codeId?.toLowerCase().includes(q) ||
-//         m.note?.toLowerCase().includes(q)
-//     );
-//   }, [memberships, searchQuery]);
-
-//   const totalPages = useMemo(() => Math.ceil(filteredMemberships.length / itemsPerPage), [filteredMemberships]);
-//   const paginatedMemberships = useMemo(() => filteredMemberships.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage), [filteredMemberships, currentPage]);
-//   useMemo(() => setCurrentPage(1), [searchQuery]);
-
-//   return (
-//     <div className="space-y-6">
-//       {/* Header */}
-//       <div className="sticky top-0 z-10 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm">
-//         <h1 className="text-4xl font-black text-[#005f63]">Memberships & QR Codes</h1>
-//         <p className="text-sm text-[#667777] mt-1">Each membership type has a unique QR — manage and assign here.</p>
-//         <div className="mt-4">
-//           <Input value={searchQuery} onChange={(e: any) => setSearchQuery(e.target.value)} placeholder="Search memberships by name, ID or description…" />
-//         </div>
-//         <p className="mt-2 text-xs text-gray-500">
-//           {filteredMemberships.length} of {memberships.length} membership(s) match.
-//         </p>
-//       </div>
-
-//       <div className="pl-1">
-//         {filteredMemberships.length === 0 ? (
-//           <p className="text-gray-500 italic">No memberships match your search.</p>
-//         ) : (
-//           <>
-//             <div className="flex flex-row flex-wrap gap-5">
-//               {paginatedMemberships.map((m: any) => (
-//                 <div
-//                   key={m.id}
-//                   className="rounded-3xl border border-gray-200 bg-white overflow-hidden w-[780px] shrink-0 hover:shadow-2xl transition-shadow duration-300"
-//                 >
-//                   <div className="h-1.5 bg-gradient-to-r from-[#ff7a28] via-[#ff9a3c] to-[#ffd33d]"></div>
-//                   <div className="p-5">
-//                     <div className="flex items-start justify-between">
-//                       <div>
-//                         <h2 className="text-base font-bold text-[#006666]">{highlightText(m.name, searchQuery)}</h2>
-//                         <p className="text-sm text-[#667777] mt-1">{highlightText(m.description, searchQuery)}</p>
-//                       </div>
-//                       {m.verified && (
-//                         <span className="bg-[#2cb7b7] text-white text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1">
-//                           <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" /></svg>
-//                           Verified
-//                         </span>
-//                       )}
-//                     </div>
-
-//                     <div className="mt-6 grid grid-cols-[auto_1fr] gap-x-8 gap-y-4 items-start">
-//                       <div className="row-span-3 flex flex-col items-center gap-3">
-//                         {/* ✅ USING THE STAFF FAKEQR */}
-//                         <StaffFakeQR seed={m.codeId || m.id} large />
-//                         <span className="text-xs font-mono font-bold text-gray-600">{highlightText(m.codeId || m.id, searchQuery)}</span>
-//                       </div>
-
-//                       <div className="grid grid-cols-2 gap-x-6 gap-y-3">
-//                         <div><p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Type</p><p className="font-medium text-gray-800 mt-0.5">{m.type || "Standard"}</p></div>
-//                         <div><p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Validity</p><p className="font-medium text-gray-800 mt-0.5">{m.validity || "1 Year"}</p></div>
-//                         <div><p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Members</p><p className="font-medium text-gray-800 mt-0.5">{m.memberIds.length} resident(s)</p></div>
-//                         <div>
-//                           <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Status</p>
-//                           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium mt-0.5 ${m.active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
-//                             {m.active ? "Active" : "Inactive"}
-//                           </span>
-//                         </div>
-//                       </div>
-
-//                       <div className="col-span-2">
-//                         <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Notes</p>
-//                         <p className="text-sm text-gray-600 mt-0.5">{highlightText(m.note || "—", searchQuery)}</p>
-//                       </div>
-
-//                       <div className="col-span-2 flex items-center justify-end gap-2 pt-2">
-//                         <Button variant="outline" size="sm" className="border-teal-500/30 text-teal-700 hover:bg-teal-50"><Pencil className="mr-1 h-3.5 w-3.5" /> Edit</Button>
-//                         <Button variant="outline" size="sm" className="border-orange-500/30 text-orange-700 hover:bg-orange-50"><Users className="mr-1 h-3.5 w-3.5" /> Assign Residents</Button>
-//                         <Button variant="outline" size="sm" className="border-blue-500/30 text-blue-700 hover:bg-blue-50"><Download className="mr-1 h-3.5 w-3.5" /> Export QR</Button>
-//                       </div>
-//                     </div>
-//                   </div>
-//                 </div>
-//               ))}
-//             </div>
-
-//             {totalPages > 1 && (
-//               <div className="mt-8 flex items-center justify-center gap-2">
-//                 <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => p - 1)} disabled={currentPage === 1} className="h-8 w-8 p-0">←</Button>
-//                 {Array.from({ length: totalPages }).map((_, i) => (
-//                   <Button key={i} variant={currentPage === i + 1 ? "default" : "outline"} size="sm" onClick={() => setCurrentPage(i + 1)} className={`h-8 w-8 p-0 ${currentPage === i + 1 ? "bg-[#005f63] hover:bg-[#004a4d]" : ""}`}>{i + 1}</Button>
-//                 ))}
-//                 <Button variant="outline" size="sm" onClick={() => setCurrentPage((p) => p + 1)} disabled={currentPage === totalPages} className="h-8 w-8 p-0">→</Button>
-//               </div>
-//             )}
-//           </>
-//         )}
-//       </div>
-//     </div>
-//   );
-// }
 import React, { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Users, Plus, Pencil, Trash2, Search } from "lucide-react";
@@ -139,7 +13,7 @@ export interface Membership {
 
 interface QRCodesViewProps {
   highlightText: (text: string, query: string) => React.ReactNode;
-  memberships: Membership[]; // Make sure this line is here!
+  memberships?: Membership[];
 }
 
 export default function QRCodesView({ highlightText }: QRCodesViewProps) {
@@ -519,21 +393,86 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">Memberships</h1>
             <p className="text-xs sm:text-sm text-[#667777] mt-1">Manage memberships and view assigned residents.</p>
           </div>
-          {/* Desktop button - hidden on mobile */}
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="hidden sm:flex bg-[#005f63] hover:bg-[#004a4d] text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-medium transition shadow-sm items-center gap-2 text-sm sm:text-base"
-          >
-            <Plus className="h-4 w-4" /> Add New Membership
-          </button>
         </div>
         <div className="mt-4 relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70" />
           <SearchBar value={searchQuery} onChange={(value: string) => setSearchQuery(value)} placeholder="Search by name or description..." />
         </div>
-        <p className="mt-2 text-xs text-gray-500">
+        {/* Added extra margin bottom here for spacing */}
+        <p className="mt-2 mb-10 text-xs text-gray-500">
           {filteredMemberships.length} membership(s) found
         </p>
+
+        {/* Pagination & Add Button Row — Pagination moved here, fully rounded */}
+        <div className="flex items-center justify-between">
+          {totalPages > 1 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+              >
+                ←
+              </button>
+              <div className="flex gap-2 flex-wrap justify-center">
+                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i + 1;
+                  } else if (currentPage <= 3) {
+                    pageNum = i + 1;
+                  } else if (currentPage >= totalPages - 2) {
+                    pageNum = totalPages - 4 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`h-8 w-8 rounded-full text-sm font-semibold transition-all active:scale-95 ${
+                        currentPage === pageNum
+                          ? "bg-[#005f63] text-white shadow-sm"
+                          : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                {totalPages > 5 && currentPage < totalPages - 2 && (
+                  <>
+                    <span className="text-gray-400">...</span>
+                    <button
+                      onClick={() => setCurrentPage(totalPages)}
+                      className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-semibold hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                    >
+                      {totalPages}
+                    </button>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+              >
+                →
+              </button>
+            </div>
+          )}
+
+          {/* Desktop button - aligned right */}
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="ml-auto bg-[#005f63] hover:bg-[#004a4d] text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-medium transition shadow-sm items-center gap-2 text-sm sm:text-base"
+          >
+            <div className="flex items-center gap-2">
+              <Plus className="h-4 w-4" /> Add New Membership
+            </div>
+          </button>
+        </div>
       </div>
 
       {/* Scrollable Content Area - Cards scroll here, header stays fixed */}
@@ -569,14 +508,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                             className="p-2 rounded-full hover:bg-orange-50 transition text-orange-600 active:bg-orange-100"
                             title="Edit Membership"
                           >
-                            <Pencil className="h-4 w-4" />
+                            <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
                           </button>
                           <button
                             onClick={() => handleDeleteMembership(m.id, m.name)}
                             className="p-2 rounded-full hover:bg-red-50 transition text-red-500 active:bg-red-100"
                             title="Delete Membership"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <svg width="16" height="16" fill="none" stroke="#ef4444" strokeWidth={2} viewBox="0 0 24 24">
+                              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
                           </button>
                         </div>
                       </div>
@@ -602,65 +546,6 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 );
               })}
             </div>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="mt-8 mb-4 flex items-center justify-center gap-2 flex-wrap">
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                >
-                  ←
-                </button>
-                <div className="flex gap-2 flex-wrap justify-center">
-                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`h-8 w-8 rounded-lg text-sm font-semibold transition-all active:scale-95 ${
-                          currentPage === pageNum
-                            ? "bg-[#005f63] text-white shadow-sm"
-                            : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                  {totalPages > 5 && currentPage < totalPages - 2 && (
-                    <>
-                      <span className="text-gray-400">...</span>
-                      <button
-                        onClick={() => setCurrentPage(totalPages)}
-                        className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-semibold hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                      >
-                        {totalPages}
-                      </button>
-                    </>
-                  )}
-                </div>
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                >
-                  →
-                </button>
-              </div>
-            )}
           </>
         )}
       </div>
@@ -748,14 +633,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         document.body
       )}
 
-      {/* Add Membership Modal - Mobile optimized */}
+      {/* Add New Membership Modal — FULLY ROUNDED EDGES */}
       {showAddModal && createPortal(
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleAddBackdropClick}
         >
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden shadow-2xl relative">
+          <div className="bg-white rounded-[2rem] w-full max-w-md max-h-[85vh] overflow-hidden shadow-2xl relative">
             <div className="bg-white px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg sm:text-xl font-bold text-gray-800">Add New Membership</h2>
               <button onClick={closeAddModal} className="text-gray-400 hover:text-gray-600 p-1">
@@ -775,7 +660,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   required
                   value={newMembership.name}
                   onChange={(e) => setNewMembership(prev => ({ ...prev, name: e.target.value }))}
-                  className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 text-sm sm:text-base ${
+                  className={`w-full rounded-full border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 text-sm sm:text-base ${
                     addFormErrors.name ? "border-red-500" : "border-gray-300"
                   }`}
                   placeholder="e.g., Senior Citizen Program"
@@ -791,7 +676,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   value={newMembership.description}
                   onChange={(e) => setNewMembership(prev => ({ ...prev, description: e.target.value }))}
                   rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 resize-none text-sm sm:text-base"
+                  className="w-full rounded-3xl border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 resize-none text-sm sm:text-base"
                   placeholder="Describe the membership benefits and requirements..."
                 />
               </div>
@@ -800,14 +685,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 <button
                   type="button"
                   onClick={closeAddModal}
-                  className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition active:bg-gray-100"
+                  className="px-4 py-2 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition active:bg-gray-100"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg bg-[#005f63] text-white hover:bg-[#004a4d] disabled:opacity-50 transition active:scale-95"
+                  className="px-4 py-2 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] disabled:opacity-50 transition active:scale-95"
                 >
                   {isSubmitting ? "Adding..." : "Add Membership"}
                 </button>
@@ -818,14 +703,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         document.body
       )}
 
-      {/* Edit Membership Modal - Mobile optimized */}
+      {/* Edit Membership Modal — also rounded for consistency */}
       {showEditModal && editingMembership && createPortal(
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleEditBackdropClick}
         >
-          <div className="bg-white rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden shadow-2xl relative">
+          <div className="bg-white rounded-[2rem] w-full max-w-md max-h-[85vh] overflow-hidden shadow-2xl relative">
             <div className="bg-white px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg sm:text-xl font-bold text-gray-800">Edit Membership</h2>
               <button onClick={closeEditModal} className="text-gray-400 hover:text-gray-600 p-1">
@@ -845,7 +730,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   required
                   value={editingMembership.name}
                   onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, name: e.target.value }))}
-                  className={`w-full rounded-lg border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 text-sm sm:text-base ${
+                  className={`w-full rounded-full border px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 text-sm sm:text-base ${
                     editFormErrors.name ? "border-red-500" : "border-gray-300"
                   }`}
                   placeholder="e.g., Senior Citizen Program"
@@ -861,7 +746,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   value={editingMembership.description}
                   onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, description: e.target.value }))}
                   rows={3}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 resize-none text-sm sm:text-base"
+                  className="w-full rounded-3xl border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 resize-none text-sm sm:text-base"
                   placeholder="Describe the membership benefits and requirements..."
                 />
               </div>
@@ -870,14 +755,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 <button
                   type="button"
                   onClick={closeEditModal}
-                  className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition active:bg-gray-100"
+                  className="px-4 py-2 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition active:bg-gray-100"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 rounded-lg bg-[#005f63] text-white hover:bg-[#004a4d] disabled:opacity-50 transition active:scale-95"
+                  className="px-4 py-2 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] disabled:opacity-50 transition active:scale-95"
                 >
                   {isSubmitting ? "Saving..." : "Save Changes"}
                 </button>

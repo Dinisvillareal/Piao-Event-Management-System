@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\MembershipController;
 use App\Http\Controllers\EventController;
@@ -90,14 +89,18 @@ Route::middleware('auth')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | EVENTS
+    | EVENTS (WITH SOFT DELETE SUPPORT)
     |--------------------------------------------------------------------------
     */
     Route::get('/events-data', [EventController::class, 'data']);
     Route::post('/events', [EventController::class, 'store']);
     Route::put('/events/{id}', [EventController::class, 'update']);
-    Route::delete('/events/{id}', [EventController::class, 'destroy']);
+    Route::delete('/events/{id}', [EventController::class, 'destroy']);  // Now soft deletes
     Route::get('/events/{id}', [EventController::class, 'show']);
+    
+    // 🆕 SOFT DELETE ROUTES (ADDED)
+    Route::post('/events/{id}/restore', [EventController::class, 'restore']);        // Restore soft-deleted event
+    Route::delete('/events/{id}/force-delete', [EventController::class, 'forceDelete']); // Permanently delete
 
     /*
     |--------------------------------------------------------------------------
@@ -141,7 +144,7 @@ Route::middleware('auth')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| REACT SPA FALLBACK
+| REACT SPA FALLBACK - IMPORTANT FOR REACT ROUTING
 |--------------------------------------------------------------------------
 */
 

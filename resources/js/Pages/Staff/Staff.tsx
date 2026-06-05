@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { LayoutDashboard, ScanLine, Users, Award, CalendarDays, Bell, Settings, ChevronLeft, ChevronRight, LogOut, SquareMenu } from "lucide-react";
+import { LayoutDashboard, ScanLine, Users, Award, CalendarDays, Bell, Settings, ChevronLeft, ChevronRight, LogOut, SquareMenu, FileText } from "lucide-react";
 
 // --- VIEW IMPORTS ---
 import DashboardView from "./Views/DashboardView";
@@ -9,7 +9,6 @@ import QRCodesView from "./Views/QRCodesView";
 import { EventsView } from "./Views/EventsView";
 import NotificationsView from "./Views/NotificationsView";
 import ActivityLogsView from "./Views/ActivityLogsView";
-import { FileText } from "lucide-react";
 
 // --- TYPES & MOCK DATA ---
 export type Resident = { id: string; name: string; age: number; address: string; contact: string; };
@@ -162,7 +161,6 @@ export default function StaffDashboard() {
 
   const [active, setActiveState] = useState(getInitialActive());
   
-  // ✅ NEW STATE FOR EVENTS COUNT
   const [eventsCount, setEventsCount] = useState(0);
   const [upcomingEventsList, setUpcomingEventsList] = useState<any[]>([]);
   const [pastEventsCount, setPastEventsCount] = useState(0);
@@ -183,7 +181,7 @@ export default function StaffDashboard() {
 
   const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "STAFF / ADMIN" };
 
-  const [membershipOptions, setMembershipOptions] = useState<Membership[]>(memberships);
+  const [membershipOptions, setMembershipOptions] = useState<Membership[]>([]); // ✅ Initialize as empty array
   const [allEvents, setAllEvents] = useState<any[]>([]);
 
   const getMembershipName = (id: string | number | null | undefined) => {
@@ -192,7 +190,6 @@ export default function StaffDashboard() {
     return found?.name || "";
   };
 
-  // ✅ NEW: Fetch events count separately for dashboard
   const fetchEventsCount = async () => {
     try {
       const response = await fetch('/events-data', {
@@ -288,10 +285,44 @@ export default function StaffDashboard() {
     fetchRealEvents();
   }, [membershipOptions]);
 
-  const handleDeleteEvent = (id: string | number) => {
-    setAllEvents((prev) => prev.filter((e) => e.id !== id));
-    // ✅ Also update events count after deletion
-    setEventsCount(prev => Math.max(0, prev - 1));
+  const handleDeleteEvent = async (id: string | number) => {
+    if (!window.confirm('Delete this event? It can be restored from activity logs.')) {
+      return;
+    }
+
+    try {
+      const token = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('XSRF-TOKEN='))
+        ?.split('=')[1];
+      const decodedToken = token ? decodeURIComponent(token) : '';
+
+      const response = await fetch(`/events/${id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-XSRF-TOKEN': decodedToken,
+        },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(result.message || 'Failed to delete event');
+        return;
+      }
+
+      setAllEvents((prev) => prev.filter((e) => e.id !== id));
+      setEventsCount(prev => Math.max(0, prev - 1));
+      
+      alert('Event deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      alert('Error deleting event');
+    }
   };
 
   const attended = attendanceRecords.filter(r => r.status === "complete").length;
@@ -308,17 +339,17 @@ export default function StaffDashboard() {
           {active === "dashboard" && (
             <DashboardView 
               membershipsCount={memberships.length}
-              eventsCount={eventsCount}           // ✅ PASS EVENTS COUNT
-              upcomingEvents={upcomingEventsList}  // ✅ PASS UPCOMING EVENTS
-              pastEventsCount={pastEventsCount}    // ✅ PASS PAST EVENTS COUNT
+              eventsCount={eventsCount}
+              upcomingEvents={upcomingEventsList}
+              pastEventsCount={pastEventsCount}
               setActive={setActive}
             />
           )}
           {active === "scan" && <ScanView events={allEvents} residents={residents} memberships={memberships} />}
           {active === "residents" && <ResidentsView />}
-          {active === "memberships" && <QRCodesView memberships={memberships} highlightText={highlightText} />}
+          {active === "memberships" && <QRCodesView highlightText={highlightText} />}
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
-          {active === "notify" && <NotificationsView notifications={notifications} memberships={membershipOptions} highlightText={highlightText} />}
+          {active === "notify" && <NotificationsView memberships={membershipOptions} highlightText={highlightText} />}
           {active === "activitylogs" && <ActivityLogsView />}
         </div>
       </main>
