@@ -12,8 +12,8 @@ return new class extends Migration
             $table->id();
 
             $table->string('user_code', 20);
-            $table->string('action');
-            $table->string('module');
+            $table->string('action', 100);
+            $table->string('module', 100);
 
             $table->longText('description');
 
