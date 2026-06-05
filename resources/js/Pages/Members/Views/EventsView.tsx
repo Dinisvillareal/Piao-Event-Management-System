@@ -15,27 +15,35 @@ interface Event {
 interface EventsViewProps {
   allEvents: Event[];
   allMemberships: { id: number; name: string }[];
+  userMemberships: { id: number; name: string }[];
   highlightText: (text: string, query: string) => React.ReactNode;
 }
 
 export default function EventsView({
   allEvents,
   allMemberships,
+  userMemberships,
   highlightText,
 }: EventsViewProps) {
-  // Moved the search and filter state here!
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
+  const [membershipFilter, setMembershipFilter] = useState("all");
 
-  // 1. Filter the events
   const filteredEvents = useMemo(() => {
     const today = new Date();
-    let result = allEvents;
+    let result = [...allEvents];
 
     if (eventFilter === "upcoming") {
-      result = allEvents.filter((e) => new Date(e.date) >= today);
+      result = result.filter((e) => new Date(e.date) >= today);
     } else if (eventFilter === "past") {
-      result = allEvents.filter((e) => new Date(e.date) < today);
+      result = result.filter((e) => new Date(e.date) < today);
+    }
+
+    if (membershipFilter !== "all") {
+      const selectedId = Number(membershipFilter);
+      result = result.filter((e) =>
+        e.membership_ids?.includes(selectedId)
+      );
     }
 
     if (eventSearch.trim()) {
@@ -49,13 +57,11 @@ export default function EventsView({
       );
     }
 
-    // SORT: NEWEST / LATEST DATE FIRST
-    result = [...result].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return result;
-  }, [allEvents, eventFilter, eventSearch]);
+  }, [allEvents, eventFilter, membershipFilter, eventSearch]);
 
-  // 2. Group the events by date
   const groupedEvents = useMemo(() => {
     const groups: Record<string, typeof allEvents> = {};
     const today = new Date();
@@ -67,7 +73,6 @@ export default function EventsView({
       const dateOnly = e.date.split(" ")[0];
 
       let sectionKey: string;
-
       if (eventFilter === "all") {
         if (eventDate >= today && eventDate <= oneWeekFromNow) {
           sectionKey = "📅 This Week";
@@ -123,7 +128,7 @@ export default function EventsView({
               <select
                 value={eventFilter}
                 onChange={(e) => setEventFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
+                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
               >
                 <option value="all">All Events</option>
                 <option value="upcoming">Upcoming Events</option>
@@ -134,7 +139,27 @@ export default function EventsView({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
             </div>
+
+            <div className="relative">
+              <select
+                value={membershipFilter}
+                onChange={(e) => setMembershipFilter(e.target.value)}
+                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
+              >
+                <option value="all">All Memberships</option>
+                {userMemberships.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+              <svg className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
           </div>
+
           <p className="mt-2 text-xs text-gray-500">
             {filteredEvents.length} of {allEvents.length} event(s) match
           </p>
@@ -153,6 +178,8 @@ export default function EventsView({
                 </h3>
                 <div className="grid gap-5 md:grid-cols-2">
                   {eventsInGroup.map((e) => {
+                    const today = new Date();
+                    const isUpcoming = new Date(e.date) >= today;
                     const memNames = Array.isArray(e.memberships) && e.memberships.length > 0
                       ? e.memberships.map((m) => m.name)
                       : Array.isArray(e.membership_ids)
@@ -162,15 +189,27 @@ export default function EventsView({
                     return (
                       <div
                         key={e.id}
-                        className="relative rounded-2xl border-l-4 border-orange-400 bg-[#f8f3ee] p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
+                        className="relative rounded-3xl border-l-4 border-[#f8e67d] bg-white p-5 shadow-[8px_8px_6px_rgba(0,0,0,0.10)] hover:shadow-[12px_12px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
                       >
-                        <h2 className="pr-8 text-lg font-bold text-[#005f63]">
+                        {/* Status Indicator: Yellow = Upcoming | Teal = Past */}
+                        <div className="absolute top-4 right-4 flex items-center gap-1.5">
+                          <span
+                            className={`w-2.5 h-2.5 rounded-full ${
+                              isUpcoming ? "bg-[#ffd448]" : "bg-[#4dacaf]"
+                            }`}
+                          />
+                          <span className="text-xs font-medium text-gray-600">
+                            {isUpcoming ? "Upcoming" : "Past"}
+                          </span>
+                        </div>
+
+                        <h2 className="pr-20 text-base font-bold text-[#005f63]">
                           {highlightText(e.title, eventSearch)}
                         </h2>
                         <p className="mt-1 text-sm text-gray-500">
                           {highlightText(e.date, eventSearch)} · {highlightText(e.location, eventSearch)}
                         </p>
-                        <p className="mt-3 text-gray-700">
+                        <p className="mt-3 text-sm text-gray-700">
                           {highlightText(e.description, eventSearch)}
                         </p>
 
@@ -180,12 +219,12 @@ export default function EventsView({
                               <span className="rounded-full bg-[#005f63]/10 px-3 py-1 text-xs font-semibold text-[#005f63] border border-[#005f63]/20">
                                 For: {memNames.join(", ")}
                               </span>
-                              <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 border border-green-100">
-                                Included for your membership
+                              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-500 border border-gray-200">
+                                Included in your membership
                               </span>
                             </>
                           ) : (
-                            <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-600 border border-gray-200">
+                            <span className="rounded-full bg-[#005f63]/10 px-3 py-1 text-xs font-semibold text-[#005f63] border border-[#005f63]/20">
                               Open Event — All Residents
                             </span>
                           )}

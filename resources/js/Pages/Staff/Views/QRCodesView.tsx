@@ -386,8 +386,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   return (
     <div className="h-full flex flex-col relative">
-      {/* Fixed Header - Never scrolls */}
-      <div className="flex-shrink-0 bg-[#fcfcf9] pt-2 pb-4 px-4 sm:px-6 shadow-b-sm">
+      {/* Fixed Header — reduced left padding */}
+      <div className="flex-shrink-0 bg-[#fcfcf9] pt-2 pb-4 px-2 shadow-b-sm">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">Memberships</h1>
@@ -395,15 +395,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           </div>
         </div>
         <div className="mt-4 relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70" />
           <SearchBar value={searchQuery} onChange={(value: string) => setSearchQuery(value)} placeholder="Search by name or description..." />
         </div>
-        {/* Added extra margin bottom here for spacing */}
-        <p className="mt-2 mb-10 text-xs text-gray-500">
+        <p className="mt-2 mb-6 text-xs text-gray-500">
           {filteredMemberships.length} membership(s) found
         </p>
 
-        {/* Pagination & Add Button Row — Pagination moved here, fully rounded */}
+        {/* Pagination & Add Button Row */}
         <div className="flex items-center justify-between">
           {totalPages > 1 && (
             <div className="flex items-center gap-2 flex-wrap">
@@ -463,7 +462,6 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             </div>
           )}
 
-          {/* Desktop button - aligned right */}
           <button
             onClick={() => setShowAddModal(true)}
             className="ml-auto bg-[#005f63] hover:bg-[#004a4d] text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-medium transition shadow-sm items-center gap-2 text-sm sm:text-base"
@@ -475,82 +473,79 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         </div>
       </div>
 
-      {/* Scrollable Content Area - Cards scroll here, header stays fixed */}
-      <div className="flex-1 overflow-y-auto px-4 sm:pl-6 pb-20 sm:pb-6 pr-4 sm:pr-6">
+      {/* Scrollable Content — reduced left padding */}
+      <div className="flex-1 overflow-y-auto px-2 pb-20 sm:pb-6">
         {filteredMemberships.length === 0 ? (
           <p className="text-center text-gray-500 py-12">No memberships found.</p>
         ) : (
-          <>
-            {/* Responsive grid: 1 column on mobile, 2 columns on desktop */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
-              {paginatedMemberships.map((m) => {
-                const residentCount = getResidentsByMembership(m.name).length;
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5">
+            {paginatedMemberships.map((m) => {
+              const residentCount = getResidentsByMembership(m.name).length;
 
-                return (
-                  <div
-                    key={m.id}
-                    className="rounded-2xl sm:rounded-3xl border border-gray-200 bg-white overflow-hidden hover:shadow-2xl transition-shadow duration-300 w-full"
-                  >
-                    <div className="h-1.5 bg-gradient-to-r from-[#ff7a28] via-[#ff9a3c] to-[#ffd33d]"></div>
-                    <div className="p-4 sm:p-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <h2 className="text-lg sm:text-xl font-bold text-[#006666] break-words">
-                            {highlightText(m.name, searchQuery)}
-                          </h2>
-                          <p className="text-xs sm:text-sm text-[#667777] mt-1 break-words line-clamp-2 sm:line-clamp-none">
-                            {highlightText(m.description || 'No description', searchQuery)}
-                          </p>
-                        </div>
-                        <div className="flex gap-1 flex-shrink-0">
-                          <button
-                            onClick={() => openEditModal(m)}
-                            className="p-2 rounded-full hover:bg-orange-50 transition text-orange-600 active:bg-orange-100"
-                            title="Edit Membership"
-                          >
-                            <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleDeleteMembership(m.id, m.name)}
-                            className="p-2 rounded-full hover:bg-red-50 transition text-red-500 active:bg-red-100"
-                            title="Delete Membership"
-                          >
-                            <svg width="16" height="16" fill="none" stroke="#ef4444" strokeWidth={2} viewBox="0 0 24 24">
-                              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            </svg>
-                          </button>
-                        </div>
+              return (
+                <div
+                  key={m.id}
+                  className="rounded-2xl sm:rounded-3xl border border-gray-200 bg-white overflow-hidden shadow-[8px_8px_6px_rgba(0,0,0,0.10)] hover:shadow-[12px_12px_18px_rgba(0,0,0,0.20)] transition-shadow duration-300 w-full"
+                >
+                  <div className="h-1.5 bg-gradient-to-r from-[#fdde8a] via-[#e2964f] to-[#91f0f3]"></div>
+                  <div className="p-4 sm:p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <h2 className="text-lg sm:text-base font-bold text-[#006666] break-words">
+                          {highlightText(m.name, searchQuery)}
+                        </h2>
+                        <p className="text-xs sm:text-sm text-[#667777] mt-1 break-words line-clamp-2 sm:line-clamp-none">
+                          {highlightText(m.description || 'No description', searchQuery)}
+                        </p>
                       </div>
+                      <div className="flex gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => openEditModal(m)}
+                          className="p-2 rounded-full hover:bg-orange-50 transition text-orange-600 active:bg-orange-100"
+                          title="Edit Membership"
+                        >
+                          <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMembership(m.id, m.name)}
+                          className="p-2 rounded-full hover:bg-red-50 transition text-red-500 active:bg-red-100"
+                          title="Delete Membership"
+                        >
+                          <svg width="16" height="16" fill="none" stroke="#ef4444" strokeWidth={2} viewBox="0 0 24 24">
+                            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
 
-                      <div className="mt-4 sm:mt-6">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 sm:pt-4 mt-2 border-t border-gray-100">
-                          <div className="text-left">
-                            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">TOTAL MEMBERS</p>
-                            <p className="font-medium text-gray-800 mt-0.5 text-sm sm:text-base">{residentCount} resident(s)</p>
-                          </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-teal-500/30 text-teal-700 hover:bg-teal-50 w-full sm:w-auto justify-center"
-                            onClick={() => handleViewMembers(m)}
-                          >
-                            <Users className="mr-1 h-3.5 w-3.5" /> View Members ({residentCount})
-                          </Button>
+                    <div className="mt-4 sm:mt-6">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-3 sm:pt-4 mt-2 border-t border-gray-100">
+                        <div className="text-left">
+                          <p className="sm:text-xs font-semibold uppercase tracking-wider text-gray-500">TOTAL MEMBERS</p>
+                          <p className="font-medium text-gray-800 mt-0.5 text-sm sm:text-sm">{residentCount} resident(s)</p>
                         </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full border-teal-500/30 text-teal-700 hover:bg-teal-50 w-full sm:w-auto justify-center"
+                          onClick={() => handleViewMembers(m)}
+                        >
+                          <Users className="mr-1 h-5 w-3.5" /> View Members ({residentCount})
+                        </Button>
                       </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
-      {/* Floating Action Button (FAB) - visible only on mobile */}
+      {/* Floating Action Button */}
       <button
         onClick={() => setShowAddModal(true)}
         className="sm:hidden fixed bottom-6 right-6 z-50 bg-[#005f63] hover:bg-[#004a4d] text-white rounded-full p-4 shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
@@ -559,7 +554,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         <Plus className="h-6 w-6" />
       </button>
 
-      {/* View Members Modal - Mobile optimized */}
+      {/* View Members Modal */}
       {showModal && selectedMembership && createPortal(
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 sm:p-0"
@@ -624,7 +619,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             </div>
 
             <div className="bg-white px-4 sm:px-6 py-4 border-t border-gray-100 flex justify-end">
-              <button onClick={closeModal} className="bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-lg text-sm font-medium transition active:scale-95">
+              <button onClick={closeModal} className="bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-full text-sm font-medium transition active:scale-95">
                 Close
               </button>
             </div>
@@ -633,7 +628,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         document.body
       )}
 
-      {/* Add New Membership Modal — FULLY ROUNDED EDGES */}
+      {/* Add New Membership Modal */}
       {showAddModal && createPortal(
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
@@ -703,7 +698,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         document.body
       )}
 
-      {/* Edit Membership Modal — also rounded for consistency */}
+      {/* Edit Membership Modal */}
       {showEditModal && editingMembership && createPortal(
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"

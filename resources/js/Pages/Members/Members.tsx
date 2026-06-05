@@ -11,15 +11,16 @@ import EventsView from "./Views/EventsView";
 export default function MemberDashboard() {
   const currentPath = window.location.pathname.replace('/', '');
   const [active, setActiveState] = useState(currentPath || "dashboard");
-  const [member, setMember] = useState({ 
-    id: "", 
-    name: "", 
-    first_name: "", 
+  const [member, setMember] = useState({
+    id: "",
+    name: "",
+    first_name: "",
     last_name: "",
-    user_code: "" 
+    user_code: ""
   });
   const [loading, setLoading] = useState(true);
   const [memberships, setMemberships] = useState([]);
+  const [userMemberships, setUserMemberships] = useState<any[]>([]);
   const [userMembershipsCount, setUserMembershipsCount] = useState(0);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [attended, setAttended] = useState(0);
@@ -144,7 +145,7 @@ export default function MemberDashboard() {
   useEffect(() => {
     fetch('/api/memberships', {
       credentials: 'include',
-      headers: { 
+      headers: {
         'Accept': 'application/json',
         'X-Requested-With': 'XMLHttpRequest'
       }
@@ -164,7 +165,7 @@ export default function MemberDashboard() {
   useEffect(() => {
     // ✅ NEW: Get portal mode from storage
     const portalMode = localStorage.getItem("portalMode") || sessionStorage.getItem("portalMode") || "member";
-    
+
     fetch('/events-data', {
       credentials: 'include',
       headers: {
@@ -219,7 +220,7 @@ export default function MemberDashboard() {
 
     fetch(`/membership-residents/${member.id}?per_page=100`, {
       credentials: 'include',
-      headers: { 
+      headers: {
         'Accept': 'application/json',
         'X-Requested-With': 'XMLHttpRequest'
       }
@@ -228,6 +229,7 @@ export default function MemberDashboard() {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await safeJsonParse(res);
         setUserMembershipsCount(data.total || data.memberships?.length || 0);
+        setUserMemberships(Array.isArray(data.memberships) ? data.memberships : []);
       })
       .catch(err => console.error('Failed to fetch user memberships count:', err));
   }, [member.id]);
@@ -247,7 +249,7 @@ export default function MemberDashboard() {
 
     fetch(`/attendance/${member.id}`, {
       credentials: 'include',
-      headers: { 
+      headers: {
         'Accept': 'application/json',
         'X-Requested-With': 'XMLHttpRequest'
       }
@@ -370,6 +372,7 @@ export default function MemberDashboard() {
                   allEvents={allEvents}
                   highlightText={highlightText}
                   allMemberships={memberships}
+                  userMemberships={userMemberships}
                 />
               )}
 

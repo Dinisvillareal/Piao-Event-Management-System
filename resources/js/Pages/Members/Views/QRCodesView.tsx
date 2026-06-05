@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import SearchBar from "../../../Components/UI/SearchBar";
 import { QRCodeCanvas } from "qrcode.react";
-import {QrCode} from "lucide-react";
+import { QrCode } from "lucide-react";
 
 export default function QRCodesView({ highlightText, userId, userCode, fullName }: any) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -21,7 +21,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     const handleResize = () => {
       const width = window.innerWidth;
       let newSize;
-      
+
       if (width < 640) {
         newSize = Math.min(width - 80, 240);
       } else if (width < 1024) {
@@ -29,10 +29,10 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
       } else {
         newSize = 280;
       }
-      
+
       setQrSize(Math.max(newSize, 180));
     };
-    
+
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
@@ -41,25 +41,25 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   // Main fetch effect - handles everything in one place
   useEffect(() => {
     if (!userId) return;
-    
+
     const fetchMemberships = async () => {
       setLoading(true);
       setError(null);
-      
+
       try {
         // Get user's membership IDs
         const membershipRes = await fetch(`/membership-residents/${userId}?per_page=100`, {
           credentials: 'include',
-          headers: { 
+          headers: {
             'Accept': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
           }
         });
-        
+
         if (!membershipRes.ok) throw new Error(`HTTP ${membershipRes.status}`);
         const membershipData = await membershipRes.json();
         const membershipIds = (membershipData.memberships || []).map((m: any) => m.id);
-        
+
         // If no memberships, show empty state immediately
         if (membershipIds.length === 0) {
           setAllMemberships([]);
@@ -69,27 +69,27 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
           setLoading(false);
           return;
         }
-        
+
         // Fetch all memberships
         const allMembershipsRes = await fetch(`/api/memberships`, {
           credentials: 'include',
-          headers: { 
+          headers: {
             'Accept': 'application/json',
             'X-Requested-With': 'XMLHttpRequest'
           }
         });
-        
+
         if (!allMembershipsRes.ok) throw new Error(`HTTP ${allMembershipsRes.status}`);
         const allMembershipsData = await allMembershipsRes.json();
         const allMembershipsList = Array.isArray(allMembershipsData) ? allMembershipsData : (allMembershipsData.data || []);
-        
+
         // Filter to user's memberships
-        const userMemberships = allMembershipsList.filter((m: any) => 
+        const userMemberships = allMembershipsList.filter((m: any) =>
           membershipIds.includes(m.id)
         );
-        
+
         setAllMemberships(userMemberships);
-        
+
         // Apply search filter
         let filtered = userMemberships;
         if (searchQuery) {
@@ -97,23 +97,23 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
             m.name.toLowerCase().includes(searchQuery.toLowerCase())
           );
         }
-        
+
         setTotalItems(filtered.length);
         const newTotalPages = Math.ceil(filtered.length / itemsPerPage);
         setTotalPages(newTotalPages);
-        
+
         // Reset to page 1 if current page is out of bounds
         let safePage = currentPage;
         if (currentPage > newTotalPages && newTotalPages > 0) {
           safePage = 1;
           setCurrentPage(1);
         }
-        
+
         // Paginate
         const start = (safePage - 1) * itemsPerPage;
         const paginated = filtered.slice(start, start + itemsPerPage);
         setDisplayMemberships(paginated);
-        
+
       } catch (err) {
         console.error('Failed to fetch memberships:', err);
         setError(err instanceof Error ? err.message : 'Failed to load memberships');
@@ -121,7 +121,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
         setLoading(false);
       }
     };
-    
+
     fetchMemberships();
   }, [userId, searchQuery, currentPage, itemsPerPage]);
 
@@ -130,13 +130,13 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
       alert("QR code container not found");
       return;
     }
-    
+
     const canvas = qrCodeRef.current.querySelector('canvas');
     if (!canvas) {
       alert("Canvas not found. Please try again.");
       return;
     }
-    
+
     try {
       const link = document.createElement('a');
       link.download = `qr-code-${userCode || 'membership'}.png`;
@@ -151,7 +151,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   // Memoize QR data - only create if user has memberships
   const qrData = useMemo(() => {
     if (!userId || !userCode || !fullName || allMemberships.length === 0) return null;
-    
+
     return JSON.stringify({
       user_id: userId,
       user_code: userCode,
@@ -177,8 +177,8 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600">
           <p className="font-semibold">Error</p>
           <p className="text-sm mt-1">{error}</p>
-          <button 
-            onClick={() => window.location.reload()} 
+          <button
+            onClick={() => window.location.reload()}
             className="text-sm underline hover:text-red-800 mt-2"
           >
             Retry
@@ -189,8 +189,9 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   }
 
   return (
-    <div className="bg-[#fcfcf9]">
-      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-4 sm:px-6 pt-2 pb-4 border-b border-[#ece7de]">
+    <div className="bg-[#fcfcf9] h-full flex flex-col">
+      {/* Fixed Header - Never scrolls */}
+      <div className="flex-shrink-0 bg-[#fcfcf9] px-2 sm:px-3 pt-2 pb-4 border-b border-[#ece7de] z-10">
         <div className="max-w-[1580px] mx-auto">
           <h1 className="text-3xl sm:text-4xl font-black text-[#005f63]">
             My QR Code and Memberships
@@ -202,27 +203,90 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
           {allMemberships.length > 0 && (
             <div className="mt-4">
               <div className="w-full">
-                <SearchBar 
-                  value={searchQuery} 
-                  onChange={setSearchQuery} 
-                  placeholder="Search your memberships by name…" 
+                <SearchBar
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  placeholder="Search your memberships by name…"
                 />
               </div>
               <p className="mt-2 text-xs text-gray-500">
-                {displayMemberships.length} of {totalItems} membership(s) found
+                {totalItems} membership(s) found — showing {itemsPerPage} per page
               </p>
             </div>
           )}
+
+          {/* ✅ PAGINATION — TOP RIGHT, SAME AS NOTIFICATIONS/ATTENDANCE */}
+          <div className="flex items-center justify-between mt-8">
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2 flex-wrap ml-auto">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  ←
+                </button>
+                <div className="flex gap-2 flex-wrap justify-center">
+                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`h-8 w-8 rounded-full text-sm font-semibold transition-all active:scale-95 ${
+                          currentPage === pageNum
+                            ? "bg-[#005f63] text-white shadow-sm"
+                            : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                  {totalPages > 5 && currentPage < totalPages - 2 && (
+                    <>
+                      <span className="text-gray-400">...</span>
+                      <button
+                        onClick={() => setCurrentPage(totalPages)}
+                        className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-semibold hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                      >
+                        {totalPages}
+                      </button>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  →
+                </button>
+              </div>
+            )}
+            <div></div>
+          </div>
         </div>
       </div>
 
-      <div className="px-4 sm:px-6 mt-5">
+      {/* Scrollable Content Area - Only memberships scroll */}
+      <div className="flex-1 overflow-y-auto px-2 sm:px-3 mt-5 pb-4">
         <div className="max-w-[1580px] mx-auto">
-          <div className="flex flex-col lg:flex-row gap-6">
-            
+          <div className="flex flex-col lg:flex-row gap-4">
+
             {/* LEFT COLUMN - QR CODE SECTION */}
             <div className="w-full lg:w-1/3">
-              <div className="rounded-xl border border-gray-200 bg-transparent p-4 sm:p-6 shadow-lg lg:sticky lg:top-24 overflow-hidden">
+              <div className="rounded-3xl border border-gray-200 bg-transparent p-4 sm:p-6 shadow-lg lg:sticky lg:top-24 overflow-hidden">
                 <p className="text-center mb-4 text-gray-500 text-sm">
                   Scan this at events for attendance
                 </p>
@@ -231,11 +295,11 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                     <div ref={qrCodeRef} className="flex justify-center items-center">
                       <div className="bg-white p-2 rounded-2xl shadow:sm border border-gray-500 inline-flex">
                         {qrData ? (
-                          <QRCodeCanvas 
-                            value={qrData} 
-                            size={qrSize} 
-                            level="H" 
-                            bgColor="#ffffff" 
+                          <QRCodeCanvas
+                            value={qrData}
+                            size={qrSize}
+                            level="H"
+                            bgColor="#ffffff"
                             fgColor="#005f63"
                             includeMargin={true}
                           />
@@ -249,29 +313,29 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="mt-6">
                     <button
                       onClick={downloadQRCode}
                       disabled={!qrData}
                       className={`font-semibold py-3 px-6 rounded-full transition-colors duration-300 shadow-md w-full max-w-[280px] mx-auto block ${
-                        qrData 
-                          ? 'bg-[#005f63] hover:bg-orange-600 text-white cursor-pointer' 
+                        qrData
+                          ? 'bg-[#359ca0] hover:bg-[#2a7d82] text-white cursor-pointer'
                           : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                       }`}
                     >
-                      <svg 
-                        className="inline-block w-5 h-5 mr-2 -mt-1" 
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24" 
+                      <svg
+                        className="inline-block w-5 h-5 mr-2 -mt-1"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
                         xmlns="http://www.w3.org/2000/svg"
                       >
-                        <path 
-                          strokeLinecap="round" 
-                          strokeLinejoin="round" 
-                          strokeWidth={2} 
-                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" 
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                         />
                       </svg>
                       Download QR Code
@@ -290,7 +354,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   </svg>
                   <h3 className="text-xl font-semibold text-gray-700 mb-2">No Memberships Yet</h3>
                   <p className="text-gray-500 text-center max-w-md">
-                    You don't have any memberships at the moment. 
+                    You don't have any memberships at the moment.
                     Once you're enrolled in a program, your membership cards will appear here.
                   </p>
                   <div className="mt-6 text-sm text-[#667777] bg-gray-50 px-4 py-2 rounded-lg">
@@ -304,7 +368,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   </svg>
                   <p className="text-gray-500 text-lg">No matching memberships found</p>
                   <p className="text-gray-400 text-sm mt-1">Try a different search term</p>
-                  <button 
+                  <button
                     onClick={() => setSearchQuery("")}
                     className="mt-4 text-[#005f63] hover:text-orange-600 text-sm font-medium"
                   >
@@ -312,77 +376,28 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   </button>
                 </div>
               ) : (
-                <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    {displayMemberships.map((m: any) => (
-                      <div
-                        key={m.id}
-                        className="rounded-3xl border border-gray-200 bg-white overflow-hidden hover:shadow-2xl transition-shadow duration-300 w-full"
-                      >
-                        <div className="h-1.5 bg-gradient-to-r from-[#ff7a28] via-[#ff9a3c] to-[#ffd33d]"></div>
-                        <div className="p-5">
-                          <div>
-                            <h2 className="text-xl font-bold text-[#006666] break-words">
-                              {highlightText(m.name, searchQuery)}
-                            </h2>
-                            {m.description && (
-                              <p className="text-sm text-[#667777] mt-2 break-words">
-                                {highlightText(m.description, searchQuery)}
-                              </p>
-                            )}
-                          </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {displayMemberships.map((m: any) => (
+                    <div
+                      key={m.id}
+                      className="rounded-3xl border border-gray-200 bg-white overflow-hidden shadow-[8px_8px_6px_rgba(0,0,0,0.10)] hover:shadow-[12px_12px_18px_rgba(0,0,0,0.20)] transition-shadow duration-300 w-full"
+                    >
+                      <div className="h-1.5 bg-gradient-to-r from-[#fdde8a] via-[#e2964f] to-[#91f0f3]"></div>
+                      <div className="p-8">
+                        <div>
+                          <h2 className="text-base font-bold text-[#006666] break-words">
+                            {highlightText(m.name, searchQuery)}
+                          </h2>
+                          {m.description && (
+                            <p className="text-sm text-[#667777] mt-2 break-words">
+                              {highlightText(m.description, searchQuery)}
+                            </p>
+                          )}
                         </div>
                       </div>
-                    ))}
-                  </div>
-
-                  {totalPages > 1 && (
-                    <div className="mt-8 flex items-center justify-center gap-2 flex-wrap">
-                      <button
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                        className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
-                      >
-                        ←
-                      </button>
-                      <div className="flex gap-2 flex-wrap justify-center">
-                        {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                          let pageNum;
-                          if (totalPages <= 5) {
-                            pageNum = i + 1;
-                          } else if (currentPage <= 3) {
-                            pageNum = i + 1;
-                          } else if (currentPage >= totalPages - 2) {
-                            pageNum = totalPages - 4 + i;
-                          } else {
-                            pageNum = currentPage - 2 + i;
-                          }
-                          
-                          return (
-                            <button
-                              key={pageNum}
-                              onClick={() => setCurrentPage(pageNum)}
-                              className={`h-8 w-8 rounded-lg text-sm font-semibold transition-all ${
-                                currentPage === pageNum
-                                  ? "bg-[#005f63] text-white shadow-sm"
-                                  : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
-                              }`}
-                            >
-                              {pageNum}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      <button
-                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages}
-                        className="h-8 w-8 rounded-lg border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all"
-                      >
-                        →
-                      </button>
                     </div>
-                  )}
-                </>
+                  ))}
+                </div>
               )}
             </div>
           </div>
