@@ -160,12 +160,15 @@ class UserController extends Controller
         Auth::login($user, $request->boolean('remember_me'));
         $request->session()->regenerate();
 
-        ActivityLog::create([
-            'user_code'   => $user->user_code,
-            'action'      => 'Login',
-            'module'      => 'Authentication',
-            'description' => 'User logged in',
-        ]);
+        // Log only Staff login
+        if ($user->role === 'Staff') {
+            ActivityLog::create([
+                'user_code'   => $user->user_code,
+                'action'      => 'Login',
+                'module'      => 'Authentication',
+                'description' => 'Staff logged in',
+            ]);
+        }
 
         return response()->json([
             'message' => 'Login successful',
@@ -435,22 +438,25 @@ class UserController extends Controller
     {
         $user = auth()->user();
 
-        if ($user) {
+        // Log only Staff logout
+        if ($user && $user->role === 'Staff') {
             ActivityLog::create([
                 'user_code'   => $user->user_code,
                 'action'      => 'Logout',
                 'module'      => 'Authentication',
-                'description' => 'User logged out',
+                'description' => 'Staff logged out',
             ]);
         }
 
         Auth::logout();
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return response()->json(['message' => 'Logged out successfully']);
+        return response()->json([
+            'message' => 'Logged out successfully'
+        ]);
     }
-
     // =========================
     // CURRENT USER
     // =========================
@@ -498,7 +504,7 @@ public function getAllForMemberships()
                 ];
             })
         );
-        
+
     } catch (\Exception $e) {
         \Log::error('getAllForMemberships error: ' . $e->getMessage());
         return response()->json([
