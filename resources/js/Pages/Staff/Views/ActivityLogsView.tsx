@@ -57,6 +57,7 @@ export default function ActivityLogsView() {
       case "Authentication":
         return "system";
       case "QR":
+        case "Event Attendance":
         return "scan";
         case "Notifications":
         return "notification";

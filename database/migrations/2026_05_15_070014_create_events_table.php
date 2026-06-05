@@ -16,6 +16,7 @@ return new class extends Migration
             $table->dateTime('event_start');
             $table->dateTime('event_end');
             $table->json('membership_ids')->nullable();
+            $table->text('notification_message')->nullable();
         });
     }
  

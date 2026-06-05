@@ -21,7 +21,16 @@ class EventAttendanceController extends Controller
         ]);
     }
 
+  private function determineStatus($timeIn, $timeOut)
+    {
+        if ($timeIn && $timeOut) return 'Complete';
+        return 'Incomplete';
+    }
+
+    // =========================
     // TIME IN - updates status from 'missed' to 'Incomplete'
+    // =========================
+
     public function timeIn(Request $request)
     {
         $request->validate([
@@ -29,18 +38,25 @@ class EventAttendanceController extends Controller
             'user_id' => 'required|exists:users,id',
         ]);
 
+        // ✅ Fetch the event AND the user to get their actual names
         $event = Event::findOrFail($request->event_id);
+        $user = User::findOrFail($request->user_id);
+        $userName = $user->first_name . ' ' . $user->last_name;
 
         $currentTime = time();
         $eventStart = strtotime($event->event_start);
-        $eventEnd = strtotime($event->event_end);
 
+        // 1. Always check if it's too early
         if ($currentTime < $eventStart) {
             return response()->json(['message' => 'Sign-in is not available yet.'], 403);
         }
 
-        if ($currentTime > $eventEnd) {
-            return response()->json(['message' => 'Sign-in is closed.'], 403);
+        // 2. ONLY check if it's too late IF the event actually has an end time
+        if ($event->event_end) {
+            $eventEnd = strtotime($event->event_end);
+            if ($currentTime > $eventEnd) {
+                return response()->json(['message' => 'Sign-in is closed.'], 403);
+            }
         }
 
         DB::beginTransaction();
@@ -59,18 +75,15 @@ class EventAttendanceController extends Controller
                 $attendance->status = 'Incomplete';
                 $attendance->save();
 
+                // ✅ Log with Name, Event Title, and 'QR' module
                 $this->createLog(
                     'Time In',
-                    'Event Attendance',
-                    "User {$attendance->user_id} signed in to event {$attendance->event_id}"
+                    'QR',
+                    "{$userName} signed in to {$event->name}"
                 );
 
                 DB::commit();
-
-                return response()->json([
-                    'message' => 'Time-in successful!',
-                    'attendance' => $attendance
-                ]);
+                return response()->json(['message' => 'Time-in successful!', 'attendance' => $attendance]);
             }
 
             $attendance = EventAttendance::create([
@@ -80,18 +93,15 @@ class EventAttendanceController extends Controller
                 'status' => 'Incomplete'
             ]);
 
+            // ✅ Log with Name, Event Title, and 'QR' module
             $this->createLog(
                 'Time In',
-                'Event Attendance',
-                "User {$attendance->user_id} signed in to event {$attendance->event_id}"
+                'QR',
+                "{$userName} signed in to {$event->name}"
             );
 
             DB::commit();
-
-            return response()->json([
-                'message' => 'Time-in successful!',
-                'attendance' => $attendance
-            ], 201);
+            return response()->json(['message' => 'Time-in successful!', 'attendance' => $attendance], 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -106,6 +116,11 @@ class EventAttendanceController extends Controller
             'event_id' => 'required|exists:events,id',
             'user_id' => 'required|exists:users,id',
         ]);
+
+        // ✅ Fetch the event AND the user to get their actual names
+        $event = Event::findOrFail($request->event_id);
+        $user = User::findOrFail($request->user_id);
+        $userName = $user->first_name . ' ' . $user->last_name;
 
         DB::beginTransaction();
 
@@ -122,18 +137,15 @@ class EventAttendanceController extends Controller
                     'status' => 'Incomplete'
                 ]);
 
+                // ✅ Log with Name, Event Title, and 'QR' module
                 $this->createLog(
                     'Time Out',
-                    'Event Attendance',
-                    "User {$request->user_id} timed out without time-in on event {$request->event_id}"
+                    'QR',
+                    "{$userName} timed out without time-in on {$event->name}"
                 );
 
                 DB::commit();
-
-                return response()->json([
-                    'message' => 'Time-out recorded without time-in.',
-                    'attendance' => $attendance
-                ], 201);
+                return response()->json(['message' => 'Time-out recorded without time-in.', 'attendance' => $attendance], 201);
             }
 
             if ($attendance->time_out) {
@@ -144,24 +156,24 @@ class EventAttendanceController extends Controller
             $attendance->status = ($attendance->time_in && $attendance->time_out) ? 'Complete' : 'Incomplete';
             $attendance->save();
 
+            // ✅ Log with Name, Event Title, and 'QR' module
             $this->createLog(
                 'Time Out',
-                'Event Attendance',
-                "User {$attendance->user_id} signed out of event {$attendance->event_id}"
+                'QR',
+                "{$userName} signed out of {$event->name}"
             );
 
             DB::commit();
-
-            return response()->json([
-                'message' => 'Time-out successful!',
-                'attendance' => $attendance
-            ]);
+            return response()->json(['message' => 'Time-out successful!', 'attendance' => $attendance]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['message' => 'Time-out failed', 'error' => $e->getMessage()], 500);
         }
     }
+    // =========================
+    // EVENT ATTENDEES
+    // =========================
 
     public function getEventAttendees($eventId)
     {
