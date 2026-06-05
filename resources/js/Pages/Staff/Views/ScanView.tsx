@@ -354,20 +354,37 @@ export default function ScanView({ events, residents, memberships }: any) {
             <div className="relative overflow-hidden rounded-[30px] border-2 border-dashed border-gray-300 bg-black min-h-[400px]">
               {isCameraOn ? (
                 <div className="h-full w-full absolute inset-0">
-                  <Scanner
+                 <Scanner
                     onScan={(result) => {
                       if (result && result.length > 0) {
                         handleQRCodeScan(result[0].rawValue);
                         setIsCameraOn(false); 
                       }
                     }}
-                    onError={(error) => console.log("Camera error:", error?.message)}
+                    onError={(error) => {
+                      console.log("Camera error:", error?.message);
+                    }}
+                    constraints={{
+                      facingMode: "environment",
+                      advanced: [
+                        // Tells supported browsers to keep actively adjusting focus
+                        { focusMode: "continuous" } as any 
+                      ]
+                    }}
                     sound={false}
                     components={{ finder: true }}
-                    styles={{ container: { width: '100%', height: '100%' }, video: { objectFit: 'cover' } }}
+                    styles={{ 
+                      container: { width: '100%', height: '100%' }, 
+                      video: { objectFit: 'cover' } 
+                    }}
                   />
-                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-2 text-sm text-white backdrop-blur z-10">
-                    Scanning for QR...
+                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center w-[90%] max-w-[300px] z-10">
+                    <div className="rounded-full bg-black/70 px-5 py-2 text-sm font-bold text-white backdrop-blur shadow-lg animate-pulse mb-2">
+                      Scanning for QR...
+                    </div>
+                    <div className="rounded-[15px] bg-black/50 px-4 py-2 text-xs text-center text-gray-200 backdrop-blur">
+                      <span className="font-bold text-white">Blurry?</span> Move the phone closer to the QR, then slowly pull back to force autofocus.
+                    </div>
                   </div>
                 </div>
               ) : (
