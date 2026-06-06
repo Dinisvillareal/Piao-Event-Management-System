@@ -333,10 +333,10 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                </p>
 
 
-               {/* Pagination & Add Button Row — same as Membership page */}
-               <div className="flex items-center justify-between mt-8">
+               {/* ✅ PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+               <div className="flex justify-end mt-4">
                    {totalPages > 1 && (
-                       <div className="flex items-center gap-2 flex-wrap ml-auto">
+                       <div className="flex items-center gap-2">
                            <button
                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                disabled={currentPage === 1}
@@ -344,46 +344,11 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                            >
                                ←
                            </button>
-                           <div className="flex gap-2 flex-wrap justify-center">
-                               {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                                   let pageNum;
-                                   if (totalPages <= 5) {
-                                       pageNum = i + 1;
-                                   } else if (currentPage <= 3) {
-                                       pageNum = i + 1;
-                                   } else if (currentPage >= totalPages - 2) {
-                                       pageNum = totalPages - 4 + i;
-                                   } else {
-                                       pageNum = currentPage - 2 + i;
-                                   }
-
-
-                                   return (
-                                       <button
-                                           key={pageNum}
-                                           onClick={() => setCurrentPage(pageNum)}
-                                           className={`h-8 w-8 rounded-full text-sm font-semibold transition-all active:scale-95 ${
-                                               currentPage === pageNum
-                                                   ? "bg-[#005f63] text-white shadow-sm"
-                                                   : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
-                                           }`}
-                                       >
-                                           {pageNum}
-                                       </button>
-                                   );
-                               })}
-                               {totalPages > 5 && currentPage < totalPages - 2 && (
-                                   <>
-                                       <span className="text-gray-400">...</span>
-                                       <button
-                                           onClick={() => setCurrentPage(totalPages)}
-                                           className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-semibold hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                                       >
-                                           {totalPages}
-                                       </button>
-                                   </>
-                               )}
-                           </div>
+                           
+                           <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                               {currentPage}
+                           </span>
+                           
                            <button
                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                disabled={currentPage === totalPages}
@@ -393,7 +358,6 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                            </button>
                        </div>
                    )}
-                   <div></div>
                </div>
            </div>
 

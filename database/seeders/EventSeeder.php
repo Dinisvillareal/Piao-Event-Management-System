@@ -296,7 +296,7 @@ class EventSeeder extends Seeder
                         'event_id' => $event->id,
                         'type' => 'event_announcement',
                         'title' => 'New Event: ' . $event->name,
-                        'message' => 'Staff: System • ' . $event->name . ' — ' . ($event->notification_message ?? 'New event announced'),
+                        'message' => 'Staff: Santos • ' . $event->name . ' — ' . ($event->notification_message ?? 'New event announced'),
                         'is_updated' => false,
                         'updated_at_notification' => null,
                         'read' => false,

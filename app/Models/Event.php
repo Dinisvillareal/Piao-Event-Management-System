@@ -20,6 +20,7 @@ class Event extends Model
         'event_end',
         'membership_ids',
         'notification_message',
+        'deleted_by'
     ];
 
     protected $casts = [
