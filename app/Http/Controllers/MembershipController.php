@@ -9,9 +9,10 @@ use Illuminate\Support\Facades\DB;
 
 class MembershipController extends Controller
 {
-    // =========================
-    // HELPERS
-    // =========================
+    private function isStaff()
+    {
+        return auth()->user()?->role === 'Staff';
+    }
 
     private function createLog($action, $module, $description)
     {
@@ -24,20 +25,27 @@ class MembershipController extends Controller
     }
 
     // =========================
-    // GET ALL
+    // GET ALL (ACTIVE ONLY)
     // =========================
-
     public function index()
     {
-        return response()->json(Membership::all());
+        // ✅ ONLY show active (not archived) memberships
+        $memberships = Membership::withoutTrashed()
+            ->where('is_active', true)
+            ->get();
+        
+        return response()->json($memberships);
     }
 
     // =========================
     // CREATE MEMBERSHIP
     // =========================
-
     public function store(Request $request)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string'
@@ -46,10 +54,10 @@ class MembershipController extends Controller
         DB::beginTransaction();
 
         try {
-
             $membership = Membership::create([
                 'name' => $request->name,
-                'description' => $request->description
+                'description' => $request->description,
+                'is_active' => true,  // ✅ Explicitly set active
             ]);
 
             $this->createLog(
@@ -59,12 +67,10 @@ class MembershipController extends Controller
             );
 
             DB::commit();
-
             return response()->json($membership, 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
-
             return response()->json([
                 'message' => 'Failed to create membership',
                 'error' => $e->getMessage()
@@ -75,18 +81,20 @@ class MembershipController extends Controller
     // =========================
     // SHOW MEMBERSHIP
     // =========================
-
     public function show($id)
     {
-        return response()->json(Membership::findOrFail($id));
+        return response()->json(Membership::withoutTrashed()->findOrFail($id));
     }
 
     // =========================
     // UPDATE MEMBERSHIP
     // =========================
-
     public function update(Request $request, $id)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string'
@@ -95,8 +103,7 @@ class MembershipController extends Controller
         DB::beginTransaction();
 
         try {
-
-            $membership = Membership::findOrFail($id);
+            $membership = Membership::withoutTrashed()->findOrFail($id);
 
             $membership->update([
                 'name' => $request->name,
@@ -110,12 +117,10 @@ class MembershipController extends Controller
             );
 
             DB::commit();
-
             return response()->json($membership);
 
         } catch (\Exception $e) {
             DB::rollBack();
-
             return response()->json([
                 'message' => 'Failed to update membership',
                 'error' => $e->getMessage()
@@ -124,61 +129,132 @@ class MembershipController extends Controller
     }
 
     // =========================
-    // DELETE MEMBERSHIP
+    // DELETE → NOW ARCHIVE
     // =========================
+  public function destroy($id)
+{
+    if (!$this->isStaff()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
 
-    public function destroy($id)
+    try {
+        $membership = Membership::withoutTrashed()->findOrFail($id);
+        $name = $membership->name;
+        $residentCount = $membership->users()->count();
+        
+        if ($residentCount > 0) {
+            $this->createLog(
+                'Archive Membership Failed',
+                'Membership',
+                "Failed to archive membership '{$name}' - has {$residentCount} resident(s) assigned"
+            );
+            
+            return response()->json([
+                'message' => "Archive Failed: Membership is currently in use."
+            ], 422);
+        }
+        
+        DB::beginTransaction();
+        
+        // ✅ Pass the logged-in user's user_code
+        $membership->archive(null, auth()->user()?->user_code);
+        
+        DB::commit();
+        
+        $this->createLog(
+            'Archive Membership',
+            'Membership',
+            "Archived membership '{$name}'"
+        );
+
+        return response()->json([
+            'message' => 'Membership archived successfully'
+        ]);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        
+        $this->createLog(
+            'Archive Membership Error',
+            'Membership',
+            "Error archiving membership: " . $e->getMessage()
+        );
+        
+        return response()->json([
+            'message' => 'Failed to archive membership: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+    // ✅ NEW: Restore archived membership
+    public function restore($id)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         DB::beginTransaction();
 
         try {
-
-            $membership = Membership::findOrFail($id);
-
+            $membership = Membership::onlyTrashed()->findOrFail($id);
             $name = $membership->name;
-
-            $membership->delete();
+            
+            $membership->unarchive();
 
             $this->createLog(
-                'Delete Membership',
+                'Restore Membership',
                 'Membership',
-                "Deleted membership '{$name}'"
+                "Restored membership '{$name}'"
             );
 
             DB::commit();
 
             return response()->json([
-                'message' => 'Membership deleted successfully'
+                'message' => 'Membership restored successfully'
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-
             return response()->json([
-                'message' => 'Failed to delete membership',
+                'message' => 'Failed to restore membership',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
     // =========================
-    // PAGINATION METHODS
+    // PAGINATION (ACTIVE ONLY)
     // =========================
-
     public function getPaginated(Request $request)
     {
         $perPage = $request->get('per_page', 15);
-        return response()->json(Membership::paginate($perPage));
+        
+        // ✅ ONLY active memberships
+        $memberships = Membership::withoutTrashed()
+            ->where('is_active', true)
+            ->paginate($perPage);
+        
+        return response()->json($memberships);
     }
 
     public function getSimplePaginated()
     {
-        return response()->json(Membership::simplePaginate(10));
+        // ✅ ONLY active memberships
+        return response()->json(
+            Membership::withoutTrashed()
+                ->where('is_active', true)
+                ->simplePaginate(10)
+        );
     }
 
     public function getCursorPaginated()
     {
-        return response()->json(Membership::cursorPaginate(10));
+        // ✅ ONLY active memberships
+        return response()->json(
+            Membership::withoutTrashed()
+                ->where('is_active', true)
+                ->cursorPaginate(10)
+        );
     }
 
     public function searchPaginated(Request $request)
@@ -186,7 +262,10 @@ class MembershipController extends Controller
         $search = $request->get('search');
         $perPage = $request->get('per_page', 10);
 
-        $memberships = Membership::when($search, function ($query, $search) {
+        // ✅ ONLY active memberships
+        $memberships = Membership::withoutTrashed()
+            ->where('is_active', true)
+            ->when($search, function ($query, $search) {
                 return $query->where('name', 'like', '%' . $search . '%')
                              ->orWhere('description', 'like', '%' . $search . '%');
             })
@@ -201,8 +280,12 @@ class MembershipController extends Controller
         $sortOrder = $request->get('sort_order', 'asc');
         $perPage = $request->get('per_page', 10);
 
+        // ✅ ONLY active memberships
         return response()->json(
-            Membership::orderBy($sortBy, $sortOrder)->paginate($perPage)
+            Membership::withoutTrashed()
+                ->where('is_active', true)
+                ->orderBy($sortBy, $sortOrder)
+                ->paginate($perPage)
         );
     }
 }

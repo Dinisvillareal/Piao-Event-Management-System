@@ -8,6 +8,7 @@ use App\Http\Controllers\MembershipResidentController;
 use App\Http\Controllers\EventAttendanceController;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ArchiveController;
 
 /*
 |--------------------------------------------------------------------------
@@ -75,6 +76,7 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::resource('api/memberships', MembershipController::class);
+    Route::post('/memberships/{id}/restore', [MembershipController::class, 'restore']);
 
     /*
     |--------------------------------------------------------------------------
@@ -140,6 +142,16 @@ Route::middleware('auth')->group(function () {
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
     Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::get('/notifications/this-week', [NotificationController::class, 'thisWeek']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | ARCHIVE / TRASH
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/api/archived', [ArchiveController::class, 'index']);
+    Route::post('api/archive/restore', [ArchiveController::class, 'restore']);
+    Route::delete('api/archive/force-delete', [ArchiveController::class, 'forceDelete']);
 });
 
 /*

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Filter } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
@@ -22,12 +22,46 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
 
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceFilter, setAttendanceFilter] = useState("all");
-  const [attendancePage, setAttendancePage] = useState(1);
-  const attendancePerPage = 20;
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
-  useMemo(() => {
-    setAttendancePage(1);
-  }, [attendanceSearch, attendanceFilter]);
+  // ✅ Format the event datetime to "YYYY-MM-DD · H:MM AM/PM"
+  const formatEventDateTime = (datetimeStr: string): string => {
+    if (!datetimeStr) return "";
+    
+    const date = new Date(datetimeStr);
+    if (isNaN(date.getTime())) return datetimeStr;
+    
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const formattedDate = `${year}-${month}-${day}`;
+    
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    const formattedTime = `${hours}:${minutes} ${ampm}`;
+    
+    return `${formattedDate} · ${formattedTime}`;
+  };
+
+  // ✅ Format time only (for timeIn/timeOut)
+  const formatTimeOnly = (datetimeStr: string): string => {
+    if (!datetimeStr) return "";
+    
+    const date = new Date(datetimeStr);
+    if (isNaN(date.getTime())) return datetimeStr;
+    
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    
+    return `${hours}:${minutes} ${ampm}`;
+  };
 
   const filteredAttendance = useMemo(() => {
     let result = attendanceRecords;
@@ -42,8 +76,8 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
         rec.eventTitle.toLowerCase().includes(q) ||
         rec.eventDate.toLowerCase().includes(q) ||
         rec.location.toLowerCase().includes(q) ||
-        rec.timeIn.toLowerCase().includes(q) ||
-        rec.timeOut.toLowerCase().includes(q)
+        rec.timeIn?.toLowerCase().includes(q) ||
+        rec.timeOut?.toLowerCase().includes(q)
       );
     }
 
@@ -52,14 +86,17 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
     return result;
   }, [attendanceRecords, attendanceFilter, attendanceSearch]);
 
-  const attendanceTotalPages = useMemo(() => {
-    return Math.ceil(filteredAttendance.length / attendancePerPage);
-  }, [filteredAttendance, attendancePerPage]);
-
+  // Pagination
+  const totalPages = Math.ceil(filteredAttendance.length / itemsPerPage);
   const paginatedAttendance = useMemo(() => {
-    const startIndex = (attendancePage - 1) * attendancePerPage;
-    return filteredAttendance.slice(startIndex, startIndex + attendancePerPage);
-  }, [filteredAttendance, attendancePage, attendancePerPage]);
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredAttendance.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredAttendance, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [attendanceSearch, attendanceFilter]);
 
   return (
     <div className="space-y-6">
@@ -94,9 +131,37 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
               </svg>
             </div>
           </div>
+          
           <p className="mt-2 text-xs text-gray-500">
-            {filteredAttendance.length} of {attendanceRecords.length} record(s) match — showing 20 per page.
+            {filteredAttendance.length} of {attendanceRecords.length} record(s) match — showing {itemsPerPage} per page
           </p>
+
+          {/* ✅ PAGINATION - ← 1 → RIGHT SIDE */}
+          {totalPages > 1 && (
+            <div className="flex justify-end mt-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  ←
+                </button>
+                
+                <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                  {currentPage}
+                </span>
+                
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -106,86 +171,53 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
           <p className="text-gray-500 italic">No attendance records match your search or filter.</p>
         ) : (
           <>
-            {paginatedAttendance.map((rec) => (
-              <div
-                key={rec.id}
-                className="rounded-3xl border-l-4 border-[#ecbd3b] bg-white px-6 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200 flex items-center justify-between gap-4"
-              >
-                <div className="flex-1">
-                  <h3 className="text-base font-bold text-[#005f63]">{highlightText(rec.eventTitle, attendanceSearch)}</h3>
-                  <p className="text-[13px] text-gray-500 mt-1">
-                    {rec.eventDate} · {rec.location}
-                  </p>
-                </div>
+            {paginatedAttendance.map((rec) => {
+              const formattedEventDateTime = formatEventDateTime(rec.eventDate);
+              const formattedTimeIn = formatTimeOnly(rec.timeIn);
+              const formattedTimeOut = formatTimeOnly(rec.timeOut);
 
-                <div className="flex items-center gap-6">
-                  <div className="text-right">
-                    <span className="text-[13px] text-gray-500">In:</span>
-                    <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${
-                      rec.timeIn ? 'text-teal-700 bg-teal-50' : 'text-gray-400 bg-gray-50 italic'
+              return (
+                <div
+                  key={rec.id}
+                  className="rounded-3xl border-l-4 border-[#ecbd3b] bg-white px-6 py-4 shadow-[0_2px_6px_rgba(0,0,0,0.10)] hover:shadow-[0_10px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200 flex items-center justify-between gap-4"
+                >
+                  <div className="flex-1">
+                    <h3 className="text-base font-bold text-[#005f63]">{highlightText(rec.eventTitle, attendanceSearch)}</h3>
+                    <p className="text-[13px] text-gray-500 mt-1">
+                      {formattedEventDateTime} · {rec.location}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-6">
+                    <div className="text-right">
+                      <span className="text-[13px] text-gray-500">In:</span>
+                      <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${
+                        rec.timeIn ? 'text-teal-700 bg-teal-50' : 'text-gray-400 bg-gray-50 italic'
+                      }`}>
+                        {formattedTimeIn || '—'}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[13px] text-gray-500">Out:</span>
+                      <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${
+                        rec.timeOut ? 'text-orange-700 bg-orange-50' : 'text-gray-400 bg-gray-50 italic'
+                      }`}>
+                        {formattedTimeOut || '—'}
+                      </span>
+                    </div>
+                    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                      rec.status === 'complete'
+                        ? 'bg-teal-100 text-teal-800'
+                        : rec.status === 'incomplete'
+                        ? 'bg-amber-100 text-amber-800'
+                        : 'bg-red-100 text-red-800'
                     }`}>
-                      {rec.timeIn || '—'}
+                      {rec.status.charAt(0).toUpperCase() + rec.status.slice(1)}
                     </span>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[13px] text-gray-500">Out:</span>
-                    <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${
-                      rec.timeOut ? 'text-orange-700 bg-orange-50' : 'text-gray-400 bg-gray-50 italic'
-                    }`}>
-                      {rec.timeOut || '—'}
-                    </span>
-                  </div>
-                  <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
-                    rec.status === 'complete'
-                      ? 'bg-teal-100 text-teal-800'
-                      : rec.status === 'incomplete'
-                      ? 'bg-amber-100 text-amber-800'
-                      : 'bg-red-100 text-red-800'
-                  }`}>
-                    {rec.status.charAt(0).toUpperCase() + rec.status.slice(1)}
-                  </span>
                 </div>
-              </div>
-            ))}
-
-            {/* PAGINATION */}
-            {attendanceTotalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 mt-8">
-                <button
-                  onClick={() => setAttendancePage(prev => Math.max(prev - 1, 1))}
-                  disabled={attendancePage === 1}
-                  className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
-                >
-                  Previous
-                </button>
-
-                {Array.from({ length: attendanceTotalPages }, (_, i) => (
-                  <button
-                    key={i + 1}
-                    onClick={() => setAttendancePage(i + 1)}
-                    className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${
-                      attendancePage === i + 1
-                        ? "bg-[#005f63] text-white shadow-sm"
-                        : "bg-white border text-[#005f63] hover:bg-orange-50"
-                    }`}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
-
-                <button
-                  onClick={() => setAttendancePage(prev => Math.min(prev + 1, attendanceTotalPages))}
-                  disabled={attendancePage === attendanceTotalPages}
-                  className="px-2.5 py-1.5 rounded-lg border bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-orange-50 transition"
-                >
-                  Next
-                </button>
-
-                <span className="text-xs text-gray-600 ml-1.5">
-                  Page {attendancePage} of {attendanceTotalPages}
-                </span>
-              </div>
-            )}
+              );
+            })}
           </>
         )}
       </div>

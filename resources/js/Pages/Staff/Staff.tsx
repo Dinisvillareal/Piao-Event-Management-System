@@ -9,6 +9,7 @@ import QRCodesView from "./Views/QRCodesView";
 import { EventsView } from "./Views/EventsView";
 import NotificationsView from "./Views/NotificationsView";
 import ActivityLogsView from "./Views/ActivityLogsView";
+import ArchiveView from "./Views/ArchiveView";
 
 // --- TYPES & MOCK DATA ---
 export type Resident = { id: string; name: string; age: number; address: string; contact: string; };
@@ -64,43 +65,6 @@ export const highlightText = (text: string, query: string) => {
     part.toLowerCase() === query.toLowerCase() ? <mark key={i} className="bg-yellow-300 rounded-sm px-0.5">{part}</mark> : part
   );
 };
-
-// --- ARCHIVE VIEW COMPONENT ---
-function ArchiveView({ trashedItems }: { trashedItems: TrashedItem[] }) {
-  return (
-    <div className="p-4 bg-white rounded-lg shadow">
-      <h2 className="text-xl font-bold mb-4 text-[#005f63]">Trash / Archive</h2>
-      <p className="text-sm text-gray-600 mb-6">All deleted records are stored here.</p>
-
-      {trashedItems.length === 0 ? (
-        <p className="text-gray-500 italic">No deleted items found.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="text-left p-3 font-medium">Type</th>
-                <th className="text-left p-3 font-medium">Name / Title</th>
-                <th className="text-left p-3 font-medium">Deleted At</th>
-                <th className="text-left p-3 font-medium">Deleted By</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trashedItems.map(item => (
-                <tr key={item.id} className="border-b hover:bg-gray-50">
-                  <td className="p-3 capitalize">{item.type}</td>
-                  <td className="p-3">{item.name}</td>
-                  <td className="p-3">{item.deletedAt}</td>
-                  <td className="p-3">{item.deletedBy}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // --------------------------
 // LAYOUT COMPONENTS
@@ -244,7 +208,12 @@ export default function StaffDashboard() {
   const [upcomingEventsList, setUpcomingEventsList] = useState<any[]>([]);
   const [pastEventsCount, setPastEventsCount] = useState(0);
   const [loadingEvents, setLoadingEvents] = useState(true);
-  const [trashedItems, setTrashedItems] = useState<TrashedItem[]>([]);
+  
+  // State for refreshing events
+  const [refreshEventsTrigger, setRefreshEventsTrigger] = useState(0);
+  
+  // ✅ ADD THIS - State for current logged-in user
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   const setActive = (page: string) => {
     window.history.pushState({}, "", `/staff/${page}`);
@@ -297,24 +266,28 @@ export default function StaffDashboard() {
     }
   };
 
-  // Fetch trashed/deleted items
-  const fetchTrashedItems = async () => {
-    try {
-      const response = await fetch('/api/trashed', {
-        credentials: 'include',
-        headers: { Accept: 'application/json' }
-      });
-      const data = await response.json();
-      setTrashedItems(data.data || []);
-    } catch (error) {
-      console.error("Error fetching trashed items:", error);
-      setTrashedItems([]);
-    }
-  };
-
   useEffect(() => {
     fetchEventsCount();
-    fetchTrashedItems();
+  }, []);
+
+  // ✅ ADD THIS - Fetch current logged-in user
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const response = await fetch('/me', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' }
+        });
+        if (response.ok) {
+          const user = await response.json();
+          setCurrentUser(user);
+        }
+      } catch (error) {
+        console.error('Error fetching current user:', error);
+      }
+    };
+    
+    fetchCurrentUser();
   }, []);
 
   useEffect(() => {
@@ -335,6 +308,21 @@ export default function StaffDashboard() {
     fetchMemberships();
   }, []);
 
+  // Listen for refreshEvents from Archive
+  useEffect(() => {
+    const handleRefreshEvents = () => {
+      console.log("🔄 Received refreshEvents - forcing events reload");
+      setRefreshEventsTrigger(prev => prev + 1);
+    };
+    
+    window.addEventListener('refreshEvents', handleRefreshEvents);
+    
+    return () => {
+      window.removeEventListener('refreshEvents', handleRefreshEvents);
+    };
+  }, []);
+
+  // Modified - Added refreshEventsTrigger to dependencies
   useEffect(() => {
     const fetchRealEvents = async () => {
       try {
@@ -379,7 +367,7 @@ export default function StaffDashboard() {
     };
 
     fetchRealEvents();
-  }, [membershipOptions]);
+  }, [membershipOptions, refreshEventsTrigger]);
 
   const handleDeleteEvent = async (id: string | number) => {
     if (!window.confirm('Delete this event? It will be moved to Trash.')) {
@@ -411,21 +399,6 @@ export default function StaffDashboard() {
         return;
       }
 
-      // Add to trash list
-      const deletedEvent = allEvents.find(e => e.id === id);
-      if (deletedEvent) {
-        setTrashedItems(prev => [
-          ...prev,
-          {
-            id: deletedEvent.id,
-            type: 'event',
-            name: deletedEvent.title,
-            deletedAt: new Date().toLocaleString(),
-            deletedBy: staff.name
-          }
-        ]);
-      }
-
       setAllEvents((prev) => prev.filter((e) => e.id !== id));
       setEventsCount(prev => Math.max(0, prev - 1));
 
@@ -439,12 +412,17 @@ export default function StaffDashboard() {
   const attended = attendanceRecords.filter(r => r.status === "complete").length;
   const missed = attendanceRecords.filter(r => r.status === "missed").length;
 
+  // ✅ Get the display name from currentUser or fallback to staff.name
+  const displayName = currentUser 
+    ? `${currentUser.first_name} ${currentUser.last_name}`
+    : staff.name;
+
   return (
     <div className="flex min-h-screen bg-[#fcfcf9] text-gray-900">
       <Sidebar active={active} setActive={setActive} />
 
       <main className="flex-1">
-        <TopHeader memberName={staff.name} role={staff.role} />
+        <TopHeader memberName={displayName} role={staff.role} />
 
         <div className="h-[calc(100vh-73px)] overflow-y-auto p-6 smooth-scroll">
           {active === "dashboard" && (
@@ -462,7 +440,7 @@ export default function StaffDashboard() {
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
           {active === "notify" && <NotificationsView memberships={membershipOptions} highlightText={highlightText} />}
           {active === "activitylogs" && <ActivityLogsView />}
-          {active === "archive" && <ArchiveView trashedItems={trashedItems} />}
+          {active === "archive" && <ArchiveView/>}
         </div>
       </main>
 

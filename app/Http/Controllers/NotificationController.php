@@ -100,6 +100,18 @@ class NotificationController extends Controller
         return response()->json($notifications);
     }
 
+    public function thisWeek()
+    {
+        $notifications = Notification::where('user_id', Auth::id())
+            ->where('created_at', '>=', now()->startOfWeek())
+            ->where('created_at', '<=', now()->endOfWeek())
+            ->with('event')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json($notifications);
+    }
+
     public function unreadCount()
     {
         $count = Notification::where('user_id', Auth::id())

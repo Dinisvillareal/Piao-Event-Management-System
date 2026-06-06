@@ -256,6 +256,10 @@ public function destroy($id)
     DB::beginTransaction();
 
     try {
+        // ✅ Record who archived before soft deleting
+        $event->deleted_by = $user->user_code;
+        $event->save();
+        
         // ✅ Step 1: Soft delete the event (sets deleted_at timestamp)
         $event->delete();
 
@@ -268,60 +272,63 @@ public function destroy($id)
             'updated_at' => now(),
         ]);
 
-        // ✅ Step 3: Log the deletion
+        // ✅ Step 3: Log the archive action
         ActivityLog::create([
             'user_code'   => $user->user_code,
-            'action'      => 'Delete Event',
+            'action'      => 'Archive Event',
             'module'      => 'Events',
-            'description' => "Deleted event: {$eventName}",
+            'description' => "Archived event: {$eventName}",
             'created_at'  => now(),
             'updated_at'  => now(),
         ]);
 
         DB::commit();
 
-        return response()->json(['message' => 'Event cancelled successfully']);
+        return response()->json(['message' => 'Event archived successfully']);
 
     } catch (\Exception $e) {
         DB::rollBack();
         return response()->json([
-            'message' => 'Failed to delete event: ' . $e->getMessage()
+            'message' => 'Failed to archive event: ' . $e->getMessage()
         ], 500);
     }
 }
 
     // ✅ NEW: Restore soft-deleted event (admin feature)
-    public function restore($id)
-    {
-        $user = auth()->user();
+   public function restore($id)
+{
+    $user = auth()->user();
 
-        // ✅ Find only soft-deleted events
-        $event = Event::onlyTrashed()->findOrFail($id);
-        $eventName = $event->name;
+    $event = Event::onlyTrashed()->findOrFail($id);
+    $eventName = $event->name;
 
-        try {
-            $event->restore();  // Restores the event (clears deleted_at)
+    try {
+        // ✅ Clear the deleted_by when restoring
+        $event->deleted_by = null;
+        $event->save();
+        
+        $event->restore();
 
-            ActivityLog::create([
-                'user_code'   => $user->user_code,
-                'action'      => 'Restore',
-                'module'      => 'Events',
-                'description' => "Restored event: {$eventName}",
-                'created_at'  => now(),
-                'updated_at'  => now(),
-            ]);
+        ActivityLog::create([
+            'user_code'   => $user->user_code,
+            'action'      => 'Restore Event',
+            'module'      => 'Events',
+            'description' => "Restored event from archive: {$eventName}",
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
 
-            return response()->json([
-                'message' => 'Event restored successfully',
-                'event'   => $event,
-            ]);
+        return response()->json([
+            'message' => 'Event restored successfully',
+            'event'   => $event,
+        ]);
 
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Failed to restore event: ' . $e->getMessage()
-            ], 500);
-        }
+    } catch (\Exception $e) {
+        return response()->json([
+            'message' => 'Failed to restore event: ' . $e->getMessage()
+        ], 500);
     }
+}
 
     // ✅ NEW: Force delete (permanent) - for admin only
     public function forceDelete($id)
@@ -368,7 +375,7 @@ public function destroy($id)
         $membershipIds = $event->membership_ids ?? [];
 
         $userIds = empty($membershipIds)
-            ? User::where('role', 'Resident')->pluck('id')
+            ? User::whereIn('role', ['Resident','Staff'])->pluck('id')
             : DB::table('membership_residents')
                 ->whereIn('membership_id', $membershipIds)
                 ->pluck('user_id')

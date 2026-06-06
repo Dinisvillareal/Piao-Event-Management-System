@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Filter } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
@@ -28,6 +28,47 @@ export default function EventsView({
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
+
+  // Format time function
+  const formatTime = (dateTimeStr: string): string => {
+    if (!dateTimeStr) return "";
+    
+    const date = new Date(dateTimeStr);
+    if (isNaN(date.getTime())) return "";
+    
+    let hours = date.getHours();
+    const minutes = date.getMinutes();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    const minutesStr = minutes.toString().padStart(2, '0');
+    
+    return `${hours}:${minutesStr} ${ampm}`;
+  };
+
+  // Format date only (YYYY-MM-DD)
+  const formatDateOnly = (dateTimeStr: string): string => {
+    if (!dateTimeStr) return "";
+    return dateTimeStr.split(" ")[0];
+  };
+
+  // Helper functions for current week (Sunday to Saturday)
+  const getStartOfWeek = (date: Date) => {
+    const d = new Date(date);
+    const day = d.getDay();
+    d.setDate(d.getDate() - day);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  const getEndOfWeek = (date: Date) => {
+    const d = getStartOfWeek(date);
+    d.setDate(d.getDate() + 6);
+    d.setHours(23, 59, 59, 999);
+    return d;
+  };
 
   const filteredEvents = useMemo(() => {
     const today = new Date();
@@ -62,28 +103,34 @@ export default function EventsView({
     return result;
   }, [allEvents, eventFilter, membershipFilter, eventSearch]);
 
+  // Pagination
+  const totalPages = Math.ceil(filteredEvents.length / itemsPerPage);
+  const paginatedEvents = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredEvents.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredEvents, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [eventSearch, eventFilter, membershipFilter]);
+
   const groupedEvents = useMemo(() => {
     const groups: Record<string, typeof allEvents> = {};
     const today = new Date();
-    const oneWeekFromNow = new Date();
-    oneWeekFromNow.setDate(today.getDate() + 7);
+    today.setHours(0, 0, 0, 0);
+    const weekStart = getStartOfWeek(today);
+    const weekEnd = getEndOfWeek(today);
 
-    filteredEvents.forEach((e) => {
+    paginatedEvents.forEach((e) => {
       const eventDate = new Date(e.date);
+      eventDate.setHours(0, 0, 0, 0);
       const dateOnly = e.date.split(" ")[0];
 
       let sectionKey: string;
-      if (eventFilter === "all") {
-        if (eventDate >= today && eventDate <= oneWeekFromNow) {
-          sectionKey = "📅 This Week";
-        } else {
-          sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          });
-        }
+      
+      if (eventDate >= weekStart && eventDate <= weekEnd) {
+        sectionKey = "📅 This Week";
       } else {
         sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
           weekday: "long",
@@ -104,18 +151,18 @@ export default function EventsView({
     });
 
     return Object.fromEntries(sortedGroups);
-  }, [filteredEvents, eventFilter]);
+  }, [paginatedEvents]);
 
   return (
     <div className="space-y-6">
       <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
-        <div className="w-[1200px]">
-          <h1 className="text-4xl font-black text-[#005f63]">Events</h1>
+        <div className="w-full">
+          <h1 className="text-4xl font-black text-[#005f63]">Events & Attendance</h1>
           <p className="mt-1 text-sm text-[#667777]">
             Filter and view all, upcoming, and past events.
           </p>
 
-          <div className="mt-4 flex items-center gap-4 w-[1580px]">
+          <div className="mt-4 flex items-center gap-4 w-full">
             <div className="flex-1">
               <SearchBar
                 value={eventSearch}
@@ -163,6 +210,33 @@ export default function EventsView({
           <p className="mt-2 text-xs text-gray-500">
             {filteredEvents.length} of {allEvents.length} event(s) match
           </p>
+
+          {/* ✅ PAGINATION - ← 1 → RIGHT SIDE BELOW SEARCH BAR */}
+          {totalPages > 1 && (
+            <div className="flex justify-end mt-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  ←
+                </button>
+                
+                <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                  {currentPage}
+                </span>
+                
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -186,12 +260,14 @@ export default function EventsView({
                         ? e.membership_ids.map((id) => allMemberships.find((m) => m.id === id)?.name).filter(Boolean) as string[]
                         : [];
 
+                    const dateOnly = formatDateOnly(e.date);
+                    const timeOnly = formatTime(e.date);
+
                     return (
                       <div
                         key={e.id}
                         className="relative rounded-3xl border-l-4 border-[#f8e67d] bg-white p-5 shadow-[8px_8px_6px_rgba(0,0,0,0.10)] hover:shadow-[12px_12px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
                       >
-                        {/* Status Indicator: Yellow = Upcoming | Teal = Past */}
                         <div className="absolute top-4 right-4 flex items-center gap-1.5">
                           <span
                             className={`w-2.5 h-2.5 rounded-full ${
@@ -206,9 +282,15 @@ export default function EventsView({
                         <h2 className="pr-20 text-base font-bold text-[#005f63]">
                           {highlightText(e.title, eventSearch)}
                         </h2>
+                        
                         <p className="mt-1 text-sm text-gray-500">
-                          {highlightText(e.date, eventSearch)} · {highlightText(e.location, eventSearch)}
+                          {highlightText(dateOnly, eventSearch)} · {timeOnly}
                         </p>
+                        
+                        <p className="mt-1 text-sm text-gray-500">
+                          {highlightText(e.location, eventSearch)}
+                        </p>
+                        
                         <p className="mt-3 text-sm text-gray-700">
                           {highlightText(e.description, eventSearch)}
                         </p>

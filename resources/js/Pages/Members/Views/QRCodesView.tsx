@@ -7,12 +7,9 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [allMemberships, setAllMemberships] = useState<any[]>([]);
-  const [displayMemberships, setDisplayMemberships] = useState<any[]>([]);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const itemsPerPage = 4;
+  const itemsPerPage = 6;
   const qrCodeRef = useRef<HTMLDivElement>(null);
   const [qrSize, setQrSize] = useState(280);
 
@@ -38,7 +35,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Main fetch effect - handles everything in one place
+  // Fetch user's memberships only once
   useEffect(() => {
     if (!userId) return;
 
@@ -60,12 +57,9 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
         const membershipData = await membershipRes.json();
         const membershipIds = (membershipData.memberships || []).map((m: any) => m.id);
 
-        // If no memberships, show empty state immediately
+        // If no memberships, set empty array but continue (QR will still show)
         if (membershipIds.length === 0) {
           setAllMemberships([]);
-          setDisplayMemberships([]);
-          setTotalItems(0);
-          setTotalPages(1);
           setLoading(false);
           return;
         }
@@ -90,30 +84,6 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
         setAllMemberships(userMemberships);
 
-        // Apply search filter
-        let filtered = userMemberships;
-        if (searchQuery) {
-          filtered = userMemberships.filter((m: any) =>
-            m.name.toLowerCase().includes(searchQuery.toLowerCase())
-          );
-        }
-
-        setTotalItems(filtered.length);
-        const newTotalPages = Math.ceil(filtered.length / itemsPerPage);
-        setTotalPages(newTotalPages);
-
-        // Reset to page 1 if current page is out of bounds
-        let safePage = currentPage;
-        if (currentPage > newTotalPages && newTotalPages > 0) {
-          safePage = 1;
-          setCurrentPage(1);
-        }
-
-        // Paginate
-        const start = (safePage - 1) * itemsPerPage;
-        const paginated = filtered.slice(start, start + itemsPerPage);
-        setDisplayMemberships(paginated);
-
       } catch (err) {
         console.error('Failed to fetch memberships:', err);
         setError(err instanceof Error ? err.message : 'Failed to load memberships');
@@ -123,7 +93,29 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     };
 
     fetchMemberships();
-  }, [userId, searchQuery, currentPage, itemsPerPage]);
+  }, [userId]);
+
+  // Filter memberships based on search query (local filtering, no API call)
+  const filteredMemberships = useMemo(() => {
+    if (!searchQuery.trim()) return allMemberships;
+    const q = searchQuery.toLowerCase();
+    return allMemberships.filter(m =>
+      m.name?.toLowerCase().includes(q)
+    );
+  }, [allMemberships, searchQuery]);
+
+  // Paginate the filtered results
+  const totalItems = filteredMemberships.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const displayMemberships = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredMemberships.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredMemberships, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
   const downloadQRCode = useCallback(() => {
     if (!qrCodeRef.current) {
@@ -148,9 +140,10 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     }
   }, [userCode]);
 
-  // Memoize QR data - only create if user has memberships
+  // ✅ FIXED: QR code generates even WITHOUT memberships
   const qrData = useMemo(() => {
-    if (!userId || !userCode || !fullName || allMemberships.length === 0) return null;
+    // Only require basic user info - memberships are optional
+    if (!userId || !userCode || !fullName) return null;
 
     return JSON.stringify({
       user_id: userId,
@@ -215,10 +208,10 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
             </div>
           )}
 
-          {/* ✅ PAGINATION — TOP RIGHT, SAME AS NOTIFICATIONS/ATTENDANCE */}
-          <div className="flex items-center justify-between mt-8">
+          {/* Pagination - ← 1 → */}
+          <div className="flex justify-end mt-4">
             {totalPages > 1 && (
-              <div className="flex items-center gap-2 flex-wrap ml-auto">
+              <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
@@ -226,45 +219,11 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                 >
                   ←
                 </button>
-                <div className="flex gap-2 flex-wrap justify-center">
-                  {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`h-8 w-8 rounded-full text-sm font-semibold transition-all active:scale-95 ${
-                          currentPage === pageNum
-                            ? "bg-[#005f63] text-white shadow-sm"
-                            : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                  {totalPages > 5 && currentPage < totalPages - 2 && (
-                    <>
-                      <span className="text-gray-400">...</span>
-                      <button
-                        onClick={() => setCurrentPage(totalPages)}
-                        className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-semibold hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                      >
-                        {totalPages}
-                      </button>
-                    </>
-                  )}
-                </div>
+                
+                <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                  {currentPage}
+                </span>
+                
                 <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
@@ -274,7 +233,6 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                 </button>
               </div>
             )}
-            <div></div>
           </div>
         </div>
       </div>
@@ -306,8 +264,8 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                         ) : (
                           <div className="text-center py-8 px-4">
                             <QrCode className="mx-auto mb-3 text-gray-300" size={48} />
-                            <p className="text-gray-500 text-sm">No memberships yet</p>
-                            <p className="text-gray-400 text-xs mt-1">QR code will appear once you have memberships</p>
+                            <p className="text-gray-500 text-sm">Unable to generate QR code</p>
+                            <p className="text-gray-400 text-xs mt-1">Please make sure you're logged in</p>
                           </div>
                         )}
                       </div>
@@ -368,12 +326,6 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   </svg>
                   <p className="text-gray-500 text-lg">No matching memberships found</p>
                   <p className="text-gray-400 text-sm mt-1">Try a different search term</p>
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="mt-4 text-[#005f63] hover:text-orange-600 text-sm font-medium"
-                  >
-                    Clear search
-                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

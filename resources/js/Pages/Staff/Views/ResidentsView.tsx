@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Filter, XCircle } from "lucide-react";
+import { Filter, XCircle, Archive } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,7 +49,6 @@ type EditForm = {
   hasMemberships: boolean;
   selectedMemberships: number[];
   deleted_at: string | null;
-  // for no-account → need account flow
   needAccount: boolean;
   tempPassword: string;
 };
@@ -323,7 +322,6 @@ export default function ResidentsView() {
     if (!raw) err.contactNumber = "Contact number is required";
     else if (!raw.startsWith("09")) err.contactNumber = "Contact number must start with 09";
     else if (raw.length !== 11) err.contactNumber = "Must be exactly 11 digits";
-    // If currently no account but staff checks "need account", require temp password
     if (!editingResident.hasAccount && editingResident.needAccount && !editingResident.tempPassword.trim())
       err.tempPassword = "Temporary password is required when enabling an account";
     if (!editPhotoFile && !editPhotoPreview) err.photo = "ID photo is required";
@@ -440,13 +438,11 @@ export default function ResidentsView() {
     fd.append("role", editingResident.role);
 
     if (editingResident.hasAccount) {
-      // Already has account — keep has_account = 1, send new password if provided
       fd.append("has_account", "1");
       if (editingResident.password.trim()) {
         fd.append("password", editingResident.password);
       }
     } else if (editingResident.needAccount) {
-      // No account yet, but staff is enabling one now
       fd.append("has_account", "1");
       fd.append("password", editingResident.tempPassword);
     } else {
@@ -718,7 +714,6 @@ export default function ResidentsView() {
                 <option value="all">All Records</option>
                 <option value="residents">Role: Resident</option>
                 <option value="staff">Role: Staff</option>
-                <option value="trashed">Archived</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
@@ -743,64 +738,34 @@ export default function ResidentsView() {
 
       {/* Table */}
       <div className="pl-1">
+        {/* ✅ Pagination on LEFT, Add Button on RIGHT - same row */}
         <div className="sticky top-[140px] z-10 flex items-center justify-between mb-3 bg-[#fcfcf9] py-2">
+          {/* LEFT - Pagination ← 1 → */}
           {totalPages > 1 && (
-            <div className="flex items-center gap-2 flex-wrap">
-                <button
+            <div className="flex items-center gap-2">
+              <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
                 className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                >
+              >
                 ←
-                </button>
-                <div className="flex gap-2 flex-wrap justify-center">
-                {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                    let pageNum;
-                    if (totalPages <= 5) {
-                    pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                    pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                    } else {
-                    pageNum = currentPage - 2 + i;
-                    }
-
-                    return (
-                    <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`h-8 w-8 rounded-full text-sm font-semibold transition-all active:scale-95 ${
-                        currentPage === pageNum
-                            ? "bg-[#005f63] text-white shadow-sm"
-                            : "border border-gray-300 bg-white text-[#005f63] hover:bg-[#005f63] hover:text-white hover:border-[#005f63]"
-                        }`}
-                    >
-                        {pageNum}
-                    </button>
-                    );
-                })}
-                {totalPages > 5 && currentPage < totalPages - 2 && (
-                    <>
-                    <span className="text-gray-400">...</span>
-                    <button
-                        onClick={() => setCurrentPage(totalPages)}
-                        className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-semibold hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                    >
-                        {totalPages}
-                    </button>
-                    </>
-                )}
-                </div>
-                <button
+              </button>
+              
+              <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                {currentPage}
+              </span>
+              
+              <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
                 className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                >
+              >
                 →
-                </button>
+              </button>
             </div>
-            )}
+          )}
+          
+          {/* RIGHT - Add Button */}
           <button
             onClick={handleOpenAddForm}
             className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm ml-auto"
@@ -944,9 +909,7 @@ export default function ResidentsView() {
                                   className="p-2 rounded-full hover:bg-red-50 transition"
                                   title="Delete"
                                 >
-                                  <svg width="16" height="16" fill="none" stroke="#ef4444" strokeWidth={2} viewBox="0 0 24 24">
-                                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                                  </svg>
+                                   <Archive className="h-4 w-4 text-red-500"/>
                                 </button>
                               </>
                             ) : (
