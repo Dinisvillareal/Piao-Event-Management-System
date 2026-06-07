@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, Filter } from 'lucide-react'; // ✅ Added Filter icon import
+import { RefreshCw, Filter } from 'lucide-react';
 import SearchBar from '../../../Components/UI/SearchBar';
 
 interface TrashedItem {
@@ -8,7 +8,7 @@ interface TrashedItem {
   name: string;
   deletedAt: string;
   deletedBy: string;
-  originalData?: any; // full original record data
+  originalData?: any;
 }
 
 export default function ArchiveView() {
@@ -18,26 +18,21 @@ export default function ArchiveView() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20; // ✅ 20 items per page
+  const itemsPerPage = 20;
 
-  // Helper: convert time part only to 12-hour format, keep original date
   const formatTimeOnly = (dateTimeStr?: string) => {
     if (!dateTimeStr) return '';
-    // Match date and time parts
     const match = dateTimeStr.match(/^(.*?)(\d{1,2}:\d{2}(:\d{2})?)(.*)$/);
-    if (!match) return dateTimeStr; // return as-is if no time found
-
+    if (!match) return dateTimeStr;
     const [, beforeTime, timePart, , afterTime] = match;
     const [h, m, s = '00'] = timePart.split(':');
     let hours = parseInt(h, 10);
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12 || 12;
     const newTime = `${hours}:${m}:${s} ${ampm}`;
-
     return `${beforeTime}${newTime}${afterTime}`;
   };
 
-  // Helper: format time string (HH:mm or HH:mm:ss) to 12-hour
   const formatTime12Hour = (timeStr?: string) => {
     if (!timeStr) return '';
     const [h, m, s = '00'] = timeStr.split(':');
@@ -47,7 +42,6 @@ export default function ArchiveView() {
     return `${hours}:${m}:${s} ${ampm}`;
   };
 
-  // Fetch all archived items WITH full original data
   const fetchArchivedItems = async () => {
     setLoading(true);
     try {
@@ -61,16 +55,14 @@ export default function ArchiveView() {
 
       if (response.ok) {
         const data = await response.json();
-
         const normalized = data.map((item: any) => ({
           id: item.id,
           type: item.type === 'user' ? 'resident' : item.type,
           name: item.name || item.title || 'Unnamed',
-          deletedAt: formatTimeOnly(item.deleted_at || item.deletedAt), // ✅ keep date, change time only
+          deletedAt: formatTimeOnly(item.deleted_at || item.deletedAt),
           deletedBy: item.deleted_by || item.deletedBy,
-          originalData: item.original_data || item // keep full record
+          originalData: item.original_data || item
         }));
-
         setAllTrashedItems(normalized);
       }
     } catch (error) {
@@ -80,7 +72,6 @@ export default function ArchiveView() {
     }
   };
 
-  // Restore an item
   const handleRestore = async (item: TrashedItem) => {
     if (!confirm(`Restore "${item.name}"?\n\nThis item will become active again.`)) return;
 
@@ -92,6 +83,9 @@ export default function ArchiveView() {
         ?.split('=')[1];
       const decodedToken = token ? decodeURIComponent(token) : '';
 
+      // ✅ notification type sends as 'event' — id is already event_id from backend
+      const restoreType = item.type === 'notification' ? 'event' : item.type;
+
       const response = await fetch('/api/archive/restore', {
         method: 'POST',
         credentials: 'include',
@@ -102,7 +96,7 @@ export default function ArchiveView() {
           'X-XSRF-TOKEN': decodedToken
         },
         body: JSON.stringify({
-          type: item.type,
+          type: restoreType,
           id: item.id
         })
       });
@@ -122,14 +116,11 @@ export default function ArchiveView() {
     }
   };
 
-  // Filter by type and search
   const filteredItems = useMemo(() => {
     let filtered = allTrashedItems;
-
     if (typeFilter !== 'all') {
       filtered = filtered.filter(item => item.type === typeFilter);
     }
-
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(item =>
@@ -138,24 +129,17 @@ export default function ArchiveView() {
         item.deletedBy.toLowerCase().includes(q)
       );
     }
-
     return filtered;
   }, [allTrashedItems, typeFilter, searchQuery]);
 
-  // Pagination
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
   const paginatedItems = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return filteredItems.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredItems, currentPage, itemsPerPage]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [typeFilter, searchQuery]);
-
-  useEffect(() => {
-    fetchArchivedItems();
-  }, []);
+  useEffect(() => { setCurrentPage(1); }, [typeFilter, searchQuery]);
+  useEffect(() => { fetchArchivedItems(); }, []);
 
   if (loading) {
     return (
@@ -196,7 +180,6 @@ export default function ArchiveView() {
                 <option value="resident">Residents</option>
                 <option value="notification">Notifications</option>
               </select>
-              {/* ✅ Filter icon added back */}
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
           </div>
@@ -205,7 +188,6 @@ export default function ArchiveView() {
             {filteredItems.length} item(s) found — showing {itemsPerPage} per page
           </p>
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex justify-end mt-4">
               <div className="flex items-center gap-2">
@@ -213,21 +195,15 @@ export default function ArchiveView() {
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                   className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                >
-                  ←
-                </button>
-
+                >←</button>
                 <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
                   {currentPage}
                 </span>
-
                 <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                   className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                >
-                  →
-                </button>
+                >→</button>
               </div>
             </div>
           )}
@@ -261,8 +237,8 @@ export default function ArchiveView() {
                     <td className="p-3">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         item.type === 'membership' ? 'bg-orange-100 text-orange-700' :
-                        item.type === 'event' ? 'bg-teal-100 text-teal-700' :
-                        item.type === 'resident' ? 'bg-green-100 text-green-700' :
+                        item.type === 'event'      ? 'bg-teal-100 text-teal-700' :
+                        item.type === 'resident'   ? 'bg-green-100 text-green-700' :
                         item.type === 'notification' ? 'bg-yellow-100 text-yellow-700' :
                         'bg-gray-100 text-gray-700'
                       }`}>
@@ -273,7 +249,6 @@ export default function ArchiveView() {
                     <td className="p-3 text-gray-500">{item.deletedAt}</td>
                     <td className="p-3 text-gray-500">{item.deletedBy}</td>
                     <td className="p-3">
-                      {/* ✅ RESTORE BUTTON — smaller refresh icon (16px), orange color */}
                       <button
                         onClick={() => handleRestore(item)}
                         disabled={restoringId === item.id}

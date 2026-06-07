@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Membership;
 use App\Models\Event;
 use App\Models\User;
+use App\Models\Notification;
 use App\Models\ActivityLog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ArchiveController extends Controller
 {
@@ -30,9 +32,9 @@ class ArchiveController extends Controller
             ->orderBy('deleted_at', 'desc')
             ->get()
             ->map(fn($item) => [
-                'id' => $item->id,
-                'type' => 'membership',
-                'name' => $item->name,
+                'id'        => $item->id,
+                'type'      => 'membership',
+                'name'      => $item->name,
                 'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
                 'deletedBy' => $item->deleted_by ?? 'SYSTEM',
             ]);
@@ -41,9 +43,9 @@ class ArchiveController extends Controller
             ->orderBy('deleted_at', 'desc')
             ->get()
             ->map(fn($item) => [
-                'id' => $item->id,
-                'type' => 'event',
-                'name' => $item->name,
+                'id'        => $item->id,
+                'type'      => 'event',
+                'name'      => $item->name,
                 'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
                 'deletedBy' => $item->deleted_by ?? 'SYSTEM',
             ]);
@@ -52,17 +54,34 @@ class ArchiveController extends Controller
             ->orderBy('deleted_at', 'desc')
             ->get()
             ->map(fn($item) => [
-                'id' => $item->id,
-                'type' => 'resident',
-                'name' => $item->first_name . ' ' . $item->last_name,
+                'id'        => $item->id,
+                'type'      => 'resident',
+                'name'      => $item->first_name . ' ' . $item->last_name,
                 'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
                 'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+        // ✅ One notification row per event (deduplicated by event_id)
+        $notifications = Notification::where('type', 'event_deleted')
+            ->whereNotNull('event_id')
+            ->with('event')
+            ->orderBy('updated_at', 'desc')
+            ->get()
+            ->unique('event_id')        // ✅ collapse all per-user rows → one per event
+            ->values()
+            ->map(fn($item) => [
+                'id'        => $item->event_id,   // ✅ event_id as key so restore works correctly
+                'type'      => 'notification',
+                'name'      => $item->title,
+                'deletedAt' => optional($item->updated_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->event?->deleted_by ?? 'SYSTEM',
             ]);
 
         $archivedItems = array_merge(
             $memberships->toArray(),
             $events->toArray(),
-            $users->toArray()
+            $users->toArray(),
+            $notifications->toArray()
         );
 
         usort($archivedItems, function ($a, $b) {
@@ -79,12 +98,11 @@ class ArchiveController extends Controller
         }
 
         $request->validate([
-            'type' => 'required|string|in:membership,event,resident',
-            'id' => 'required|integer',
+            'type' => 'required|string|in:membership,event,resident,notification',
+            'id'   => 'required|integer',
         ]);
 
         try {
-
             $itemName = '';
 
             switch ($request->type) {
@@ -96,10 +114,44 @@ class ArchiveController extends Controller
                     $item->update(['is_active' => true, 'deactivated_at' => null]);
                     break;
 
+                case 'notification': // ✅ notification restore = restore the parent event
                 case 'event':
-                    $item = Event::onlyTrashed()->findOrFail($request->id);
+                    // ✅ Use withTrashed() in case it's called from either path
+                    $item = Event::withTrashed()->findOrFail($request->id);
                     $itemName = $item->name;
-                    $item->restore();
+
+                    DB::beginTransaction();
+                    try {
+                        $item->deleted_by = null;
+                        $item->save();
+
+                        // ✅ Only call restore() if it's actually soft-deleted
+                        if ($item->trashed()) {
+                            $item->restore();
+                        }
+
+                        $staffName       = 'Staff: ' . (auth()->user()->last_name ?? 'Unknown');
+                        $restoredTitle   = 'Event Restored: ' . $item->name;
+                        $restoredMessage = $staffName . ' • ' . $item->name . ' — ' .
+                            ($item->notification_message ?? 'This event has been restored and is active again.');
+
+                        Notification::where('event_id', $item->id)
+                            ->where('type', 'event_deleted')
+                            ->update([
+                                'type'                    => 'event_updated',
+                                'title'                   => $restoredTitle,
+                                'message'                 => $restoredMessage,
+                                'is_updated'              => true,
+                                'updated_at_notification' => now(),
+                                'read'                    => false,
+                                'updated_at'              => now(),
+                            ]);
+
+                        DB::commit();
+                    } catch (\Exception $e) {
+                        DB::rollBack();
+                        throw $e;
+                    }
                     break;
 
                 case 'resident':
@@ -130,11 +182,10 @@ class ArchiveController extends Controller
 
         $request->validate([
             'type' => 'required|string|in:membership,event,resident',
-            'id' => 'required|integer',
+            'id'   => 'required|integer',
         ]);
 
         try {
-
             $itemName = '';
 
             switch ($request->type) {
