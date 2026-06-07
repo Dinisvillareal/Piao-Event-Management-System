@@ -114,9 +114,8 @@ class ArchiveController extends Controller
                     $item->update(['is_active' => true, 'deactivated_at' => null]);
                     break;
 
-                case 'notification': // ✅ notification restore = restore the parent event
+                case 'notification':
                 case 'event':
-                    // ✅ Use withTrashed() in case it's called from either path
                     $item = Event::withTrashed()->findOrFail($request->id);
                     $itemName = $item->name;
 
@@ -125,7 +124,6 @@ class ArchiveController extends Controller
                         $item->deleted_by = null;
                         $item->save();
 
-                        // ✅ Only call restore() if it's actually soft-deleted
                         if ($item->trashed()) {
                             $item->restore();
                         }
@@ -135,7 +133,7 @@ class ArchiveController extends Controller
                         $restoredMessage = $staffName . ' • ' . $item->name . ' — ' .
                             ($item->notification_message ?? 'This event has been restored and is active again.');
 
-                        Notification::where('event_id', $item->id)
+                        $affectedNotifications = Notification::where('event_id', $item->id)
                             ->where('type', 'event_deleted')
                             ->update([
                                 'type'                    => 'event_updated',
@@ -148,6 +146,24 @@ class ArchiveController extends Controller
                             ]);
 
                         DB::commit();
+
+                        // ✅ Log the event restore
+                        $this->createLog(
+                            'Restore',
+                            'Events',
+                            "Restored event: '{$itemName}'"
+                        );
+
+                        // ✅ Log the notification update separately
+                        $this->createLog(
+                            'Update',
+                            'Notifications',
+                            "Restored notifications for event: '{$itemName}' — {$affectedNotifications} recipient(s) notified"
+                        );
+
+                        // ✅ Override the generic log below so we don't double-log
+                        $itemName = '';
+
                     } catch (\Exception $e) {
                         DB::rollBack();
                         throw $e;
