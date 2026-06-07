@@ -61,21 +61,20 @@ class ArchiveController extends Controller
                 'deletedBy' => $item->deleted_by ?? 'SYSTEM',
             ]);
 
-        // ✅ One notification row per event (deduplicated by event_id)
-        $notifications = Notification::where('type', 'event_deleted')
-            ->whereNotNull('event_id')
-            ->with('event')
-            ->orderBy('updated_at', 'desc')
-            ->get()
-            ->unique('event_id')        // ✅ collapse all per-user rows → one per event
-            ->values()
-            ->map(fn($item) => [
-                'id'        => $item->event_id,   // ✅ event_id as key so restore works correctly
-                'type'      => 'notification',
-                'name'      => $item->title,
-                'deletedAt' => optional($item->updated_at)->format('Y-m-d H:i:s'),
-                'deletedBy' => $item->event?->deleted_by ?? 'SYSTEM',
-            ]);
+            $notifications = Notification::where('type', 'event_deleted')
+                ->whereNotNull('event_id')
+                ->with('event')
+                ->orderBy('updated_at', 'desc')
+                ->get()
+                ->unique('event_id')
+                ->values()
+                ->map(fn($item) => [
+                    'id'        => $item->event_id,
+                    'type'      => 'notification',
+                    'name'      => $item->title,
+                    'deletedAt' => optional($item->updated_at)->format('Y-m-d H:i:s'),
+                    'deletedBy' => $item->event?->deleted_by ?? 'SYSTEM',
+                ]);
 
         $archivedItems = array_merge(
             $memberships->toArray(),
