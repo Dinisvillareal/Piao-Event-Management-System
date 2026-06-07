@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, Archive } from "lucide-react";
+import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, Archive, Calendar } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
 interface MyEvent {
@@ -39,6 +39,7 @@ export function EventsView({
 }: EventsViewProps) {
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
+  const [selectedDate, setSelectedDate] = useState<string>(""); // ✅ Single date filter
   const [viewEv, setViewEv] = useState<MyEvent | null>(null);
   const [showAttendance, setShowAttendance] = useState<MyEvent | null>(null);
   const [eventToDelete, setEventToDelete] = useState<number | string | null>(null);
@@ -47,6 +48,10 @@ export function EventsView({
   const [currentPage, setCurrentPage] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const itemsPerPage = 6;
+
+  // Attendance pagination state
+  const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
+  const attendanceItemsPerPage = 20; // ✅ 20 per page
 
   const [localEvents, setLocalEvents] = useState<MyEvent[]>(allEvents);
 
@@ -67,6 +72,12 @@ export function EventsView({
     return d;
   };
 
+  // ✅ Get today's date in YYYY-MM-DD format (for input min attribute)
+  const getTodayString = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
   useEffect(() => {
     setLocalEvents(allEvents);
   }, [allEvents]);
@@ -78,7 +89,7 @@ export function EventsView({
         headers: { Accept: 'application/json' }
       });
       const result = await response.json();
-      
+
       if (result.data) {
         const formattedEvents = result.data.map((dbEvent: any) => {
           const membershipIds = Array.isArray(dbEvent.membership_ids) ? dbEvent.membership_ids : [];
@@ -98,11 +109,12 @@ export function EventsView({
             endTime,
             location: dbEvent.location,
             description: dbEvent.description,
+            notificationMessage: dbEvent.notification_message ?? '',
             membershipIds,
             membershipName: 'Open to all',
           };
         });
-        
+
         setLocalEvents(formattedEvents);
       }
     } catch (error) {
@@ -116,10 +128,11 @@ export function EventsView({
       setEventSearch("");
       setCurrentPage(1);
       setEventFilter("all");
+      setSelectedDate("");
     };
 
     window.addEventListener('refreshEvents', handleRefresh);
-    
+
     return () => {
       window.removeEventListener('refreshEvents', handleRefresh);
     };
@@ -183,13 +196,28 @@ export function EventsView({
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState("all");
 
-  const formatTime = (timeStr: string | undefined): string => {
+  // ✅ Updated: Format time to 12-hour with AM/PM
+  const formatTime12Hour = (timeStr: string | undefined): string => {
     if (!timeStr) return "";
-    const [hour, minute] = timeStr.split(':');
+
+    // Handle full datetime string like "2026-06-03 08:25:14"
+    let timePart = timeStr;
+    if (timeStr.includes(" ")) {
+      timePart = timeStr.split(" ")[1];
+    }
+    if (timePart.length < 5) return timeStr;
+
+    const [hour, minute] = timePart.slice(0, 5).split(':');
     let hourNum = parseInt(hour, 10);
     const ampm = hourNum >= 12 ? 'PM' : 'AM';
-    if (hourNum > 12) hourNum = hourNum - 12;
+    if (hourNum > 12) hourNum -= 12;
     if (hourNum === 0) hourNum = 12;
+
+    // If original string has date, keep it + formatted time
+    if (timeStr.includes(" ")) {
+      const datePart = timeStr.split(" ")[0];
+      return `${datePart} ${hourNum}:${minute} ${ampm}`;
+    }
     return `${hourNum}:${minute} ${ampm}`;
   };
 
@@ -254,7 +282,11 @@ export function EventsView({
 
   const filteredEvents = useMemo(() => {
     let result = [...localEvents];
+
+    // Status filter
     result = result.filter(event => getFilterStatus(event, eventFilter));
+
+    // Search filter
     if (eventSearch.trim()) {
       const q = eventSearch.toLowerCase();
       result = result.filter(
@@ -265,8 +297,30 @@ export function EventsView({
           e.description.toLowerCase().includes(q)
       );
     }
+
+    // ✅ SINGLE DATE FILTER — exact date only
+    if (selectedDate) {
+      const chosen = new Date(selectedDate);
+      chosen.setHours(0, 0, 0, 0);
+      const nextDay = new Date(chosen);
+      nextDay.setDate(chosen.getDate() + 1);
+
+      result = result.filter((e) => {
+        let dateValue = e.event_start || e.date || e.startDate;
+        if (!dateValue) return false;
+        if (typeof dateValue === 'string' && dateValue.includes(" ")) {
+          dateValue = dateValue.split(" ")[0];
+        }
+        if (dateValue.includes("T")) {
+          dateValue = dateValue.split("T")[0];
+        }
+        const eventDate = new Date(dateValue);
+        return eventDate >= chosen && eventDate < nextDay;
+      });
+    }
+
     return result;
-  }, [localEvents, eventFilter, eventSearch]);
+  }, [localEvents, eventFilter, eventSearch, selectedDate]);
 
   // Sort events so "This Week" events come FIRST (based on current calendar week)
   const sortedFilteredEvents = useMemo(() => {
@@ -278,23 +332,23 @@ export function EventsView({
     return [...filteredEvents].sort((a, b) => {
       let dateA = a.date || a.event_start || a.startDate || "";
       let dateB = b.date || b.event_start || b.startDate || "";
-      
+
       if (dateA.includes(" ")) dateA = dateA.split(" ")[0];
       if (dateA.includes("T")) dateA = dateA.split("T")[0];
       if (dateB.includes(" ")) dateB = dateB.split(" ")[0];
       if (dateB.includes("T")) dateB = dateB.split("T")[0];
-      
+
       const eventDateA = new Date(dateA);
       const eventDateB = new Date(dateB);
       eventDateA.setHours(0, 0, 0, 0);
       eventDateB.setHours(0, 0, 0, 0);
-      
+
       const isThisWeekA = !isNaN(eventDateA.getTime()) && eventDateA >= weekStart && eventDateA <= weekEnd;
       const isThisWeekB = !isNaN(eventDateB.getTime()) && eventDateB >= weekStart && eventDateB <= weekEnd;
-      
+
       if (isThisWeekA && !isThisWeekB) return -1;
       if (!isThisWeekA && isThisWeekB) return 1;
-      
+
       return eventDateB.getTime() - eventDateA.getTime();
     });
   }, [filteredEvents]);
@@ -307,7 +361,7 @@ export function EventsView({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [eventSearch, eventFilter]);
+  }, [eventSearch, eventFilter, selectedDate]);
 
   // Group events with correct "This Week" calculation (calendar week, not next 7 days)
   const groupedEvents = useMemo(() => {
@@ -325,11 +379,11 @@ export function EventsView({
       if (dateString.includes("T")) {
         dateString = dateString.split("T")[0];
       }
-      
+
       const eventDate = new Date(dateString);
       eventDate.setHours(0, 0, 0, 0);
       const dateOnly = dateString;
-      
+
       let sectionKey: string;
 
       if (!isNaN(eventDate.getTime()) && eventDate >= weekStart && eventDate <= weekEnd) {
@@ -547,6 +601,29 @@ export function EventsView({
     });
   };
 
+  // Attendance pagination data
+  const paginatedAttendance = useMemo(() => {
+    if (!showAttendance) return [];
+    const eligibleMembers = getMembersForEvent(showAttendance);
+    const fullList = getFullAttendanceList(showAttendance.id, eligibleMembers);
+    const filtered = getFilteredAttendance(fullList);
+    const startIndex = (attendanceCurrentPage - 1) * attendanceItemsPerPage;
+    return filtered.slice(startIndex, startIndex + attendanceItemsPerPage);
+  }, [showAttendance, attendanceSearch, attendanceStatusFilter, attendanceCurrentPage]);
+
+  const attendanceTotalPages = useMemo(() => {
+    if (!showAttendance) return 0;
+    const eligibleMembers = getMembersForEvent(showAttendance);
+    const fullList = getFullAttendanceList(showAttendance.id, eligibleMembers);
+    const filtered = getFilteredAttendance(fullList);
+    return Math.ceil(filtered.length / attendanceItemsPerPage);
+  }, [showAttendance, attendanceSearch, attendanceStatusFilter]);
+
+  // Reset attendance page when modal closes
+  useEffect(() => {
+    if (!showAttendance) setAttendanceCurrentPage(1);
+  }, [showAttendance]);
+
   return (
     <div className="space-y-6">
       <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
@@ -556,28 +633,43 @@ export function EventsView({
             <p className="mt-1 text-sm text-[#667777]">Filter and view all, upcoming, and past events.</p>
           </div>
 
-          <div className="mt-4 flex items-center gap-4 w-full">
-            <div className="flex-1">
+          <div className="mt-4 flex flex-wrap items-center gap-4 w-full">
+            <div className="flex-1 min-w-[250px]">
               <SearchBar
                 value={eventSearch}
                 onChange={setEventSearch}
                 placeholder="Search events by title, date, location or description..."
               />
             </div>
-            <div className="relative">
-              <select
-                value={eventFilter}
-                onChange={(e) => setEventFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm appearance-none"
-              >
-                <option value="all">All Events</option>
-                <option value="upcoming">Upcoming Events</option>
-                <option value="past">Past Events</option>
-              </select>
-              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+
+            <div className="flex flex-wrap gap-3">
+              {/* Status Filter */}
+              <div className="relative">
+                <select
+                  value={eventFilter}
+                  onChange={(e) => setEventFilter(e.target.value)}
+                  className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm appearance-none"
+                >
+                  <option value="all">All Events</option>
+                  <option value="upcoming">Upcoming Events</option>
+                  <option value="past">Past Events</option>
+                </select>
+                <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+              </div>
+
+              {/* ✅ SINGLE DATE CALENDAR FILTER — same as Activity Logs */}
+              <div className="relative h-full">
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="h-14 pl-10 pr-4 py-3.5 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30"
+                />
+                <Calendar className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+              </div>
             </div>
           </div>
-          
+
           <p className="mt-2 text-xs text-gray-500">
             {filteredEvents.length} of {localEvents.length} event(s) match
           </p>
@@ -592,11 +684,11 @@ export function EventsView({
                 >
                   ←
                 </button>
-                
+
                 <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
                   {currentPage}
                 </span>
-                
+
                 <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
@@ -620,7 +712,20 @@ export function EventsView({
             <h2 className="text-xl font-bold text-[#005f63] mb-4">{editingEvent ? "Edit Event" : "Create New Event"}</h2>
             <form onSubmit={handleSaveEvent} className="space-y-4 flex-1 overflow-y-auto pr-1">
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Event Title *</label><input type="text" required value={newEvent.title} placeholder="Barangay General Assembly" onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">Date *</label><input type="date" required value={newEvent.date} onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
+
+              {/* ✅ DATE INPUT — CANNOT SELECT PAST DATES */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                <input
+                  type="date"
+                  required
+                  value={newEvent.date}
+                  onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
+                  className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm"
+                  min={getTodayString()} // ✅ Disable past dates
+                />
+              </div>
+
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Start Time *</label><input type="time" required value={newEvent.time} onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Location *</label><input type="text" required value={newEvent.location} placeholder="Barangay Hall" onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Description</label><textarea value={newEvent.description} placeholder="Attendance is a must!" onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} className="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm" rows={3} /></div>
@@ -656,7 +761,7 @@ export function EventsView({
                             <button onClick={() => setEventToDelete(e.id)} className="p-2 rounded-full hover:bg-red-100" title="Delete"><Archive className="h-4 w-4 text-red-500" /></button>
                           </div>
                           <h2 className="pr-32 text-base font-bold text-[#005f63]">{highlightText(e.title, eventSearch)}</h2>
-                          <p className="mt-1 text-sm text-gray-500">{e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || ""} · {formatTime(e.startTime)}</p>
+                          <p className="mt-1 text-sm text-gray-500">{e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || ""} · {formatTime12Hour(e.startTime)}</p>
                           <p className="mt-1 text-sm text-gray-500">{highlightText(e.location, eventSearch)}</p>
                           <p className="mt-2 text-[14px] text-gray-700">{highlightText(e.description, eventSearch)}</p>
                           <div className="mt-3 pt-2 border-t border-gray-200 text-xs text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#4eb4b8] mr-1"></span>{signedIn} Signed In | <span className="inline-block w-2 h-2 rounded-full bg-red-400 mr-1"></span>{signedOut} Signed Out<span className="ml-2 font-medium">• {displayMembershipLabel}</span></div>
@@ -685,20 +790,138 @@ export function EventsView({
       {viewEv && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4"><div><h2 className="text-2xl font-black text-[#005f63]">{viewEv.title}</h2><p className="text-sm text-gray-600 mt-1">{viewEv.startDate || viewEv.date} · {formatTime(viewEv.startTime)}</p><p className="text-sm text-gray-600">{viewEv.location}</p></div><button onClick={() => setViewEv(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button></div>
-            <div className="space-y-4"><div className={`px-3 py-2 rounded-full inline-block text-sm font-semibold ${getEventStatus(viewEv).color}`}>{getEventStatus(viewEv).label}</div><div><h4 className="font-semibold text-gray-700 mb-1">Description</h4><p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl">{viewEv.description || "—"}</p></div>{viewEv.notificationMessage && (<div><h4 className="font-semibold text-gray-700 mb-1">Notification Preview</h4><p className="text-sm text-teal-700 bg-teal-50 p-3 rounded-xl">{viewEv.notificationMessage}</p></div>)}<div className="grid grid-cols-3 gap-3 text-center"><div className="bg-teal-50 rounded-xl p-3"><p className="text-xs text-teal-600 font-medium">Target Members</p><p className="font-bold text-teal-800 text-sm">{(viewEv.membershipNames && viewEv.membershipNames.length > 0) ? viewEv.membershipNames.join(", ") : "Open Event"}</p></div><div className="bg-green-50 rounded-xl p-3"><p className="text-xs text-green-600 font-medium">Signed In</p><p className="font-bold text-green-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length}</p></div><div className="bg-orange-50 rounded-xl p-3"><p className="text-xs text-orange-600 font-medium">Signed Out</p><p className="font-bold text-orange-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeOut).length}</p></div></div><button onClick={() => setShowAttendance(viewEv)} className="w-full bg-[#f3b94e] hover:bg-[#ff9736] text-white py-2.5 rounded-full font-medium">View Attendance List</button></div>
+            <div className="flex items-center justify-between mb-4"><div><h2 className="text-2xl font-black text-[#005f63]">{viewEv.title}</h2><p className="text-sm text-gray-600 mt-1">{viewEv.startDate || viewEv.date} · {formatTime12Hour(viewEv.startTime)}</p><p className="text-sm text-gray-600">{viewEv.location}</p></div><button onClick={() => setViewEv(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button></div>
+            <div className="space-y-4"><div className={`px-3 py-2 rounded-full inline-block text-sm font-semibold ${getEventStatus(viewEv).color}`}>{getEventStatus(viewEv).label}</div><div><h4 className="font-semibold text-gray-700 mb-1">Description</h4><p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl">{viewEv.description || "—"}</p></div>{viewEv.notificationMessage && (<div><h4 className="font-semibold text-gray-700 mb-1">Notification Preview</h4><p className="text-sm text-teal-700 bg-teal-50 p-3 rounded-xl">{viewEv.notificationMessage}</p></div>)}<div className="grid grid-cols-3 gap-3 text-center"><div className="bg-teal-50 rounded-xl p-3"><p className="text-xs text-teal-600 font-medium">Target Members</p><p className="font-bold text-teal-800 text-sm">{(viewEv.membershipNames && viewEv.membershipNames.length > 0) ? viewEv.membershipNames.join(", ") : "Open Event"}</p></div><div className="bg-green-50 rounded-xl p-3"><p className="text-xs text-green-600 font-medium">Signed In</p><p className="font-bold text-green-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length}</p></div>
+            <div className="bg-orange-50 rounded-xl p-3"><p className="text-xs text-orange-600 font-medium">Signed Out</p><p className="font-bold text-orange-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeOut).length}</p></div></div><button onClick={() => setShowAttendance(viewEv)} className="w-full bg-[#f3b94e] hover:bg-[#ff9736] text-white py-2.5 rounded-full font-medium">View Attendance List</button></div>
           </div>
         </div>
       )}
 
       {showAttendance && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white w-[95%] max-w-5xl h-[65vh] rounded-3xl shadow-2xl overflow-auto relative">
-            <div className="sticky top-0 bg-white z-10 flex items-center justify-between p-6 border-b border-gray-200"><div><h2 className="text-2xl font-black text-[#005f63]">Attendance — {showAttendance.title}</h2><p className="text-sm text-gray-600 mt-1">{showAttendance.date}</p></div><button onClick={() => setShowAttendance(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={24} /></button></div>
-            <div className="p-6">
-              <div className="sticky top-0 z-20 bg-white pb-4 mb-4 border-b border-gray-100 flex flex-wrap gap-4 items-center"><div className="flex-1 min-w-[250px]"><SearchBar value={attendanceSearch} onChange={setAttendanceSearch} placeholder="Search resident name..." /></div><div className="relative"><select value={attendanceStatusFilter} onChange={(e) => setAttendanceStatusFilter(e.target.value)} className="h-12 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm"><option value="all">All Status</option><option value="complete">Complete</option><option value="incomplete">Incomplete</option><option value="missed">Missed</option></select><Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70" /></div></div>
-              <div className="rounded-xl border border-[#ddd5ca] overflow-hidden"><table className="w-full text-sm"><thead className="bg-[#f8f6f2]"><tr><th className="text-left p-4 font-medium text-[#005f63]">Resident Name</th><th className="text-left p-4 font-medium text-[#005f63]">Time In</th><th className="text-left p-4 font-medium text-[#005f63]">Time Out</th><th className="text-left p-4 font-medium text-[#005f63]">Status</th></tr></thead><tbody>{(() => { const eligibleMembers = getMembersForEvent(showAttendance); const fullList = getFullAttendanceList(showAttendance.id, eligibleMembers); const filteredList = getFilteredAttendance(fullList); return filteredList.length === 0 ? (<tr><td colSpan={4} className="p-6 text-center text-gray-500 italic">No matching records found.</td></tr>) : (filteredList.map((record: any, i: number) => { const status = getAttendanceStatus(record); return (<tr key={i} className="border-t"><td className="p-4">{highlightAttendanceText(record.residentName, attendanceSearch)}</td><td className="p-4">{record.timeIn ? <span className="text-teal-700 flex items-center gap-1"><LogIn size={12} /> {record.timeIn}</span> : "—"}</td><td className="p-4">{record.timeOut ? <span className="text-orange-700 flex items-center gap-1"><LogOut size={12} /> {record.timeOut}</span> : "—"}</td><td className="p-4"><span className={`text-xs font-semibold px-3 py-1 rounded-full ${status.label === "Complete" ? "bg-teal-100 text-teal-800" : status.label === "Incomplete" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"}`}>{status.label}</span></td></tr>); })); })()}</tbody></table></div>
+          {/* ✅ Larger modal */}
+          <div className="bg-white w-[95%] max-w-6xl h-[80vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+            {/* Fixed header */}
+            <div className="bg-white z-20 flex items-center justify-between p-6 border-b border-gray-200 rounded-t-3xl shrink-0">
+              <div>
+                <h2 className="text-2xl font-black text-[#005f63]">Attendance — {showAttendance.title}</h2>
+                <p className="text-sm text-gray-600 mt-1">{showAttendance.date}</p>
+              </div>
+              <button onClick={() => setShowAttendance(null)} className="text-gray-500 hover:text-gray-700">
+                <XCircle size={24} />
+              </button>
             </div>
+
+            {/* Fixed search & filter */}
+            <div className="bg-white z-20 pb-4 mb-4 border-b border-gray-100 px-6 pt-2 flex flex-wrap gap-4 items-center shrink-0">
+              <div className="flex-1 min-w-[250px]">
+                <SearchBar
+                  value={attendanceSearch}
+                  onChange={setAttendanceSearch}
+                  placeholder="Search resident name..."
+                />
+              </div>
+              <div className="relative">
+                <select
+                  value={attendanceStatusFilter}
+                  onChange={(e) => setAttendanceStatusFilter(e.target.value)}
+                  className="h-12 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm"
+                >
+                  <option value="all">All Status</option>
+                  <option value="complete">Complete</option>
+                  <option value="incomplete">Incomplete</option>
+                  <option value="missed">Missed</option>
+                </select>
+                <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70" />
+              </div>
+            </div>
+
+            {/* ✅ ONLY this part scrolls */}
+            <div className="flex-1 px-6 pb-6 overflow-y-auto">
+              <div className="rounded-xl border border-[#ddd5ca] w-full">
+                <table className="w-full text-sm">
+                  <thead className="bg-[#f8f6f2] sticky top-0 z-10">
+                    <tr>
+                      {/* ✅ Proper column widths: Name narrower, others equal */}
+                      <th className="text-left p-4 font-medium text-[#005f63] w-[30%]">Resident Name</th>
+                      <th className="text-left p-4 font-medium text-[#005f63] w-[25%]">Time In</th>
+                      <th className="text-left p-4 font-medium text-[#005f63] w-[25%]">Time Out</th>
+                      <th className="text-left p-4 font-medium text-[#005f63] w-[15%]">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedAttendance.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="p-6 text-center text-gray-500 italic">
+                          No matching records found.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedAttendance.map((record: any, i: number) => {
+                        const status = getAttendanceStatus(record);
+                        return (
+                          <tr key={i} className="border-t">
+                            <td className="p-4">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
+                            <td className="p-4">
+                              {record.timeIn ? (
+                                <span className="text-teal-700 flex items-center gap-1">
+                                  <LogIn size={12} /> {formatTime12Hour(record.timeIn)}
+                                </span>
+                              ) : "—"}
+                            </td>
+                            <td className="p-4">
+                              {record.timeOut ? (
+                                <span className="text-orange-700 flex items-center gap-1">
+                                  <LogOut size={12} /> {formatTime12Hour(record.timeOut)}
+                                </span>
+                              ) : "—"}
+                            </td>
+                            <td className="p-4">
+                              <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                                status.label === "Complete" ? "bg-teal-100 text-teal-800" :
+                                status.label === "Incomplete" ? "bg-amber-100 text-amber-800" :
+                                "bg-red-100 text-red-800"
+                              }`}>
+                                {status.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+                        {/* ✅ Attendance Pagination - fixed at bottom */}
+            {attendanceTotalPages > 1 && (
+              <div className="bg-white z-20 flex justify-end items-center gap-2 p-6 border-t border-gray-200 rounded-b-3xl shrink-0">
+                <button
+                  onClick={() => setAttendanceCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={attendanceCurrentPage === 1}
+                  className="h-9 w-9 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  ←
+                </button>
+
+                <span className="h-9 w-9 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                  {attendanceCurrentPage}
+                </span>
+
+                <button
+                  onClick={() => setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1))}
+                  disabled={attendanceCurrentPage === attendanceTotalPages}
+                  className="h-9 w-9 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  →
+                </button>
+
+                <span className="text-sm text-gray-500 ml-2">
+                  Page {attendanceCurrentPage} of {attendanceTotalPages}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

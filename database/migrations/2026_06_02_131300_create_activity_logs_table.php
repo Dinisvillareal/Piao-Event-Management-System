@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('activity_logs', function (Blueprint $table) {
             $table->id();
 
-            $table->string('user_code', 20);
+            $table->string('user_code', 50);
             $table->string('action', 100);
             $table->string('module', 100);
 

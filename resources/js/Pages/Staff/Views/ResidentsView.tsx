@@ -125,6 +125,10 @@ const emptyAdd = (): AddForm => ({
   tempPassword: "",
 });
 
+// ─── Normalize helper for duplicate checking ──────────────────────────────────
+const normalizeName = (s: string) =>
+  s.trim().toLowerCase().replace(/\s+/g, " ");
+
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ResidentsView() {
   const [residentsData, setResidentsData] = useState<ResidentRow[]>([]);
@@ -157,19 +161,11 @@ export default function ResidentsView() {
   const currentUserId = useMemo<number | null>(() => {
     const sessionUser = sessionStorage.getItem("user");
     if (sessionUser) {
-      try {
-        return JSON.parse(sessionUser)?.id ?? null;
-      } catch {
-        return null;
-      }
+      try { return JSON.parse(sessionUser)?.id ?? null; } catch { return null; }
     }
     const localUser = localStorage.getItem("user");
     if (localUser) {
-      try {
-        return JSON.parse(localUser)?.id ?? null;
-      } catch {
-        return null;
-      }
+      try { return JSON.parse(localUser)?.id ?? null; } catch { return null; }
     }
     return null;
   }, []);
@@ -335,6 +331,25 @@ export default function ResidentsView() {
     if (!validateAdd()) return;
     setApiError(null);
 
+    // ── Duplicate full-name check (excludes trashed records) ──────────────
+    const incomingFull = normalizeName(
+      `${newResident.firstName} ${newResident.middleName} ${newResident.lastName}`
+    );
+    const isDuplicate = residentsData.some((r) => {
+      if (r.deleted_at !== null) return false; // ignore trashed
+      const existingFull = normalizeName(`${r.firstName} ${r.middleName} ${r.lastName}`);
+      return existingFull === incomingFull;
+    });
+
+    if (isDuplicate) {
+      setFormErrors((prev) => ({
+        ...prev,
+        lastName: "A record with this full name already exists.",
+      }));
+      return;
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     const fd = new FormData();
     fd.append("first_name", newResident.firstName);
     fd.append("middle_name", newResident.middleName);
@@ -428,6 +443,26 @@ export default function ResidentsView() {
     e.preventDefault();
     if (!editRecord || !editingResident || !validateEdit()) return;
     setApiError(null);
+
+    // ── Duplicate full-name check (excludes self and trashed records) ──────
+    const incomingFull = normalizeName(
+      `${editingResident.firstName} ${editingResident.middleName} ${editingResident.lastName}`
+    );
+    const isDuplicate = residentsData.some((r) => {
+      if (r.deleted_at !== null) return false;           // ignore trashed
+      if (r.real_id === editingResident.real_id) return false; // ignore self
+      const existingFull = normalizeName(`${r.firstName} ${r.middleName} ${r.lastName}`);
+      return existingFull === incomingFull;
+    });
+
+    if (isDuplicate) {
+      setFormErrors((prev) => ({
+        ...prev,
+        lastName: "A record with this full name already exists.",
+      }));
+      return;
+    }
+    // ──────────────────────────────────────────────────────────────────────
 
     const fd = new FormData();
     fd.append("_method", "PUT");
@@ -738,9 +773,7 @@ export default function ResidentsView() {
 
       {/* Table */}
       <div className="pl-1">
-        {/* ✅ Pagination on LEFT, Add Button on RIGHT - same row */}
         <div className="sticky top-[140px] z-10 flex items-center justify-between mb-3 bg-[#fcfcf9] py-2">
-          {/* LEFT - Pagination ← 1 → */}
           {totalPages > 1 && (
             <div className="flex items-center gap-2">
               <button
@@ -750,11 +783,9 @@ export default function ResidentsView() {
               >
                 ←
               </button>
-              
               <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
                 {currentPage}
               </span>
-              
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
@@ -764,8 +795,6 @@ export default function ResidentsView() {
               </button>
             </div>
           )}
-          
-          {/* RIGHT - Add Button */}
           <button
             onClick={handleOpenAddForm}
             className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm ml-auto"
@@ -776,7 +805,6 @@ export default function ResidentsView() {
 
         <div className="relative rounded-[20px] bg-white shadow-lg overflow-hidden">
           <div className="h-1 w-full bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-1 absolute top-0 left-0 right-0" />
-
           <div className="p-5 pt-6 max-h-[65vh] overflow-auto">
             <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: "1310px" }}>
               <colgroup>
@@ -796,14 +824,8 @@ export default function ResidentsView() {
                     (h) => (
                       <th
                         key={h}
-                        className={`py-3 px-2 font-bold text-[#005f63] whitespace-nowrap bg-white
-                          ${h === "Actions" ? "text-right" : "text-left"}`}
-                        style={{
-                          position: "sticky",
-                          top: 0,
-                          zIndex: 10,
-                          boxShadow: "0 2px 0 0 #eee8e0",
-                        }}
+                        className={`py-7 px-2 font-bold text-[#005f63] whitespace-nowrap bg-[#f8f6f2] ${h === "Actions" ? "text-right" : "text-left"}`}
+                        style={{ position: "sticky", top: 0, zIndex: 10, boxShadow: "0 2px 0 0 #eee8e0" }}
                       >
                         {h}
                       </th>
@@ -814,15 +836,11 @@ export default function ResidentsView() {
               <tbody className="bg-white">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="py-6 text-center text-gray-500 italic">
-                      Loading...
-                    </td>
+                    <td colSpan={9} className="py-6 text-center text-gray-500 italic">Loading...</td>
                   </tr>
                 ) : paginatedResidents.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-6 text-center text-gray-500 italic">
-                      No records match your search or filter.
-                    </td>
+                    <td colSpan={9} className="py-6 text-center text-gray-500 italic">No records match your search or filter.</td>
                   </tr>
                 ) : (
                   paginatedResidents.map((r) => {
@@ -849,67 +867,46 @@ export default function ResidentsView() {
                               </span>
                             ))}
                             {extra > 0 && (
-                              <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                                +{extra} more
-                              </span>
+                              <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">+{extra} more</span>
                             )}
                             {allMems.length === 0 && <span className="text-gray-400 text-xs">None</span>}
                           </div>
                         </td>
                         <td className="py-3 px-2">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              r.role === "Staff"
-                                ? "bg-orange-100 text-orange-800"
-                                : r.role === "Resident"
-                                ? "bg-teal-50 text-teal-800"
-                                : "bg-gray-100 text-gray-800"
-                            }`}
-                          >
+                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                            r.role === "Staff" ? "bg-orange-100 text-orange-800"
+                            : r.role === "Resident" ? "bg-teal-50 text-teal-800"
+                            : "bg-gray-100 text-gray-800"
+                          }`}>
                             {highlightText(r.role, residentSearch)}
                             {r.passwordChangedByUser && <span className="ml-1 text-yellow-600 text-[10px] font-bold">🔒</span>}
                           </span>
                         </td>
                         <td className="py-3 px-2">
-                          <span
-                            className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              r.hasAccount ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                            }`}
-                          >
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                            r.hasAccount ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                          }`}>
                             {r.hasAccount ? "✅ Yes" : "❌ No"}
                           </span>
                         </td>
                         <td className="py-3 px-2 text-right">
                           <div className="inline-flex gap-1">
-                            <button
-                              onClick={() => setViewRecord(r.id)}
-                              className="p-2 rounded-full hover:bg-teal-50 transition"
-                              title="View"
-                            >
+                            <button onClick={() => setViewRecord(r.id)} className="p-2 rounded-full hover:bg-teal-50 transition" title="View">
                               <svg width="16" height="16" fill="none" stroke="#006666" strokeWidth={2} viewBox="0 0 24 24">
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                                 <circle cx="12" cy="12" r="3" />
                               </svg>
                             </button>
-
                             {r.deleted_at === null ? (
                               <>
-                                <button
-                                  onClick={() => setEditRecord(r.id)}
-                                  className="p-2 rounded-full hover:bg-orange-50 transition"
-                                  title="Edit"
-                                >
+                                <button onClick={() => setEditRecord(r.id)} className="p-2 rounded-full hover:bg-orange-50 transition" title="Edit">
                                   <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24">
                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                   </svg>
                                 </button>
-                                <button
-                                  onClick={() => setDeleteRecord(r.id)}
-                                  className="p-2 rounded-full hover:bg-red-50 transition"
-                                  title="Delete"
-                                >
-                                   <Archive className="h-4 w-4 text-red-500"/>
+                                <button onClick={() => setDeleteRecord(r.id)} className="p-2 rounded-full hover:bg-red-50 transition" title="Delete">
+                                  <Archive className="h-4 w-4 text-red-500" />
                                 </button>
                               </>
                             ) : (
@@ -918,16 +915,7 @@ export default function ResidentsView() {
                                 className="p-2 rounded-full text-teal-600 hover:bg-teal-50 hover:text-teal-700 transition-colors duration-200"
                                 title="Restore Record"
                               >
-                                <svg
-                                  width="16"
-                                  height="16"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  viewBox="0 0 24 24"
-                                >
+                                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                                   <polyline points="23 4 23 10 17 10" />
                                   <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
                                 </svg>
@@ -946,65 +934,58 @@ export default function ResidentsView() {
       </div>
 
       {/* ─── View Modal ───────────────────────────────────────────────────────── */}
-      {viewRecord &&
-        (() => {
-          const r = residentsData.find((x) => x.id === viewRecord)!;
-          const allMems = r.memberships ? r.memberships.split(", ").map((m) => m.trim()).filter(Boolean) : [];
-          return (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-              <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-2xl font-black text-[#005f63]">Record Details</h2>
-                  <button onClick={() => setViewRecord(null)} className="text-gray-500 hover:text-gray-700">
-                    <XCircle size={20} />
-                  </button>
-                </div>
-                <div className="text-sm">
-                  {r.deleted_at !== null && (
-                    <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted</div>
-                  )}
-                  <div className="flex gap-6">
-                    <div className="flex-1 space-y-2">
-                      <p><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
-                      <p><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
-                      <p><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
-                      <p>
-                        <strong className="text-[#005f63]">Role:</strong> {r.role}{" "}
-                        {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}
-                      </p>
-                      <p><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
-                    </div>
-                    <div className="w-[160px]">
-                      <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ minHeight: 180 }}>
-                        {r.photo ? (
-                          <img src={r.photo} alt="ID Photo" className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-2">
-                            No photo uploaded
-                          </div>
-                        )}
-                      </div>
-                    </div>
+      {viewRecord && (() => {
+        const r = residentsData.find((x) => x.id === viewRecord)!;
+        const allMems = r.memberships ? r.memberships.split(", ").map((m) => m.trim()).filter(Boolean) : [];
+        return (
+          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+            <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-black text-[#005f63]">Record Details</h2>
+                <button onClick={() => setViewRecord(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+              </div>
+              <div className="text-sm">
+                {r.deleted_at !== null && (
+                  <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted</div>
+                )}
+                <div className="flex gap-6">
+                  <div className="flex-1 space-y-2">
+                    <p><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
+                    <p><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
+                    <p><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
+                    <p>
+                      <strong className="text-[#005f63]">Role:</strong> {r.role}{" "}
+                      {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}
+                    </p>
+                    <p><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
                   </div>
-                  <div className="mt-6">
-                    <strong className="text-[#005f63] block mb-2">Memberships:</strong>
-                    <div className="flex flex-wrap gap-1.5">
-                      {allMems.length > 0 ? (
-                        allMems.map((m, i) => (
-                          <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>
-                            {m}
-                          </span>
-                        ))
+                  <div className="w-[160px]">
+                    <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ minHeight: 180 }}>
+                      {r.photo ? (
+                        <img src={r.photo} alt="ID Photo" className="w-full h-full object-cover" />
                       ) : (
-                        <span className="text-gray-500">None</span>
+                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-2">No photo uploaded</div>
                       )}
                     </div>
                   </div>
                 </div>
+                <div className="mt-6">
+                  <strong className="text-[#005f63] block mb-2">Memberships:</strong>
+                  <div className="flex flex-wrap gap-1.5">
+                    {allMems.length > 0 ? (
+                      allMems.map((m, i) => (
+                        <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>{m}</span>
+                      ))
+                    ) : (
+                      <span className="text-gray-500">None</span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-          );
-        })()}
+          </div>
+        );
+      })()}
 
       {/* ─── Add Modal ────────────────────────────────────────────────────────── */}
       {showAddForm && (
@@ -1012,17 +993,12 @@ export default function ResidentsView() {
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-black text-[#005f63]">Add New Record</h2>
-              <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700">
-                <XCircle size={20} />
-              </button>
+              <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
             </div>
 
-            {apiError && (
-              <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>
-            )}
+            {apiError && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>}
 
             <form onSubmit={handleAddResident} className="space-y-4">
-              {/* Name fields */}
               <div className="grid md:grid-cols-3 gap-4">
                 {(["firstName", "middleName", "lastName"] as const).map((field) => (
                   <div key={field}>
@@ -1038,14 +1014,11 @@ export default function ResidentsView() {
                         formErrors[field] ? "border-red-500" : "border-gray-200"
                       }`}
                     />
-                    {formErrors[field] && (
-                      <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>
-                    )}
+                    {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
                   </div>
                 ))}
               </div>
 
-              {/* Role */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                 <select
@@ -1060,12 +1033,9 @@ export default function ResidentsView() {
                   <option value="Resident" className="text-gray-900">Resident</option>
                   <option value="Staff" className="text-gray-900">Staff</option>
                 </select>
-                {formErrors.role && (
-                  <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>
-                )}
+                {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
               </div>
 
-              {/* Contact */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
                 <input
@@ -1082,16 +1052,12 @@ export default function ResidentsView() {
                 {newResident.contactNumber.length > 0 && !newResident.contactNumber.startsWith("09") && (
                   <p className="text-amber-500 text-xs mt-1">⚠ Number must start with 09</p>
                 )}
-                {formErrors.contactNumber && (
-                  <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>
-                )}
+                {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
               </div>
 
               <PhotoField isEdit={false} />
 
-              {/* ─── Memberships + Need Account (same border section) ─── */}
               <div className="border-t border-b py-3 space-y-3">
-                {/* Has Memberships */}
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -1122,7 +1088,6 @@ export default function ResidentsView() {
                     </div>
                   ))}
 
-                {/* Need Account */}
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -1153,22 +1118,14 @@ export default function ResidentsView() {
                       }`}
                       placeholder="Enter a temporary password"
                     />
-                    {formErrors.tempPassword && (
-                      <p className="text-red-500 text-xs mt-1">{formErrors.tempPassword}</p>
-                    )}
-                    <p className="text-xs text-gray-400 mt-1">
-                      The resident can log in with this password and change it later.
-                    </p>
+                    {formErrors.tempPassword && <p className="text-red-500 text-xs mt-1">{formErrors.tempPassword}</p>}
+                    <p className="text-xs text-gray-400 mt-1">The resident can log in with this password and change it later.</p>
                   </div>
                 )}
               </div>
 
               <div className="flex justify-between gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handleCancelAdd}
-                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-                >
+                <button type="button" onClick={handleCancelAdd} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
                   Cancel
                 </button>
                 <button
@@ -1192,19 +1149,13 @@ export default function ResidentsView() {
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-2xl font-black text-[#005f63]">Edit Record</h2>
-              <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700">
-                <XCircle size={20} />
-              </button>
+              <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
             </div>
 
             {editingResident.deleted_at !== null && (
-              <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">
-                ⚠️ This record is deleted — editing disabled
-              </div>
+              <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted — editing disabled</div>
             )}
-            {apiError && (
-              <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>
-            )}
+            {apiError && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>}
 
             <form
               onSubmit={handleUpdateResident}
@@ -1214,7 +1165,6 @@ export default function ResidentsView() {
                 opacity: editingResident.deleted_at !== null ? 0.6 : 1,
               }}
             >
-              {/* Name fields */}
               <div className="grid md:grid-cols-3 gap-4">
                 {(["firstName", "middleName", "lastName"] as const).map((field) => (
                   <div key={field}>
@@ -1232,14 +1182,11 @@ export default function ResidentsView() {
                         formErrors[field] ? "border-red-500" : "border-gray-200"
                       }`}
                     />
-                    {formErrors[field] && (
-                      <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>
-                    )}
+                    {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
                   </div>
                 ))}
               </div>
 
-              {/* Role */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
                 <select
@@ -1253,12 +1200,9 @@ export default function ResidentsView() {
                   <option value="Resident">Resident</option>
                   <option value="Staff">Staff</option>
                 </select>
-                {formErrors.role && (
-                  <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>
-                )}
+                {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
               </div>
 
-              {/* Contact */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
                 <input
@@ -1277,23 +1221,17 @@ export default function ResidentsView() {
                 {editingResident.contactNumber.length > 0 && !editingResident.contactNumber.startsWith("09") && (
                   <p className="text-amber-500 text-xs mt-1">⚠ Number must start with 09</p>
                 )}
-                {formErrors.contactNumber && (
-                  <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>
-                )}
+                {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
               </div>
 
               <PhotoField isEdit={true} />
 
-              {/* ─── Memberships + Account section ─── */}
               <div className="border-t border-b py-3 space-y-3">
-                {/* Has Memberships */}
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={editingResident.hasMemberships}
-                    onChange={(e) =>
-                      setEditingResident((p) => (p ? { ...p, hasMemberships: e.target.checked } : p))
-                    }
+                    onChange={(e) => setEditingResident((p) => (p ? { ...p, hasMemberships: e.target.checked } : p))}
                     className="w-4 h-4 text-[#005f63]"
                   />
                   <span className="font-medium text-gray-700">Has Memberships?</span>
@@ -1319,23 +1257,13 @@ export default function ResidentsView() {
                     </div>
                   ))}
 
-                {/* ── Account section: branches on hasAccount ── */}
                 {editingResident.hasAccount ? (
-                  /* ── CASE: Already has an account ── */
                   <div className="space-y-3">
-                    {/* Disabled "Has Account" checkbox */}
                     <label className="flex items-center gap-2 cursor-not-allowed opacity-70">
-                      <input
-                        type="checkbox"
-                        checked={true}
-                        disabled
-                        className="w-4 h-4 text-[#005f63]"
-                      />
+                      <input type="checkbox" checked={true} disabled className="w-4 h-4 text-[#005f63]" />
                       <span className="font-medium text-gray-700">Has Account</span>
                     </label>
-
                     <div className="pl-6 space-y-3">
-                      {/* Username — always disabled */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
                         <input
@@ -1345,32 +1273,23 @@ export default function ResidentsView() {
                           className="w-full rounded-full border px-4 py-2.5 bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed"
                         />
                       </div>
-
-                      {/* Password — editable (for when resident forgets password) */}
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Password{" "}
-                          <span className="text-gray-400 text-xs font-normal">
-                            (enter a new password to reset, or leave blank to keep current)
-                          </span>
+                          <span className="text-gray-400 text-xs font-normal">(enter a new password to reset, or leave blank to keep current)</span>
                         </label>
                         <input
                           type="password"
                           value={editingResident.password}
-                          onChange={(e) =>
-                            setEditingResident((p) => p ? { ...p, password: e.target.value } : p)
-                          }
+                          onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
                           className="w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 border-gray-200"
                           placeholder="Enter new password to reset, or leave blank"
                         />
-                        {formErrors.password && (
-                          <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>
-                        )}
+                        {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
                       </div>
                     </div>
                   </div>
                 ) : (
-                  /* ── CASE: No account yet — same as Add form ── */
                   <div className="space-y-3">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -1378,20 +1297,13 @@ export default function ResidentsView() {
                         checked={editingResident.needAccount}
                         onChange={(e) =>
                           setEditingResident((p) =>
-                            p
-                              ? {
-                                  ...p,
-                                  needAccount: e.target.checked,
-                                  tempPassword: e.target.checked ? p.tempPassword : "",
-                                }
-                              : p
+                            p ? { ...p, needAccount: e.target.checked, tempPassword: e.target.checked ? p.tempPassword : "" } : p
                           )
                         }
                         className="w-4 h-4 text-[#005f63]"
                       />
                       <span className="font-medium text-gray-700">Need Account?</span>
                     </label>
-
                     {editingResident.needAccount && (
                       <div className="pl-6 space-y-1">
                         <label className="block text-sm font-medium text-gray-700">
@@ -1400,20 +1312,14 @@ export default function ResidentsView() {
                         <input
                           type="password"
                           value={editingResident.tempPassword}
-                          onChange={(e) =>
-                            setEditingResident((p) => p ? { ...p, tempPassword: e.target.value } : p)
-                          }
+                          onChange={(e) => setEditingResident((p) => p ? { ...p, tempPassword: e.target.value } : p)}
                           className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
                             formErrors.tempPassword ? "border-red-500" : "border-gray-200"
                           }`}
                           placeholder="Enter a temporary password"
                         />
-                        {formErrors.tempPassword && (
-                          <p className="text-red-500 text-xs mt-1">{formErrors.tempPassword}</p>
-                        )}
-                        <p className="text-xs text-gray-400 mt-1">
-                          The resident can log in with this password and change it later.
-                        </p>
+                        {formErrors.tempPassword && <p className="text-red-500 text-xs mt-1">{formErrors.tempPassword}</p>}
+                        <p className="text-xs text-gray-400 mt-1">The resident can log in with this password and change it later.</p>
                       </div>
                     )}
                   </div>
@@ -1421,11 +1327,7 @@ export default function ResidentsView() {
               </div>
 
               <div className="flex justify-between gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handleCancelEdit}
-                  className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-                >
+                <button type="button" onClick={handleCancelEdit} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
                   Cancel
                 </button>
                 <button
@@ -1450,22 +1352,10 @@ export default function ResidentsView() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
             <h3 className="text-xl font-bold text-red-600 mb-3">Confirm Deletion</h3>
-            <p className="text-gray-600 mb-5">
-              This will move the record to trash. Are you sure you want to proceed?
-            </p>
+            <p className="text-gray-600 mb-5">This will move the record to trash. Are you sure you want to proceed?</p>
             <div className="flex justify-center gap-4">
-              <button
-                onClick={() => setDeleteRecord(null)}
-                className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteResident}
-                className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
-              >
-                Yes, Delete
-              </button>
+              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+              <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">Yes, Delete</button>
             </div>
           </div>
         </div>
@@ -1476,22 +1366,10 @@ export default function ResidentsView() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
             <h3 className="text-xl font-bold text-teal-600 mb-3">Restore Record</h3>
-            <p className="text-gray-600 mb-5">
-              This will restore the record and make it active again. Continue?
-            </p>
+            <p className="text-gray-600 mb-5">This will restore the record and make it active again. Continue?</p>
             <div className="flex justify-center gap-4">
-              <button
-                onClick={() => setRestoreRecord(null)}
-                className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleRestoreResident}
-                className="px-5 py-2.5 rounded-full bg-teal-600 text-white hover:bg-teal-700 transition"
-              >
-                Yes, Restore
-              </button>
+              <button onClick={() => setRestoreRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
+              <button onClick={handleRestoreResident} className="px-5 py-2.5 rounded-full bg-teal-600 text-white hover:bg-teal-700 transition">Yes, Restore</button>
             </div>
           </div>
         </div>
@@ -1502,16 +1380,9 @@ export default function ResidentsView() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
             <h3 className="text-xl font-bold text-amber-500 mb-3">Unsaved Changes</h3>
-            <p className="text-gray-600 mb-5">
-              You have unsaved changes. Are you sure you want to close without saving?
-            </p>
+            <p className="text-gray-600 mb-5">You have unsaved changes. Are you sure you want to close without saving?</p>
             <div className="flex justify-center gap-4">
-              <button
-                onClick={() => setShowCancelConfirm(null)}
-                className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
-              >
-                Stay
-              </button>
+              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Stay</button>
               <button
                 onClick={() => {
                   setShowCancelConfirm(null);
