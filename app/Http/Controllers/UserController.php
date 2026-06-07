@@ -67,10 +67,25 @@ class UserController extends Controller
     // CREATE USER
     // =========================
 
-    public function store(StoreUserRequest $request)
+        public function store(StoreUserRequest $request)
     {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // ✅ DUPLICATE NAME CHECK (STORE)
+        $exists = User::whereRaw('LOWER(TRIM(first_name)) = ?', [mb_strtolower(trim($request->first_name))])
+            ->whereRaw('LOWER(TRIM(last_name)) = ?', [mb_strtolower(trim($request->last_name))])
+            ->whereRaw('LOWER(TRIM(COALESCE(middle_name, ""))) = ?', [mb_strtolower(trim($request->middle_name ?? ''))])
+            ->whereNull('deleted_at')
+            ->exists();
+
+        if ($exists) {
+            return response()->json([
+                'errors' => [
+                    'last_name' => ['A record with this full name already exists.']
+                ]
+            ], 422);
         }
 
         DB::beginTransaction();
@@ -108,11 +123,7 @@ class UserController extends Controller
                 }
             }
 
-            $this->createLog(
-                'Create User',
-                'User',
-                "Created user {$user->user_code}"
-            );
+            $this->createLog('Create User', 'User', "Created user {$user->user_code}");
 
             DB::commit();
 
@@ -222,7 +233,7 @@ class UserController extends Controller
     // UPDATE USER
     // =========================
 
-    public function update(UpdateUserRequest $request, $id)
+     public function update(UpdateUserRequest $request, $id)
     {
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -231,6 +242,22 @@ class UserController extends Controller
         DB::beginTransaction();
 
         try {
+
+            // ✅ DUPLICATE NAME CHECK (UPDATE)
+            $exists = User::whereRaw('LOWER(TRIM(first_name)) = ?', [mb_strtolower(trim($request->first_name))])
+                ->whereRaw('LOWER(TRIM(last_name)) = ?', [mb_strtolower(trim($request->last_name))])
+                ->whereRaw('LOWER(TRIM(COALESCE(middle_name, ""))) = ?', [mb_strtolower(trim($request->middle_name ?? ''))])
+                ->whereNull('deleted_at')
+                ->where('id', '!=', $id)
+                ->exists();
+
+            if ($exists) {
+                return response()->json([
+                    'errors' => [
+                        'last_name' => ['A record with this full name already exists.']
+                    ]
+                ], 422);
+            }
 
             $user = User::findOrFail($id);
 
@@ -273,11 +300,7 @@ class UserController extends Controller
                 }
             }
 
-            $this->createLog(
-                'Update User',
-                'User',
-                "Updated user {$user->user_code}"
-            );
+            $this->createLog('Update User', 'User', "Updated user {$user->user_code}");
 
             DB::commit();
 
@@ -297,6 +320,7 @@ class UserController extends Controller
         }
     }
 
+
     // =========================
     // DELETE USER
     // =========================
@@ -307,18 +331,41 @@ class UserController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $user = User::findOrFail($id);
-        $user->delete();
+        DB::beginTransaction();
 
-        $this->createLog(
-            'Delete User',
-            'User',
-            "Deleted user {$user->user_code}"
-        );
+        try {
 
-        return response()->json(['message' => 'Deleted successfully']);
+            $user = User::findOrFail($id);
+
+            // ✅ STORE WHO DELETED IT
+            $user->deleted_by = auth()->user()->user_code;
+            $user->save();
+
+            // ✅ SOFT DELETE
+            $user->delete();
+
+            $this->createLog(
+                'Delete User',
+                'User',
+                "Deleted user {$user->user_code} by " . auth()->user()->user_code
+            );
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Deleted successfully'
+            ]);
+
+        } catch (\Exception $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Delete failed',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
-
     // =========================
     // RESTORE USER
     // =========================

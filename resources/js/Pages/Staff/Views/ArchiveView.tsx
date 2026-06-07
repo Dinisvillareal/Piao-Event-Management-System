@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Filter } from 'lucide-react';
+import { RefreshCw, Filter } from 'lucide-react'; // ✅ Added Filter icon import
 import SearchBar from '../../../Components/UI/SearchBar';
 
 interface TrashedItem {
   id: string | number;
-  type: 'event' | 'user' | 'membership' | 'notification';
+  type: 'event' | 'resident' | 'membership' | 'notification';
   name: string;
   deletedAt: string;
   deletedBy: string;
+  originalData?: any; // full original record data
 }
 
 export default function ArchiveView() {
@@ -17,9 +18,36 @@ export default function ArchiveView() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const itemsPerPage = 20; // ✅ 20 items per page
 
-  // Fetch all archived items
+  // Helper: convert time part only to 12-hour format, keep original date
+  const formatTimeOnly = (dateTimeStr?: string) => {
+    if (!dateTimeStr) return '';
+    // Match date and time parts
+    const match = dateTimeStr.match(/^(.*?)(\d{1,2}:\d{2}(:\d{2})?)(.*)$/);
+    if (!match) return dateTimeStr; // return as-is if no time found
+
+    const [, beforeTime, timePart, , afterTime] = match;
+    const [h, m, s = '00'] = timePart.split(':');
+    let hours = parseInt(h, 10);
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12 || 12;
+    const newTime = `${hours}:${m}:${s} ${ampm}`;
+
+    return `${beforeTime}${newTime}${afterTime}`;
+  };
+
+  // Helper: format time string (HH:mm or HH:mm:ss) to 12-hour
+  const formatTime12Hour = (timeStr?: string) => {
+    if (!timeStr) return '';
+    const [h, m, s = '00'] = timeStr.split(':');
+    let hours = parseInt(h, 10);
+    const ampm = hours >= 12 ? 'pm' : 'am';
+    hours = hours % 12 || 12;
+    return `${hours}:${m}:${s} ${ampm}`;
+  };
+
+  // Fetch all archived items WITH full original data
   const fetchArchivedItems = async () => {
     setLoading(true);
     try {
@@ -30,9 +58,20 @@ export default function ArchiveView() {
           'X-Requested-With': 'XMLHttpRequest'
         }
       });
+
       if (response.ok) {
         const data = await response.json();
-        setAllTrashedItems(data);
+
+        const normalized = data.map((item: any) => ({
+          id: item.id,
+          type: item.type === 'user' ? 'resident' : item.type,
+          name: item.name || item.title || 'Unnamed',
+          deletedAt: formatTimeOnly(item.deleted_at || item.deletedAt), // ✅ keep date, change time only
+          deletedBy: item.deleted_by || item.deletedBy,
+          originalData: item.original_data || item // keep full record
+        }));
+
+        setAllTrashedItems(normalized);
       }
     } catch (error) {
       console.error('Error fetching archived items:', error);
@@ -86,13 +125,11 @@ export default function ArchiveView() {
   // Filter by type and search
   const filteredItems = useMemo(() => {
     let filtered = allTrashedItems;
-    
-    // Filter by type
+
     if (typeFilter !== 'all') {
       filtered = filtered.filter(item => item.type === typeFilter);
     }
-    
-    // Filter by search query
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(item =>
@@ -101,7 +138,7 @@ export default function ArchiveView() {
         item.deletedBy.toLowerCase().includes(q)
       );
     }
-    
+
     return filtered;
   }, [allTrashedItems, typeFilter, searchQuery]);
 
@@ -112,7 +149,6 @@ export default function ArchiveView() {
     return filteredItems.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredItems, currentPage, itemsPerPage]);
 
-  // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [typeFilter, searchQuery]);
@@ -157,9 +193,10 @@ export default function ArchiveView() {
                 <option value="all">All Types</option>
                 <option value="membership">Memberships</option>
                 <option value="event">Events</option>
-                <option value="user">Residents</option>
+                <option value="resident">Residents</option>
                 <option value="notification">Notifications</option>
               </select>
+              {/* ✅ Filter icon added back */}
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
           </div>
@@ -168,7 +205,7 @@ export default function ArchiveView() {
             {filteredItems.length} item(s) found — showing {itemsPerPage} per page
           </p>
 
-          {/* Pagination - ← 1 → */}
+          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex justify-end mt-4">
               <div className="flex items-center gap-2">
@@ -179,11 +216,11 @@ export default function ArchiveView() {
                 >
                   ←
                 </button>
-                
+
                 <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
                   {currentPage}
                 </span>
-                
+
                 <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
@@ -223,31 +260,30 @@ export default function ArchiveView() {
                   <tr key={`${item.type}-${item.id}-${index}`} className="border-b hover:bg-gray-50 transition-colors">
                     <td className="p-3">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        item.type === 'membership' ? 'bg-blue-100 text-blue-700' :
-                        item.type === 'event' ? 'bg-green-100 text-green-700' :
-                        item.type === 'notification' ? 'bg-purple-100 text-purple-700' :
+                        item.type === 'membership' ? 'bg-orange-100 text-orange-700' :
+                        item.type === 'event' ? 'bg-teal-100 text-teal-700' :
+                        item.type === 'resident' ? 'bg-green-100 text-green-700' :
+                        item.type === 'notification' ? 'bg-yellow-100 text-yellow-700' :
                         'bg-gray-100 text-gray-700'
                       }`}>
-                        {item.type}
+                        {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
                       </span>
                     </td>
                     <td className="p-3 font-medium text-gray-800">{item.name}</td>
                     <td className="p-3 text-gray-500">{item.deletedAt}</td>
                     <td className="p-3 text-gray-500">{item.deletedBy}</td>
                     <td className="p-3">
+                      {/* ✅ RESTORE BUTTON — smaller refresh icon (16px), orange color */}
                       <button
                         onClick={() => handleRestore(item)}
                         disabled={restoringId === item.id}
-                        className="p-2 rounded-full hover:bg-green-50 transition text-green-600 active:bg-green-100 disabled:opacity-50"
+                        className="p-2 rounded-full hover:bg-orange-50 transition text-orange-600 active:bg-orange-100 disabled:opacity-50"
                         title="Restore"
                       >
                         {restoringId === item.id ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-orange-600"></div>
                         ) : (
-                          <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                            <path d="M3 12a9 9 0 1 0 9-9m0 0v4M12 3H8" />
-                            <path d="M12 8v4l3 3" />
-                          </svg>
+                          <RefreshCw size={16} />
                         )}
                       </button>
                     </td>

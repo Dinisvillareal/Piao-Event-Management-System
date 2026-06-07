@@ -12,8 +12,7 @@ return new class extends Migration
 
             $table->id();
 
-            // PR-000001
-            $table->string('user_code', 20)->unique();
+            $table->string('user_code', 50)->unique();
 
             $table->string('first_name', 70);
             $table->string('last_name', 70);
@@ -21,7 +20,6 @@ return new class extends Migration
 
             $table->string('contact_number', 15);
 
-            // 🔥 FTP IMAGE PATH (VALIDATION ID)
             $table->string('validation_id')->nullable();
 
             $table->enum('role', ['Staff', 'Resident'])
@@ -29,15 +27,15 @@ return new class extends Migration
 
             $table->string('password', 255)->nullable();
 
-            // 0 = no account / 1 = active account
-            $table->boolean('has_account')
-                ->default(0);
+            $table->boolean('has_account')->default(0);
+
+            // ✅ ADD THIS
+            $table->string('deleted_by', 50)->nullable();
 
             $table->softDeletes();
         });
     }
-
-    public function down(): void
+        public function down(): void
     {
         Schema::dropIfExists('users');
     }

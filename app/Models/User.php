@@ -22,7 +22,8 @@ class User extends Authenticatable
         'validation_id',
         'role',
         'password',
-        'has_account'
+        'has_account',
+        'deleted_by'
     ];
 
     protected $hidden = [
