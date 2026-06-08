@@ -94,7 +94,14 @@ export function EventsView({
 
       if (result.data) {
         const formattedEvents = result.data.map((dbEvent: any) => {
-          const membershipIds = Array.isArray(dbEvent.membership_ids) ? dbEvent.membership_ids : [];
+          let membershipIds: any[] = [];
+          if (Array.isArray(dbEvent.membership_ids)) {
+            membershipIds = dbEvent.membership_ids;
+          } else if (typeof dbEvent.membership_ids === 'string' && dbEvent.membership_ids.startsWith('[')) {
+            try { membershipIds = JSON.parse(dbEvent.membership_ids); } catch(e) {}
+          } else if (dbEvent.membership_id) {
+            membershipIds = [dbEvent.membership_id]; 
+          }
           const startDate = dbEvent.event_start?.split(' ')[0] ?? '';
           const endDate = dbEvent.event_end?.split(' ')[0] ?? startDate;
           const startTime = dbEvent.event_start?.split(' ')[1]?.slice(0, 5) ?? '';

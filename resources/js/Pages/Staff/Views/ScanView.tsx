@@ -10,6 +10,9 @@ type ScanResult = {
   hasAccess: boolean;
   reason: string;
   memberships: string[];
+  photo: string | null;  // ✅ Restored
+  role: string;          // ✅ Restored
+  userCode: string;      // ✅ Restored
 };
 
 type AttendanceEntry = {
@@ -29,20 +32,24 @@ export default function ScanView({ events, residents, memberships }: any) {
   const [isDeadlineActive, setIsDeadlineActive] = useState(false);
   const [scanMode, setScanMode] = useState<"in" | "out">("in");
 
-  const ev = events?.find((e: any) => e.id === eventId);
-  const requiredMs = ev?.membershipId ? memberships?.find((m: any) => m.id === ev.membershipId) : null;
+  const ev = events?.find((e: any) => String(e.id) === String(eventId));
+  
+  // ✅ RESTORED: Smart Membership Array Checker
+  const requiredMemberships = ev?.membershipIds?.length > 0 
+    ? memberships?.filter((m: any) => ev.membershipIds.includes(m.id) || ev.membershipIds.includes(String(m.id))) 
+    : [];
 
   // ==========================================
   // 1. AUTO-SELECT FIRST EVENT ON LOAD
   // ==========================================
   useEffect(() => {
     if (events && events.length > 0 && !eventId) {
-      setEventId(events[0].id);
+      setEventId(String(events[0].id));
     }
   }, [events]);
 
   // ==========================================
-  // 2. PERMANENT MEMORY: FETCH ATTENDANCE ON EVENT CHANGE
+  // 2. PERMANENT MEMORY & ATTENDANCE FETCHING
   // ==========================================
   useEffect(() => {
     if (!eventId) return;
@@ -50,16 +57,11 @@ export default function ScanView({ events, residents, memberships }: any) {
     const fetchEventAttendance = async () => {
       try {
         const response = await fetch(`/events/${eventId}/attendances`, {
-          headers: {
-            "Accept": "application/json",
-            "X-Requested-With": "XMLHttpRequest"
-          }
+          headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" }
         });
-
+        
         if (response.ok) {
           const data = await response.json();
-
-          // Map backend data to our frontend state format
           const formattedAttendance = data.map((record: any) => ({
             residentId: record.user_id,
             residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
@@ -67,7 +69,6 @@ export default function ScanView({ events, residents, memberships }: any) {
             timeOut: record.time_out,
             status: record.time_out ? "complete" : "in"
           }));
-
           setAttendance(prev => ({ ...prev, [eventId]: formattedAttendance }));
         }
       } catch (error) {
@@ -76,10 +77,42 @@ export default function ScanView({ events, residents, memberships }: any) {
     };
 
     fetchEventAttendance();
-  }, [eventId]);
+
+    // ✅ RESTORED: Load Local Storage Memory
+    const savedData = localStorage.getItem(`qr_deadline_${eventId}`);
+    if (savedData) {
+      const { time, isActive } = JSON.parse(savedData);
+      setClosingTime(time);
+      setIsDeadlineActive(isActive);
+    } else {
+      setClosingTime("");
+      setIsDeadlineActive(false);
+    }
+
+    const savedMode = localStorage.getItem(`qr_mode_${eventId}`);
+    if (savedMode === "in" || savedMode === "out") setScanMode(savedMode);
+    else setScanMode("in");
+
+  }, [eventId]); 
+
+  // ✅ RESTORED: Save Local Storage Memory
+  useEffect(() => {
+    if (!eventId) return;
+    if (isDeadlineActive && closingTime) {
+      localStorage.setItem(`qr_deadline_${eventId}`, JSON.stringify({ time: closingTime, isActive: true }));
+    } else {
+      localStorage.removeItem(`qr_deadline_${eventId}`);
+    }
+  }, [isDeadlineActive, closingTime, eventId]);
+
+  useEffect(() => {
+    if (!eventId) return;
+    localStorage.setItem(`qr_mode_${eventId}`, scanMode);
+  }, [scanMode, eventId]);
+
 
   // ==========================================
-  // 3. AUTO-SWITCH MODE WHEN DEADLINE PASSES
+  // 3. QR SCANNER & SMART MATCHING LOGIC
   // ==========================================
   useEffect(() => {
     if (!isDeadlineActive || !closingTime) return;
@@ -89,24 +122,17 @@ export default function ScanView({ events, residents, memberships }: any) {
       const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
       if (currentHHMM >= closingTime) {
-        // --- AUTO SWITCH LOGIC ---
-        if (scanMode === "in") {
-          // Sign In time ended → switch to Sign Out
-          setScanMode("out");
-          alert("Sign-In time ended! Switched to Sign-Out mode.");
-        } else {
-          // Sign Out time ended → switch back to Sign In
-          setScanMode("in");
-          alert("Sign-Out time ended! Switched back to Sign-In mode.");
-        }
+        setScan(null);              
+        setScanMode(prev => prev === "in" ? "out" : "in");         
+        setIsDeadlineActive(false); 
+        setClosingTime("");         
+        setIsCameraOn(false);
 
-        // Reset timer state
-        setScan(null);
-        setIsDeadlineActive(false);
-        setClosingTime("");
-        setIsCameraOn(false); // Turn off camera when time ends
+        setTimeout(() => {
+          alert("The deadline has passed! The scanner has automatically switched modes.");
+        }, 100);
       }
-    }, 1000);
+    }, 1000); 
 
     return () => clearInterval(timer);
   }, [isDeadlineActive, closingTime, scanMode]);
@@ -120,12 +146,27 @@ export default function ScanView({ events, residents, memberships }: any) {
         return;
       }
 
+      // ✅ RESTORED: Smart Matcher (Fixes missing photos)
+      const matchedResident = residents?.find((r: any) => {
+        if (r.id == data.user_id || r.user_id == data.user_id || r.real_id == data.user_id || r.user_code == data.user_id) return true;
+        const checkString = r.user_code || r.id || "";
+        if (typeof checkString === "string") {
+          const stripped = checkString.replace("PR-", "").replace("RES-", "");
+          if (parseInt(stripped, 10) == data.user_id) return true;
+        }
+        return false;
+      });
+
       let hasAccess = true;
       let reason = "Open event — all residents allowed";
 
-      if (requiredMs) {
-        hasAccess = data.memberships.includes(requiredMs.name);
-        reason = hasAccess ? `Verified: member of ${requiredMs.name}` : `Denied: requires ${requiredMs.name} membership`;
+      // ✅ RESTORED: True Array Validation logic
+      if (requiredMemberships && requiredMemberships.length > 0) {
+        const requiredNames = requiredMemberships.map((m: any) => m.name);
+        hasAccess = data.memberships && data.memberships.some((userMem: string) => requiredNames.includes(userMem));
+        reason = hasAccess 
+          ? `Verified: Eligible member` 
+          : `Requires: ${requiredNames.join(" or ")}`;
       }
 
       setScan({
@@ -134,7 +175,10 @@ export default function ScanView({ events, residents, memberships }: any) {
         residentName: data.name,
         hasAccess,
         reason,
-        memberships: data.memberships || []
+        memberships: data.memberships || [],
+        photo: matchedResident?.photo || matchedResident?.validation_id_url || null,
+        role: matchedResident?.role || "Resident",
+        userCode: matchedResident?.user_code || matchedResident?.id || data.user_code || `ID: ${data.user_id}` 
       });
 
     } catch (e) {
@@ -143,10 +187,10 @@ export default function ScanView({ events, residents, memberships }: any) {
   };
 
   const isPastClosingTime = () => {
-    if (!isDeadlineActive || !closingTime) return false;
+    if (!isDeadlineActive || !closingTime) return false; 
     const now = new Date();
     const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    return currentHHMM >= closingTime;
+    return currentHHMM >= closingTime; 
   };
 
   // ==========================================
@@ -159,24 +203,13 @@ export default function ScanView({ events, residents, memberships }: any) {
     const method = scanMode === "in" ? "POST" : "PUT";
 
     try {
-      const token = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('XSRF-TOKEN='))
-        ?.split('=')[1];
+      const token = document.cookie.split('; ').find(row => row.startsWith('XSRF-TOKEN='))?.split('=')[1];
       const decodedToken = token ? decodeURIComponent(token) : '';
 
       const response = await fetch(endpoint, {
         method: method,
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-XSRF-TOKEN": decodedToken
-        },
-        body: JSON.stringify({
-          event_id: eventId,
-          user_id: scan.residentId
-        })
+        headers: { "Content-Type": "application/json", "Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "X-XSRF-TOKEN": decodedToken },
+        body: JSON.stringify({ event_id: eventId, user_id: scan.residentId })
       });
 
       const result = await response.json();
@@ -188,31 +221,29 @@ export default function ScanView({ events, residents, memberships }: any) {
 
       const d = new Date();
       const now = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
-
+      
       setAttendance(prev => {
         const list = prev[eventId] ?? [];
+        
         if (scanMode === "in") {
-          const exists = list.some(e => e.residentId === scan!.residentId);
-          if (exists) {
-            return {
-              ...prev,
-              [eventId]: list.map(e => e.residentId === scan!.residentId ? { ...e, timeIn: now, status: "in" } : e)
-            };
+          const residentExists = list.some(e => e.residentId == scan!.residentId);
+          if (residentExists) {
+            // ✅ FIXED: Now correctly updates timeIn instead of timeOut!
+            return { ...prev, [eventId]: list.map(e => e.residentId == scan!.residentId ? { ...e, timeIn: now, status: "in" } : e) };
           } else {
-            return {
-              ...prev,
-              [eventId]: [...list, { residentId: scan!.residentId, residentName: scan!.residentName, timeIn: now, timeOut: null, status: "in" }]
-            };
+            return { ...prev, [eventId]: [...list, { residentId: scan!.residentId, residentName: scan!.residentName, timeIn: now, timeOut: null, status: "in" }] };
           }
         } else {
-          return {
-            ...prev,
-            [eventId]: list.map(e => e.residentId === scan!.residentId ? { ...e, timeOut: now, status: "complete" } : e)
-          };
+          const residentExists = list.some(e => e.residentId == scan!.residentId);
+          if (residentExists) {
+            return { ...prev, [eventId]: list.map(e => e.residentId == scan!.residentId ? { ...e, timeOut: now, status: "complete" } : e) };
+          } else {
+            return { ...prev, [eventId]: [...list, { residentId: scan!.residentId, residentName: scan!.residentName, timeIn: null, timeOut: now, status: "complete" }] };
+          }
         }
       });
 
-      setScan(null);
+      setScan(null); 
       alert(result.message || "Attendance recorded successfully!");
 
     } catch (error) {
@@ -231,6 +262,7 @@ export default function ScanView({ events, residents, memberships }: any) {
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+        
         {/* LEFT COLUMN: SCANNER CONTROLS */}
         <Card className="overflow-hidden border-[#ddd5ca] rounded-[30px] shadow-sm hover:shadow-md transition-shadow">
           <CardHeader className="border-b border-[#ddd5ca] bg-white rounded-t-[30px]">
@@ -241,11 +273,10 @@ export default function ScanView({ events, residents, memberships }: any) {
               </div>
               <Button
                 onClick={() => setIsCameraOn(!isCameraOn)}
-                // ✅ ONLY ENABLED IF TIME IS SET & DEADLINE IS ACTIVE
-                disabled={!isDeadlineActive || isPastClosingTime()}
+                disabled={!isDeadlineActive}
                 className={`rounded-full w-10 h-10 p-0 flex items-center justify-center transition-all ${
-                  !isDeadlineActive || isPastClosingTime()
-                    ? "bg-gray-300 cursor-not-allowed opacity-50"
+                  !isDeadlineActive 
+                    ? "bg-gray-300 cursor-not-allowed opacity-50" 
                     : isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#005f63] hover:bg-[#217676]"
                 }`}
               >
@@ -258,20 +289,16 @@ export default function ScanView({ events, residents, memberships }: any) {
             <div className="mb-6 space-y-4 rounded-[20px] bg-gray-50 p-5 border border-gray-100 shadow-inner">
               <div>
                 <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">1. Select Event</Label>
-                <Select
-                  value={eventId}
-                  onValueChange={setEventId}
-                  className="rounded-[12px]"
-                >
+                <Select value={eventId} onValueChange={setEventId}>
                   {events?.map((e: any) => (
-                    <SelectItem key={e.id} value={e.id} className="rounded-[12px]">
+                    <SelectItem key={e.id} value={String(e.id)} className="rounded-[12px]">
                       {e.title}
                     </SelectItem>
                   ))}
                 </Select>
-                {requiredMs && (
+                {requiredMemberships && requiredMemberships.length > 0 && (
                   <Badge className="mt-2 bg-yellow-100 text-yellow-800">
-                    Eligibility: {requiredMs.name} only
+                    Eligibility: {requiredMemberships.map((m: any) => m.name).join(" or ")}
                   </Badge>
                 )}
               </div>
@@ -279,27 +306,25 @@ export default function ScanView({ events, residents, memberships }: any) {
               <div>
                 <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">2. Scan Mode</Label>
                 <div className="flex gap-2">
-                  <Button
-                    onClick={() => setScanMode("in")}
-                    // ✅ ENABLED ONLY when in Sign-In mode OR after Sign-Out time ended
-                    disabled={scanMode === "out"}
-                    className={`flex-1 rounded-[12px] transition-all ${
-                      scanMode === "in"
-                        ? "!bg-[#1f7a7a] !text-white shadow-md hover:!bg-[#145c5c]"
+                  <Button 
+                    onClick={() => setScanMode("in")} 
+                    disabled={isDeadlineActive && !isPastClosingTime() && scanMode === "out"}
+                    className={`flex-1 rounded-[30px] transition-all ${
+                      scanMode === "in" 
+                        ? "!bg-[#1f7a7a] !text-white shadow-md hover:!bg-[#145c5c]" 
                         : "!bg-[#f3f4f6] !text-gray-400 hover:!bg-gray-200 border-none shadow-none"
-                    } ${scanMode === "out" ? "opacity-50 cursor-not-allowed" : ""}`}
+                    } ${isDeadlineActive && scanMode === "out" ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     → Sign In
                   </Button>
-                  <Button
-                    onClick={() => setScanMode("out")}
-                    // ✅ ENABLED ONLY when in Sign-Out mode OR after Sign-In time ended
-                    disabled={scanMode === "in"}
-                    className={`flex-1 rounded-[12px] transition-all ${
-                      scanMode === "out"
-                        ? "!bg-orange-500 !text-white shadow-md hover:!bg-orange-600"
+                  <Button 
+                    onClick={() => setScanMode("out")} 
+                    disabled={isDeadlineActive && !isPastClosingTime() && scanMode === "in"}
+                    className={`flex-1 rounded-[30px] transition-all ${
+                      scanMode === "out" 
+                        ? "!bg-orange-500 !text-white shadow-md hover:!bg-orange-600" 
                         : "!bg-[#f3f4f6] !text-gray-400 hover:!bg-gray-200 border-none shadow-none"
-                    } ${scanMode === "in" ? "opacity-50 cursor-not-allowed" : ""}`}
+                    } ${isDeadlineActive && scanMode === "in" ? "opacity-50 cursor-not-allowed" : ""}`}
                   >
                     ← Sign Out
                   </Button>
@@ -311,27 +336,27 @@ export default function ScanView({ events, residents, memberships }: any) {
                   {scanMode === "in" ? "Sign-In Closing Time" : "Sign-Out Closing Time"}
                 </Label>
                 <div className="flex gap-3 items-center">
-                  <Input
-                    type="time"
-                    value={closingTime}
+                  <Input 
+                    type="time" 
+                    value={closingTime} 
                     onChange={(e: any) => {
                       setClosingTime(e.target.value);
                       setIsDeadlineActive(false);
-                    }}
+                    }} 
                     disabled={isDeadlineActive}
-                    className="flex-1 rounded-[12px] disabled:bg-gray-100 disabled:text-gray-500"
+                    className="flex-1 rounded-md disabled:bg-gray-100 disabled:text-gray-500" 
                   />
                   {!isDeadlineActive ? (
-                    <Button
-                      onClick={() => closingTime ? setIsDeadlineActive(true) : alert("Please select a time first.")}
-                      className="bg-[#0d767a] hover:bg-[#195f5f] text-white px-6 rounded-[12px] shadow-sm"
+                    <Button 
+                      onClick={() => closingTime ? setIsDeadlineActive(true) : alert("Please select a time first.")} 
+                      className="bg-[#005f63] hover:bg-[#217676] text-white px-6 rounded-md shadow-sm"
                     >
                       Set Time
                     </Button>
                   ) : (
-                    <Button
-                      disabled={true}
-                      className="bg-gray-100 text-gray-500 border border-gray-200 px-6 rounded-[12px] cursor-not-allowed shadow-inner"
+                    <Button 
+                      disabled={true} 
+                      className="bg-gray-100 text-gray-500 border border-gray-200 px-6 rounded-md cursor-not-allowed shadow-inner"
                     >
                       Locked 🔒
                     </Button>
@@ -343,11 +368,11 @@ export default function ScanView({ events, residents, memberships }: any) {
             <div className="relative overflow-hidden rounded-[30px] border-2 border-dashed border-gray-300 bg-black min-h-[400px]">
               {isCameraOn ? (
                 <div className="h-full w-full absolute inset-0">
-                  <Scanner
+                 <Scanner
                     onScan={(result) => {
                       if (result && result.length > 0) {
                         handleQRCodeScan(result[0].rawValue);
-                        setIsCameraOn(false);
+                        setIsCameraOn(false); 
                       }
                     }}
                     onError={(error) => {
@@ -358,12 +383,12 @@ export default function ScanView({ events, residents, memberships }: any) {
                     components={{ finder: true }}
                     styles={{ container: { width: '100%', height: '100%' }, video: { objectFit: 'cover' } }}
                   />
-                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center w-[90%] max-w-[300px] z-10">
+                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center w-[90%] max-w-[300px] z-10">
                     <div className="rounded-full bg-black/70 px-5 py-2 text-sm font-bold text-white backdrop-blur shadow-lg animate-pulse mb-2">
                       Scanning for QR...
                     </div>
                     <div className="rounded-[15px] bg-black/50 px-4 py-2 text-xs text-center text-gray-200 backdrop-blur">
-                      <span className="font-bold text-white">Blurry?</span> Move closer then pull back slowly.
+                      <span className="font-bold text-white">Blurry?</span> Move the phone closer to the QR, then slowly pull back to force autofocus.
                     </div>
                   </div>
                 </div>
@@ -390,28 +415,81 @@ export default function ScanView({ events, residents, memberships }: any) {
                 </div>
               ) : (
                 <div className={`rounded-[30px] border p-5 transition-colors ${scan.hasAccess ? scanMode === "in" ? "border-blue-500/50 bg-blue-50" : "border-orange-500/50 bg-orange-50" : "border-red-500/40 bg-red-50"}`}>
-                  <div className="flex items-start gap-3">
-                    {scan.hasAccess
-                      ? (scanMode === "in" ? <CheckCircle className="text-blue-600 shrink-0 mt-0.5" size={24} /> : <CheckCircle className="text-orange-600 shrink-0 mt-0.5" size={24} />)
-                      : <XCircle className="text-red-600 shrink-0 mt-0.5" size={24} />
-                    }
-                    <div>
-                      <p className={`text-xl font-bold ${scan.hasAccess ? scanMode === "in" ? "text-blue-800" : "text-orange-800" : "text-red-600"}`}>
-                        {scan.hasAccess ? `✓ ${scan.residentName}` : `✗ Denied`}
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-gray-700">{scan.reason}</p>
-                      <p className="mt-1 text-xs text-gray-500 italic">
-                        Scanned Memberships: {scan.memberships.join(", ") || "None"}
-                      </p>
+                  
+                 {/* Centered ID Photo & Text Layout */}
+                  <div className="flex items-start gap-4">
+                    
+                    {/* 1. Photo on the Left */}
+                    <div className="w-[85px] h-[85px] shrink-0 rounded-[18px] overflow-hidden border-[3px] border-white shadow-sm bg-gray-200">
+                      {scan.photo ? (
+                        <img src={scan.photo} alt={scan.residentName} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 bg-gray-100 p-2">
+                          <span className="text-[10px] font-bold uppercase text-center leading-tight">No<br/>Photo</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. Text Block on the Right */}
+                    <div className="flex-1 pt-1">
+                      <div className="flex items-start gap-2">
+                        
+                        {/* Icon */}
+                        {scan.hasAccess
+                          ? (scanMode === "in" ? <CheckCircle className="text-blue-600 shrink-0 mt-0.5" size={20} /> : <CheckCircle className="text-orange-600 shrink-0 mt-0.5" size={20} />)
+                          : <XCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
+                        }
+                        
+                        {/* Stacked Text Container (Forces everything to align left) */}
+                        <div className="flex flex-col items-start text-left">
+                          
+                          <p className={`text-xl font-black leading-none ${scan.hasAccess ? scanMode === "in" ? "text-blue-800" : "text-orange-800" : "text-red-600"}`}>
+                            {scan.hasAccess ? scan.residentName : `Denied Attenda`}
+                          </p>
+                          
+                          {scan.hasAccess && (
+                            <>
+                              <p className="text-sm font-bold text-gray-700 mt-1.5 tracking-wide">
+                                {scan.userCode.replace("-", " - ")}
+                              </p>
+                              <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider mt-0.5">
+                                {scan.role}
+                              </p>
+                            </>
+                          )}
+                          
+                          {/* Event Description (Padding removed so it aligns flush left!) */}
+                          <p className="mt-2 text-sm font-medium text-gray-800">
+                            {scan.reason}
+                          </p>
+                          
+                      
+                        </div>
+                        
+                      </div>
                     </div>
                   </div>
+
+                  {/* Action Buttons & Warnings */}
                   {scan.hasAccess && (
-                    <Button
-                      onClick={confirmAttendance}
-                      className={`mt-4 w-full py-6 text-md font-bold text-white rounded-[80px] transition-all shadow-md hover:-translate-y-1 ${scanMode === "in" ? "bg-[#0d767a] hover:bg-[#217676]" : "bg-orange-500 hover:bg-orange-600"}`}
-                    >
-                      Confirm {scanMode === "in" ? "Sign In" : "Sign Out"}
-                    </Button>
+                  <>
+                      {scanMode === "in" && !isDeadlineActive ? (
+                        <div className="mt-4 p-3 bg-orange-100 border border-orange-300 text-orange-800 rounded-[15px] text-center font-bold text-sm shadow-sm">
+                          🔒 Please set a Closing Time to unlock Sign Ins.
+                        </div>
+                      ) : isPastClosingTime() && scanMode === "in" ? (
+                        <div className="mt-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded-[15px] text-center font-bold text-sm shadow-sm">
+                          ⚠️ Deadline Passed ({closingTime}) — Sign In is Closed
+                        </div>
+                      ) : (
+                      <Button 
+                        onClick={confirmAttendance} 
+                        className={`mt-4 w-full py-6 text-md font-bold text-white rounded-[80px] transition-all shadow-md hover:-translate-y-1 ${scanMode === "in" ? "bg-blue-600 hover:bg-blue-700" : "bg-orange-500 hover:bg-orange-600"}`}
+                      >
+                        Confirm {scanMode === "in" ? "Sign In" : "Sign Out"}
+                      </Button>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -429,15 +507,15 @@ export default function ScanView({ events, residents, memberships }: any) {
               ) : (
                 <div className="space-y-3">
                   {attendance[eventId]!.map((rec, i) => (
-                    <div key={rec.residentId} className={`p-4 rounded-[20px] border flex items-center justify-between transition-colors ${rec.status === "complete" ? "bg-gray-30 border-gray-300" : "bg-gray-50 border-gray-200"}`}>
+                    <div key={rec.residentId} className={`p-4 rounded-[20px] border flex items-center justify-between transition-colors ${rec.status === "complete" ? "bg-gray-50 border-gray-200" : "bg-gray-50 border-gray-200"}`}>
                       <div>
-                        <p className="font-semibold text-[#085053]">{i + 1}. {rec.residentName}</p>
+                        <p className="font-bold text-gray-800">{i + 1}. {rec.residentName}</p>
                         <div className="flex gap-4 mt-1 text-xs text-gray-600 font-medium">
-                          <span className="flex items-center gap-1 text-teal-700"><LogIn size={14} /> {rec.timeIn || "—"}</span>
+                          <span className="flex items-center gap-1 text-blue-700"><LogIn size={14} /> {rec.timeIn || "—"}</span>
                           <span className="flex items-center gap-1 text-orange-700"><LogOut size={14} /> {rec.timeOut || "—"}</span>
                         </div>
                       </div>
-                      <Badge className={`rounded-full px-3 py-1 text-xs font-black tracking-wider ${rec.status === "complete" ? "bg-teal-300 text-teal-700" : "bg-yellow-400 text-yellow-900 shadow-sm"}`}>
+                      <Badge className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider ${rec.status === "complete" ? "bg-gray-200 text-gray-600" : "bg-yellow-400 text-yellow-900 shadow-sm"}`}>
                         {rec.status === "complete" ? "Completed" : "Signed In"}
                       </Badge>
                     </div>
