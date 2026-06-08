@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { RefreshCw, Filter } from 'lucide-react';
+import { RefreshCw, Filter, XCircle, CheckCircle } from 'lucide-react';
 import SearchBar from '../../../Components/UI/SearchBar';
 
 interface TrashedItem {
@@ -19,6 +19,12 @@ export default function ArchiveView() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
+
+  // State for modals
+  const [restoreItem, setRestoreItem] = useState<TrashedItem | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('Failed to restore item');
 
   const formatTimeOnly = (dateTimeStr?: string) => {
     if (!dateTimeStr) return '';
@@ -72,10 +78,10 @@ export default function ArchiveView() {
     }
   };
 
-  const handleRestore = async (item: TrashedItem) => {
-    if (!confirm(`Restore "${item.name}"?\n\nThis item will become active again.`)) return;
+  const handleRestoreConfirm = async () => {
+    if (!restoreItem) return;
 
-    setRestoringId(item.id);
+    setRestoringId(restoreItem.id);
     try {
       const token = document.cookie
         .split('; ')
@@ -83,8 +89,7 @@ export default function ArchiveView() {
         ?.split('=')[1];
       const decodedToken = token ? decodeURIComponent(token) : '';
 
-      // ✅ notification type sends as 'event' — id is already event_id from backend
-      const restoreType = item.type === 'notification' ? 'event' : item.type;
+      const restoreType = restoreItem.type === 'notification' ? 'event' : restoreItem.type;
 
       const response = await fetch('/api/archive/restore', {
         method: 'POST',
@@ -97,22 +102,26 @@ export default function ArchiveView() {
         },
         body: JSON.stringify({
           type: restoreType,
-          id: item.id
+          id: restoreItem.id
         })
       });
 
       if (response.ok) {
-        alert('Item restored successfully!');
         fetchArchivedItems();
+        // Show success modal instead of alert
+        setShowSuccessModal(true);
       } else {
         const result = await response.json();
-        alert(result.message || 'Failed to restore');
+        setErrorMessage(result.message || 'Failed to restore item');
+        setShowErrorModal(true);
       }
     } catch (error) {
       console.error('Error restoring:', error);
-      alert('An error occurred');
+      setErrorMessage('An error occurred while restoring');
+      setShowErrorModal(true);
     } finally {
       setRestoringId(null);
+      setRestoreItem(null); // Close confirmation modal
     }
   };
 
@@ -223,7 +232,7 @@ export default function ArchiveView() {
           <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-gray-50">
+                <tr className="border-b bg-gray-100">
                   <th className="text-left p-3 font-medium text-[#005f63]">Type</th>
                   <th className="text-left p-3 font-medium text-[#005f63]">Name / Title</th>
                   <th className="text-left p-3 font-medium text-[#005f63]">Deleted At</th>
@@ -236,10 +245,10 @@ export default function ArchiveView() {
                   <tr key={`${item.type}-${item.id}-${index}`} className="border-b hover:bg-gray-50 transition-colors">
                     <td className="p-3">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        item.type === 'membership' ? 'bg-orange-100 text-orange-700' :
-                        item.type === 'event'      ? 'bg-teal-100 text-teal-700' :
-                        item.type === 'resident'   ? 'bg-green-100 text-green-700' :
-                        item.type === 'notification' ? 'bg-yellow-100 text-yellow-700' :
+                        item.type === 'membership' ? 'bg-[#ff8a36] text-white' :
+                        item.type === 'event'      ? 'bg-[#fbbf24] text-white' :
+                        item.type === 'resident'   ? 'bg-[#52b1b6] text-white' :
+                        item.type === 'notification' ? 'bg-[#ccaf63] text-white' :
                         'bg-gray-100 text-gray-700'
                       }`}>
                         {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
@@ -250,7 +259,7 @@ export default function ArchiveView() {
                     <td className="p-3 text-gray-500">{item.deletedBy}</td>
                     <td className="p-3">
                       <button
-                        onClick={() => handleRestore(item)}
+                        onClick={() => setRestoreItem(item)}
                         disabled={restoringId === item.id}
                         className="p-2 rounded-full hover:bg-orange-50 transition text-orange-600 active:bg-orange-100 disabled:opacity-50"
                         title="Restore"
@@ -269,6 +278,70 @@ export default function ArchiveView() {
           </div>
         )}
       </div>
+
+      {/* Restore Confirm Modal */}
+      {restoreItem && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <h3 className="text-xl font-bold text-[#eb9b32] mb-3">Restore Item</h3>
+            <p className="text-gray-600 mb-5">
+              Do you want to restore <strong>"{restoreItem.name}"</strong>? This item will become active again.
+            </p>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={() => setRestoreItem(null)}
+                className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRestoreConfirm}
+                className="px-5 py-2.5 rounded-full bg-[#e2850d] text-white hover:bg-[#e69d3e] transition"
+              >
+                Yes, Restore
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="flex justify-center text-[#eb9b32] mb-3">
+              <CheckCircle size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-[#eb9b32] mb-2">Success</h3>
+            <p className="text-gray-600 mb-5">Item restored successfully!</p>
+            <button
+              onClick={() => setShowSuccessModal(false)}
+              className="px-5 py-2.5 rounded-full bg-[#eb9b32] text-white hover:bg-[#e2850d] transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="flex justify-center text-red-500 mb-3">
+              <XCircle size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-red-600 mb-2">Restore Failed</h3>
+            <p className="text-gray-600 mb-5">{errorMessage}</p>
+            <button
+              onClick={() => setShowErrorModal(false)}
+              className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

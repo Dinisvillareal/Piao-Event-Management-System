@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Users, Plus, Pencil, Trash2, Search, Archive } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, Search, Archive, CheckCircle } from "lucide-react";
 import { Button, Input } from "../../../Components/UI/Core";
 import SearchBar from "../../../Components/UI/SearchBar";
 
@@ -31,6 +31,17 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   const [editFormErrors, setEditFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Delete confirmation state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [membershipToDelete, setMembershipToDelete] = useState<{id: number | string, name: string} | null>(null);
+
+  // NEW: Deletion failed modal state
+  const [showDeleteFailed, setShowDeleteFailed] = useState(false);
+
+  // ✅ NEW: Deletion success modal state
+  const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
+  const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
+
   const [newMembership, setNewMembership] = useState({
     name: "",
     description: ""
@@ -40,7 +51,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   // Prevent body scroll when modal is open
   useEffect(() => {
-    if (showModal || showAddModal || showEditModal) {
+    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showDeleteSuccess || showUpdateSuccess) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -48,7 +59,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [showModal, showAddModal, showEditModal]);
+  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showDeleteSuccess]);
 
   const fetchMemberships = async () => {
     setLoading(true);
@@ -199,9 +210,9 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       const result = await response.json();
 
       if (response.ok) {
-        alert('Membership updated successfully!');
         setShowEditModal(false);
         setEditingMembership(null);
+        setShowUpdateSuccess(true);
         fetchMemberships();
         window.dispatchEvent(new Event('refreshMemberships'));
       } else {
@@ -215,8 +226,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     }
   };
 
-  const handleArchiveMembership = async (id: number, name: string) => {
-    if (!confirm(`Archive "${name}"?\n\nArchived memberships will be hidden from active lists.`)) return;
+  const openDeleteConfirm = (id: number | string, name: string) => {
+    setMembershipToDelete({ id, name });
+    setShowDeleteConfirm(true);
+  };
+
+  // UPDATED: Now handles success AND failure with modals
+  const handleConfirmDelete = async () => {
+    if (!membershipToDelete) return;
 
     try {
       const token = document.cookie
@@ -226,7 +243,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       const decodedToken = token ? decodeURIComponent(token) : '';
 
-      const response = await fetch(`/api/memberships/${id}`, {
+      const response = await fetch(`/api/memberships/${membershipToDelete.id}`, {
         method: 'DELETE',
         credentials: 'include',
         headers: {
@@ -236,18 +253,25 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         }
       });
 
+      const result = await response.json();
+
       if (response.ok) {
-        alert('Membership archived successfully!');
+        // ✅ Show success popup instead of alert
+        setShowDeleteSuccess(true);
         fetchMemberships();
         fetchAllResidents();
         window.dispatchEvent(new Event('refreshMemberships'));
       } else {
-        const result = await response.json();
-        alert(result.message || 'Failed to archive membership');
+        // Show failure modal instead of alert
+        setShowDeleteFailed(true);
       }
     } catch (error) {
       console.error('Error archiving membership:', error);
-      alert('An error occurred while archiving membership');
+      // Show failure modal on error too
+      setShowDeleteFailed(true);
+    } finally {
+      setShowDeleteConfirm(false);
+      setMembershipToDelete(null);
     }
   };
 
@@ -346,22 +370,50 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     setEditFormErrors({});
   };
 
+  const closeDeleteConfirm = () => {
+    setShowDeleteConfirm(false);
+    setMembershipToDelete(null);
+  };
+
+  const closeDeleteFailed = () => {
+    setShowDeleteFailed(false);
+  };
+
+  // ✅ Close success modal
+  const closeDeleteSuccess = () => {
+    setShowDeleteSuccess(false);
+  };
+
+  const closeUpdateSuccess = () => {
+    setShowUpdateSuccess(false);
+  };
+
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      closeModal();
-    }
+    if (e.target === e.currentTarget) closeModal();
   };
 
   const handleAddBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      closeAddModal();
-    }
+    if (e.target === e.currentTarget) closeAddModal();
   };
 
   const handleEditBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      closeEditModal();
-    }
+    if (e.target === e.currentTarget) closeEditModal();
+  };
+
+  const handleDeleteBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) closeDeleteConfirm();
+  };
+
+  const handleDeleteFailedBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) closeDeleteFailed();
+  };
+
+  const handleDeleteSuccessBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) closeDeleteSuccess();
+  };
+
+  const handleUpdateSuccessBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) closeUpdateSuccess();
   };
 
   useEffect(() => {
@@ -370,13 +422,16 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         closeModal();
         closeAddModal();
         closeEditModal();
+        closeDeleteConfirm();
+        closeDeleteFailed();
+        closeDeleteSuccess();
       }
     };
-    if (showModal || showAddModal || showEditModal) {
+    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showDeleteSuccess || showUpdateSuccess) {
       document.addEventListener('keydown', handleEsc);
     }
     return () => document.removeEventListener('keydown', handleEsc);
-  }, [showModal, showAddModal, showEditModal]);
+  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showDeleteSuccess, showUpdateSuccess]);
 
   if (loading) {
     return (
@@ -416,11 +471,11 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               >
                 ←
               </button>
-              
+
               <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
                 {currentPage}
               </span>
-              
+
               <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages}
@@ -430,7 +485,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               </button>
             </div>
           )}
-          
+
           {/* RIGHT - Add Button */}
           <button
             onClick={() => setShowAddModal(true)}
@@ -480,7 +535,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                           </svg>
                         </button>
                         <button
-                          onClick={() => handleArchiveMembership(m.id, m.name)}
+                          onClick={() => openDeleteConfirm(m.id, m.name)}
                           className="p-2 rounded-full hover:bg-amber-50 transition text-red-400 active:bg-amber-100"
                           title="Archive Membership"
                         >
@@ -731,6 +786,113 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Delete Confirmation Modal — exactly like your example */}
+      {showDeleteConfirm && membershipToDelete && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          onClick={handleDeleteBackdropClick}
+        >
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl relative text-center">
+            <div className="mb-4 text-red-500 flex justify-center">
+              <svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-red-600 mb-2">Confirm Deletion</h3>
+            <p className="text-[15px] text-gray-600 mb-6">This will move the record to trash. Are you sure you want to proceed?</p>
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={closeDeleteConfirm}
+                className="px-5 py-2 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ✅ NEW: Deletion Success Modal — shows "Membership deleted successfully!" */}
+      {showDeleteSuccess && createPortal(
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          onClick={handleDeleteSuccessBackdropClick}
+        >
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-[#005f63] flex justify-center">
+              <CheckCircle size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">Success</h3>
+            <p className="text-[15px] text-gray-600 mb-6">Membership deleted successfully!</p>
+            <button
+              onClick={closeDeleteSuccess}
+              className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {showUpdateSuccess && createPortal(
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          onClick={handleUpdateSuccessBackdropClick}
+        >
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-[#005f63] flex justify-center">
+              <CheckCircle size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">Success</h3>
+            <p className="text-[15px] text-gray-600 mb-6">Membership updated successfully!</p>
+            <button
+              onClick={closeUpdateSuccess}
+              className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Deletion Failed Modal — exactly your required message */}
+      {showDeleteFailed && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          onClick={handleDeleteFailedBackdropClick}
+        >
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl relative text-center">
+            <div className="mb-4 text-red-500 flex justify-center">
+              <svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M12 9v2m0 4h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-red-600 mb-2">Deletion Failed</h3>
+            <p className="text-[15px] text-gray-600 mb-6">Membership is currently in use.</p>
+            <button
+              onClick={closeDeleteFailed}
+              className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+            >
+              OK
+            </button>
           </div>
         </div>,
         document.body
