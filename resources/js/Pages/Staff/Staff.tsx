@@ -24,23 +24,6 @@ export type TrashedItem = {
   deletedBy: string;
 };
 
-export const residents: Resident[] = [
-  { id: "RES-001", name: "Juan Dela Cruz", age: 42, address: "Purok 1, Brgy. Piao", contact: "09123456789" },
-  { id: "RES-002", name: "Maria Santos", age: 35, address: "Purok 2, Brgy. Piao", contact: "09198765432" },
-];
-
-export const memberships: Membership[] = [
-  { id: "MEM-001", name: "Senior Citizens", description: "For residents aged 60+", memberIds: ["RES-001"] },
-  { id: "MEM-002", name: "Women's Club", description: "For female residents 18+", memberIds: ["RES-002"] },
-];
-
-export const notifications: Notification[] = [
-  { id: 1, title: "General Assembly Reminder", body: "Please attend the General Assembly.", sentAt: "2026-05-05 16:20" },
-];
-
-export const attendanceRecords: AttendanceRecord[] = [
-  { id: 1, eventTitle: "Barangay General Assembly", eventDate: "2026-05-12 09:00", location: "Barangay Hall", timeIn: "2026-05-12 08:55", timeOut: "2026-05-12 11:30", status: "complete" },
-];
 
 // --- NAVIGATION CONFIG ---
 const NAV = [
@@ -354,7 +337,14 @@ export default function StaffDashboard() {
 
         if (result.data) {
           const formattedEvents = result.data.map((dbEvent: any) => {
-            const membershipIds = Array.isArray(dbEvent.membership_ids) ? dbEvent.membership_ids : [];
+            let membershipIds: any[] = [];
+          if (Array.isArray(dbEvent.membership_ids)) {
+            membershipIds = dbEvent.membership_ids;
+          } else if (typeof dbEvent.membership_ids === 'string' && dbEvent.membership_ids.startsWith('[')) {
+            try { membershipIds = JSON.parse(dbEvent.membership_ids); } catch(e) {}
+          } else if (dbEvent.membership_id) {
+            membershipIds = [dbEvent.membership_id]; // Fallback to your old column
+          }
             const membershipNames = membershipIds
               .map((id: any) => getMembershipName(id))
               .filter(Boolean);
@@ -429,9 +419,6 @@ export default function StaffDashboard() {
     }
   };
 
-  const attended = attendanceRecords.filter(r => r.status === "complete").length;
-  const missed = attendanceRecords.filter(r => r.status === "missed").length;
-
   // ✅ Get the display name from currentUser or fallback to staff.name
   const displayName = currentUser 
     ? `${currentUser.first_name} ${currentUser.last_name}`
@@ -447,14 +434,14 @@ export default function StaffDashboard() {
         <div className="h-[calc(100vh-73px)] overflow-y-auto p-6 smooth-scroll">
           {active === "dashboard" && (
             <DashboardView
-              membershipsCount={memberships.length}
+              membershipsCount={membershipOptions.length}
               eventsCount={eventsCount}
               upcomingEvents={upcomingEventsList}
               pastEventsCount={pastEventsCount}
               setActive={setActive}
             />
           )}
-         {active === "scan" && <ScanView events={allEvents} residents={allResidents} memberships={memberships} />}
+         {active === "scan" && <ScanView events={allEvents} residents={allResidents} memberships={membershipOptions} />}
           {active === "residents" && <ResidentsView />}
           {active === "memberships" && <QRCodesView highlightText={highlightText} />}
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
