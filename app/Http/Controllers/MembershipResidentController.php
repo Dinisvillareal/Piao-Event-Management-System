@@ -30,7 +30,7 @@ class MembershipResidentController extends Controller
 
 public function index()
 {
-   $users = User::with('memberships')->withTrashed()->get();
+   $users = User::with('memberships')->get();
 
     return response()->json(
         $users->map(function ($user) {
