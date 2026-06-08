@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, Archive, Calendar } from "lucide-react";
+import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, Archive, Calendar, CheckCircle } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
 interface MyEvent {
@@ -47,6 +47,8 @@ export function EventsView({
   const [formOpen, setFormOpen] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
   const itemsPerPage = 6;
 
   // Attendance pagination state
@@ -492,7 +494,8 @@ export function EventsView({
       });
 
       if (onCreateEvent) onCreateEvent(formattedEvent);
-      alert(editingEvent ? "Event updated successfully!" : "Event created successfully!");
+      setSuccessMessage(editingEvent ? "Event updated successfully!" : "Event created successfully!");
+      setShowSuccessModal(true);
 
     } catch (error) {
       console.error("Failed to save event:", error);
@@ -780,9 +783,27 @@ export function EventsView({
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl text-center">
             <div className="mb-4 text-red-500 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-2">This will be permanently deleted.</h3>
-            <p className="text-sm text-gray-600 mb-6">Are you sure you want to delete this event? This action cannot be undone.</p>
+            <h3 className="text-lg font-bold text-red-600 mb-2">Confirm Deletion</h3>
+            <p className="text-[15px] text-gray-600 mb-6">This will move the record to trash. Are you sure you want to proceed?</p>
             <div className="flex justify-center gap-3"><button onClick={cancelDelete} className="px-5 py-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-100">Cancel</button><button onClick={confirmDelete} className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700">Yes, Delete</button></div>
+          </div>
+        </div>
+      )}
+
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setShowSuccessModal(false)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-[#005f63] flex justify-center">
+              <CheckCircle size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">Success</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{successMessage}</p>
+            <button
+              onClick={() => setShowSuccessModal(false)}
+              className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+            >
+              OK
+            </button>
           </div>
         </div>
       )}

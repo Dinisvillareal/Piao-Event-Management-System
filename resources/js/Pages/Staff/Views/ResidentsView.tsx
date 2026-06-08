@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Filter, XCircle, Archive } from "lucide-react";
+import { Filter, XCircle, Archive, CheckCircle } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -147,6 +147,8 @@ export default function ResidentsView() {
   const [editRecord, setEditRecord] = useState<string | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<string | null>(null);
   const [restoreRecord, setRestoreRecord] = useState<number | null>(null);
+  const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
+  const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState<"edit" | "add" | null>(null);
 
   const [newResident, setNewResident] = useState<AddForm>(emptyAdd());
@@ -526,6 +528,7 @@ export default function ResidentsView() {
       setEditRecord(null);
       setFormErrors({});
       setApiError(null);
+      setShowUpdateSuccess(true);
       fetchResidents();
     } catch (e) {
       console.error("Update error:", e);
@@ -559,6 +562,7 @@ export default function ResidentsView() {
         window.location.href = "/login";
       } else {
         setDeleteRecord(null);
+        setShowDeleteSuccess(true);
         fetchResidents();
       }
     } catch (e) {
@@ -1351,12 +1355,55 @@ export default function ResidentsView() {
       {deleteRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+             <div className="mb-4 text-red-500 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
             <h3 className="text-xl font-bold text-red-600 mb-3">Confirm Deletion</h3>
-            <p className="text-gray-600 mb-5">This will move the record to trash. Are you sure you want to proceed?</p>
+            <p className="text-[15px] text-gray-600 mb-5">This will move the record to trash. Are you sure you want to proceed?</p>
             <div className="flex justify-center gap-4">
               <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
               <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">Yes, Delete</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteSuccess && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          onClick={() => setShowDeleteSuccess(false)}
+        >
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-[#005f63] flex justify-center">
+              <CheckCircle size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">Success</h3>
+            <p className="text-[15px] text-gray-600 mb-6">Resident record deleted successfully!</p>
+            <button
+              onClick={() => setShowDeleteSuccess(false)}
+              className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showUpdateSuccess && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          onClick={() => setShowUpdateSuccess(false)}
+        >
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-[#005f63] flex justify-center">
+              <CheckCircle size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">Success</h3>
+            <p className="text-[15px] text-gray-600 mb-6">Record updated successfully!</p>
+            <button
+              onClick={() => setShowUpdateSuccess(false)}
+              className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+            >
+              OK
+            </button>
           </div>
         </div>
       )}
