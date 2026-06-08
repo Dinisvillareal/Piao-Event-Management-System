@@ -417,10 +417,10 @@ export default function ScanView({ events, residents, memberships }: any) {
                 <div className={`rounded-[30px] border p-5 transition-colors ${scan.hasAccess ? scanMode === "in" ? "border-blue-500/50 bg-blue-50" : "border-orange-500/50 bg-orange-50" : "border-red-500/40 bg-red-50"}`}>
                   
                  {/* Centered ID Photo & Text Layout */}
-                  <div className="flex flex-col items-center text-center gap-3 w-full">
+                  <div className="flex items-start gap-4">
                     
-                    {/* 1. Centered Photo */}
-                    <div className="w-[90px] h-[90px] shrink-0 rounded-[20px] overflow-hidden border-[3px] border-white shadow-md bg-gray-200">
+                    {/* 1. Photo on the Left */}
+                    <div className="w-[85px] h-[85px] shrink-0 rounded-[18px] overflow-hidden border-[3px] border-white shadow-sm bg-gray-200">
                       {scan.photo ? (
                         <img src={scan.photo} alt={scan.residentName} className="w-full h-full object-cover" />
                       ) : (
@@ -430,30 +430,43 @@ export default function ScanView({ events, residents, memberships }: any) {
                       )}
                     </div>
 
-                    {/* 2. Centered Texts */}
-                    <div className="flex flex-col items-center w-full">
+                    {/* 2. Text Block on the Right */}
+                    <div className="flex-1 pt-1">
+                      <div className="flex items-start gap-2">
+                        
+                        {/* Icon */}
+                        {scan.hasAccess
+                          ? (scanMode === "in" ? <CheckCircle className="text-blue-600 shrink-0 mt-0.5" size={20} /> : <CheckCircle className="text-orange-600 shrink-0 mt-0.5" size={20} />)
+                          : <XCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
+                        }
+                        
+                        {/* Stacked Text Container (Forces everything to align left) */}
+                        <div className="flex flex-col items-start text-left">
+                          
+                          <p className={`text-xl font-black leading-none ${scan.hasAccess ? scanMode === "in" ? "text-blue-800" : "text-orange-800" : "text-red-600"}`}>
+                            {scan.hasAccess ? scan.residentName : `Denied Attenda`}
+                          </p>
+                          
+                          {scan.hasAccess && (
+                            <>
+                              <p className="text-sm font-bold text-gray-700 mt-1.5 tracking-wide">
+                                {scan.userCode.replace("-", " - ")}
+                              </p>
+                              <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider mt-0.5">
+                                {scan.role}
+                              </p>
+                            </>
+                          )}
+                          
+                          {/* Event Description (Padding removed so it aligns flush left!) */}
+                          <p className="mt-2 text-sm font-medium text-gray-800">
+                            {scan.reason}
+                          </p>
+                          
                       
-                      {/* Name & Checkmark Icon */}
-                      <div className="flex items-center justify-center gap-2">
-                     
-                        <p className={`text-2xl font-black leading-none ${scan.hasAccess ? scanMode === "in" ? "text-blue-800" : "text-orange-800" : "text-red-600"}`}>
-                          {scan.hasAccess ? scan.residentName : ` Denied`}
-                        </p>
+                        </div>
+                        
                       </div>
-
-                      {scan.hasAccess && (
-                        <>
-                          <p className="text-sm font-bold text-gray-700 mt-1.5 tracking-wide">
-                            {scan.userCode.replace("-", " - ")}
-                          </p>
-                          <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider mt-0.5">
-                            {scan.role}
-                          </p>
-                        </>
-                      )}
-                      <p className="mt-2.5 text-sm font-medium text-gray-800 ">
-                        {scan.reason}
-                      </p>
                     </div>
                   </div>
 
