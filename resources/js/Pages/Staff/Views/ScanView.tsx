@@ -10,6 +10,8 @@ type ScanResult = {
   hasAccess: boolean;
   reason: string;
   memberships: string[];
+  photo: string | null; 
+  role: string; 
 };
 
 type AttendanceEntry = {
@@ -79,8 +81,68 @@ export default function ScanView({ events, residents, memberships }: any) {
     fetchEventAttendance();
   }, [eventId]); // Re-run this anytime the selected event changes!
 
+
+// ==========================================
+  // 3. PERSIST DEADLINE IN BROWSER MEMORY
   // ==========================================
-  // 3. QR SCANNER LOGIC
+  
+  // Load the saved deadline when returning to the page or changing events
+  useEffect(() => {
+    if (!eventId) return;
+
+    const savedData = localStorage.getItem(`qr_deadline_${eventId}`);
+    if (savedData) {
+      const { time, isActive } = JSON.parse(savedData);
+      setClosingTime(time);
+      setIsDeadlineActive(isActive);
+    } else {
+      // Reset the inputs if the newly selected event doesn't have a saved deadline
+      setClosingTime("");
+      setIsDeadlineActive(false);
+    }
+  }, [eventId]);
+
+  //Automatically save to memory whenever the time is locked or cleared
+  useEffect(() => {
+    if (!eventId) return;
+
+    if (isDeadlineActive && closingTime) {
+      localStorage.setItem(`qr_deadline_${eventId}`, JSON.stringify({ 
+        time: closingTime, 
+        isActive: true 
+      }));
+    } else {
+      localStorage.removeItem(`qr_deadline_${eventId}`);
+    }
+  }, [isDeadlineActive, closingTime, eventId]);
+
+  // ==========================================
+  // 4. PERSIST SCAN MODE IN BROWSER MEMORY
+  // ==========================================
+  
+  //  Load the saved mode when returning to the page or changing events
+  useEffect(() => {
+    if (!eventId) return;
+    
+    const savedMode = localStorage.getItem(`qr_mode_${eventId}`);
+    if (savedMode === "in" || savedMode === "out") {
+      setScanMode(savedMode);
+    } else {
+      setScanMode("in"); // Default fallback if they haven't picked one yet
+    }
+  }, [eventId]);
+
+  // Save the mode whenever the user clicks the buttons or the system auto-flips
+  useEffect(() => {
+    if (!eventId) return;
+    
+    localStorage.setItem(`qr_mode_${eventId}`, scanMode);
+  }, [scanMode, eventId]);
+
+
+
+  // ==========================================
+  // 5. QR SCANNER LOGIC
   // ==========================================
 
   useEffect(() => {
@@ -120,6 +182,38 @@ export default function ScanView({ events, residents, memberships }: any) {
         return;
       }
 
+      // ✅ Match the scanned ID to the residents list to pull their profile data
+      console.log("QR Data:", data);
+      console.log("Residents:", residents);
+      console.log(
+  residents.map((r: any) => ({
+    id: r.id,
+    name: r.name
+  }))
+);
+      const matchedResident = residents?.find((r: any) => {
+        if (r.id == data.user_id || r.user_id == data.user_id || r.real_id == data.user_id || r.user_code == data.user_id) {
+          return true;
+        }
+
+        // 2. If the database uses 'PR-0011' format, convert it to '11' for a perfect match
+       const checkString = r.user_code || r.id || "";
+        if (typeof checkString === "string") {
+          // Removes "PR-" or "RES-" and turns "0011" or "011" into the number 11
+          const stripped = checkString.replace("PR-", "").replace("RES-", "");
+          const extractedNumber = parseInt(stripped, 10);
+          if (extractedNumber == data.user_id) return true;
+        }
+
+        return false;
+      });
+
+      // 🔍 Advanced Debugger (Leave this in just in case!)
+      console.log("QR User ID:", data.user_id, "| Matched:", matchedResident);
+      if (!matchedResident && residents && residents.length > 0) {
+         console.log("Failed to match. Here is what the data structure looks like:", residents[0]);
+      }
+
       let hasAccess = true;
       let reason = "Open event — all residents allowed";
 
@@ -134,7 +228,10 @@ export default function ScanView({ events, residents, memberships }: any) {
         residentName: data.name,
         hasAccess,
         reason,
-        memberships: data.memberships || []
+        memberships: data.memberships || [],
+        // ✅ Add the newly fetched photo and role to the state
+        photo: matchedResident?.photo || matchedResident?.validation_id_url || null,
+        role: matchedResident?.role || "Resident"
       });
 
     } catch (e) {
@@ -144,7 +241,7 @@ export default function ScanView({ events, residents, memberships }: any) {
 
 
   // ==========================================
-  // 4. ATTENDANCE DEADLINE & VALIDATION LOGIC
+  // 6. ATTENDANCE DEADLINE & VALIDATION LOGIC
   // ==========================================
   
  const isPastClosingTime = () => {
@@ -158,7 +255,7 @@ export default function ScanView({ events, residents, memberships }: any) {
 
  
   // ==========================================
-  // 5. SUBMIT TO DATABASE
+  // 7. SUBMIT TO DATABASE
   // ==========================================
   const confirmAttendance = async () => {
     if (!scan?.ok || !scan.hasAccess) return;
@@ -423,19 +520,36 @@ export default function ScanView({ events, residents, memberships }: any) {
                 </div>
               ) : (
                 <div className={`rounded-[30px] border p-5 transition-colors ${scan.hasAccess ? scanMode === "in" ? "border-blue-500/50 bg-blue-50" : "border-orange-500/50 bg-orange-50" : "border-red-500/40 bg-red-50"}`}>
-                  <div className="flex items-start gap-3">
-                    {scan.hasAccess
-                      ? (scanMode === "in" ? <CheckCircle className="text-blue-600 shrink-0 mt-0.5" size={24} /> : <CheckCircle className="text-orange-600 shrink-0 mt-0.5" size={24} />)
-                      : <XCircle className="text-red-600 shrink-0 mt-0.5" size={24} />
-                    }
-                    <div>
-                      <p className={`text-xl font-bold ${scan.hasAccess ? scanMode === "in" ? "text-blue-800" : "text-orange-800" : "text-red-600"}`}>
-                        {scan.hasAccess ? `✓ ${scan.residentName}` : `✗ Denied`}
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-gray-700">{scan.reason}</p>
-                      <p className="mt-1 text-xs text-gray-500 italic">
-                        Scanned Memberships: {scan.memberships.join(", ") || "None"}
-                      </p>
+                  <div className="flex items-start gap-4">
+                    {/* ✅ New ID Photo Box */}
+                    <div className="w-[85px] h-[85px] shrink-0 rounded-[18px] overflow-hidden border-[3px] border-white shadow-sm bg-gray-200">
+                      {scan.photo ? (
+                        <img src={scan.photo} alt={scan.residentName} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 bg-gray-100 p-2">
+                          <span className="text-[10px] font-bold uppercase text-center leading-tight">No<br/>Photo</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ✅ Upgraded Info Section */}
+                    <div className="flex-1 pt-1">
+                      <div className="flex items-start gap-2">
+                        {scan.hasAccess
+                          ? (scanMode === "in" ? <CheckCircle className="text-blue-600 shrink-0 mt-0.5" size={20} /> : <CheckCircle className="text-orange-600 shrink-0 mt-0.5" size={20} />)
+                          : <XCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
+                        }
+                        <div>
+                          <p className={`text-xl font-bold leading-none ${scan.hasAccess ? scanMode === "in" ? "text-blue-800" : "text-orange-800" : "text-red-600"}`}>
+                            {scan.hasAccess ? scan.residentName : `✗ Denied`}
+                          </p>
+                          <p className="text-[11px] font-black text-gray-500 uppercase tracking-wider mt-1.5">{scan.role}</p>
+                          <p className="mt-1 text-sm font-medium text-gray-700">{scan.reason}</p>
+                          <p className="mt-1 text-xs text-gray-500 italic">
+                            Memberships: {scan.memberships.join(", ") || "None"}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   </div>
                   {scan.hasAccess && (

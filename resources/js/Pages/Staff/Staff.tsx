@@ -208,6 +208,7 @@ export default function StaffDashboard() {
   const [upcomingEventsList, setUpcomingEventsList] = useState<any[]>([]);
   const [pastEventsCount, setPastEventsCount] = useState(0);
   const [loadingEvents, setLoadingEvents] = useState(true);
+  const [allResidents, setAllResidents] = useState<any[]>([]);
   
   // State for refreshing events
   const [refreshEventsTrigger, setRefreshEventsTrigger] = useState(0);
@@ -306,6 +307,25 @@ export default function StaffDashboard() {
     };
 
     fetchMemberships();
+  }, []);
+
+  useEffect(() => {
+    const fetchRealResidents = async () => {
+      try {
+        const response = await fetch('/membership-residents', {
+          credentials: 'include',
+          headers: { Accept: 'application/json' }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setAllResidents(data);
+        }
+      } catch (error) {
+        console.error('Error fetching real residents:', error);
+      }
+    };
+    
+    fetchRealResidents();
   }, []);
 
   // Listen for refreshEvents from Archive
@@ -434,7 +454,7 @@ export default function StaffDashboard() {
               setActive={setActive}
             />
           )}
-          {active === "scan" && <ScanView events={allEvents} residents={residents} memberships={memberships} />}
+         {active === "scan" && <ScanView events={allEvents} residents={allResidents} memberships={memberships} />}
           {active === "residents" && <ResidentsView />}
           {active === "memberships" && <QRCodesView highlightText={highlightText} />}
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
