@@ -157,13 +157,20 @@ export default function ScanView({ events, residents, memberships }: any) {
         return false;
       });
 
-      let hasAccess = true;
+     let hasAccess = true;
       let reason = "Open event — all residents allowed";
 
-      // ✅ RESTORED: True Array Validation logic
+      // Grab LIVE memberships from the database instead of the old physical QR code
+      let liveMemberships: string[] = data.memberships || [];
+      if (matchedResident && matchedResident.memberships) {
+        liveMemberships = matchedResident.memberships.map((m: any) => m.name);
+      }
+
+      // True Array Validation logic (Now uses live database memberships)
       if (requiredMemberships && requiredMemberships.length > 0) {
         const requiredNames = requiredMemberships.map((m: any) => m.name);
-        hasAccess = data.memberships && data.memberships.some((userMem: string) => requiredNames.includes(userMem));
+        
+        hasAccess = liveMemberships.some((userMem: string) => requiredNames.includes(userMem));
         reason = hasAccess 
           ? `Verified: Eligible member` 
           : `Requires: ${requiredNames.join(" or ")}`;
@@ -172,10 +179,10 @@ export default function ScanView({ events, residents, memberships }: any) {
       setScan({
         ok: true,
         residentId: data.user_id,
-        residentName: data.name,
+        residentName: matchedResident?.first_name ? `${matchedResident.first_name} ${matchedResident.last_name}` : data.name,
         hasAccess,
         reason,
-        memberships: data.memberships || [],
+        memberships: liveMemberships,
         photo: matchedResident?.photo || matchedResident?.validation_id_url || null,
         role: matchedResident?.role || "Resident",
         userCode: matchedResident?.user_code || matchedResident?.id || data.user_code || `ID: ${data.user_id}` 
@@ -296,11 +303,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                     </SelectItem>
                   ))}
                 </Select>
-                {requiredMemberships && requiredMemberships.length > 0 && (
-                  <Badge className="mt-2 bg-yellow-100 text-yellow-800">
-                    Eligibility: {requiredMemberships.map((m: any) => m.name).join(" or ")}
-                  </Badge>
-                )}
+                {requiredMemberships && requiredMemberships.length > 0 }
               </div>
 
               <div>
@@ -444,7 +447,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                         <div className="flex flex-col items-start text-left">
                           
                           <p className={`text-xl font-black leading-none ${scan.hasAccess ? scanMode === "in" ? "text-blue-800" : "text-orange-800" : "text-red-600"}`}>
-                            {scan.hasAccess ? scan.residentName : `Denied Attenda`}
+                            {scan.hasAccess ? scan.residentName : `Denied Attendance`}
                           </p>
                           
                           {scan.hasAccess && (
@@ -496,7 +499,7 @@ export default function ScanView({ events, residents, memberships }: any) {
             </CardContent>
           </Card>
 
-          <Card className="border-[#ddd5ca] rounded-[30px] shadow-sm">
+         <Card className="border-[#ddd5ca] rounded-[30px] shadow-sm">
             <CardHeader className="border-b border-[#ddd5ca] bg-white sticky top-0 z-10 rounded-t-[30px]">
               <CardTitle className="font-black text-[#005f63]">Attendance Roster</CardTitle>
               <CardDescription className="text-[#667777] mt-1">{attendance[eventId]?.length ?? 0} record(s) for this event</CardDescription>
@@ -507,15 +510,15 @@ export default function ScanView({ events, residents, memberships }: any) {
               ) : (
                 <div className="space-y-3">
                   {attendance[eventId]!.map((rec, i) => (
-                    <div key={rec.residentId} className={`p-4 rounded-[20px] border flex items-center justify-between transition-colors ${rec.status === "complete" ? "bg-gray-50 border-gray-200" : "bg-gray-50 border-gray-200"}`}>
+                    <div key={rec.residentId} className={`p-4 rounded-[20px] border flex items-center justify-between transition-colors ${rec.status === "complete" ? "bg-gray-30 border-gray-300" : "bg-gray-50 border-gray-200"}`}>
                       <div>
-                        <p className="font-bold text-gray-800">{i + 1}. {rec.residentName}</p>
+                        <p className="font-semibold text-[#085053]">{i + 1}. {rec.residentName}</p>
                         <div className="flex gap-4 mt-1 text-xs text-gray-600 font-medium">
-                          <span className="flex items-center gap-1 text-blue-700"><LogIn size={14} /> {rec.timeIn || "—"}</span>
+                          <span className="flex items-center gap-1 text-teal-700"><LogIn size={14} /> {rec.timeIn || "—"}</span>
                           <span className="flex items-center gap-1 text-orange-700"><LogOut size={14} /> {rec.timeOut || "—"}</span>
                         </div>
                       </div>
-                      <Badge className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider ${rec.status === "complete" ? "bg-gray-200 text-gray-600" : "bg-yellow-400 text-yellow-900 shadow-sm"}`}>
+                      <Badge className={`rounded-full px-3 py-1 text-xs font-black tracking-wider ${rec.status === "complete" ? "bg-teal-300 text-teal-700" : "bg-yellow-400 text-yellow-900 shadow-sm"}`}>
                         {rec.status === "complete" ? "Completed" : "Signed In"}
                       </Badge>
                     </div>
