@@ -38,7 +38,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   // NEW: Deletion failed modal state
   const [showDeleteFailed, setShowDeleteFailed] = useState(false);
 
-  // ✅ NEW: Deletion success modal state
+  // ✅ NEW: Success modals
+  const [showAddSuccess, setShowAddSuccess] = useState(false);
   const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
   const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
 
@@ -51,7 +52,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   // Prevent body scroll when modal is open
   useEffect(() => {
-    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showDeleteSuccess || showUpdateSuccess) {
+    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showDeleteSuccess || showUpdateSuccess || showAddSuccess) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -59,7 +60,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showDeleteSuccess]);
+  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showDeleteSuccess, showAddSuccess, showUpdateSuccess]);
 
   const fetchMemberships = async () => {
     setLoading(true);
@@ -153,15 +154,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       const result = await response.json();
 
       if (response.ok) {
-        alert('Membership added successfully!');
+        // ✅ NO MORE BROWSER ALERT — use your modal!
         setShowAddModal(false);
-        setNewMembership({
-          name: "",
-          description: ""
-        });
+        setNewMembership({ name: "", description: "" });
         fetchMemberships();
         window.dispatchEvent(new Event('refreshMemberships'));
+        setShowAddSuccess(true); // <-- YOUR MODAL SHOWS
       } else {
+        // Optional: add error modal here too
         alert(result.message || 'Failed to add membership');
       }
     } catch (error) {
@@ -379,14 +379,10 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     setShowDeleteFailed(false);
   };
 
-  // ✅ Close success modal
-  const closeDeleteSuccess = () => {
-    setShowDeleteSuccess(false);
-  };
-
-  const closeUpdateSuccess = () => {
-    setShowUpdateSuccess(false);
-  };
+  // ✅ Close success modals
+  const closeAddSuccess = () => setShowAddSuccess(false);
+  const closeDeleteSuccess = () => setShowDeleteSuccess(false);
+  const closeUpdateSuccess = () => setShowUpdateSuccess(false);
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) closeModal();
@@ -408,10 +404,12 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     if (e.target === e.currentTarget) closeDeleteFailed();
   };
 
+  const handleAddSuccessBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) closeAddSuccess();
+  };
   const handleDeleteSuccessBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) closeDeleteSuccess();
   };
-
   const handleUpdateSuccessBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) closeUpdateSuccess();
   };
@@ -424,14 +422,16 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         closeEditModal();
         closeDeleteConfirm();
         closeDeleteFailed();
+        closeAddSuccess();
         closeDeleteSuccess();
+        closeUpdateSuccess();
       }
     };
-    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showDeleteSuccess || showUpdateSuccess) {
+    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showAddSuccess || showDeleteSuccess || showUpdateSuccess) {
       document.addEventListener('keydown', handleEsc);
     }
     return () => document.removeEventListener('keydown', handleEsc);
-  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showDeleteSuccess, showUpdateSuccess]);
+  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showAddSuccess, showDeleteSuccess, showUpdateSuccess]);
 
   if (loading) {
     return (
@@ -825,7 +825,31 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         document.body
       )}
 
-      {/* ✅ NEW: Deletion Success Modal — shows "Membership deleted successfully!" */}
+      {/* ✅ Add Success Modal — YOUR DESIGN */}
+      {showAddSuccess && createPortal(
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          onClick={handleAddSuccessBackdropClick}
+        >
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-[#005f63] flex justify-center">
+              <CheckCircle size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">Success</h3>
+            <p className="text-[15px] text-gray-600 mb-6">Membership added successfully!</p>
+            <button
+              onClick={closeAddSuccess}
+              className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ✅ Delete Success Modal — YOUR DESIGN */}
       {showDeleteSuccess && createPortal(
         <div
           className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
