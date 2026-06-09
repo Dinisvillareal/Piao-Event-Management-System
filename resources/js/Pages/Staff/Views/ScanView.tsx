@@ -10,9 +10,9 @@ type ScanResult = {
   hasAccess: boolean;
   reason: string;
   memberships: string[];
-  photo: string | null;  // ✅ Restored
-  role: string;          // ✅ Restored
-  userCode: string;      // ✅ Restored
+  photo: string | null;
+  role: string;
+  userCode: string;
 };
 
 type AttendanceEntry = {
@@ -21,6 +21,14 @@ type AttendanceEntry = {
   timeIn: string | null;
   timeOut: string | null;
   status: "pending" | "in" | "complete";
+};
+
+// ✅ UPDATED: Added specific types for the timeout modals
+type ModalConfig = {
+  isOpen: boolean;
+  type: 'success' | 'error' | 'info' | 'timeout-in' | 'timeout-out';
+  title: string;
+  message: string;
 };
 
 export default function ScanView({ events, residents, memberships }: any) {
@@ -32,9 +40,18 @@ export default function ScanView({ events, residents, memberships }: any) {
   const [isDeadlineActive, setIsDeadlineActive] = useState(false);
   const [scanMode, setScanMode] = useState<"in" | "out">("in");
 
+  const [modalConfig, setModalConfig] = useState<ModalConfig>({ isOpen: false, type: 'info', title: '', message: '' });
+
+  const showModal = (type: ModalConfig['type'], title: string, message: string) => {
+    setModalConfig({ isOpen: true, type, title, message });
+  };
+
+  const closeModal = () => {
+    setModalConfig(prev => ({ ...prev, isOpen: false }));
+  };
+
   const ev = events?.find((e: any) => String(e.id) === String(eventId));
   
-  // ✅ RESTORED: Smart Membership Array Checker
   const requiredMemberships = ev?.membershipIds?.length > 0 
     ? memberships?.filter((m: any) => ev.membershipIds.includes(m.id) || ev.membershipIds.includes(String(m.id))) 
     : [];
@@ -78,7 +95,6 @@ export default function ScanView({ events, residents, memberships }: any) {
 
     fetchEventAttendance();
 
-    // ✅ RESTORED: Load Local Storage Memory
     const savedData = localStorage.getItem(`qr_deadline_${eventId}`);
     if (savedData) {
       const { time, isActive } = JSON.parse(savedData);
@@ -95,7 +111,6 @@ export default function ScanView({ events, residents, memberships }: any) {
 
   }, [eventId]); 
 
-  // ✅ RESTORED: Save Local Storage Memory
   useEffect(() => {
     if (!eventId) return;
     if (isDeadlineActive && closingTime) {
@@ -112,7 +127,7 @@ export default function ScanView({ events, residents, memberships }: any) {
 
 
   // ==========================================
-  // 3. QR SCANNER & SMART MATCHING LOGIC
+  // 3. QR SCANNER LOGIC & DEADLINE TRIGGER
   // ==========================================
   useEffect(() => {
     if (!isDeadlineActive || !closingTime) return;
@@ -122,15 +137,20 @@ export default function ScanView({ events, residents, memberships }: any) {
       const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
       if (currentHHMM >= closingTime) {
+        // ✅ UPDATED: Capture the expired mode to show the correct color modal!
+        const expiredMode = scanMode;
+        
         setScan(null);              
         setScanMode(prev => prev === "in" ? "out" : "in");         
         setIsDeadlineActive(false); 
         setClosingTime("");         
         setIsCameraOn(false);
 
-        setTimeout(() => {
-          alert("The deadline has passed! The scanner has automatically switched modes.");
-        }, 100);
+        if (expiredMode === "in") {
+          showModal('timeout-in', 'Sign In Closed', 'The Sign In deadline has passed! The scanner has automatically switched to Sign Out.');
+        } else {
+          showModal('timeout-out', 'Sign Out Closed', 'The Sign Out deadline has passed! The scanner has automatically switched to Sign In.');
+        }
       }
     }, 1000); 
 
@@ -142,11 +162,10 @@ export default function ScanView({ events, residents, memberships }: any) {
       const data = JSON.parse(qrString);
 
       if (!data.user_id) {
-        alert("Invalid QR Code: Missing Database User ID.");
+        showModal('error', 'Invalid QR Code', 'Missing Database User ID.');
         return;
       }
 
-      // ✅ RESTORED: Smart Matcher (Fixes missing photos)
       const matchedResident = residents?.find((r: any) => {
         if (r.id == data.user_id || r.user_id == data.user_id || r.real_id == data.user_id || r.user_code == data.user_id) return true;
         const checkString = r.user_code || r.id || "";
@@ -157,16 +176,14 @@ export default function ScanView({ events, residents, memberships }: any) {
         return false;
       });
 
-     let hasAccess = true;
+      let hasAccess = true;
       let reason = "Open event — all residents allowed";
 
-      // Grab LIVE memberships from the database instead of the old physical QR code
       let liveMemberships: string[] = data.memberships || [];
       if (matchedResident && matchedResident.memberships) {
         liveMemberships = matchedResident.memberships.map((m: any) => m.name);
       }
 
-      // True Array Validation logic (Now uses live database memberships)
       if (requiredMemberships && requiredMemberships.length > 0) {
         const requiredNames = requiredMemberships.map((m: any) => m.name);
         
@@ -189,7 +206,7 @@ export default function ScanView({ events, residents, memberships }: any) {
       });
 
     } catch (e) {
-      alert("Invalid QR Code format. Could not read data.");
+      showModal('error', 'Scan Failed', 'Invalid QR Code format. Could not read data.');
     }
   };
 
@@ -222,7 +239,7 @@ export default function ScanView({ events, residents, memberships }: any) {
       const result = await response.json();
 
       if (!response.ok) {
-        alert(result.message || "Failed to record attendance.");
+        showModal('error', 'Action Failed', result.message || "Failed to record attendance.");
         return;
       }
 
@@ -235,7 +252,6 @@ export default function ScanView({ events, residents, memberships }: any) {
         if (scanMode === "in") {
           const residentExists = list.some(e => e.residentId == scan!.residentId);
           if (residentExists) {
-            // ✅ FIXED: Now correctly updates timeIn instead of timeOut!
             return { ...prev, [eventId]: list.map(e => e.residentId == scan!.residentId ? { ...e, timeIn: now, status: "in" } : e) };
           } else {
             return { ...prev, [eventId]: [...list, { residentId: scan!.residentId, residentName: scan!.residentName, timeIn: now, timeOut: null, status: "in" }] };
@@ -251,11 +267,11 @@ export default function ScanView({ events, residents, memberships }: any) {
       });
 
       setScan(null); 
-      alert(result.message || "Attendance recorded successfully!");
+      showModal('success', 'Success', result.message || "Attendance recorded successfully!");
 
     } catch (error) {
       console.error("Attendance Error:", error);
-      alert("A network error occurred while connecting to the database.");
+      showModal('error', 'Network Error', 'A network error occurred while connecting to the database.');
     }
   };
 
@@ -351,7 +367,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                   />
                   {!isDeadlineActive ? (
                     <Button 
-                      onClick={() => closingTime ? setIsDeadlineActive(true) : alert("Please select a time first.")} 
+                      onClick={() => closingTime ? setIsDeadlineActive(true) : showModal('error', 'Time Required', "Please select a time first.")} 
                       className="bg-[#005f63] hover:bg-[#217676] text-white px-6 rounded-md shadow-sm"
                     >
                       Set Time
@@ -419,10 +435,8 @@ export default function ScanView({ events, residents, memberships }: any) {
               ) : (
                 <div className={`rounded-[30px] border p-5 transition-colors ${scan.hasAccess ? scanMode === "in" ? "border-blue-500/50 bg-blue-50" : "border-orange-500/50 bg-orange-50" : "border-red-500/40 bg-red-50"}`}>
                   
-                 {/* Centered ID Photo & Text Layout */}
                   <div className="flex items-start gap-4">
                     
-                    {/* 1. Photo on the Left */}
                     <div className="w-[85px] h-[85px] shrink-0 rounded-[18px] overflow-hidden border-[3px] border-white shadow-sm bg-gray-200">
                       {scan.photo ? (
                         <img src={scan.photo} alt={scan.residentName} className="w-full h-full object-cover" />
@@ -433,17 +447,14 @@ export default function ScanView({ events, residents, memberships }: any) {
                       )}
                     </div>
 
-                    {/* 2. Text Block on the Right */}
                     <div className="flex-1 pt-1">
                       <div className="flex items-start gap-2">
                         
-                        {/* Icon */}
                         {scan.hasAccess
                           ? (scanMode === "in" ? <CheckCircle className="text-blue-600 shrink-0 mt-0.5" size={20} /> : <CheckCircle className="text-orange-600 shrink-0 mt-0.5" size={20} />)
                           : <XCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
                         }
                         
-                        {/* Stacked Text Container (Forces everything to align left) */}
                         <div className="flex flex-col items-start text-left">
                           
                           <p className={`text-xl font-black leading-none ${scan.hasAccess ? scanMode === "in" ? "text-blue-800" : "text-orange-800" : "text-red-600"}`}>
@@ -461,7 +472,6 @@ export default function ScanView({ events, residents, memberships }: any) {
                             </>
                           )}
                           
-                          {/* Event Description (Padding removed so it aligns flush left!) */}
                           <p className="mt-2 text-sm font-medium text-gray-800">
                             {scan.reason}
                           </p>
@@ -519,7 +529,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                         </div>
                       </div>
                       <Badge className={`rounded-full px-3 py-1 text-xs font-black tracking-wider ${rec.status === "complete" ? "bg-teal-300 text-teal-700" : "bg-yellow-400 text-yellow-900 shadow-sm"}`}>
-                        {rec.status === "complete" ? "Completed" : "Signed In"}
+                        {rec.status === "complete" ? "Completed" : "Incomplete"}
                       </Badge>
                     </div>
                   ))}
@@ -529,6 +539,46 @@ export default function ScanView({ events, residents, memberships }: any) {
           </Card>
         </div>
       </div>
+
+      {/* ✅ UPDATED: Dynamic Modal Styling with the new colors */}
+      {modalConfig.isOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm transition-all duration-200">
+          <div className="bg-white rounded-[24px] w-full max-w-[340px] p-6 py-8 flex flex-col items-center text-center shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
+            
+            {/* Icons based on type */}
+            {modalConfig.type === 'success' && <CheckCircle className="text-[#005f63] mb-4" size={56} strokeWidth={2} />}
+            {modalConfig.type === 'error' && <XCircle className="text-red-500 mb-4" size={56} strokeWidth={2} />}
+            {modalConfig.type === 'info' && <CheckCircle className="text-[#005f63] mb-4" size={56} strokeWidth={2} />}
+            {modalConfig.type === 'timeout-in' && <CheckCircle className="text-orange-500 mb-4" size={56} strokeWidth={2} />}
+            {modalConfig.type === 'timeout-out' && <CheckCircle className="text-[#005f63] mb-4" size={56} strokeWidth={2} />}
+            
+            {/* Title Color based on type */}
+            <h3 className={`text-xl font-bold mb-2 ${
+              modalConfig.type === 'error' ? 'text-red-600' : 
+              modalConfig.type === 'timeout-in' ? 'text-orange-600' : 
+              'text-[#005f63]'
+            }`}>
+              {modalConfig.title}
+            </h3>
+            
+            <p className="text-sm text-gray-600 mb-6 px-2">
+              {modalConfig.message}
+            </p>
+            
+            {/* Button Color based on type */}
+            <button 
+              onClick={closeModal} 
+              className={`text-white px-10 py-2.5 rounded-full font-bold tracking-wide transition-colors ${
+                modalConfig.type === 'timeout-in' 
+                  ? 'bg-orange-500 hover:bg-orange-600' 
+                  : 'bg-[#005f63] hover:bg-[#004a4d]'
+              }`}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
