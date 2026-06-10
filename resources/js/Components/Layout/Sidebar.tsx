@@ -27,7 +27,7 @@
 //   const handleLogout = async () => {
 //     try {
 //       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-      
+
 //       await fetch('/logout', {
 //         method: 'POST',
 //         credentials: 'include',
@@ -42,10 +42,10 @@
 //       // Clear all stored user data
 //       localStorage.clear();
 //       sessionStorage.clear();
-      
+
 //       // Redirect to login page
 //       window.location.href = '/';
-      
+
 //     } catch (err) {
 //       console.error('Logout error:', err);
 //       // Force clear local data even if API fails
@@ -97,7 +97,7 @@
 //       </div>
 
 //       <div className="border-t border-[#ddd5ca] p-2 shrink-0">
-//         <button 
+//         <button
 //           onClick={handleLogout}
 //           className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-[#005f63] transition hover:bg-orange-100"
 //         >
@@ -158,7 +158,7 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
       // Clear ALL storage (safe because user is logging out)
       localStorage.clear();
       sessionStorage.clear();
-      
+
       // Redirect to login page
       window.location.href = '/';
     }
@@ -183,21 +183,25 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
       >
         {/* Sidebar Header */}
         <div className="border-b border-[#007777] px-3 py-5 shrink-0 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-r from-orange-400 to-yellow-300 font-black text-[#005f63] shrink-0 shadow-md">
-            B
-          </div>
-          <div
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent shrink-0 shadow-md overflow-hidden">
+            <img
+            src="/logo-removebg-preview.png"
+            alt="Logo"
+            className="w-full h-full object-contain"
+            />
+        </div>
+        <div
             className={`transition-all duration-300 overflow-hidden ${
-              isOpen ? "opacity-100 w-auto visible" : "opacity-0 w-0 invisible"
+            isOpen ? "opacity-100 w-auto visible" : "opacity-0 w-0 invisible"
             }`}
-          >
+        >
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/70 font-medium">
-              BARANGAY PIAO
+            BARANGAY PIAO
             </p>
             <h1 className="text-[15px] font-black text-white whitespace-nowrap leading-tight">
-              e-Membership
+            e-Membership
             </h1>
-          </div>
+        </div>
         </div>
 
         {/* Navigation Menu */}
