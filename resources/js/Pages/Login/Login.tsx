@@ -539,14 +539,16 @@ function PortalSelectionModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
       <div className="bg-white rounded-[28px] w-full max-w-md shadow-2xl overflow-hidden">
-        {/* Top accent bar */}
         <div className="h-1.5 w-full bg-gradient-to-r from-teal-500 via-yellow-400 to-orange-500" />
 
         <div className="p-8">
-          {/* Header */}
           <div className="text-center mb-6">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-400 to-yellow-300 text-white font-black text-xl mb-3 shadow-md">
-              B
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-transparent text-white font-black text-xl mb-3 shadow-none overflow-hidden">
+              <img
+                src="/logo-removebg-preview.png"
+                alt="Logo"
+                className="w-full h-full object-contain"
+              />
             </div>
             <h2 className="text-xl font-black text-teal-800">Welcome back, {userName}!</h2>
             <p className="text-sm text-gray-500 mt-1">
@@ -554,9 +556,7 @@ function PortalSelectionModal({
             </p>
           </div>
 
-          {/* Choice buttons */}
           <div className="space-y-3">
-            {/* Staff Portal */}
             <button
               onClick={onSelectStaff}
               className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-orange-100 bg-orange-50 hover:border-orange-400 hover:bg-orange-100 transition-all duration-200 group text-left"
@@ -573,7 +573,6 @@ function PortalSelectionModal({
               <ArrowRight className="w-4 h-4 text-orange-400 group-hover:text-orange-600 group-hover:translate-x-1 transition-all" />
             </button>
 
-            {/* Member Dashboard */}
             <button
               onClick={onSelectMember}
               className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-teal-100 bg-teal-50 hover:border-teal-400 hover:bg-teal-100 transition-all duration-200 group text-left"
@@ -607,7 +606,6 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
 
-  // Portal selection modal state
   const [showPortalModal, setShowPortalModal] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState<any>(null);
 
@@ -646,11 +644,9 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (response.ok) {
-        // Clear both storages first
         localStorage.clear();
         sessionStorage.clear();
 
-        // Store based on checkbox
         if (keepSignedIn) {
           localStorage.setItem("user", JSON.stringify(data.user));
           localStorage.setItem("isAuthenticated", "true");
@@ -659,7 +655,6 @@ export default function LoginPage() {
           sessionStorage.setItem("isAuthenticated", "true");
         }
 
-        // ── If Staff: show portal selection modal ──────────────────────
         if (data.user.role === "Staff") {
           setLoggedInUser(data.user);
           setShowPortalModal(true);
@@ -667,8 +662,6 @@ export default function LoginPage() {
           return;
         }
 
-        // ── Regular resident (non-staff): go straight to member dashboard
-        // ✅ NEW: Set portal mode to 'member' for residents
         if (keepSignedIn) {
           localStorage.setItem("portalMode", "member");
         } else {
@@ -699,7 +692,6 @@ export default function LoginPage() {
   };
 
   const handleGoToStaff = () => {
-    // ✅ NEW: Set portal mode to 'staff' when staff selects staff portal
     const keepSigned = localStorage.getItem("isAuthenticated") === "true" ? localStorage.getItem("user") !== null : false;
     if (keepSigned) {
       localStorage.setItem("portalMode", "staff");
@@ -711,7 +703,6 @@ export default function LoginPage() {
   };
 
   const handleGoToMember = () => {
-    // ✅ NEW: Set portal mode to 'member' when staff selects member dashboard
     const keepSigned = localStorage.getItem("isAuthenticated") === "true" ? localStorage.getItem("user") !== null : false;
     if (keepSigned) {
       localStorage.setItem("portalMode", "member");
@@ -746,7 +737,6 @@ export default function LoginPage() {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-white text-gray-900">
-      {/* Portal selection modal — shown after staff login */}
       {showPortalModal && loggedInUser && (
         <PortalSelectionModal
           userName={loggedInUser.first_name || loggedInUser.user_code}
@@ -761,8 +751,12 @@ export default function LoginPage() {
 
       <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-8 py-12">
         <nav className="flex items-center gap-3 mb-6">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-yellow-400 text-white font-bold">
-            B
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-transparent overflow-hidden">
+            <img
+              src="/logo-removebg-preview.png"
+              alt="Logo"
+              className="w-full h-full object-contain"
+            />
           </div>
           <div>
             <p className="text-xs uppercase tracking-widest text-teal-800">

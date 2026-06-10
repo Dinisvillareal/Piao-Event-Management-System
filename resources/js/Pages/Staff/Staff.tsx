@@ -96,11 +96,17 @@ function Sidebar({ active, setActive }: { active: string; setActive: (key: strin
       </button>
       <aside className={`flex-col border-r border-[#006666] bg-[#006666] h-screen sticky top-0 transition-all duration-300 flex overflow-hidden shadow-lg ${isOpen ? "w-[250px]" : "w-[70px]"}`}>
         <div className="border-b border-[#007777] px-3 py-5 shrink-0 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-r from-orange-400 to-yellow-300 font-black text-[#005f63] shrink-0 shadow-md">B</div>
-          <div className={`transition-all duration-300 overflow-hidden ${isOpen ? "opacity-100 w-auto visible" : "opacity-0 w-0 invisible"}`}>
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent font-black shrink-0 shadow-md overflow-hidden">
+            <img
+            src="/logo-removebg-preview.png"
+            alt="Logo"
+            className="w-full h-full object-contain"
+            />
+        </div>
+        <div className={`transition-all duration-300 overflow-hidden ${isOpen ? "opacity-100 w-auto visible" : "opacity-0 w-0 invisible"}`}>
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/70 font-medium">BARANGAY PIAO</p>
             <h1 className="text-[15px] font-black text-white whitespace-nowrap leading-tight">e-Membership</h1>
-          </div>
+        </div>
         </div>
         <div className="flex-1 px-2 py-5 overflow-y-auto smooth-scroll">
           <p className={`mb-3 px-3 text-sm font-semibold text-white/60 transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0"}`}>Staff Console</p>
@@ -192,10 +198,10 @@ export default function StaffDashboard() {
   const [pastEventsCount, setPastEventsCount] = useState(0);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [allResidents, setAllResidents] = useState<any[]>([]);
-  
+
   // State for refreshing events
   const [refreshEventsTrigger, setRefreshEventsTrigger] = useState(0);
-  
+
   // ✅ ADD THIS - State for current logged-in user
   const [currentUser, setCurrentUser] = useState<any>(null);
 
@@ -270,7 +276,7 @@ export default function StaffDashboard() {
         console.error('Error fetching current user:', error);
       }
     };
-    
+
     fetchCurrentUser();
   }, []);
 
@@ -307,7 +313,7 @@ export default function StaffDashboard() {
         console.error('Error fetching real residents:', error);
       }
     };
-    
+
     fetchRealResidents();
   }, []);
 
@@ -317,9 +323,9 @@ export default function StaffDashboard() {
       console.log("🔄 Received refreshEvents - forcing events reload");
       setRefreshEventsTrigger(prev => prev + 1);
     };
-    
+
     window.addEventListener('refreshEvents', handleRefreshEvents);
-    
+
     return () => {
       window.removeEventListener('refreshEvents', handleRefreshEvents);
     };
@@ -420,7 +426,7 @@ export default function StaffDashboard() {
   };
 
   // ✅ Get the display name from currentUser or fallback to staff.name
-  const displayName = currentUser 
+  const displayName = currentUser
     ? `${currentUser.first_name} ${currentUser.last_name}`
     : staff.name;
 
