@@ -140,19 +140,33 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     }
   }, [userCode]);
 
-  // ✅ FIXED: QR code generates even WITHOUT memberships
+  // // ✅ FIXED: QR code generates even WITHOUT memberships
+  // const qrData = useMemo(() => {
+  //   // Only require basic user info - memberships are optional
+  //   if (!userId || !userCode || !fullName) return null;
+
+  //   return JSON.stringify({
+  //     user_id: userId,
+  //     user_code: userCode,
+  //     name: fullName,
+  //     memberships: allMemberships.map((m: any) => m.name),
+  //     timestamp: Date.now()
+  //   });
+  // }, [userId, userCode, fullName, allMemberships]);
+
+
+  /*NEW DATA STRUCTURE*/
   const qrData = useMemo(() => {
-    // Only require basic user info - memberships are optional
+    // Keep: user_id, user_code, name
+    // Removed: memberships, timestamp
     if (!userId || !userCode || !fullName) return null;
 
     return JSON.stringify({
       user_id: userId,
       user_code: userCode,
-      name: fullName,
-      memberships: allMemberships.map((m: any) => m.name),
-      timestamp: Date.now()
+      name: fullName
     });
-  }, [userId, userCode, fullName, allMemberships]);
+  }, [userId, userCode, fullName]);
 
   // Loading state
   if (loading) {
