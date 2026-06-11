@@ -11,7 +11,6 @@ type Activity = {
   type?: "event" | "resident" | "membership" | "notification" | "scan" | "system";
 };
 
-// ✅ Backend returns 20 per page
 const itemsPerPage = 20;
 
 export default function ActivityLogsView() {
@@ -59,16 +58,22 @@ export default function ActivityLogsView() {
   };
 
   // =========================
-  // ✅ FETCH — matches backend paginate(20)
+  // ✅ FETCH — send ALL filters to backend
   // =========================
   const fetchActivities = async (page = 1) => {
     setLoading(true);
     try {
-      // ❌ REMOVED &limit=1000 — backend always returns 20
-      const res = await fetch(`/activity-logs?page=${page}&search=${encodeURIComponent(searchQuery)}`);
+      // Build query params with all filters
+      const params = new URLSearchParams({
+        page: String(page),
+        search: searchQuery,
+        type: filterType !== "all" ? filterType : "",
+        date: selectedDate,
+      });
+
+      const res = await fetch(`/activity-logs?${params.toString()}`);
       const json = await res.json();
 
-      // Laravel paginate() returns: { data: [...], current_page, last_page, per_page, total }
       const logs = json.data ?? [];
 
       const formatted: Activity[] = logs.map((log: any) => ({
@@ -82,7 +87,7 @@ export default function ActivityLogsView() {
       }));
 
       setActivities(formatted);
-      setTotalPages(json.last_page || 1); // ✅ Get total pages from backend
+      setTotalPages(json.last_page || 1); // ✅ Now reflects filtered total
 
     } catch (err) {
       console.error("Error loading activity logs:", err);
@@ -93,39 +98,22 @@ export default function ActivityLogsView() {
     }
   };
 
-  // Fetch when page or search changes
+  // Fetch when page, search, filter, or date changes
   useEffect(() => {
     fetchActivities(currentPage);
-  }, [currentPage, searchQuery]);
+  }, [currentPage, searchQuery, filterType, selectedDate]);
 
-  // Reset to page 1 when filters change
+  // Reset to page 1 when any filter changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, filterType, selectedDate]);
 
   // =========================
-  // FILTER + SINGLE DATE ONLY
+  // ✅ NOW: NO client-side filtering — backend does it
   // =========================
   const filteredActivities = useMemo(() => {
-    let filtered = [...activities];
-
-    if (filterType !== "all") {
-      filtered = filtered.filter((act) => act.type === filterType);
-    }
-
-    if (selectedDate) {
-      const chosen = new Date(selectedDate);
-      chosen.setHours(0, 0, 0, 0);
-      const nextDay = new Date(chosen);
-      nextDay.setDate(chosen.getDate() + 1);
-      filtered = filtered.filter((act) => {
-        const actDate = new Date(act.created_at);
-        return actDate >= chosen && actDate < nextDay;
-      });
-    }
-
-    return filtered;
-  }, [activities, filterType, selectedDate]);
+    return activities;
+  }, [activities]);
 
   // =========================
   // SKELETON LOADING
@@ -216,7 +204,7 @@ export default function ActivityLogsView() {
           {filteredActivities.length} record(s) found — showing {itemsPerPage} per page
         </p>
 
-        {/* ✅ PAGINATION BUTTONS — NOW APPEAR WHEN totalPages > 1 */}
+        {/* ✅ PAGINATION — now synced with filters */}
         <div className="flex justify-end mt-4">
           {totalPages > 1 && (
             <div className="flex items-center gap-2">
