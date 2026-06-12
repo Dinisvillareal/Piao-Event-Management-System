@@ -149,6 +149,8 @@ export default function ResidentsView() {
   const [restoreRecord, setRestoreRecord] = useState<number | null>(null);
   const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
   const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
+  const [showAddSuccess, setShowAddSuccess] = useState(false);
+  const [showRoleChangedModal, setShowRoleChangedModal] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState<"edit" | "add" | null>(null);
 
   const [newResident, setNewResident] = useState<AddForm>(emptyAdd());
@@ -387,13 +389,16 @@ export default function ResidentsView() {
         return;
       }
 
-      setShowAddForm(false);
-      setFormErrors({});
-      setApiError(null);
-      setNewResident(emptyAdd());
-      setAddPhotoFile(null);
-      setAddPhotoPreview("");
-      fetchResidents();
+    setShowAddForm(false);
+    setFormErrors({});
+    setApiError(null);
+    setNewResident(emptyAdd());
+    setAddPhotoFile(null);
+    setAddPhotoPreview("");
+
+    setShowAddSuccess(true);
+
+    fetchResidents();
     } catch (e) {
       console.error("Add error:", e);
       setApiError("Network error. Please try again.");
@@ -515,15 +520,17 @@ export default function ResidentsView() {
         return;
       }
 
-      if (currentUserId === editingResident.real_id && editingResident.role === "Resident") {
+        if (currentUserId === editingResident.real_id && editingResident.role === "Resident") {
         localStorage.removeItem("user");
         localStorage.removeItem("isAuthenticated");
         sessionStorage.removeItem("user");
         sessionStorage.removeItem("isAuthenticated");
-        alert("Your role has been changed to Resident. Please log in again.");
-        window.location.href = "/login";
+
+        setEditRecord(null);
+        setShowRoleChangedModal(true);
+
         return;
-      }
+        }
 
       setEditRecord(null);
       setFormErrors({});
@@ -1405,6 +1412,69 @@ const handleDeleteResident = async () => {
           </div>
         </div>
       )}
+
+        {showAddSuccess && (
+        <div
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+            onClick={() => setShowAddSuccess(false)}
+        >
+            <div
+            className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center"
+            onClick={(e) => e.stopPropagation()}
+            >
+            <div className="mb-3 text-[#005f63] flex justify-center">
+                <CheckCircle size={48} />
+            </div>
+
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">
+                Success
+            </h3>
+
+            <p className="text-[15px] text-gray-600 mb-6">
+                Resident record added successfully!
+            </p>
+
+            <button
+                onClick={() => setShowAddSuccess(false)}
+                className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+            >
+                OK
+            </button>
+            </div>
+        </div>
+        )}
+
+        {showRoleChangedModal && (
+        <div
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+        >
+            <div
+            className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center"
+            >
+            <div className="mb-3 text-[#005f63] flex justify-center">
+                <CheckCircle size={48} />
+            </div>
+
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">
+                Role Updated
+            </h3>
+
+            <p className="text-[15px] text-gray-600 mb-6">
+                Your role has been changed to Resident. Please log in again.
+            </p>
+
+            <button
+                onClick={() => {
+                setShowRoleChangedModal(false);
+                window.location.href = "/login";
+                }}
+                className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+            >
+                OK
+            </button>
+            </div>
+        </div>
+        )}
 
       {/* ─── Restore Confirm Modal ────────────────────────────────────────────── */}
       {restoreRecord && (
