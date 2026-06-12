@@ -537,38 +537,42 @@ export default function ResidentsView() {
   };
 
   // ─── DELETE ───────────────────────────────────────────────────────────────
-  const handleDeleteResident = async () => {
-    if (!deleteRecord) return;
-    const rec = residentsData.find((r) => r.id === deleteRecord);
-    if (!rec) return;
-    try {
-      const res = await fetch(`/users/${rec.real_id}`, {
-        method: "DELETE",
-        headers: { Accept: "application/json", "X-CSRF-TOKEN": csrfToken() },
-      });
+const handleDeleteResident = async () => {
+  if (!deleteRecord) return;
+  const rec = residentsData.find((r) => r.id === deleteRecord);
+  if (!rec) return;
+  try {
+    const res = await fetch(`/users/${rec.real_id}`, {
+      method: "DELETE",
+      headers: { Accept: "application/json", "X-CSRF-TOKEN": csrfToken() },
+    });
 
-      if (!res.ok) {
-        const body = await safeParseJson(res);
-        console.error("Delete error:", body.message || res.statusText);
-        return;
-      }
-
-      if (currentUserId === rec.real_id) {
-        localStorage.removeItem("user");
-        localStorage.removeItem("isAuthenticated");
-        sessionStorage.removeItem("user");
-        sessionStorage.removeItem("isAuthenticated");
-        alert("Your account has been deleted successfully. You will be redirected to login.");
-        window.location.href = "/login";
-      } else {
-        setDeleteRecord(null);
-        setShowDeleteSuccess(true);
-        fetchResidents();
-      }
-    } catch (e) {
-      console.error("Delete error:", e);
+    if (!res.ok) {
+      const body = await safeParseJson(res);
+      console.error("Delete error:", body.message || res.statusText);
+      return;
     }
-  };
+
+    if (currentUserId === rec.real_id) {
+      localStorage.removeItem("user");
+      localStorage.removeItem("isAuthenticated");
+      sessionStorage.removeItem("user");
+      sessionStorage.removeItem("isAuthenticated");
+      // ✅ REMOVED BROWSER ALERT — USE ONLY YOUR MODAL
+      setDeleteRecord(null);
+      setShowDeleteSuccess(true); // your own success modal
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 1500); // give user time to read message before redirect
+    } else {
+      setDeleteRecord(null);
+      setShowDeleteSuccess(true);
+      fetchResidents();
+    }
+  } catch (e) {
+    console.error("Delete error:", e);
+  }
+};
 
   // ─── RESTORE ──────────────────────────────────────────────────────────────
   const handleRestoreResident = async () => {
@@ -1377,12 +1381,6 @@ export default function ResidentsView() {
             </div>
             <h3 className="text-xl font-bold text-[#005f63] mb-2">Success</h3>
             <p className="text-[15px] text-gray-600 mb-6">Resident record deleted successfully!</p>
-            <button
-              onClick={() => setShowDeleteSuccess(false)}
-              className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
-            >
-              OK
-            </button>
           </div>
         </div>
       )}

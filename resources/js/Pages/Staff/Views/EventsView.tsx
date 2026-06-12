@@ -56,7 +56,6 @@ export function EventsView({
   const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
   const attendanceItemsPerPage = 20;
 
-  // ✅ FIX: Use a ref to track if we've done our initial load from API
   const initialLoadDone = useRef(false);
   const [localEvents, setLocalEvents] = useState<MyEvent[]>([]);
 
@@ -81,7 +80,6 @@ export function EventsView({
     return today.toISOString().split('T')[0];
   };
 
-  // ✅ FIX: Shared event formatter used in both refreshEventsFromAPI and handleSaveEvent
   const formatDbEvent = (dbEvent: any): MyEvent => {
     let membershipIds: any[] = [];
     if (Array.isArray(dbEvent.membership_ids)) {
@@ -114,7 +112,6 @@ export function EventsView({
     };
   };
 
-  // ✅ FIX: Always fetches fresh data from the API
   const refreshEventsFromAPI = async () => {
     try {
       const response = await fetch('/events-data', {
@@ -123,7 +120,6 @@ export function EventsView({
       });
       const result = await response.json();
 
-      // Handle both { data: [...] } and { data: { data: [...] } } (paginated)
       const rawEvents = Array.isArray(result.data)
         ? result.data
         : (result.data?.data ?? []);
@@ -136,12 +132,9 @@ export function EventsView({
     }
   };
 
-  // ✅ FIX: On mount, fetch fresh from API instead of relying solely on the prop.
-  // The prop (allEvents) is only used as a fallback if the API call hasn't completed yet.
   useEffect(() => {
     if (!initialLoadDone.current) {
       initialLoadDone.current = true;
-      // Seed with prop data immediately so the UI isn't blank, then refresh from API
       if (allEvents.length > 0) {
         setLocalEvents(allEvents);
       }
@@ -149,8 +142,6 @@ export function EventsView({
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ✅ FIX: Only sync prop → state on the very first prop population (when localEvents is still empty)
-  // This prevents parent re-renders from wiping newly created events.
   useEffect(() => {
     if (!initialLoadDone.current && allEvents.length > 0) {
       setLocalEvents(allEvents);
@@ -436,7 +427,6 @@ export function EventsView({
 
     const membershipIds = newEvent.targetMembership === "all" ? [] : [newEvent.targetMembership];
 
-    // ✅ VALIDATION: Prevent creating/updating events with a past date+time
     if (!editingEvent) {
       const selectedDateTime = new Date(`${newEvent.date}T${newEvent.time}`);
       const now = new Date();
@@ -477,15 +467,15 @@ export function EventsView({
       const result = await response.json();
 
       if (!response.ok) {
-        alert(result.message || "Failed to save event");
+        // ❌ REMOVED default browser alert
+        setErrorMessage(result.message || "Failed to save event");
+        setShowErrorModal(true);
+        setIsSubmitting(false);
         return;
       }
 
-      // ✅ FIX: Re-fetch from API to guarantee the new event appears in the list.
-      // This replaces the optimistic local state update that was getting wiped.
       await refreshEventsFromAPI();
 
-      // ✅ Also refresh attendance for new event (clears stale cache entry)
       const savedEvent = result.event ?? result;
       if (savedEvent?.id) {
         setLiveAttendances(prev => {
@@ -513,7 +503,9 @@ export function EventsView({
 
     } catch (error) {
       console.error("Failed to save event:", error);
-      alert("Failed to save event");
+      // ❌ REMOVED default browser alert
+      setErrorMessage("Failed to save event");
+      setShowErrorModal(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -564,9 +556,11 @@ export function EventsView({
   const confirmDelete = () => {
     if (eventToDelete !== null) {
       onDeleteEvent(eventToDelete);
-      // ✅ Also remove from local state immediately for snappy UI
       setLocalEvents(prev => prev.filter(e => e.id !== eventToDelete));
       setEventToDelete(null);
+      // ✅ Optional: Show success message after delete
+      setSuccessMessage("Event deleted successfully!");
+      setShowSuccessModal(true);
     }
   };
 
@@ -582,29 +576,32 @@ export function EventsView({
     });
   };
 
-  const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[]) => {
-    const recordsForEvent = liveAttendances[eventId] || attendanceRecords.filter((a: any) => a.eventId === eventId);
-    const combinedList = recordsForEvent.map((record: any) => ({
-      residentId: record.residentId,
-      residentName: record.residentName,
-      timeIn: record.timeIn || "",
-      timeOut: record.timeOut || ""
-    }));
+const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[]) => {
+  const recordsForEvent = liveAttendances[eventId] || attendanceRecords.filter((a: any) => a.eventId === eventId);
 
-    eligibleMembers.forEach((member: any) => {
-      if (!combinedList.some(item => item.residentId === member.id)) {
-        const memberName = member.name || (member.first_name ? `${member.first_name} ${member.last_name}` : `Resident #${member.id}`);
-        combinedList.push({
-          residentId: member.id,
-          residentName: memberName,
-          timeIn: "",
-          timeOut: ""
-        });
-      }
-    });
-    return combinedList;
-  };
+  const combinedList = recordsForEvent.map((record: any) => ({
+    eventId: eventId, // ✅ keep this for existing records
+    residentId: record.residentId,
+    residentName: record.residentName,
+    timeIn: record.timeIn || "",
+    timeOut: record.timeOut || ""
+  }));
 
+  eligibleMembers.forEach((member: any) => {
+    if (!combinedList.some(item => item.residentId === member.id)) {
+      const memberName = member.name || (member.first_name ? `${member.first_name} ${member.last_name}` : `Resident #${member.id}`);
+      combinedList.push({
+        eventId: eventId, // ✅ ADDED THIS — fixes the error
+        residentId: member.id,
+        residentName: memberName,
+        timeIn: "",
+        timeOut: ""
+      });
+    }
+  });
+
+  return combinedList;
+};
   const getAttendanceStatus = (record: any) => {
     if (record.timeIn && record.timeOut) return { label: "Complete" };
     if (record.timeIn || record.timeOut) return { label: "Incomplete" };
@@ -790,6 +787,7 @@ export function EventsView({
         </div>
       </div>
 
+      {/* ✅ CUSTOM DELETE MODAL — NO BROWSER DEFAULT */}
       {eventToDelete !== null && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl text-center">
@@ -819,7 +817,6 @@ export function EventsView({
         </div>
       )}
 
-      {/* ✅ Error Modal */}
       {showErrorModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setShowErrorModal(false)}>
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
@@ -903,31 +900,34 @@ export function EventsView({
                         </td>
                       </tr>
                     ) : (
-                      paginatedAttendance.map((record: any, i: number) => {
+                                            paginatedAttendance.map((record: any, i: number) => {
                         const status = getAttendanceStatus(record);
+                        let statusColor = "text-gray-600 bg-gray-100";
+                        if (status.label === "Complete") statusColor = "text-green-700 bg-green-100";
+                        if (status.label === "Incomplete") statusColor = "text-yellow-700 bg-yellow-100";
+                        if (status.label === "Missed") statusColor = "text-red-700 bg-red-100";
+
                         return (
-                          <tr key={i} className="border-t">
-                            <td className="p-4">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
-                            <td className="p-4">
+                          <tr key={i} className="border-t border-[#ddd5ca] hover:bg-[#fcfaf6] transition-colors">
+                            <td className="p-4 text-gray-800">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
+                            <td className="p-4 text-gray-700">
                               {record.timeIn ? (
-                                <span className="text-teal-700 flex items-center gap-1">
-                                  <LogIn size={12} /> {formatTime12Hour(record.timeIn)}
+                                <span className="flex items-center gap-2">
+                                  <LogIn className="h-4 w-4 text-green-600" />
+                                  {formatTime12Hour(record.timeIn)}
                                 </span>
                               ) : "—"}
                             </td>
-                            <td className="p-4">
+                            <td className="p-4 text-gray-700">
                               {record.timeOut ? (
-                                <span className="text-orange-700 flex items-center gap-1">
-                                  <LogOut size={12} /> {formatTime12Hour(record.timeOut)}
+                                <span className="flex items-center gap-2">
+                                  <LogOut className="h-4 w-4 text-red-600" />
+                                  {formatTime12Hour(record.timeOut)}
                                 </span>
                               ) : "—"}
                             </td>
                             <td className="p-4">
-                              <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
-                                status.label === "Complete" ? "bg-teal-100 text-teal-800" :
-                                status.label === "Incomplete" ? "bg-amber-100 text-amber-800" :
-                                "bg-red-100 text-red-800"
-                              }`}>
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor}`}>
                                 {status.label}
                               </span>
                             </td>
@@ -938,35 +938,34 @@ export function EventsView({
                   </tbody>
                 </table>
               </div>
+
+              {attendanceTotalPages > 1 && (
+                <div className="flex justify-between items-center mt-6">
+                  <p className="text-sm text-gray-600">
+                    Page {attendanceCurrentPage} of {attendanceTotalPages} • {paginatedAttendance.length} record(s) shown
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setAttendanceCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={attendanceCurrentPage === 1}
+                      className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                    >
+                      ←
+                    </button>
+                    <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                      {attendanceCurrentPage}
+                    </span>
+                    <button
+                      onClick={() => setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1))}
+                      disabled={attendanceCurrentPage === attendanceTotalPages}
+                      className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                    >
+                      →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-
-            {attendanceTotalPages > 1 && (
-              <div className="bg-white z-20 flex justify-end items-center gap-2 p-6 border-t border-gray-200 rounded-b-3xl shrink-0">
-                <button
-                  onClick={() => setAttendanceCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={attendanceCurrentPage === 1}
-                  className="h-9 w-9 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                >
-                  ←
-                </button>
-
-                <span className="h-9 w-9 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
-                  {attendanceCurrentPage}
-                </span>
-
-                <button
-                  onClick={() => setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1))}
-                  disabled={attendanceCurrentPage === attendanceTotalPages}
-                  className="h-9 w-9 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                >
-                  →
-                </button>
-
-                <span className="text-sm text-gray-500 ml-2">
-                  Page {attendanceCurrentPage} of {attendanceTotalPages}
-                </span>
-              </div>
-            )}
           </div>
         </div>
       )}
