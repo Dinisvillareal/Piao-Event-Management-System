@@ -49,6 +49,8 @@ export function EventsView({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const itemsPerPage = 6;
 
   const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
@@ -433,6 +435,25 @@ export function EventsView({
     setIsSubmitting(true);
 
     const membershipIds = newEvent.targetMembership === "all" ? [] : [newEvent.targetMembership];
+
+    // ✅ VALIDATION: Prevent creating/updating events with a past date+time
+    if (!editingEvent) {
+      const selectedDateTime = new Date(`${newEvent.date}T${newEvent.time}`);
+      const now = new Date();
+      if (selectedDateTime < now) {
+        const formattedDate = selectedDateTime.toLocaleDateString("en-US", {
+          month: "long", day: "numeric", year: "numeric"
+        });
+        const formattedTime = selectedDateTime.toLocaleTimeString("en-US", {
+          hour: "numeric", minute: "2-digit", hour12: true
+        });
+        setErrorMessage(`The selected date and time (${formattedDate}, ${formattedTime}) is already in the past. Please choose a future date and time.`);
+        setShowErrorModal(true);
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     const payload: any = {
       name: newEvent.title,
       description: newEvent.description,
@@ -793,6 +814,25 @@ export function EventsView({
               className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
             >
               OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setShowErrorModal(false)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex justify-center text-red-500">
+              <XCircle size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-red-600 mb-2">Invalid Date & Time</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{errorMessage}</p>
+            <button
+              onClick={() => setShowErrorModal(false)}
+              className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+            >
+              Go Back
             </button>
           </div>
         </div>
