@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, Archive, Calendar, CheckCircle } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
 
@@ -39,7 +39,7 @@ export function EventsView({
 }: EventsViewProps) {
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
-  const [selectedDate, setSelectedDate] = useState<string>(""); // ✅ Single date filter
+  const [selectedDate, setSelectedDate] = useState<string>("");
   const [viewEv, setViewEv] = useState<MyEvent | null>(null);
   const [showAttendance, setShowAttendance] = useState<MyEvent | null>(null);
   const [eventToDelete, setEventToDelete] = useState<number | string | null>(null);
@@ -51,17 +51,17 @@ export function EventsView({
   const [successMessage, setSuccessMessage] = useState("");
   const itemsPerPage = 6;
 
-  // Attendance pagination state
   const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
-  const attendanceItemsPerPage = 20; // ✅ 20 per page
+  const attendanceItemsPerPage = 20;
 
-  const [localEvents, setLocalEvents] = useState<MyEvent[]>(allEvents);
+  // ✅ FIX: Use a ref to track if we've done our initial load from API
+  const initialLoadDone = useRef(false);
+  const [localEvents, setLocalEvents] = useState<MyEvent[]>([]);
 
-  // Helper functions for current week (Monday to Sunday)
   const getStartOfWeek = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay();
-    const diff = (day === 0 ? 6 : day - 1); // Monday is 1, Sunday is 0
+    const diff = (day === 0 ? 6 : day - 1);
     d.setDate(d.getDate() - diff);
     d.setHours(0, 0, 0, 0);
     return d;
@@ -74,16 +74,45 @@ export function EventsView({
     return d;
   };
 
-  // ✅ Get today's date in YYYY-MM-DD format (for input min attribute)
   const getTodayString = () => {
     const today = new Date();
     return today.toISOString().split('T')[0];
   };
 
-  useEffect(() => {
-    setLocalEvents(allEvents);
-  }, [allEvents]);
+  // ✅ FIX: Shared event formatter used in both refreshEventsFromAPI and handleSaveEvent
+  const formatDbEvent = (dbEvent: any): MyEvent => {
+    let membershipIds: any[] = [];
+    if (Array.isArray(dbEvent.membership_ids)) {
+      membershipIds = dbEvent.membership_ids;
+    } else if (typeof dbEvent.membership_ids === 'string' && dbEvent.membership_ids.startsWith('[')) {
+      try { membershipIds = JSON.parse(dbEvent.membership_ids); } catch (e) {}
+    } else if (dbEvent.membership_id) {
+      membershipIds = [dbEvent.membership_id];
+    }
 
+    const startDate = dbEvent.event_start?.split(' ')[0] ?? '';
+    const endDate = dbEvent.event_end?.split(' ')[0] ?? startDate;
+    const startTime = dbEvent.event_start?.split(' ')[1]?.slice(0, 5) ?? '';
+    const endTime = dbEvent.event_end?.split(' ')[1]?.slice(0, 5) ?? '';
+
+    return {
+      id: dbEvent.id,
+      title: dbEvent.name,
+      date: dbEvent.event_start,
+      event_start: dbEvent.event_start,
+      startDate,
+      endDate,
+      startTime,
+      endTime,
+      location: dbEvent.location,
+      description: dbEvent.description,
+      notificationMessage: dbEvent.notification_message ?? '',
+      membershipIds,
+      membershipNames: [],
+    };
+  };
+
+  // ✅ FIX: Always fetches fresh data from the API
   const refreshEventsFromAPI = async () => {
     try {
       const response = await fetch('/events-data', {
@@ -92,44 +121,39 @@ export function EventsView({
       });
       const result = await response.json();
 
-      if (result.data) {
-        const formattedEvents = result.data.map((dbEvent: any) => {
-          let membershipIds: any[] = [];
-          if (Array.isArray(dbEvent.membership_ids)) {
-            membershipIds = dbEvent.membership_ids;
-          } else if (typeof dbEvent.membership_ids === 'string' && dbEvent.membership_ids.startsWith('[')) {
-            try { membershipIds = JSON.parse(dbEvent.membership_ids); } catch(e) {}
-          } else if (dbEvent.membership_id) {
-            membershipIds = [dbEvent.membership_id]; 
-          }
-          const startDate = dbEvent.event_start?.split(' ')[0] ?? '';
-          const endDate = dbEvent.event_end?.split(' ')[0] ?? startDate;
-          const startTime = dbEvent.event_start?.split(' ')[1]?.slice(0, 5) ?? '';
-          const endTime = dbEvent.event_end?.split(' ')[1]?.slice(0, 5) ?? '';
+      // Handle both { data: [...] } and { data: { data: [...] } } (paginated)
+      const rawEvents = Array.isArray(result.data)
+        ? result.data
+        : (result.data?.data ?? []);
 
-          return {
-            id: dbEvent.id,
-            title: dbEvent.name,
-            date: dbEvent.event_start,
-            event_start: dbEvent.event_start,
-            startDate,
-            endDate,
-            startTime,
-            endTime,
-            location: dbEvent.location,
-            description: dbEvent.description,
-            notificationMessage: dbEvent.notification_message ?? '',
-            membershipIds,
-            membershipName: 'Open to all',
-          };
-        });
-
-        setLocalEvents(formattedEvents);
+      if (rawEvents.length > 0 || initialLoadDone.current) {
+        setLocalEvents(rawEvents.map(formatDbEvent));
       }
     } catch (error) {
       console.error("Error refreshing events:", error);
     }
   };
+
+  // ✅ FIX: On mount, fetch fresh from API instead of relying solely on the prop.
+  // The prop (allEvents) is only used as a fallback if the API call hasn't completed yet.
+  useEffect(() => {
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      // Seed with prop data immediately so the UI isn't blank, then refresh from API
+      if (allEvents.length > 0) {
+        setLocalEvents(allEvents);
+      }
+      refreshEventsFromAPI();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ✅ FIX: Only sync prop → state on the very first prop population (when localEvents is still empty)
+  // This prevents parent re-renders from wiping newly created events.
+  useEffect(() => {
+    if (!initialLoadDone.current && allEvents.length > 0) {
+      setLocalEvents(allEvents);
+    }
+  }, [allEvents]);
 
   useEffect(() => {
     const handleRefresh = () => {
@@ -141,7 +165,6 @@ export function EventsView({
     };
 
     window.addEventListener('refreshEvents', handleRefresh);
-
     return () => {
       window.removeEventListener('refreshEvents', handleRefresh);
     };
@@ -205,11 +228,9 @@ export function EventsView({
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState("all");
 
-  // ✅ Updated: Format time to 12-hour with AM/PM
   const formatTime12Hour = (timeStr: string | undefined): string => {
     if (!timeStr) return "";
 
-    // Handle full datetime string like "2026-06-03 08:25:14"
     let timePart = timeStr;
     if (timeStr.includes(" ")) {
       timePart = timeStr.split(" ")[1];
@@ -222,7 +243,6 @@ export function EventsView({
     if (hourNum > 12) hourNum -= 12;
     if (hourNum === 0) hourNum = 12;
 
-    // If original string has date, keep it + formatted time
     if (timeStr.includes(" ")) {
       const datePart = timeStr.split(" ")[0];
       return `${datePart} ${hourNum}:${minute} ${ampm}`;
@@ -241,19 +261,6 @@ export function EventsView({
         part
       )
     );
-  };
-
-  const parseEventDate = (value: string) => {
-    if (!value) return new Date(0);
-    let dateStr = value;
-    if (value.includes(" ")) {
-      dateStr = value.split(" ")[0];
-    }
-    if (value.includes("T")) {
-      dateStr = value.split("T")[0];
-    }
-    const date = new Date(dateStr);
-    return isNaN(date.getTime()) ? new Date(0) : date;
   };
 
   const getEventStatus = (event: MyEvent) => {
@@ -292,10 +299,8 @@ export function EventsView({
   const filteredEvents = useMemo(() => {
     let result = [...localEvents];
 
-    // Status filter
     result = result.filter(event => getFilterStatus(event, eventFilter));
 
-    // Search filter
     if (eventSearch.trim()) {
       const q = eventSearch.toLowerCase();
       result = result.filter(
@@ -307,7 +312,6 @@ export function EventsView({
       );
     }
 
-    // ✅ SINGLE DATE FILTER — exact date only
     if (selectedDate) {
       const chosen = new Date(selectedDate);
       chosen.setHours(0, 0, 0, 0);
@@ -331,7 +335,6 @@ export function EventsView({
     return result;
   }, [localEvents, eventFilter, eventSearch, selectedDate]);
 
-  // Sort events so "This Week" events come FIRST (based on current calendar week)
   const sortedFilteredEvents = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -372,7 +375,6 @@ export function EventsView({
     setCurrentPage(1);
   }, [eventSearch, eventFilter, selectedDate]);
 
-  // Group events with correct "This Week" calculation (calendar week, not next 7 days)
   const groupedEvents = useMemo(() => {
     const groups: Record<string, MyEvent[]> = {};
     const today = new Date();
@@ -458,41 +460,22 @@ export function EventsView({
         return;
       }
 
+      // ✅ FIX: Re-fetch from API to guarantee the new event appears in the list.
+      // This replaces the optimistic local state update that was getting wiped.
+      await refreshEventsFromAPI();
+
+      // ✅ Also refresh attendance for new event (clears stale cache entry)
       const savedEvent = result.event ?? result;
-      const savedMembershipIdsRaw = Array.isArray(savedEvent.membership_ids) ? savedEvent.membership_ids : [];
-      const savedMembershipIds = savedMembershipIdsRaw.map((id: any) => String(id));
-
-      const membershipNamesFromPayload = Array.isArray(savedEvent.memberships)
-        ? savedEvent.memberships.map((m: any) => String(m.name))
-        : [];
-
-      const membershipNames = membershipNamesFromPayload.length
-        ? membershipNamesFromPayload
-        : memberships
-            .filter((m: any) => savedMembershipIds.includes(String(m.id)))
-            .map((m: any) => String(m.name));
-
-      const formattedEvent: MyEvent = {
-        id: savedEvent.id,
-        title: savedEvent.name,
-        date: savedEvent.event_start,
-        event_start: savedEvent.event_start,
-        startDate: savedEvent.event_start?.split(" ")[0] ?? newEvent.date,
-        endDate: savedEvent.event_end?.split(" ")[0] ?? newEvent.date,
-        startTime: newEvent.time,
-        endTime: newEvent.time,
-        location: savedEvent.location,
-        description: savedEvent.description,
-        notificationMessage: savedEvent.notification_message ?? newEvent.notificationMessage,
-        membershipIds: savedMembershipIds,
-        membershipNames: membershipNames.length > 0 ? [membershipNames[0]] : [],
-      };
+      if (savedEvent?.id) {
+        setLiveAttendances(prev => {
+          const updated = { ...prev };
+          delete updated[savedEvent.id];
+          return updated;
+        });
+      }
 
       if (editingEvent) {
-        setLocalEvents((prev) => prev.map((ev) => (ev.id === editingEvent.id ? formattedEvent : ev)));
         setEditingEvent(null);
-      } else {
-        setLocalEvents((prev) => [formattedEvent, ...prev]);
       }
 
       setNewEvent({
@@ -500,7 +483,10 @@ export function EventsView({
         notificationMessage: "", targetMembership: "all"
       });
 
-      if (onCreateEvent) onCreateEvent(formattedEvent);
+      if (onCreateEvent && savedEvent) {
+        onCreateEvent(formatDbEvent(savedEvent));
+      }
+
       setSuccessMessage(editingEvent ? "Event updated successfully!" : "Event created successfully!");
       setShowSuccessModal(true);
 
@@ -557,6 +543,8 @@ export function EventsView({
   const confirmDelete = () => {
     if (eventToDelete !== null) {
       onDeleteEvent(eventToDelete);
+      // ✅ Also remove from local state immediately for snappy UI
+      setLocalEvents(prev => prev.filter(e => e.id !== eventToDelete));
       setEventToDelete(null);
     }
   };
@@ -611,7 +599,6 @@ export function EventsView({
     });
   };
 
-  // Attendance pagination data
   const paginatedAttendance = useMemo(() => {
     if (!showAttendance) return [];
     const eligibleMembers = getMembersForEvent(showAttendance);
@@ -629,7 +616,6 @@ export function EventsView({
     return Math.ceil(filtered.length / attendanceItemsPerPage);
   }, [showAttendance, attendanceSearch, attendanceStatusFilter]);
 
-  // Reset attendance page when modal closes
   useEffect(() => {
     if (!showAttendance) setAttendanceCurrentPage(1);
   }, [showAttendance]);
@@ -653,7 +639,6 @@ export function EventsView({
             </div>
 
             <div className="flex flex-wrap gap-3">
-              {/* Status Filter */}
               <div className="relative">
                 <select
                   value={eventFilter}
@@ -667,7 +652,6 @@ export function EventsView({
                 <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
               </div>
 
-              {/* ✅ SINGLE DATE CALENDAR FILTER — same as Activity Logs */}
               <div className="relative h-full">
                 <input
                   type="date"
@@ -723,7 +707,6 @@ export function EventsView({
             <form onSubmit={handleSaveEvent} className="space-y-4 flex-1 overflow-y-auto pr-1">
               <div><label className="block text-sm font-medium text-gray-700 mb-1">Event Title *</label><input type="text" required value={newEvent.title} placeholder="Barangay General Assembly" onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
 
-              {/* ✅ DATE INPUT — CANNOT SELECT PAST DATES */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
                 <input
@@ -732,7 +715,7 @@ export function EventsView({
                   value={newEvent.date}
                   onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
                   className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm"
-                  min={getTodayString()} // ✅ Disable past dates
+                  min={getTodayString()}
                 />
               </div>
 
@@ -827,9 +810,7 @@ export function EventsView({
 
       {showAttendance && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-          {/* ✅ Larger modal */}
           <div className="bg-white w-[95%] max-w-6xl h-[80vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
-            {/* Fixed header */}
             <div className="bg-white z-20 flex items-center justify-between p-6 border-b border-gray-200 rounded-t-3xl shrink-0">
               <div>
                 <h2 className="text-2xl font-black text-[#005f63]">Attendance — {showAttendance.title}</h2>
@@ -840,7 +821,6 @@ export function EventsView({
               </button>
             </div>
 
-            {/* Fixed search & filter */}
             <div className="bg-white z-20 pb-4 mb-4 border-b border-gray-100 px-6 pt-2 flex flex-wrap gap-4 items-center shrink-0">
               <div className="flex-1 min-w-[250px]">
                 <SearchBar
@@ -864,13 +844,11 @@ export function EventsView({
               </div>
             </div>
 
-            {/* ✅ ONLY this part scrolls */}
             <div className="flex-1 px-6 pb-6 overflow-y-auto">
               <div className="rounded-xl border border-[#ddd5ca] w-full">
                 <table className="w-full text-sm">
                   <thead className="bg-[#f8f6f2] sticky top-0 z-10">
                     <tr>
-                      {/* ✅ Proper column widths: Name narrower, others equal */}
                       <th className="text-left p-4 font-medium text-[#005f63] w-[30%]">Resident Name</th>
                       <th className="text-left p-4 font-medium text-[#005f63] w-[25%]">Time In</th>
                       <th className="text-left p-4 font-medium text-[#005f63] w-[25%]">Time Out</th>
@@ -922,7 +900,6 @@ export function EventsView({
               </div>
             </div>
 
-                        {/* ✅ Attendance Pagination - fixed at bottom */}
             {attendanceTotalPages > 1 && (
               <div className="bg-white z-20 flex justify-end items-center gap-2 p-6 border-t border-gray-200 rounded-b-3xl shrink-0">
                 <button
