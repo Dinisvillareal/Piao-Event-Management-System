@@ -268,9 +268,19 @@ class UserController extends Controller
                 'contact_number',
             ]));
 
-            if ($this->isStaff() && $request->filled('role')) {
+        if ($this->isStaff() && $request->filled('role')) {
+            if ($user->role !== $request->role) {
+                $oldRole = $user->role;
+                $user->role = $request->role;
+                $this->createLog(
+                    'Role Change',
+                    'User',
+                    "Changed role of {$user->user_code} from {$oldRole} to {$request->role}"
+                );
+            } else {
                 $user->role = $request->role;
             }
+        }
 
             if ($request->has('has_account')) {
                 $user->has_account = filter_var($request->has_account, FILTER_VALIDATE_BOOLEAN);
