@@ -386,10 +386,7 @@ export default function StaffDashboard() {
   }, [membershipOptions, refreshEventsTrigger]);
 
   const handleDeleteEvent = async (id: string | number) => {
-    if (!window.confirm('Delete this event? It will be moved to Trash.')) {
-      return;
-    }
-
+    // ❌ REMOVED window.confirm — delete directly
     try {
       const token = document.cookie
         .split('; ')
@@ -411,17 +408,17 @@ export default function StaffDashboard() {
       const result = await response.json();
 
       if (!response.ok) {
-        alert(result.message || 'Failed to delete event');
+        // ❌ REMOVED alert(result.message || 'Failed to delete event')
         return;
       }
 
       setAllEvents((prev) => prev.filter((e) => e.id !== id));
       setEventsCount(prev => Math.max(0, prev - 1));
 
-      alert('Event moved to Trash successfully!');
+      // ❌ REMOVED alert('Event moved to Trash successfully!')
     } catch (error) {
       console.error('Error deleting event:', error);
-      alert('Error deleting event');
+      // ❌ REMOVED alert('Error deleting event')
     }
   };
 
@@ -466,3 +463,5 @@ export default function StaffDashboard() {
     </div>
   );
 }
+
+
