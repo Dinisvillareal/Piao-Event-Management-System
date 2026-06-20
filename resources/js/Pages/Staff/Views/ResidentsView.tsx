@@ -1377,20 +1377,28 @@ const handleDeleteResident = async () => {
         </div>
       )}
 
-      {showDeleteSuccess && (
+        {showDeleteSuccess && (
         <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
-          onClick={() => setShowDeleteSuccess(false)}
+            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+            onClick={() => setShowDeleteSuccess(false)}
         >
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-[#005f63] flex justify-center">
-              <CheckCircle size={48} />
+                <CheckCircle size={48} />
             </div>
             <h3 className="text-xl font-bold text-[#005f63] mb-2">Success</h3>
             <p className="text-[15px] text-gray-600 mb-6">Resident record deleted successfully!</p>
-          </div>
+
+            {/* ✅ OK Button added here */}
+            <button
+                onClick={() => setShowDeleteSuccess(false)}
+                className="bg-[#005f63] text-white px-6 py-2 rounded-full font-medium hover:bg-[#004a4d] transition-colors"
+            >
+                OK
+            </button>
+            </div>
         </div>
-      )}
+        )}
 
       {showUpdateSuccess && (
         <div
