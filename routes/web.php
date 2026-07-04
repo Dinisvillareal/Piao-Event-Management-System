@@ -43,7 +43,7 @@ Route::middleware('auth')->group(function () {
     */
     Route::post('/logout', [UserController::class, 'logout']);
     Route::get('/me', [UserController::class, 'me']);
-    Route::post('/change-password', [UserController::class, 'changePassword']);
+    Route::patch('/users/{id}/change-password', [UserController::class, 'changePassword']);
 
     /*
     |--------------------------------------------------------------------------
@@ -99,7 +99,7 @@ Route::middleware('auth')->group(function () {
     Route::put('/events/{id}', [EventController::class, 'update']);
     Route::delete('/events/{id}', [EventController::class, 'destroy']);  // Now soft deletes
     Route::get('/events/{id}', [EventController::class, 'show']);
-    
+
     // 🆕 SOFT DELETE ROUTES (ADDED)
     Route::post('/events/{id}/restore', [EventController::class, 'restore']);        // Restore soft-deleted event
     Route::delete('/events/{id}/force-delete', [EventController::class, 'forceDelete']); // Permanently delete

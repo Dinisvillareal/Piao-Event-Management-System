@@ -67,7 +67,7 @@ class UserController extends Controller
     // CREATE USER
     // =========================
 
-        public function store(StoreUserRequest $request)
+    public function store(StoreUserRequest $request)
     {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -233,7 +233,7 @@ class UserController extends Controller
     // UPDATE USER
     // =========================
 
-     public function update(UpdateUserRequest $request, $id)
+    public function update(UpdateUserRequest $request, $id)
     {
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -285,12 +285,36 @@ class UserController extends Controller
             if ($request->has('has_account')) {
                 $user->has_account = filter_var($request->has_account, FILTER_VALIDATE_BOOLEAN);
             }
-
             if ($request->filled('password')) {
+
+                // Check if the user already has a password
+                $isCreatingPassword = empty($user->password);
+
                 $user->password = Hash::make($request->password);
                 $user->has_account = 1;
-            }
 
+                if ($this->isStaff()) {
+
+                    if ($isCreatingPassword) {
+
+                        $this->createLog(
+                            'Create Password',
+                            'User',
+                            "Created password for user {$user->user_code}"
+                        );
+
+                    } else {
+
+                        $this->createLog(
+                            'Update Password',
+                            'User',
+                            "Updated password for user {$user->user_code}"
+                        );
+
+                    }
+
+                }
+            }
             if ($request->hasFile('validation_id')) {
                 if ($user->validation_id) {
                     $this->localDelete($user->validation_id);
@@ -450,7 +474,9 @@ class UserController extends Controller
     public function changePassword(Request $request, $id)
     {
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+            return response()->json([
+                'message' => 'Unauthorized'
+            ], 403);
         }
 
         $request->validate([
@@ -462,19 +488,18 @@ class UserController extends Controller
         try {
 
             $user = User::findOrFail($id);
+
             $user->password = Hash::make($request->new_password);
             $user->has_account = 1;
             $user->save();
 
-            $this->createLog(
-                'Change Password',
-                'User',
-                "Changed password for user {$user->user_code}"
-            );
+            // Activity log removed
 
             DB::commit();
 
-            return response()->json(['message' => 'Password updated successfully']);
+            return response()->json([
+                'message' => 'Password updated successfully'
+            ], 200);
 
         } catch (\Exception $e) {
 
@@ -486,7 +511,6 @@ class UserController extends Controller
             ], 500);
         }
     }
-
     // =========================
     // LOGOUT
     // =========================
