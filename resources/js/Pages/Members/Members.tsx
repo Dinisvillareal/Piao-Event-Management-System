@@ -7,6 +7,9 @@ import QRCodesView from "./Views/QRCodesView";
 import AttendanceView, { AttendanceRecord } from "./Views/AttendanceView";
 import NotificationsView from "./Views/NotificationsView";
 import EventsView from "./Views/EventsView";
+import OfflineBanner from "../../Components/UI/OfflineBanner";
+import FeedbackPrompt from "../../Components/UI/FeedbackPrompt";
+import api from "../../lib/api";
 
 export default function MemberDashboard() {
   const currentPath = window.location.pathname.replace('/', '');
@@ -28,6 +31,7 @@ export default function MemberDashboard() {
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [pastEvents, setPastEvents] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   const parseApiDate = (value: string) => {
     if (!value) return new Date(0);
@@ -52,15 +56,9 @@ export default function MemberDashboard() {
   // Fetch notifications function (reusable)
   const fetchNotifications = async () => {
     try {
-      const response = await fetch('/notifications', {
-        headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
-        },
-        credentials: 'include'
-      });
-      if (response.ok) {
-        const data = await safeJsonParse(response);
+      const response = await api.get('/notifications');
+      const data = response.data;
+      {
         const notificationsData = data.data || data || [];
         setNotifications(notificationsData.map((notification: any) => ({
           id: notification.id,
@@ -96,32 +94,9 @@ export default function MemberDashboard() {
 
   // ─── FETCH LOGGED-IN USER ────────────────────────────────────────────────────
   useEffect(() => {
-    fetch('/me', {
-      credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    })
-      .then(async (res) => {
-        if (res.status === 401 || res.status === 419) {
-          localStorage.clear();
-          sessionStorage.clear();
-          document.cookie.split(";").forEach((cookie) => {
-            document.cookie = cookie
-              .replace(/^ +/, "")
-              .replace(/=.*/, "=;expires=" + new Date(0).toUTCString() + ";path=/");
-          });
-          window.location.href = "/";
-          return null;
-        }
-        if (!res.ok) {
-          throw new Error("Authentication failed");
-        }
-        return safeJsonParse(res);
-      })
-      .then((user) => {
-        if (!user) return;
+    api.get('/me')
+      .then((res) => {
+        const user = res.data;
         setMember({
           id: user.id,
           name: `${user.first_name} ${user.last_name}`,
@@ -131,10 +106,8 @@ export default function MemberDashboard() {
         });
       })
       .catch((err) => {
+        // The shared axios instance already redirects to "/" on 401/419.
         console.error("Failed to fetch user:", err);
-        localStorage.clear();
-        sessionStorage.clear();
-        window.location.href = "/";
       })
       .finally(() => {
         setLoading(false);
@@ -143,16 +116,9 @@ export default function MemberDashboard() {
 
   // ─── FETCH ALL MEMBERSHIP TYPES (for QR Codes view) ─────────────────────────
   useEffect(() => {
-    fetch('/api/memberships', {
-      credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await safeJsonParse(res);
+    api.get('/api/memberships')
+      .then((res) => {
+        const data = res.data;
         setMemberships(data.data || data || []);
       })
       .catch(err => {
@@ -166,17 +132,9 @@ export default function MemberDashboard() {
     // ✅ NEW: Get portal mode from storage
     const portalMode = localStorage.getItem("portalMode") || sessionStorage.getItem("portalMode") || "member";
 
-    fetch('/events-data', {
-      credentials: 'include',
-      headers: {
-        Accept: 'application/json',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-Portal-Mode': portalMode,  // ✅ NEW: Send portal mode to backend
-      },
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await safeJsonParse(res);
+    api.get('/events-data', { headers: { 'X-Portal-Mode': portalMode } })
+      .then((res) => {
+        const data = res.data;
         if (!data?.data) {
           console.error('No events returned:', data);
           return;
@@ -218,16 +176,9 @@ export default function MemberDashboard() {
   useEffect(() => {
     if (!member.id) return;
 
-    fetch(`/membership-residents/${member.id}?per_page=100`, {
-      credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await safeJsonParse(res);
+    api.get(`/membership-residents/${member.id}`, { params: { per_page: 100 } })
+      .then((res) => {
+        const data = res.data;
         setUserMembershipsCount(data.total || data.memberships?.length || 0);
         setUserMemberships(Array.isArray(data.memberships) ? data.memberships : []);
       })
@@ -247,16 +198,9 @@ export default function MemberDashboard() {
       setMissed(parsedData.missed);
     }
 
-    fetch(`/attendance/${member.id}`, {
-      credentials: 'include',
-      headers: {
-        'Accept': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      }
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await safeJsonParse(res);
+    api.get(`/attendance/${member.id}`)
+      .then((res) => {
+        const data = res.data;
         if (!Array.isArray(data)) return;
 
         const records: AttendanceRecord[] = data.map((item: any) => ({
@@ -322,16 +266,23 @@ export default function MemberDashboard() {
   return (
     <div className="min-h-screen bg-[#fcfcf9] text-gray-900">
       <div className="flex min-h-screen">
-        <Sidebar active={active} setActive={setActive} />
+        <Sidebar
+          active={active}
+          setActive={setActive}
+          mobileOpen={mobileSidebarOpen}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
+        />
 
-        <main className="flex-1">
-          <TopHeader memberName={member.name} />
+        <main className="flex-1 min-w-0">
+          <TopHeader memberName={member.name} onMenuClick={() => setMobileSidebarOpen(true)} userId={member.id} />
+          <OfflineBanner />
+          <FeedbackPrompt />
 
           <div
             className="h-[calc(100vh-73px)] overflow-y-auto smooth-scroll"
             style={{ scrollBehavior: 'smooth', scrollbarGutter: 'stable' }}
           >
-            <div className="space-y-5 p-5">
+            <div className="space-y-5 p-3 sm:p-5">
 
               {/* DASHBOARD */}
               {active === "dashboard" && (

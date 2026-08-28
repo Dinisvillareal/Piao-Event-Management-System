@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Notification;
 use App\Models\Membership;
+use App\Models\SmsLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -139,5 +140,27 @@ class NotificationController extends Controller
             ->update(['read' => true]);
 
         return response()->json(['message' => 'All notifications marked as read']);
+    }
+
+    /**
+     * Adviser recommendation: "Notify by household — head of household —
+     * SMS contact number per household". Staff-facing log of what was
+     * actually sent (or simulated) via App\Services\SmsService, so the
+     * in-app notification list has a visible SMS counterpart.
+     */
+    public function smsLogs(Request $request)
+    {
+        if (Auth::user()->role !== 'Staff') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $query = SmsLog::with(['user:id,first_name,last_name,household_code,is_household_head', 'event:id,name'])
+            ->latest();
+
+        if ($request->filled('event_id')) {
+            $query->where('event_id', $request->event_id);
+        }
+
+        return response()->json($query->paginate((int) $request->get('per_page', 20)));
     }
 }

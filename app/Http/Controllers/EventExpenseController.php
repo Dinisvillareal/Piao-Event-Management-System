@@ -1,0 +1,83 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Event;
+use App\Models\EventExpense;
+use App\Models\ActivityLog;
+use Illuminate\Http\Request;
+
+class EventExpenseController extends Controller
+{
+    private function isStaff()
+    {
+        return auth()->user()?->role === 'Staff';
+    }
+
+    // UC-8: Record Event Budget and Expenses
+    public function index($eventId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $event = Event::withoutTrashed()->findOrFail($eventId);
+
+        return response()->json([
+            'approved_budget' => $event->approved_budget,
+            'total_expenses' => $event->total_expenses,
+            'is_over_budget' => $event->is_over_budget,
+            'expenses' => $event->expenses()->latest()->get(),
+        ]);
+    }
+
+    public function store(Request $request, $eventId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'item' => 'required|string|max:150',
+            'amount' => 'required|numeric|min:0',
+            'notes' => 'nullable|string|max:255',
+        ]);
+
+        $event = Event::withoutTrashed()->findOrFail($eventId);
+
+        $expense = $event->expenses()->create([
+            'item' => $request->item,
+            'amount' => $request->amount,
+            'notes' => $request->notes,
+            'recorded_by' => auth()->user()->user_code,
+        ]);
+
+        ActivityLog::create([
+            'user_code' => auth()->user()->user_code,
+            'action' => 'Create',
+            'module' => 'Budget',
+            'description' => "Recorded expense '{$expense->item}' (PHP {$expense->amount}) for event: {$event->name}",
+        ]);
+
+        $event->refresh();
+
+        return response()->json([
+            'message' => 'Expense recorded',
+            'expense' => $expense,
+            'total_expenses' => $event->total_expenses,
+            'is_over_budget' => $event->is_over_budget,
+        ], 201);
+    }
+
+    public function destroy($eventId, $expenseId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $expense = EventExpense::where('event_id', $eventId)->findOrFail($expenseId);
+        $expense->delete();
+
+        return response()->json(['message' => 'Expense removed']);
+    }
+}

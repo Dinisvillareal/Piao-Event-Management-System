@@ -10,6 +10,8 @@ use App\Models\ActivityLog;
 use App\Models\EventAttendance;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Services\SmsService;
+use App\Services\FacebookService;
 
 class EventController extends Controller
 {
@@ -113,6 +115,8 @@ class EventController extends Controller
             'membership_ids'       => 'nullable|array',
             'membership_ids.*'     => 'integer|exists:memberships,id',
             'notification_message' => 'nullable|string|max:500',
+            'approved_budget'      => 'nullable|numeric|min:0',
+            'post_to_facebook'     => 'nullable|boolean',
         ]);
 
         DB::beginTransaction();
@@ -126,10 +130,19 @@ class EventController extends Controller
                 'event_end'            => null,
                 'membership_ids'       => $request->membership_ids ?? [],
                 'notification_message' => $request->notification_message,
+                'approved_budget'      => $request->approved_budget,
             ]);
 
             $event->createAttendanceRecords();
             $this->sendEventNotifications($event, false);
+
+            // Adviser recommendation: "2 in 1 — Facebook Page" second announcement channel
+            if (filter_var($request->post_to_facebook, FILTER_VALIDATE_BOOLEAN)) {
+                app(FacebookService::class)->postEvent(
+                    'New Event: ' . $event->name,
+                    $event->notification_message ?? $event->description
+                );
+            }
 
             DB::commit();
 
@@ -176,6 +189,7 @@ class EventController extends Controller
             'membership_ids'       => 'nullable|array',
             'membership_ids.*'     => 'integer|exists:memberships,id',
             'notification_message' => 'nullable|string|max:500',
+            'approved_budget'      => 'nullable|numeric|min:0',
         ]);
 
         // ✅ MODIFIED: Find event excluding soft-deleted
@@ -196,6 +210,7 @@ class EventController extends Controller
                 'event_start'          => $request->event_start,
                 'membership_ids'       => $newMembershipIds,
                 'notification_message' => $request->notification_message,
+                'approved_budget'      => $request->approved_budget,
             ]);
 
             if ($membershipChanged) {
@@ -380,6 +395,18 @@ public function destroy($id)
                 ->whereIn('membership_id', $membershipIds)
                 ->pluck('user_id')
                 ->unique();
+
+        // Adviser recommendation: household-head SMS, sent once per household so
+        // it complements (not duplicates) the in-app notifications below. Only
+        // fired on the initial announcement, not on every minor edit.
+        if (!$isUpdate) {
+            $residents = User::where('role', 'Resident')
+                ->whereIn('id', $userIds)
+                ->get(['id', 'contact_number', 'household_code', 'is_household_head', 'household_contact_number']);
+
+            $smsMessage = trim($event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.'));
+            app(SmsService::class)->notifyHouseholds($residents, $event->id, $smsMessage);
+        }
 
         $staff = auth()->user();
         $staffName = 'Staff: ' . $staff->last_name;

@@ -1,5 +1,6 @@
 import SummaryCard from "../../../Components/UI/SummaryCard";
 import { useMemo } from "react";
+import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface Notification {
   id: number;
@@ -41,6 +42,7 @@ export default function DashboardView({
   pastEventsCount,
   highlightText,
 }: DashboardViewProps) {
+  const { t } = useLanguage();
 
   const formatDateCard = (dateStr: string): string => {
     try {
@@ -100,34 +102,34 @@ export default function DashboardView({
     <>
       <div className="rounded-[30px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">
-          Member Dashboard
+          {t("memberDashboard")}
         </p>
-        <h1 className="mt-2 text-4xl font-black">Welcome back, {memberName}!</h1>
+        <h1 className="mt-2 text-4xl font-black">{t("welcomeBack")}, {memberName}!</h1>
         <p className="mt-2 text-base text-white/90">
-          You are signed in as a resident member.
+          {t("signedInAsResident")}
         </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <SummaryCard
           value={membershipsCount}
-          title="Verified Memberships"
+          title={t("verifiedMemberships")}
           gradient="from-orange-400 to-yellow-300"
-          description="Membership programs you are enrolled in"
+          description={t("membershipsDesc")}
           onClick={() => setActive("qr")}
         />
         <SummaryCard
           value={attendedCount}
-          title="Events Attended"
+          title={t("eventsAttended")}
           gradient="from-[#067a7a] to-[#5fd3d3]"
-          description="Events you have successfully checked in to"
+          description={t("eventsAttendedDesc")}
           onClick={() => setActive("attendance")}
         />
         <SummaryCard
           value={upcomingEvents.length}
-          title="Upcoming Events"
+          title={t("upcomingEvents")}
           gradient="from-yellow-300 to-orange-400"
-          description="Events you're eligible to attend"
+          description={t("upcomingEventsDesc")}
           onClick={() => setActive("events")}
         />
       </div>
@@ -137,14 +139,14 @@ export default function DashboardView({
         <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300 flex flex-col h-full">
           <div className="flex items-center justify-between flex-shrink-0">
             <div>
-              <h2 className="text-2xl font-black text-[#005f63]">This Week's Notifications</h2>
-              <p className="mt-1 text-gray-600">Latest announcements from this week.</p>
+              <h2 className="text-2xl font-black text-[#005f63]">{t("thisWeekNotifications")}</h2>
+              <p className="mt-1 text-gray-600">{t("thisWeekNotificationsDesc")}</p>
             </div>
             <button
               onClick={() => setActive("notify")}
               className="text-sm text-[#005f63] hover:underline font-medium transition-colors flex-shrink-0"
             >
-              View all →
+              {t("viewAll")}
             </button>
           </div>
 
@@ -157,8 +159,8 @@ export default function DashboardView({
                 <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
-                <p className="text-base">No notifications this week</p>
-                <p className="text-sm mt-1">Check back later for updates</p>
+                <p className="text-base">{t("noNotificationsThisWeek")}</p>
+                <p className="text-sm mt-1">{t("checkBackLater")}</p>
               </div>
             ) : (
               thisWeekNotifications.map((item) => {
@@ -225,14 +227,14 @@ export default function DashboardView({
         <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300 flex flex-col h-full">
           <div className="flex items-center justify-between flex-shrink-0">
             <div>
-              <h2 className="text-2xl font-black text-[#005f63]">Upcoming Events</h2>
-              <p className="mt-1 text-gray-600">Events you're eligible to attend.</p>
+              <h2 className="text-2xl font-black text-[#005f63]">{t("upcomingEvents")}</h2>
+              <p className="mt-1 text-gray-600">{t("upcomingEventsDesc")}</p>
             </div>
             <button
               onClick={() => setActive("events")}
               className="text-sm text-[#005f63] hover:underline font-medium transition-colors flex-shrink-0"
             >
-              View all →
+              {t("viewAll")}
             </button>
           </div>
 
@@ -245,8 +247,8 @@ export default function DashboardView({
                 <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
-                <p className="text-base">No upcoming events</p>
-                <p className="text-sm mt-1">Check back later for updates</p>
+                <p className="text-base">{t("noUpcomingEvents")}</p>
+                <p className="text-sm mt-1">{t("checkBackLater")}</p>
               </div>
             ) : (
               latestEvents.map((e) => (

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Search, Filter, Calendar } from "lucide-react";
+import { useLanguage } from "../../../i18n/LanguageContext";
 
 type Activity = {
   id: number;
@@ -14,6 +15,7 @@ type Activity = {
 const itemsPerPage = 20;
 
 export default function ActivityLogsView() {
+  const { t } = useLanguage();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
@@ -133,15 +135,15 @@ export default function ActivityLogsView() {
     return (
       <div className="space-y-6">
         <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
-          <h1 className="text-4xl font-black text-[#005f63]">Activity Logs</h1>
+          <h1 className="text-4xl font-black text-[#005f63]">{t("activitylogs")}</h1>
           <p className="mt-1 text-sm text-[#667777]">
-            Complete record of all actions and changes made in the system.
+            {t("activityLogsSubtitle")}
           </p>
           <div className="mt-4 flex items-stretch gap-4 w-full">
             <div className="flex-1"><div className="w-full h-10 bg-gray-200 rounded-full animate-pulse"></div></div>
             <div className="flex gap-3"><div className="w-[140px] h-10 bg-gray-200 rounded-full animate-pulse"></div><div className="w-[140px] h-10 bg-gray-200 rounded-full animate-pulse"></div></div>
           </div>
-          <p className="mt-2 text-xs text-gray-500">Loading records...</p>
+          <p className="mt-2 text-xs text-gray-500">{t("loadingRecords")}</p>
         </div>
         <div className="px-1 space-y-0">{Array(5).fill(0).map((_, i) => <SkeletonItem key={i} />)}</div>
       </div>
@@ -151,9 +153,9 @@ export default function ActivityLogsView() {
   return (
     <div className="space-y-6">
       <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
-        <h1 className="text-4xl font-black text-[#005f63]">Activity Logs </h1>
+        <h1 className="text-4xl font-black text-[#005f63]">{t("activitylogs")}</h1>
         <p className="mt-1 text-sm text-[#667777]">
-          Complete record of all actions and changes made in the system.
+          {t("activityLogsSubtitle")}
         </p>
 
         <div className="mt-4 flex flex-col sm:flex-row items-stretch gap-4 w-full">
@@ -164,7 +166,7 @@ export default function ActivityLogsView() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search activities by action, description, user or module..."
+                placeholder={t("searchActivitiesPlaceholder")}
                 className="w-full pl-10 pr-4 py-3.5 rounded-full border border-[#005f63]/20 bg-white text-base shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30"
               />
             </div>
@@ -177,13 +179,13 @@ export default function ActivityLogsView() {
                 onChange={(e) => setFilterType(e.target.value)}
                 className="h-full pl-10 pr-8 py-3.5 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
               >
-                <option value="all">All Activities</option>
-                <option value="event">Events</option>
-                <option value="resident">Residents</option>
-                <option value="membership">Memberships</option>
-                <option value="notification">Notifications</option>
-                <option value="scan">QR Scans</option>
-                <option value="system">System / Auth</option>
+                <option value="all">{t("allActivities")}</option>
+                <option value="event">{t("events")}</option>
+                <option value="resident">{t("residents")}</option>
+                <option value="membership">{t("memberships")}</option>
+                <option value="notification">{t("notify")}</option>
+                <option value="scan">{t("qrScansOption")}</option>
+                <option value="system">{t("systemAuthOption")}</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
@@ -201,7 +203,7 @@ export default function ActivityLogsView() {
         </div>
 
         <p className="mt-2 text-xs text-gray-500">
-          {filteredActivities.length} record(s) found — showing {itemsPerPage} per page
+          {filteredActivities.length} {t("recordsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
         </p>
 
         {/* ✅ PAGINATION — now synced with filters */}
@@ -232,7 +234,7 @@ export default function ActivityLogsView() {
         {filteredActivities.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-[#005f63]/20 bg-white p-10 text-center text-gray-500">
             <Filter size={40} className="mx-auto mb-3 text-[#005f63]/40" />
-            <p>No activity records match your current filters.</p>
+            <p>{t("noActivityMatch")}</p>
           </div>
         ) : (
           filteredActivities.map((act, index) => (
@@ -241,7 +243,7 @@ export default function ActivityLogsView() {
               <span className="absolute left-[4px] top-2 w-[8px] h-[8px] rounded-full bg-orange-400 z-10"></span>
               <p className="text-base font-semibold text-[#005f63] leading-tight">{act.action}</p>
               <p className="text-sm text-gray-600 mt-0.5">{act.module} — {act.description}</p>
-              <p className="text-sm text-gray-500 mt-0.5">Staff: {act.user_code}</p>
+              <p className="text-sm text-gray-500 mt-0.5">{t("staffColon")} {act.user_code}</p>
               <p className="text-sm text-gray-500 mt-0.5">{formatDateTime(act.created_at)}</p>
             </div>
           ))

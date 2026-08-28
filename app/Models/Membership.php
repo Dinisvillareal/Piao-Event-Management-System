@@ -10,7 +10,7 @@ class Membership extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['name', 'description', 'is_active', 'deactivated_reason','deleted_by'];
+    protected $fillable = ['name', 'description', 'is_active', 'deactivated_reason','deleted_by', 'eligible_age_bracket_id', 'eligible_civil_status_id'];
 
     public $timestamps = false;
 
@@ -38,6 +38,21 @@ class Membership extends Model
     public function hasResidentsAssigned(): bool
     {
         return $this->users()->count() > 0;
+    }
+
+    /**
+     * Adviser example (Senior Citizen eligibility) -- optional age/status
+     * gate Staff can attach to a membership under Settings -> Profiling.
+     * Null on either side means "no restriction" (open to everyone).
+     */
+    public function eligibleAgeBracket()
+    {
+        return $this->belongsTo(AgeBracket::class, 'eligible_age_bracket_id');
+    }
+
+    public function eligibleCivilStatus()
+    {
+        return $this->belongsTo(CivilStatus::class, 'eligible_civil_status_id');
     }
 
     // ✅ ADD THIS METHOD - Archive (soft delete)

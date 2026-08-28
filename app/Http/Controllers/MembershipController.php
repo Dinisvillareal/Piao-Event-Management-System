@@ -32,6 +32,7 @@ class MembershipController extends Controller
         // ✅ ONLY show active (not archived) memberships
         $memberships = Membership::withoutTrashed()
             ->where('is_active', true)
+            ->with(['eligibleAgeBracket', 'eligibleCivilStatus'])
             ->get();
         
         return response()->json($memberships);
@@ -48,7 +49,9 @@ class MembershipController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255',
-            'description' => 'nullable|string'
+            'description' => 'nullable|string',
+            'eligible_age_bracket_id' => 'nullable|exists:age_brackets,id',
+            'eligible_civil_status_id' => 'nullable|exists:civil_statuses,id',
         ]);
 
         DB::beginTransaction();
@@ -58,6 +61,8 @@ class MembershipController extends Controller
                 'name' => $request->name,
                 'description' => $request->description,
                 'is_active' => true,  // ✅ Explicitly set active
+                'eligible_age_bracket_id' => $request->eligible_age_bracket_id ?: null,
+                'eligible_civil_status_id' => $request->eligible_civil_status_id ?: null,
             ]);
 
             $this->createLog(
@@ -83,7 +88,11 @@ class MembershipController extends Controller
     // =========================
     public function show($id)
     {
-        return response()->json(Membership::withoutTrashed()->findOrFail($id));
+        return response()->json(
+            Membership::withoutTrashed()
+                ->with(['eligibleAgeBracket', 'eligibleCivilStatus'])
+                ->findOrFail($id)
+        );
     }
 
     // =========================
@@ -97,7 +106,9 @@ class MembershipController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255',
-            'description' => 'nullable|string'
+            'description' => 'nullable|string',
+            'eligible_age_bracket_id' => 'nullable|exists:age_brackets,id',
+            'eligible_civil_status_id' => 'nullable|exists:civil_statuses,id',
         ]);
 
         DB::beginTransaction();
@@ -107,7 +118,9 @@ class MembershipController extends Controller
 
             $membership->update([
                 'name' => $request->name,
-                'description' => $request->description
+                'description' => $request->description,
+                'eligible_age_bracket_id' => $request->eligible_age_bracket_id ?: null,
+                'eligible_civil_status_id' => $request->eligible_civil_status_id ?: null,
             ]);
 
             $this->createLog(

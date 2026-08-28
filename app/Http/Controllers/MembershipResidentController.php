@@ -37,6 +37,7 @@ public function index()
 
             return [
                 'user_id' => $user->id,
+                'id' => $user->id,
                 'user_code' => $user->user_code,
                 'first_name' => $user->first_name,
                 'middle_name' => $user->middle_name,
@@ -52,6 +53,17 @@ public function index()
                 'validation_id_url' => $user->validation_id
                     ? asset('storage/' . $user->validation_id)
                     : null,
+
+                // Adviser recommendations: age profiling + household SMS notify
+                'birth_date' => $user->birth_date?->format('Y-m-d'),
+                'age' => $user->age,
+                'age_group' => $user->age_group,
+                'address' => $user->address,
+                'civil_status_id' => $user->civil_status_id,
+                'civil_status' => $user->civil_status,
+                'household_code' => $user->household_code,
+                'is_household_head' => $user->is_household_head,
+                'household_contact_number' => $user->household_contact_number,
             ];
         })
     );

@@ -118,16 +118,27 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  Menu,
+  X as XIcon,
 } from "lucide-react";
 import React, { useState } from "react";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 interface SidebarProps {
   active: string;
   setActive: (page: string) => void;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
-export default function Sidebar({ active, setActive }: SidebarProps) {
+export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile }: SidebarProps) {
+  const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(true); // controls show/hide
+
+  const handleNavClick = (page: string) => {
+    setActive(page);
+    onCloseMobile?.();
+  };
 
   const navItems = [
     { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -166,10 +177,14 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
 
   return (
     <>
-      {/* Toggle Button */}
+      {mobileOpen && (
+        <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={onCloseMobile} />
+      )}
+
+      {/* Toggle Button (desktop collapse) */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed top-4 z-50 bg-[#006666] text-white p-1.5 rounded-full shadow-md transition-all duration-300 ${
+        className={`hidden md:flex fixed top-4 z-50 bg-[#006666] text-white p-1.5 rounded-full shadow-md transition-all duration-300 ${
           isOpen ? "left-[235px]" : "left-[55px]"
         }`}
       >
@@ -177,10 +192,13 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
       </button>
 
       <aside
-        className={`flex-col border-r border-[#006666] bg-[#006666] h-screen sticky top-0 transition-all duration-300 flex overflow-hidden ${
-          isOpen ? "w-[250px]" : "w-[70px]"
-        }`}
+        className={`flex-col border-r border-[#006666] bg-[#006666] h-screen fixed md:sticky top-0 z-40 transition-all duration-300 flex overflow-hidden w-[250px] ${
+          isOpen ? "md:w-[250px]" : "md:w-[70px]"
+        } ${mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
+        <button onClick={onCloseMobile} className="md:hidden absolute top-4 right-4 z-10 text-white/80 hover:text-white">
+          <XIcon size={20} />
+        </button>
         {/* Sidebar Header */}
         <div className="border-b border-[#007777] px-3 py-5 shrink-0 flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent shrink-0 shadow-md overflow-hidden">
@@ -211,7 +229,7 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
               isOpen ? "opacity-100" : "opacity-0"
             }`}
           >
-            Member Area
+            {t("memberArea")}
           </p>
           <div className="space-y-1.5">
             {/* ✅ FIX: changed NAV → navItems */}
@@ -220,7 +238,7 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
               return (
                 <button
                   key={item.key}
-                  onClick={() => setActive(item.key)}
+                  onClick={() => handleNavClick(item.key)}
                   className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${
                     isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"
                   } ${
@@ -235,7 +253,7 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
                       isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"
                     }`}
                   >
-                    {item.label}
+                    {t(item.key)}
                   </span>
                 </button>
               );
@@ -257,7 +275,7 @@ export default function Sidebar({ active, setActive }: SidebarProps) {
                 isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"
               }`}
             >
-              Sign out
+              {t("signOut")}
             </span>
           </button>
         </div>

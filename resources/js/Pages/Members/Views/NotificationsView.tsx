@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import SearchBar from "../../../Components/UI/SearchBar";
 import { Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, AlertTriangle, Filter } from "lucide-react";
 import { createPortal } from "react-dom";
+import { useLanguage } from "../../../i18n/LanguageContext";
 
 
 interface Notification {
@@ -31,6 +32,7 @@ interface NotificationsViewProps {
 
 
 export default function NotificationsView({ highlightText }: NotificationsViewProps) {
+   const { t } = useLanguage();
    const [notifications, setNotifications] = useState<Notification[]>([]);
    const [loading, setLoading] = useState(true);
    const [notificationSearch, setNotificationSearch] = useState("");
@@ -124,7 +126,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
        }
 
        if (notification.type === 'event_deleted' || !notification.event || notification.event?.deleted_at) {
-           alert('⚠️ We apologize for the inconvenience.\n\nThis event has been cancelled or deleted.\nNo further details are available.');
+           alert(t("eventCancelledAlert"));
            return;
        }
 
@@ -280,9 +282,9 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
            <div className="flex-shrink-0 bg-[#fcfcf9] pt-2 pb-6 px-1 sm:px-2 shadow-b-sm">
                <div className="flex items-center justify-between">
                    <div>
-                       <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">Notifications</h1>
+                       <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("notify")}</h1>
                        <p className="text-xs sm:text-sm text-[#667777] mt-1">
-                           Official announcements, updates, and reminders from barangay staff.
+                           {t("notificationsSubtitle")}
                        </p>
                    </div>
                </div>
@@ -293,7 +295,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                        <SearchBar
                            value={notificationSearch}
                            onChange={setNotificationSearch}
-                           placeholder="Search notifications by title or message..."
+                           placeholder={t("searchNotificationsPlaceholder")}
                        />
                    </div>
 
@@ -305,9 +307,9 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                onChange={(e) => setDateFilter(e.target.value)}
                                className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
                            >
-                               <option value="all">All Notifications</option>
-                               <option value="upcoming">Upcoming</option>
-                               <option value="past">Past</option>
+                               <option value="all">{t("allNotifications")}</option>
+                               <option value="upcoming">{t("upcomingOption")}</option>
+                               <option value="past">{t("pastOption")}</option>
                            </select>
                            <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
                        </div>
@@ -319,9 +321,9 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                onChange={(e) => setStatusFilter(e.target.value)}
                                className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
                            >
-                               <option value="all">All Status</option>
-                               <option value="read">Read</option>
-                               <option value="unread">Unread</option>
+                               <option value="all">{t("allStatus")}</option>
+                               <option value="read">{t("readOption")}</option>
+                               <option value="unread">{t("unreadOption")}</option>
                            </select>
                            <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
                        </div>
@@ -329,7 +331,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                </div>
 
                <p className="mt-2 text-xs text-gray-500">
-                   {filteredNotifications.length} notification(s) found — showing {itemsPerPage} per page
+                   {filteredNotifications.length} {t("notificationsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
                </p>
 
 
@@ -367,7 +369,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                {filteredNotifications.length === 0 ? (
                    <div className="rounded-3xl border border-dashed border-[#005f63]/20 bg-white p-10 text-center text-gray-500">
                        <Bell size={40} className="mx-auto mb-3 text-[#005f63]/40" />
-                       <p>No notifications match your current filters.</p>
+                       <p>{t("noNotificationsMatch")}</p>
                    </div>
                ) : (
                    <div className="space-y-3">
@@ -429,7 +431,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                            {isDeleted && (
                                                <div className="flex items-center gap-2 mt-2">
                                                    <AlertTriangle size={14} className="text-gray-500" />
-                                                   <span className="text-xs text-gray-500">This event has been cancelled</span>
+                                                   <span className="text-xs text-gray-500">{t("eventCancelledNote")}</span>
                                                </div>
                                            )}
                                        </div>
@@ -453,7 +455,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                    <div className="bg-white rounded-3xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl transform transition-all">
                        <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between rounded-t-3xl z-10">
-                           <h3 className="text-lg font-bold text-[#005f63]">Notification Details</h3>
+                           <h3 className="text-lg font-bold text-[#005f63]">{t("notificationDetails")}</h3>
                            <button
                                onClick={closeModal}
                                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
@@ -467,7 +469,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                            {/* Staff and Sent Info */}
                            <div className="flex items-center justify-between w-full">
                                <span className="text-sm text-gray-800">
-                                   {parseMessage(selectedNotification.message).staffName || 'Barangay Staff'}
+                                   {parseMessage(selectedNotification.message).staffName || t("barangayStaffFallback")}
                                </span>
                                <div className="flex items-center gap-2 text-gray-600">
                                    <Send size={16} />
@@ -483,7 +485,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                    <div className="flex items-start gap-3 text-gray-700">
                                        <Calendar size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                        <div className="text-sm">
-                                           <span className="font-medium">Date:</span>{' '}
+                                           <span className="font-medium">{t("dateColon")}</span>{' '}
                                            <span>{formatEventDate(selectedNotification.event.event_start)}</span>
                                        </div>
                                    </div>
@@ -492,7 +494,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                    <div className="flex items-start gap-3 text-gray-700">
                                        <Clock size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                        <div className="text-sm">
-                                           <span className="font-medium">Time:</span>{' '}
+                                           <span className="font-medium">{t("timeColon")}</span>{' '}
                                            <span>{formatEventTime(selectedNotification.event.event_start)}</span>
                                        </div>
                                    </div>
@@ -502,7 +504,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                        <div className="flex items-start gap-3 text-gray-700">
                                            <MapPin size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                            <div className="text-sm">
-                                               <span className="font-medium">Location:</span>{' '}
+                                               <span className="font-medium">{t("locationColon")}</span>{' '}
                                                <span>{selectedNotification.event.location}</span>
                                            </div>
                                        </div>
@@ -513,7 +515,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                        <div className="flex items-start gap-3 text-gray-700">
                                            <FileText size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                            <div className="text-sm">
-                                               <span className="font-medium">Event Details:</span>
+                                               <span className="font-medium">{t("eventDetailsColon")}</span>
                                                <p className="text-gray-600 mt-1">{selectedNotification.event.description}</p>
                                            </div>
                                        </div>
@@ -527,7 +529,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                <div className="flex items-start gap-3 text-gray-700">
                                    <MessageSquare size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                    <div className="text-sm">
-                                       <span className="font-medium">Message:</span>
+                                       <span className="font-medium">{t("messageColon")}</span>
                                        <p className="text-gray-700 mt-1">
                                            {parseMessage(selectedNotification.message).actualMessage || selectedNotification.message}
                                        </p>

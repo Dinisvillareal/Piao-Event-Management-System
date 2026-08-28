@@ -1,6 +1,9 @@
 import { useState, useMemo, useEffect } from "react";
 import { Filter } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
+import { useLanguage } from "../../../i18n/LanguageContext";
+
+const THIS_WEEK_KEY = "__THIS_WEEK__";
 
 interface Event {
   id: number;
@@ -25,6 +28,7 @@ export default function EventsView({
   userMemberships,
   highlightText,
 }: EventsViewProps) {
+  const { t } = useLanguage();
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
@@ -130,7 +134,7 @@ export default function EventsView({
       let sectionKey: string;
       
       if (eventDate >= weekStart && eventDate <= weekEnd) {
-        sectionKey = "📅 This Week";
+        sectionKey = THIS_WEEK_KEY;
       } else {
         sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
           weekday: "long",
@@ -145,8 +149,8 @@ export default function EventsView({
     });
 
     const sortedGroups = Object.entries(groups).sort(([keyA], [keyB]) => {
-      if (keyA === "📅 This Week") return -1;
-      if (keyB === "📅 This Week") return 1;
+      if (keyA === THIS_WEEK_KEY) return -1;
+      if (keyB === THIS_WEEK_KEY) return 1;
       return new Date(keyB).getTime() - new Date(keyA).getTime();
     });
 
@@ -157,9 +161,9 @@ export default function EventsView({
     <div className="space-y-6">
       <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
         <div className="w-full">
-          <h1 className="text-4xl font-black text-[#005f63]">Events & Attendance</h1>
+          <h1 className="text-4xl font-black text-[#005f63]">{t("eventsAndAttendance")}</h1>
           <p className="mt-1 text-sm text-[#667777]">
-            Filter and view all, upcoming, and past events.
+            {t("eventsSubtitle")}
           </p>
 
           <div className="mt-4 flex items-center gap-4 w-full">
@@ -167,7 +171,7 @@ export default function EventsView({
               <SearchBar
                 value={eventSearch}
                 onChange={setEventSearch}
-                placeholder="Search events by title, date, location or description..."
+                placeholder={t("searchEventsPlaceholder")}
               />
             </div>
 
@@ -177,9 +181,9 @@ export default function EventsView({
                 onChange={(e) => setEventFilter(e.target.value)}
                 className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
               >
-                <option value="all">All Events</option>
-                <option value="upcoming">Upcoming Events</option>
-                <option value="past">Past Events</option>
+                <option value="all">{t("allEvents")}</option>
+                <option value="upcoming">{t("upcomingEvents")}</option>
+                <option value="past">{t("pastEvents")}</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
               <svg className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -193,7 +197,7 @@ export default function EventsView({
                 onChange={(e) => setMembershipFilter(e.target.value)}
                 className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
               >
-                <option value="all">All Memberships</option>
+                <option value="all">{t("allMembershipsOption")}</option>
                 {userMemberships.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}
@@ -208,7 +212,7 @@ export default function EventsView({
           </div>
 
           <p className="mt-2 text-xs text-gray-500">
-            {filteredEvents.length} of {allEvents.length} event(s) match
+            {filteredEvents.length} of {allEvents.length} {t("eventsMatchCount")}
           </p>
 
           {/* ✅ PAGINATION - ← 1 → RIGHT SIDE BELOW SEARCH BAR */}
@@ -242,13 +246,13 @@ export default function EventsView({
 
       <div className="pl-1">
         {filteredEvents.length === 0 ? (
-          <p className="text-gray-500 italic">No events match your search or filter.</p>
+          <p className="text-gray-500 italic">{t("noEventsMatch")}</p>
         ) : (
           <div className="space-y-8">
             {Object.entries(groupedEvents).map(([dateLabel, eventsInGroup]) => (
               <div key={dateLabel}>
                 <h3 className="mb-4 border-b border-gray-200 pb-2 text-lg font-bold text-[#005f63]">
-                  {dateLabel}
+                  {dateLabel === THIS_WEEK_KEY ? t("thisWeekLabel") : dateLabel}
                 </h3>
                 <div className="grid gap-5 md:grid-cols-2">
                   {eventsInGroup.map((e) => {
@@ -275,7 +279,7 @@ export default function EventsView({
                             }`}
                           />
                           <span className="text-xs font-medium text-gray-600">
-                            {isUpcoming ? "Upcoming" : "Past"}
+                            {isUpcoming ? t("upcomingBadge") : t("pastBadge")}
                           </span>
                         </div>
 
@@ -299,15 +303,15 @@ export default function EventsView({
                           {memNames.length > 0 ? (
                             <>
                               <span className="rounded-full bg-[#005f63]/10 px-3 py-1 text-xs font-semibold text-[#005f63] border border-[#005f63]/20">
-                                For: {memNames.join(", ")}
+                                {t("forLabel")} {memNames.join(", ")}
                               </span>
                               <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-500 border border-gray-200">
-                                Included in your membership
+                                {t("includedInMembership")}
                               </span>
                             </>
                           ) : (
                             <span className="rounded-full bg-[#005f63]/10 px-3 py-1 text-xs font-semibold text-[#005f63] border border-[#005f63]/20">
-                              Open Event — All Residents
+                              {t("openEventAllResidents")}
                             </span>
                           )}
                         </div>

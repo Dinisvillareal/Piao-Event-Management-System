@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, Filter, XCircle, CheckCircle } from 'lucide-react';
 import SearchBar from '../../../Components/UI/SearchBar';
+import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface TrashedItem {
   id: string | number;
@@ -11,7 +12,15 @@ interface TrashedItem {
   originalData?: any;
 }
 
+const TYPE_LABEL_KEYS: Record<TrashedItem["type"], string> = {
+  event: "events",
+  resident: "residents",
+  membership: "memberships",
+  notification: "notify",
+};
+
 export default function ArchiveView() {
+  const { t } = useLanguage();
   const [allTrashedItems, setAllTrashedItems] = useState<TrashedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [restoringId, setRestoringId] = useState<string | number | null>(null);
@@ -24,7 +33,7 @@ export default function ArchiveView() {
   const [restoreItem, setRestoreItem] = useState<TrashedItem | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('Failed to restore item');
+  const [errorMessage, setErrorMessage] = useState('');
 
   const formatTimeOnly = (dateTimeStr?: string) => {
     if (!dateTimeStr) return '';
@@ -112,12 +121,12 @@ export default function ArchiveView() {
         setShowSuccessModal(true);
       } else {
         const result = await response.json();
-        setErrorMessage(result.message || 'Failed to restore item');
+        setErrorMessage(result.message || t("restoreItemFailedDefault"));
         setShowErrorModal(true);
       }
     } catch (error) {
       console.error('Error restoring:', error);
-      setErrorMessage('An error occurred while restoring');
+      setErrorMessage(t("restoreErrorOccurred"));
       setShowErrorModal(true);
     } finally {
       setRestoringId(null);
@@ -164,8 +173,8 @@ export default function ArchiveView() {
       <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
         <div className="w-full">
           <div>
-            <h1 className="text-4xl font-black text-[#005f63]">Trash / Archive</h1>
-            <p className="mt-1 text-sm text-[#667777]">All deleted records are stored here. You can restore them.</p>
+            <h1 className="text-4xl font-black text-[#005f63]">{t("archive")}</h1>
+            <p className="mt-1 text-sm text-[#667777]">{t("archiveSubtitle")}</p>
           </div>
 
           {/* Search and Filter Row */}
@@ -174,7 +183,7 @@ export default function ArchiveView() {
               <SearchBar
                 value={searchQuery}
                 onChange={setSearchQuery}
-                placeholder="Search by name, type, or deleted by..."
+                placeholder={t("searchArchivePlaceholder")}
               />
             </div>
             <div className="relative">
@@ -183,18 +192,18 @@ export default function ArchiveView() {
                 onChange={(e) => setTypeFilter(e.target.value)}
                 className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
               >
-                <option value="all">All Types</option>
-                <option value="membership">Memberships</option>
-                <option value="event">Events</option>
-                <option value="resident">Residents</option>
-                <option value="notification">Notifications</option>
+                <option value="all">{t("allTypes")}</option>
+                <option value="membership">{t("memberships")}</option>
+                <option value="event">{t("events")}</option>
+                <option value="resident">{t("residents")}</option>
+                <option value="notification">{t("notify")}</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
           </div>
 
           <p className="mt-2 text-xs text-gray-500">
-            {filteredItems.length} item(s) found — showing {itemsPerPage} per page
+            {filteredItems.length} {t("itemsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
           </p>
 
           {totalPages > 1 && (
@@ -226,18 +235,18 @@ export default function ArchiveView() {
             <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
             </svg>
-            <p>No deleted items found.</p>
+            <p>{t("noDeletedItems")}</p>
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-100">
-                  <th className="text-left p-3 font-medium text-[#005f63]">Type</th>
-                  <th className="text-left p-3 font-medium text-[#005f63]">Name / Title</th>
-                  <th className="text-left p-3 font-medium text-[#005f63]">Deleted At</th>
-                  <th className="text-left p-3 font-medium text-[#005f63]">Deleted By</th>
-                  <th className="text-left p-3 font-medium text-[#005f63]">Actions</th>
+                  <th className="text-left p-3 font-medium text-[#005f63]">{t("typeColumn")}</th>
+                  <th className="text-left p-3 font-medium text-[#005f63]">{t("nameTitleColumn")}</th>
+                  <th className="text-left p-3 font-medium text-[#005f63]">{t("deletedAtColumn")}</th>
+                  <th className="text-left p-3 font-medium text-[#005f63]">{t("deletedByColumn")}</th>
+                  <th className="text-left p-3 font-medium text-[#005f63]">{t("actionsColumn")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -251,7 +260,7 @@ export default function ArchiveView() {
                         item.type === 'notification' ? 'bg-[#ccaf63] text-white' :
                         'bg-gray-100 text-gray-700'
                       }`}>
-                        {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+                        {t(TYPE_LABEL_KEYS[item.type])}
                       </span>
                     </td>
                     <td className="p-3 font-medium text-gray-800">{item.name}</td>
@@ -262,7 +271,7 @@ export default function ArchiveView() {
                         onClick={() => setRestoreItem(item)}
                         disabled={restoringId === item.id}
                         className="p-2 rounded-full hover:bg-orange-50 transition text-orange-600 active:bg-orange-100 disabled:opacity-50"
-                        title="Restore"
+                        title={t("restoreTitle")}
                       >
                         {restoringId === item.id ? (
                           <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-orange-600"></div>
@@ -283,22 +292,22 @@ export default function ArchiveView() {
       {restoreItem && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <h3 className="text-xl font-bold text-[#eb9b32] mb-3">Restore Item</h3>
+            <h3 className="text-xl font-bold text-[#eb9b32] mb-3">{t("restoreItemModalTitle")}</h3>
             <p className="text-gray-600 mb-5">
-              Do you want to restore <strong>"{restoreItem.name}"</strong>? This item will become active again.
+              {t("restoreConfirmPrefix")} <strong>"{restoreItem.name}"</strong>{t("restoreConfirmSuffix")}
             </p>
             <div className="flex justify-center gap-4">
               <button
                 onClick={() => setRestoreItem(null)}
                 className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition"
               >
-                Cancel
+                {t("cancelLabel")}
               </button>
               <button
                 onClick={handleRestoreConfirm}
                 className="px-5 py-2.5 rounded-full bg-[#e2850d] text-white hover:bg-[#e69d3e] transition"
               >
-                Yes, Restore
+                {t("yesRestore")}
               </button>
             </div>
           </div>
@@ -312,13 +321,13 @@ export default function ArchiveView() {
             <div className="flex justify-center text-[#eb9b32] mb-3">
               <CheckCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-[#eb9b32] mb-2">Success</h3>
-            <p className="text-gray-600 mb-5">Item restored successfully!</p>
+            <h3 className="text-xl font-bold text-[#eb9b32] mb-2">{t("successTitle")}</h3>
+            <p className="text-gray-600 mb-5">{t("itemRestoredSuccess")}</p>
             <button
               onClick={() => setShowSuccessModal(false)}
               className="px-5 py-2.5 rounded-full bg-[#eb9b32] text-white hover:bg-[#e2850d] transition"
             >
-              OK
+              {t("okLabel")}
             </button>
           </div>
         </div>
@@ -331,13 +340,13 @@ export default function ArchiveView() {
             <div className="flex justify-center text-red-500 mb-3">
               <XCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-red-600 mb-2">Restore Failed</h3>
+            <h3 className="text-xl font-bold text-red-600 mb-2">{t("restoreFailedTitle")}</h3>
             <p className="text-gray-600 mb-5">{errorMessage}</p>
             <button
               onClick={() => setShowErrorModal(false)}
               className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
             >
-              OK
+              {t("okLabel")}
             </button>
           </div>
         </div>

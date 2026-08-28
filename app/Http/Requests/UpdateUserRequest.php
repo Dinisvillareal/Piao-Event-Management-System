@@ -36,6 +36,29 @@ class UpdateUserRequest extends FormRequest
             'validation_id'    => 'nullable',
             'membership_ids'   => 'nullable|array',
             'membership_ids.*' => 'exists:memberships,id',
+
+            // Adviser recommendation: "Profiling (Filter for Age)"
+            'birth_date'       => 'nullable|date|before_or_equal:today',
+            'address'          => 'nullable|string|max:150',
+            'civil_status_id'  => 'nullable|exists:civil_statuses,id',
+
+            // Adviser recommendation: "Notify by household -- head of household -- SMS contact number per household"
+            'household_code'           => 'nullable|string|max:30',
+            'is_household_head'        => 'nullable|boolean',
+            'household_contact_number' => [
+                'nullable',
+                'string',
+                function ($attribute, $value, $fail) {
+                    if (!$value) return;
+                    $stripped = preg_replace('/\D/', '', $value);
+                    if (!preg_match('/^(\+?63|0)9\d{9}$/', $stripped)) {
+                        $fail('The household contact number format is invalid.');
+                    }
+                },
+            ],
+
+            // UC-17: Switch Interface Language
+            'preferred_language' => 'nullable|in:en,tl,ceb',
         ];
     }
 }

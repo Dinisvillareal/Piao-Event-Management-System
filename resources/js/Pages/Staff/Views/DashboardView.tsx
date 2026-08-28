@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import api from "../../../lib/api";
+import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface DashboardViewProps {
   setActive: (route: string) => void;
@@ -17,6 +19,7 @@ export default function DashboardView({
   upcomingEvents = [],
   pastEventsCount = 0
 }: DashboardViewProps) {
+  const { t } = useLanguage();
   const [stats, setStats] = useState({
     residents: 0,
     memberships: 0,
@@ -59,18 +62,8 @@ export default function DashboardView({
 
   const fetchCurrentUser = async () => {
     try {
-      const response = await fetch('/me', {
-        headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-XSRF-TOKEN': getCsrfToken()
-        },
-        credentials: 'include'
-      });
-
-      if (!response.ok) throw new Error('Failed to fetch user');
-
-      const user = await response.json();
+      const response = await api.get('/me');
+      const user = response.data;
 
       let formattedName = "Staff";
       if (user.first_name && user.last_name) {
@@ -91,18 +84,8 @@ export default function DashboardView({
 
   const fetchRecentActivities = async () => {
     try {
-      const response = await fetch('/activity-logs/today', {
-        headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-XSRF-TOKEN': getCsrfToken()
-        },
-        credentials: 'include'
-      });
-
-      if (!response.ok) throw new Error('Failed to fetch activity logs');
-
-      const result = await response.json();
+      const response = await api.get('/activity-logs/today');
+      const result = response.data;
       const logs = result.data ?? result;
 
       setRecentActivities(Array.isArray(logs) ? logs : []);
@@ -114,28 +97,13 @@ export default function DashboardView({
 
   const fetchAllStats = async () => {
     try {
-      const residentsResponse = await fetch('/users?per_page=1', {
-        headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-XSRF-TOKEN': getCsrfToken()
-        },
-        credentials: 'include'
-      });
-
-      const membershipsResponse = await fetch('/api/memberships', {
-        headers: {
-          'Accept': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          'X-XSRF-TOKEN': getCsrfToken()
-        },
-        credentials: 'include'
-      });
-
-      const [residentsResult, membershipsResult] = await Promise.all([
-        residentsResponse.json(),
-        membershipsResponse.json()
+      const [residentsResponse, membershipsResponse] = await Promise.all([
+        api.get('/users', { params: { per_page: 1 } }),
+        api.get('/api/memberships'),
       ]);
+
+      const residentsResult = residentsResponse.data;
+      const membershipsResult = membershipsResponse.data;
 
       const totalResidents = residentsResult.total || residentsResult.data?.length || 0;
 
@@ -238,11 +206,11 @@ export default function DashboardView({
     <div className="space-y-6">
       <div className="rounded-[30px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
         <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">
-          STAFF CONSOLE
+          {t("staffConsole")}
         </p>
-        <h1 className="mt-2 text-4xl font-black">Welcome back, {memberName}! 👋</h1>
+        <h1 className="mt-2 text-4xl font-black">{t("welcomeBack")}, {memberName}! 👋</h1>
         <p className="mt-2 text-base text-white/90">
-          Manage residents, memberships, events, attendance and notifications.
+          {t("staffDashboardSubtitle")}
         </p>
       </div>
 

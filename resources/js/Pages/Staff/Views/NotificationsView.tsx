@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Filter, Users, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText } from "lucide-react";
+import { Filter, Users, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, Smartphone, Home } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
+import api from "../../../lib/api";
+import { useLanguage } from "../../../i18n/LanguageContext";
 
 
 interface Membership {
@@ -43,6 +45,7 @@ interface NotificationsViewProps {
 
 
 export default function NotificationsView({ memberships = [], highlightText }: NotificationsViewProps) {
+                       const { t } = useLanguage();
    const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
    const [loading, setLoading] = useState<boolean>(true);
    const [searchQuery, setSearchQuery] = useState<string>("");
@@ -61,26 +64,38 @@ export default function NotificationsView({ memberships = [], highlightText }: N
    const fetchAllNotifications = async (): Promise<void> => {
        setLoading(true);
        try {
-           const response = await fetch('/notifications/staff?per_page=1000', {
-               headers: {
-                   'Accept': 'application/json',
-                   'X-Requested-With': 'XMLHttpRequest'
-               },
-               credentials: 'include'
-           });
-
-
-           if (response.ok) {
-               const data = await response.json();
-               const notificationsData = Array.isArray(data) ? data : (data.data || []);
-               setAllNotifications(notificationsData);
-           }
+           const response = await api.get('/notifications/staff', { params: { per_page: 1000 } });
+           const data = response.data;
+           const notificationsData = Array.isArray(data) ? data : (data.data || []);
+           setAllNotifications(notificationsData);
        } catch (error) {
            console.error('Error fetching notifications:', error);
        } finally {
            setLoading(false);
        }
    };
+
+   // Adviser recommendation: "Notify by household — head of household — SMS
+   // contact number per household" — a staff-facing view of what was sent.
+   const [smsLogs, setSmsLogs] = useState<any[]>([]);
+   const [smsLoading, setSmsLoading] = useState<boolean>(true);
+
+   const fetchSmsLogs = async (): Promise<void> => {
+       setSmsLoading(true);
+       try {
+           const response = await api.get('/notifications/sms-logs', { params: { per_page: 20 } });
+           const data = response.data;
+           setSmsLogs(Array.isArray(data) ? data : (data.data || []));
+       } catch (error) {
+           console.error('Error fetching SMS logs:', error);
+       } finally {
+           setSmsLoading(false);
+       }
+   };
+
+   useEffect(() => {
+       fetchSmsLogs();
+   }, []);
 
 
    const filteredNotifications = useMemo(() => {
@@ -213,8 +228,8 @@ export default function NotificationsView({ memberships = [], highlightText }: N
            <div className="flex-shrink-0 bg-[#fcfcf9] pt-2 pb-6 px-1 sm:px-2 shadow-b-sm">
                <div className="flex items-center justify-between">
                    <div>
-                       <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">Notifications & Announcements</h1>
-                       <p className="text-xs sm:text-sm text-[#667777] mt-1">View all announcements sent to residents.</p>
+                       <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("notificationsAndAnnouncements")}</h1>
+                       <p className="text-xs sm:text-sm text-[#667777] mt-1">{t("staffNotificationsSubtitle")}</p>
                    </div>
                </div>
 
@@ -224,7 +239,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                        <SearchBar
                            value={searchQuery}
                            onChange={setSearchQuery}
-                           placeholder="Search notifications by title or message..."
+                           placeholder={t("searchNotificationsPlaceholder")}
                        />
                    </div>
 
@@ -236,23 +251,23 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                onChange={(e) => setDateFilter(e.target.value)}
                                className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
                            >
-                               <option value="all">All Notifications</option>
-                               <option value="upcoming">Upcoming</option>
-                               <option value="past">Past</option>
+                               <option value="all">{t("allNotifications")}</option>
+                               <option value="upcoming">{t("upcomingOption")}</option>
+                               <option value="past">{t("pastOption")}</option>
                            </select>
                            <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
                        </div>
 
 
                        <div className="flex items-center gap-2">
-                           <span className="text-sm font-medium text-gray-700">To:</span>
+                           <span className="text-sm font-medium text-gray-700">{t("toColon")}</span>
                            <div className="relative h-full">
                                <select
                                    value={targetFilter}
                                    onChange={(e) => setTargetFilter(e.target.value)}
                                    className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
                                >
-                                   <option value="all-residents">All Residents</option>
+                                   <option value="all-residents">{t("allResidentsOption")}</option>
                                    {memberships.map((m: Membership) => (
                                        <option key={m.id} value={String(m.id)}>
                                            {m.name}
@@ -267,7 +282,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
 
 
                <p className="mt-2 text-xs text-gray-500">
-                   {filteredNotifications.length} notification(s) found — showing {itemsPerPage} per page
+                   {filteredNotifications.length} {t("notificationsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
                </p>
 
 
@@ -305,13 +320,13 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                {filteredNotifications.length === 0 ? (
                    <div className="rounded-3xl border border-dashed border-[#005f63]/20 bg-white p-10 text-center text-gray-500">
                        <Bell size={40} className="mx-auto mb-3 text-[#005f63]/40" />
-                       <p>No notifications match your current filters.</p>
+                       <p>{t("noNotificationsMatch")}</p>
                    </div>
                ) : (
                    <div className="space-y-3">
                        {paginatedNotifications.map((n) => {
                            const { title, actualMessage } = parseMessage(n);
-                           const targetText = n.target_name || 'All Residents';
+                           const targetText = n.target_name || t("allResidentsOption");
 
 
                            return (
@@ -324,7 +339,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                        <div className="flex-1 min-w-0">
                                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs sm:text-sm">
                                                <div className="flex items-center gap-2 flex-wrap">
-                                                   <span className="font-medium text-gray-800 shrink-0 text-xs sm:text-sm">To:</span>
+                                                   <span className="font-medium text-gray-800 shrink-0 text-xs sm:text-sm">{t("toColon")}</span>
                                                    <span className="text-gray-700 break-words text-xs sm:text-sm">
                                                        {highlightText(targetText, searchQuery)}
                                                    </span>
@@ -359,13 +374,54 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                )}
            </div>
 
+           {/* Adviser recommendation: household-head SMS delivery log */}
+           <div className="px-1 sm:px-2 pb-6">
+               <div className="rounded-3xl border border-[#ddd5ca] bg-white p-5">
+                   <div className="flex items-center gap-2 mb-1">
+                       <Smartphone className="h-5 w-5 text-[#005f63]" />
+                       <h2 className="text-lg font-bold text-[#005f63]">{t("householdSmsDeliveries")}</h2>
+                   </div>
+                   <p className="text-xs text-gray-500 mb-4">
+                       {t("householdSmsDesc")}
+                   </p>
+                   {smsLoading ? (
+                       <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+                   ) : smsLogs.length === 0 ? (
+                       <p className="text-sm text-gray-400 italic text-center py-6">{t("noSmsSentYet")}</p>
+                   ) : (
+                       <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                           {smsLogs.map((log: any) => (
+                               <div key={log.id} className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                                   <div className="min-w-0 flex items-center gap-2">
+                                       {log.user?.is_household_head && <span title={t("householdHeadTitle")}><Home className="h-4 w-4 text-orange-500 shrink-0" /></span>}
+                                       <div className="min-w-0">
+                                           <p className="text-sm font-medium text-gray-800 truncate">
+                                               {log.user ? `${log.user.first_name} ${log.user.last_name}` : log.to_number} · {log.to_number}
+                                           </p>
+                                           <p className="text-xs text-gray-500 truncate">{log.event?.name ?? "—"}</p>
+                                       </div>
+                                   </div>
+                                   <span className={`px-2 py-1 rounded-full text-[11px] font-semibold shrink-0 ${
+                                       log.status === 'sent' ? 'bg-green-100 text-green-800'
+                                       : log.status === 'failed' ? 'bg-red-100 text-red-700'
+                                       : 'bg-gray-100 text-gray-600'
+                                   }`}>
+                                       {log.status === 'simulated' ? t("loggedNoGateway") : log.status}
+                                   </span>
+                               </div>
+                           ))}
+                       </div>
+                   )}
+               </div>
+           </div>
+
 
            {/* Notification Detail Modal */}
            {selectedNotification && (
                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                    <div className="bg-white rounded-3xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl transform transition-all">
                        <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between rounded-t-3xl z-10">
-                           <h3 className="text-lg font-bold text-[#005f63]">Notification Details</h3>
+                           <h3 className="text-lg font-bold text-[#005f63]">{t("notificationDetails")}</h3>
                            <button
                                onClick={() => setSelectedNotification(null)}
                                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
@@ -379,7 +435,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                            {/* Recipient and Sent Info */}
                            <div className="flex items-center justify-between w-full">
                                <span className="text-sm text-gray-800">
-                                   Recipient: {selectedNotification.target_name || 'All Residents'}
+                                   {t("recipientColon")} {selectedNotification.target_name || t("allResidentsOption")}
                                </span>
                                <div className="flex items-center gap-2 text-gray-600">
                                    <Send size={16} className="text-[#005f63]" />
@@ -394,7 +450,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                    <div className="flex items-start gap-3 text-gray-700">
                                        <Calendar size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                        <div className="text-sm">
-                                           <span className="font-medium">Date:</span>{' '}
+                                           <span className="font-medium">{t("dateColon")}</span>{' '}
                                            <span>{formatEventDate(selectedNotification.event.event_start)}</span>
                                        </div>
                                    </div>
@@ -402,7 +458,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                    <div className="flex items-start gap-3 text-gray-700">
                                        <Clock size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                        <div className="text-sm">
-                                           <span className="font-medium">Time:</span>{' '}
+                                           <span className="font-medium">{t("timeColon")}</span>{' '}
                                            <span>{formatEventTime(selectedNotification.event.event_start)}</span>
                                        </div>
                                    </div>
@@ -411,7 +467,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                        <div className="flex items-start gap-3 text-gray-700">
                                            <MapPin size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                            <div className="text-sm">
-                                               <span className="font-medium">Location:</span>{' '}
+                                               <span className="font-medium">{t("locationColon")}</span>{' '}
                                                <span>{selectedNotification.event.location}</span>
                                            </div>
                                        </div>
@@ -421,7 +477,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                        <div className="flex items-start gap-3 text-gray-700">
                                            <FileText size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                            <div className="text-sm">
-                                               <span className="font-medium">Event Details:</span>
+                                               <span className="font-medium">{t("eventDetailsColon")}</span>
                                                <p className="text-gray-600 mt-1">{selectedNotification.event.description}</p>
                                            </div>
                                        </div>
@@ -435,7 +491,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                <div className="flex items-start gap-3 text-gray-700">
                                    <MessageSquare size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                    <div className="text-sm">
-                                       <span className="font-medium">Message:</span>
+                                       <span className="font-medium">{t("messageColon")}</span>
                                        <p className="text-gray-700 mt-1">
                                            {parseMessage(selectedNotification).actualMessage ||
                                             (selectedNotification.event?.name && selectedNotification.event.name)}

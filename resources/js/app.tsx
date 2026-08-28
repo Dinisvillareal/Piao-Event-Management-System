@@ -37,11 +37,28 @@ import ReactDOM from "react-dom/client";
 import MemberDashboard from "./Pages/Members/Members";
 import StaffDashboard from "./Pages/Staff/Staff";
 import LoginPage from "./Pages/Login/Login";
+import { LanguageProvider } from "./i18n/LanguageContext";
 
 const rootElement = document.getElementById("app");
 
 if (rootElement) {
-  ReactDOM.createRoot(rootElement).render(<App />);
+  ReactDOM.createRoot(rootElement).render(
+    <LanguageProvider>
+      <App />
+    </LanguageProvider>
+  );
+}
+
+// UC (offline access): let the app shell open with no internet connection.
+// Only registered against a production build — Vite's dev server streams
+// modules live and cannot be usefully cached, so this is a no-op under
+// `npm run dev`. Build with `npm run build` for offline opening to work.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((err) => {
+      console.error("Service worker registration failed:", err);
+    });
+  });
 }
 
 // ─── PORTAL MODE HELPERS ──────────────────────────────────────────────────────
@@ -152,6 +169,30 @@ export default function App() {
     window.addEventListener("switchPortal", handleSwitch);
     return () => window.removeEventListener("switchPortal", handleSwitch);
   }, []);
+
+  // ── Keep the address bar honest ───────────────────────────────────────────
+  // Login redirects (and a plain "/") don't know the eventual destination
+  // ahead of time, so they land on a generic path. Once auth has settled,
+  // make sure the URL actually matches what's on screen: unauthenticated
+  // always shows "/login", and an authenticated user sitting on "/" or
+  // "/login" gets bounced to their real dashboard root instead of the
+  // address bar silently disagreeing with the page.
+  useEffect(() => {
+    if (loading) return;
+    const path = window.location.pathname;
+
+    if (!userRole) {
+      if (path !== "/login") {
+        window.history.replaceState({}, "", "/login");
+      }
+      return;
+    }
+
+    if (path === "/login" || path === "/") {
+      const isStaffPortal = userRole === "Staff" && portalMode !== "member";
+      window.history.replaceState({}, "", isStaffPortal ? "/admin/dashboard" : "/dashboard");
+    }
+  }, [loading, userRole, portalMode]);
 
   // ── Loading splash ────────────────────────────────────────────────────────
   if (loading) {

@@ -2,8 +2,10 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import SearchBar from "../../../Components/UI/SearchBar";
 import { QRCodeCanvas } from "qrcode.react";
 import { QrCode } from "lucide-react";
+import { useLanguage } from "../../../i18n/LanguageContext";
 
 export default function QRCodesView({ highlightText, userId, userCode, fullName }: any) {
+  const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [allMemberships, setAllMemberships] = useState<any[]>([]);
@@ -182,13 +184,13 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     return (
       <div className="p-5">
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600">
-          <p className="font-semibold">Error</p>
+          <p className="font-semibold">{t("errorLabel")}</p>
           <p className="text-sm mt-1">{error}</p>
           <button
             onClick={() => window.location.reload()}
             className="text-sm underline hover:text-red-800 mt-2"
           >
-            Retry
+            {t("retry")}
           </button>
         </div>
       </div>
@@ -201,10 +203,10 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
       <div className="flex-shrink-0 bg-[#fcfcf9] px-2 sm:px-3 pt-2 pb-4 border-b border-[#ece7de] z-10">
         <div className="max-w-[1580px] mx-auto">
           <h1 className="text-3xl sm:text-4xl font-black text-[#005f63]">
-            My QR Code and Memberships
+            {t("myQrAndMemberships")}
           </h1>
           <p className="mt-1 text-sm text-[#667777]">
-            Your personal QR code and membership cards in one place.
+            {t("qrPageSubtitle")}
           </p>
 
           {allMemberships.length > 0 && (
@@ -213,11 +215,11 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                 <SearchBar
                   value={searchQuery}
                   onChange={setSearchQuery}
-                  placeholder="Search your memberships by name…"
+                  placeholder={t("searchMembershipsPlaceholder")}
                 />
               </div>
               <p className="mt-2 text-xs text-gray-500">
-                {totalItems} membership(s) found — showing {itemsPerPage} per page
+                {totalItems} {t("membershipsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
               </p>
             </div>
           )}
@@ -260,7 +262,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
             <div className="w-full lg:w-1/3">
               <div className="rounded-3xl border border-gray-200 bg-transparent p-4 sm:p-6 shadow-lg lg:sticky lg:top-24 overflow-hidden">
                 <p className="text-center mb-4 text-gray-500 text-sm">
-                  Scan this at events for attendance
+                  {t("scanAtEvents")}
                 </p>
                 <div className="text-center">
                   <div className="flex justify-center overflow-x-auto">
@@ -278,8 +280,8 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                         ) : (
                           <div className="text-center py-8 px-4">
                             <QrCode className="mx-auto mb-3 text-gray-300" size={48} />
-                            <p className="text-gray-500 text-sm">Unable to generate QR code</p>
-                            <p className="text-gray-400 text-xs mt-1">Please make sure you're logged in</p>
+                            <p className="text-gray-500 text-sm">{t("unableToGenerateQr")}</p>
+                            <p className="text-gray-400 text-xs mt-1">{t("pleaseLoggedIn")}</p>
                           </div>
                         )}
                       </div>
@@ -310,7 +312,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                           d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                         />
                       </svg>
-                      Download QR Code
+                      {t("downloadQrCode")}
                     </button>
                   </div>
                 </div>
@@ -324,13 +326,12 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   <svg className="w-24 h-24 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                   </svg>
-                  <h3 className="text-xl font-semibold text-gray-700 mb-2">No Memberships Yet</h3>
+                  <h3 className="text-xl font-semibold text-gray-700 mb-2">{t("noMembershipsYet")}</h3>
                   <p className="text-gray-500 text-center max-w-md">
-                    You don't have any memberships at the moment.
-                    Once you're enrolled in a program, your membership cards will appear here.
+                    {t("noMembershipsBody")}
                   </p>
                   <div className="mt-6 text-sm text-[#667777] bg-gray-50 px-4 py-2 rounded-lg">
-                    💡 Need assistance? Contact your barangay office
+                    {t("needAssistance")}
                   </div>
                 </div>
               ) : displayMemberships.length === 0 && searchQuery ? (
@@ -338,8 +339,8 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   <svg className="w-16 h-16 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  <p className="text-gray-500 text-lg">No matching memberships found</p>
-                  <p className="text-gray-400 text-sm mt-1">Try a different search term</p>
+                  <p className="text-gray-500 text-lg">{t("noMatchingMemberships")}</p>
+                  <p className="text-gray-400 text-sm mt-1">{t("tryDifferentSearch")}</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

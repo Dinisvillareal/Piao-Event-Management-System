@@ -11,6 +11,8 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
+use App\Models\AgeBracket;
+use App\Models\Membership;
 
 class UserController extends Controller
 {
@@ -63,6 +65,63 @@ class UserController extends Controller
         }
     }
 
+    /**
+     * Adviser example (Senior Citizen eligibility) -- extended to Youth and
+     * Solo Parent memberships. Blocks assigning a membership to a resident
+     * whose age bracket / civil status doesn't match what the membership
+     * requires (configured under Settings -> Profiling).
+     */
+    private function checkMembershipEligibility(array $membershipIds, ?string $birthDate, ?int $civilStatusId): ?array
+    {
+        if (empty($membershipIds)) {
+            return null;
+        }
+
+        $memberships = Membership::withoutTrashed()
+            ->whereIn('id', $membershipIds)
+            ->where(function ($q) {
+                $q->whereNotNull('eligible_age_bracket_id')
+                  ->orWhereNotNull('eligible_civil_status_id');
+            })
+            ->with(['eligibleAgeBracket', 'eligibleCivilStatus'])
+            ->get();
+
+        if ($memberships->isEmpty()) {
+            return null;
+        }
+
+        $age = null;
+        if ($birthDate) {
+            try {
+                $age = \Carbon\Carbon::parse($birthDate)->age;
+            } catch (\Exception $e) {
+                $age = null;
+            }
+        }
+
+        $residentBracket = AgeBracket::resolveForAge($age);
+
+        $violations = [];
+
+        foreach ($memberships as $membership) {
+            if ($membership->eligible_age_bracket_id) {
+                $requiredBracket = $membership->eligibleAgeBracket;
+                if (!$residentBracket || $residentBracket->id !== $membership->eligible_age_bracket_id) {
+                    $violations[] = "\"{$membership->name}\" requires age group: {$requiredBracket?->label}.";
+                }
+            }
+
+            if ($membership->eligible_civil_status_id) {
+                $requiredStatus = $membership->eligibleCivilStatus;
+                if (!$civilStatusId || $civilStatusId !== $membership->eligible_civil_status_id) {
+                    $violations[] = "\"{$membership->name}\" requires civil status: {$requiredStatus?->label}.";
+                }
+            }
+        }
+
+        return empty($violations) ? null : $violations;
+    }
+
     // =========================
     // CREATE USER
     // =========================
@@ -86,6 +145,21 @@ class UserController extends Controller
                     'last_name' => ['A record with this full name already exists.']
                 ]
             ], 422);
+        }
+
+        // Adviser example (Senior Citizen) -- block assigning an eligibility-gated
+        // membership (Youth / Senior Citizen / Solo Parent, etc.) to a resident
+        // who doesn't match its required age bracket / civil status.
+        $incomingMembershipIds = array_filter((array) $request->membership_ids);
+        if (!empty($incomingMembershipIds)) {
+            $violations = $this->checkMembershipEligibility(
+                $incomingMembershipIds,
+                $request->birth_date,
+                $request->civil_status_id ? (int) $request->civil_status_id : null
+            );
+            if ($violations) {
+                return response()->json(['errors' => ['membership_ids' => $violations]], 422);
+            }
         }
 
         DB::beginTransaction();
@@ -114,6 +188,13 @@ class UserController extends Controller
                 'role'           => $request->role,
                 'has_account'    => $hasAccount ? 1 : 0,
                 'password'       => $hasAccount ? Hash::make($request->password) : null,
+                'birth_date'                => $request->birth_date,
+                'address'                   => $request->address,
+                'civil_status_id'           => $request->civil_status_id ?: null,
+                'household_code'            => $request->household_code,
+                'is_household_head'         => filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN),
+                'household_contact_number'  => $request->household_contact_number,
+                'preferred_language'        => $request->preferred_language ?? 'en',
             ]);
 
             if ($request->has('membership_ids')) {
@@ -211,7 +292,26 @@ class UserController extends Controller
             });
         }
 
-        return response()->json($query->paginate(20));
+        // Adviser recommendation: "Profiling (Filter for Age)"
+        if ($request->filled('age_group')) {
+            $ranges = [
+                'child'  => [0, 12],
+                'youth'  => [13, 17],
+                'adult'  => [18, 59],
+                'senior' => [60, 150],
+            ];
+            $range = $ranges[strtolower($request->age_group)] ?? null;
+            if ($range) {
+                $query->whereNotNull('birth_date')
+                    ->whereRaw('TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN ? AND ?', $range);
+            }
+        }
+
+        if ($request->filled('household_code')) {
+            $query->where('household_code', $request->household_code);
+        }
+
+        return response()->json($query->paginate((int) $request->get('per_page', 20)));
     }
 
     // =========================
@@ -261,12 +361,44 @@ class UserController extends Controller
 
             $user = User::findOrFail($id);
 
+            if ($this->isStaff() && $request->has('membership_ids')) {
+                $incomingMembershipIds = array_filter((array) $request->membership_ids);
+                if (!empty($incomingMembershipIds)) {
+                    $effectiveBirthDate = $request->filled('birth_date')
+                        ? $request->birth_date
+                        : optional($user->birth_date)->format('Y-m-d');
+                    $effectiveCivilStatusId = $request->has('civil_status_id')
+                        ? ($request->civil_status_id ? (int) $request->civil_status_id : null)
+                        : $user->civil_status_id;
+
+                    $violations = $this->checkMembershipEligibility(
+                        $incomingMembershipIds,
+                        $effectiveBirthDate,
+                        $effectiveCivilStatusId
+                    );
+                    if ($violations) {
+                        DB::rollBack();
+                        return response()->json(['errors' => ['membership_ids' => $violations]], 422);
+                    }
+                }
+            }
+
             $user->fill($request->only([
                 'first_name',
                 'last_name',
                 'middle_name',
                 'contact_number',
+                'birth_date',
+                'address',
+                'civil_status_id',
+                'household_code',
+                'household_contact_number',
+                'preferred_language',
             ]));
+
+            if ($request->has('is_household_head')) {
+                $user->is_household_head = filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN);
+            }
 
         if ($this->isStaff() && $request->filled('role')) {
             if ($user->role !== $request->role) {
@@ -550,6 +682,14 @@ public function getAllForMemberships()
                     'role' => $user->role,
                     'has_account' => $user->has_account,
                     'deleted_at' => $user->deleted_at,
+                    'birth_date' => $user->birth_date?->format('Y-m-d'),
+                    'age' => $user->age,
+                    'age_group' => $user->age_group,
+                    'address' => $user->address,
+                    'household_code' => $user->household_code,
+                    'is_household_head' => $user->is_household_head,
+                    'household_contact_number' => $user->household_contact_number,
+                    'preferred_language' => $user->preferred_language,
                     'memberships' => $user->memberships->map(function ($membership) {
                         return [
                             'id' => $membership->id,

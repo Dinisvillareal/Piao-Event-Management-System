@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Filter } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
+import { useLanguage } from "../../../i18n/LanguageContext";
 
 // ✅ Exported so Members.tsx can import and reuse it
 export interface AttendanceRecord {
@@ -19,6 +20,12 @@ interface AttendanceViewProps {
 }
 
 export default function AttendanceView({ attendanceRecords, highlightText }: AttendanceViewProps) {
+  const { t } = useLanguage();
+  const statusLabel = (status: string) => {
+    if (status === "complete") return t("statusComplete");
+    if (status === "incomplete") return t("statusIncomplete");
+    return t("statusMissed");
+  };
 
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceFilter, setAttendanceFilter] = useState("all");
@@ -103,15 +110,15 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
       {/* FIXED HEADER & SEARCH AREA */}
       <div className="sticky top-0 z-10 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm">
         <div className="w-full pr-4">
-          <h1 className="text-4xl font-black text-[#005f63]">Attendance Records</h1>
-          <p className="text-sm text-[#667777] mt-1">Your sign in / sign out history per event.</p>
+          <h1 className="text-4xl font-black text-[#005f63]">{t("attendanceRecords")}</h1>
+          <p className="text-sm text-[#667777] mt-1">{t("attendanceSubtitle")}</p>
 
           <div className="mt-4 flex items-center gap-4 w-full">
             <div className="flex-1">
               <SearchBar
                 value={attendanceSearch}
                 onChange={setAttendanceSearch}
-                placeholder="Search attendance by event, date, location or time…"
+                placeholder={t("searchAttendancePlaceholder")}
               />
             </div>
             <div className="relative">
@@ -120,10 +127,10 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
                 onChange={(e) => setAttendanceFilter(e.target.value)}
                 className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
               >
-                <option value="all">All Records</option>
-                <option value="complete">Complete (In & Out)</option>
-                <option value="incomplete">Incomplete (Missing In/Out)</option>
-                <option value="missed">Missed (No Record)</option>
+                <option value="all">{t("allRecords")}</option>
+                <option value="complete">{t("completeInOut")}</option>
+                <option value="incomplete">{t("incompleteInOut")}</option>
+                <option value="missed">{t("missedNoRecord")}</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
               <svg className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -133,7 +140,7 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
           </div>
           
           <p className="mt-2 text-xs text-gray-500">
-            {filteredAttendance.length} of {attendanceRecords.length} record(s) match — showing {itemsPerPage} per page
+            {filteredAttendance.length} of {attendanceRecords.length} {t("recordsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
           </p>
 
           {/* ✅ PAGINATION - ← 1 → RIGHT SIDE */}
@@ -168,7 +175,7 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
       {/* ATTENDANCE LIST */}
       <div className="pl-1 space-y-3">
         {filteredAttendance.length === 0 ? (
-          <p className="text-gray-500 italic">No attendance records match your search or filter.</p>
+          <p className="text-gray-500 italic">{t("noAttendanceMatch")}</p>
         ) : (
           <>
             {paginatedAttendance.map((rec) => {
@@ -190,7 +197,7 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
 
                   <div className="flex items-center gap-6">
                     <div className="text-right">
-                      <span className="text-[13px] text-gray-500">In:</span>
+                      <span className="text-[13px] text-gray-500">{t("timeInLabel")}</span>
                       <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${
                         rec.timeIn ? 'text-teal-700 bg-teal-50' : 'text-gray-400 bg-gray-50 italic'
                       }`}>
@@ -198,7 +205,7 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="text-[13px] text-gray-500">Out:</span>
+                      <span className="text-[13px] text-gray-500">{t("timeOutLabel")}</span>
                       <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${
                         rec.timeOut ? 'text-orange-700 bg-orange-50' : 'text-gray-400 bg-gray-50 italic'
                       }`}>
@@ -212,7 +219,7 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
                         ? 'bg-amber-100 text-amber-800'
                         : 'bg-red-100 text-red-800'
                     }`}>
-                      {rec.status.charAt(0).toUpperCase() + rec.status.slice(1)}
+                      {statusLabel(rec.status)}
                     </span>
                   </div>
                 </div>

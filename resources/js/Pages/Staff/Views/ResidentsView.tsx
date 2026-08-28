@@ -1,11 +1,17 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Filter, XCircle, Archive, CheckCircle } from "lucide-react";
 import SearchBar from "../../../Components/UI/SearchBar";
+import { useLanguage } from "../../../i18n/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Membership {
   id: number;
   name: string;
+}
+
+interface CivilStatusOption {
+  id: number;
+  label: string;
 }
 
 interface ResidentRow {
@@ -22,6 +28,15 @@ interface ResidentRow {
   passwordChangedByUser: boolean;
   photo: string;
   deleted_at: string | null;
+  birthDate: string;
+  address: string;
+  age: number | null;
+  ageGroup: string | null;
+  civilStatusId: number | null;
+  civilStatus: string | null;
+  isHouseholdHead: boolean;
+  householdCode: string;
+  householdContactNumber: string;
 }
 
 type AddForm = {
@@ -34,6 +49,12 @@ type AddForm = {
   selectedMemberships: number[];
   needAccount: boolean;
   tempPassword: string;
+  birthDate: string;
+  address: string;
+  civilStatusId: number | null;
+  isHouseholdHead: boolean;
+  householdCode: string;
+  householdContactNumber: string;
 };
 
 type EditForm = {
@@ -51,6 +72,12 @@ type EditForm = {
   deleted_at: string | null;
   needAccount: boolean;
   tempPassword: string;
+  birthDate: string;
+  address: string;
+  civilStatusId: number | null;
+  isHouseholdHead: boolean;
+  householdCode: string;
+  householdContactNumber: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -123,7 +150,28 @@ const emptyAdd = (): AddForm => ({
   selectedMemberships: [],
   needAccount: false,
   tempPassword: "",
+  birthDate: "",
+  address: "",
+  civilStatusId: null,
+  isHouseholdHead: false,
+  householdCode: "",
+  householdContactNumber: "",
 });
+
+const AGE_GROUPS = [
+  { key: "all", labelKey: "ageGroupAllOption" },
+  { key: "child", labelKey: "ageGroupChildOption" },
+  { key: "youth", labelKey: "ageGroupYouthOption" },
+  { key: "adult", labelKey: "ageGroupAdultOption" },
+  { key: "senior", labelKey: "ageGroupSeniorOption" },
+];
+
+const AGE_GROUP_LABELS: Record<string, string> = {
+  child: "Child",
+  youth: "Youth",
+  adult: "Adult",
+  senior: "Senior Citizen",
+};
 
 // ─── Normalize helper for duplicate checking ──────────────────────────────────
 const normalizeName = (s: string) =>
@@ -131,6 +179,7 @@ const normalizeName = (s: string) =>
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ResidentsView() {
+  const { t } = useLanguage();
   const [residentsData, setResidentsData] = useState<ResidentRow[]>([]);
   const [availableMemberships, setAvailableMemberships] = useState<Membership[]>([]);
   const [loading, setLoading] = useState(false);
@@ -139,6 +188,7 @@ export default function ResidentsView() {
   const [residentSearch, setResidentSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [accountFilter, setAccountFilter] = useState("all");
+  const [ageGroupFilter, setAgeGroupFilter] = useState("all"); // Adviser: Profiling / Filter for Age
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -202,6 +252,20 @@ export default function ResidentsView() {
       .catch((e) => console.error("memberships load:", e));
   }, []);
 
+  // ─── Fetch civil / current statuses (Adviser example: Senior Citizen ─────
+  // eligibility, extended to a Staff-configurable Civil Status list so
+  // "Solo Parent" and similar categories can be assigned to residents) ─────
+  const [civilStatuses, setCivilStatuses] = useState<CivilStatusOption[]>([]);
+  useEffect(() => {
+    fetch("/civil-statuses", { headers: { Accept: "application/json" } })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d: CivilStatusOption[]) => setCivilStatuses(Array.isArray(d) ? d : []))
+      .catch((e) => console.error("civil statuses load:", e));
+  }, []);
+
   // ─── Fetch residents ──────────────────────────────────────────────────────
   const fetchResidents = async () => {
     setLoading(true);
@@ -225,6 +289,15 @@ export default function ResidentsView() {
         passwordChangedByUser: !!item.password_changed_by_user,
         photo: item.validation_id_url,
         deleted_at: item.deleted_at,
+        birthDate: item.birth_date ?? "",
+        address: item.address ?? "",
+        age: item.age ?? null,
+        ageGroup: item.age_group ?? null,
+        civilStatusId: item.civil_status_id ?? null,
+        civilStatus: item.civil_status ?? null,
+        isHouseholdHead: !!item.is_household_head,
+        householdCode: item.household_code ?? "",
+        householdContactNumber: item.household_contact_number ?? "",
       }));
 
       setResidentsData(formatted);
@@ -244,7 +317,7 @@ export default function ResidentsView() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      alert("Please upload an image file only.");
+      alert(t("uploadImageOnly"));
       e.target.value = "";
       return;
     }
@@ -298,16 +371,16 @@ export default function ResidentsView() {
   // ─── Validation ───────────────────────────────────────────────────────────
   const validateAdd = (): boolean => {
     const err: Record<string, string> = {};
-    if (!newResident.firstName.trim()) err.firstName = "First name is required";
-    if (!newResident.lastName.trim()) err.lastName = "Last name is required";
-    if (!newResident.role.trim()) err.role = "Role is required";
+    if (!newResident.firstName.trim()) err.firstName = t("firstNameRequired");
+    if (!newResident.lastName.trim()) err.lastName = t("lastNameRequired");
+    if (!newResident.role.trim()) err.role = t("roleRequired");
     const raw = newResident.contactNumber.replace(/\D/g, "");
-    if (!raw) err.contactNumber = "Contact number is required";
-    else if (!raw.startsWith("09")) err.contactNumber = "Contact number must start with 09";
-    else if (raw.length !== 11) err.contactNumber = "Must be exactly 11 digits";
-    if (!addPhotoFile) err.photo = "ID photo is required";
+    if (!raw) err.contactNumber = t("contactNumberRequired");
+    else if (!raw.startsWith("09")) err.contactNumber = t("contactNumberMustStart09");
+    else if (raw.length !== 11) err.contactNumber = t("mustBe11Digits");
+    if (!addPhotoFile) err.photo = t("idPhotoRequired");
     if (newResident.needAccount && !newResident.tempPassword.trim())
-      err.tempPassword = "Temporary password is required when enabling an account";
+      err.tempPassword = t("tempPasswordRequired");
     setFormErrors(err);
     return Object.keys(err).length === 0;
   };
@@ -315,16 +388,16 @@ export default function ResidentsView() {
   const validateEdit = (): boolean => {
     if (!editingResident) return false;
     const err: Record<string, string> = {};
-    if (!editingResident.firstName.trim()) err.firstName = "First name is required";
-    if (!editingResident.lastName.trim()) err.lastName = "Last name is required";
-    if (!editingResident.role.trim()) err.role = "Role is required";
+    if (!editingResident.firstName.trim()) err.firstName = t("firstNameRequired");
+    if (!editingResident.lastName.trim()) err.lastName = t("lastNameRequired");
+    if (!editingResident.role.trim()) err.role = t("roleRequired");
     const raw = editingResident.contactNumber.replace(/\D/g, "");
-    if (!raw) err.contactNumber = "Contact number is required";
-    else if (!raw.startsWith("09")) err.contactNumber = "Contact number must start with 09";
-    else if (raw.length !== 11) err.contactNumber = "Must be exactly 11 digits";
+    if (!raw) err.contactNumber = t("contactNumberRequired");
+    else if (!raw.startsWith("09")) err.contactNumber = t("contactNumberMustStart09");
+    else if (raw.length !== 11) err.contactNumber = t("mustBe11Digits");
     if (!editingResident.hasAccount && editingResident.needAccount && !editingResident.tempPassword.trim())
-      err.tempPassword = "Temporary password is required when enabling an account";
-    if (!editPhotoFile && !editPhotoPreview) err.photo = "ID photo is required";
+      err.tempPassword = t("tempPasswordRequired");
+    if (!editPhotoFile && !editPhotoPreview) err.photo = t("idPhotoRequired");
     setFormErrors(err);
     return Object.keys(err).length === 0;
   };
@@ -348,7 +421,7 @@ export default function ResidentsView() {
     if (isDuplicate) {
       setFormErrors((prev) => ({
         ...prev,
-        lastName: "A record with this full name already exists.",
+        lastName: t("duplicateFullNameError"),
       }));
       return;
     }
@@ -368,6 +441,15 @@ export default function ResidentsView() {
     if (newResident.hasMemberships && newResident.selectedMemberships.length > 0)
       newResident.selectedMemberships.forEach((id) => fd.append("membership_ids[]", String(id)));
 
+    // Adviser recommendation: age profiling + household SMS notify
+    if (newResident.birthDate) fd.append("birth_date", newResident.birthDate);
+    if (newResident.address) fd.append("address", newResident.address);
+    if (newResident.civilStatusId) fd.append("civil_status_id", String(newResident.civilStatusId));
+    if (newResident.householdCode) fd.append("household_code", newResident.householdCode);
+    fd.append("is_household_head", newResident.isHouseholdHead ? "1" : "0");
+    if (newResident.householdContactNumber)
+      fd.append("household_contact_number", newResident.householdContactNumber.replace(/\D/g, ""));
+
     try {
       const res = await fetch("/users", {
         method: "POST",
@@ -384,7 +466,7 @@ export default function ResidentsView() {
           });
           setFormErrors(mapped);
         } else {
-          setApiError(body.message ?? "Failed to save record.");
+          setApiError(body.message ?? t("saveRecordFailed"));
         }
         return;
       }
@@ -401,7 +483,7 @@ export default function ResidentsView() {
     fetchResidents();
     } catch (e) {
       console.error("Add error:", e);
-      setApiError("Network error. Please try again.");
+      setApiError(t("networkErrorTryAgain"));
     }
   };
 
@@ -436,6 +518,12 @@ export default function ResidentsView() {
       deleted_at: r.deleted_at,
       needAccount: false,
       tempPassword: "",
+      birthDate: r.birthDate ?? "",
+      address: r.address ?? "",
+      civilStatusId: r.civilStatusId ?? null,
+      isHouseholdHead: r.isHouseholdHead ?? false,
+      householdCode: r.householdCode ?? "",
+      householdContactNumber: r.householdContactNumber ?? "",
     };
 
     setEditingResident(state);
@@ -465,7 +553,7 @@ export default function ResidentsView() {
     if (isDuplicate) {
       setFormErrors((prev) => ({
         ...prev,
-        lastName: "A record with this full name already exists.",
+        lastName: t("duplicateFullNameError"),
       }));
       return;
     }
@@ -493,6 +581,14 @@ export default function ResidentsView() {
 
     if (editPhotoFile) fd.append("validation_id", editPhotoFile);
 
+    // Adviser recommendation: age profiling + household SMS notify
+    fd.append("birth_date", editingResident.birthDate || "");
+    fd.append("address", editingResident.address || "");
+    fd.append("civil_status_id", editingResident.civilStatusId ? String(editingResident.civilStatusId) : "");
+    fd.append("household_code", editingResident.householdCode || "");
+    fd.append("is_household_head", editingResident.isHouseholdHead ? "1" : "0");
+    fd.append("household_contact_number", editingResident.householdContactNumber ? editingResident.householdContactNumber.replace(/\D/g, "") : "");
+
     if (editingResident.hasMemberships && editingResident.selectedMemberships.length > 0) {
       editingResident.selectedMemberships.forEach((id) => fd.append("membership_ids[]", String(id)));
     } else {
@@ -515,7 +611,7 @@ export default function ResidentsView() {
           });
           setFormErrors(mapped);
         } else {
-          setApiError(body.message ?? "Failed to update record.");
+          setApiError(body.message ?? t("updateRecordFailed"));
         }
         return;
       }
@@ -539,7 +635,7 @@ export default function ResidentsView() {
       fetchResidents();
     } catch (e) {
       console.error("Update error:", e);
-      setApiError("Network error. Please try again.");
+      setApiError(t("networkErrorTryAgain"));
     }
   };
 
@@ -638,6 +734,11 @@ const handleDeleteResident = async () => {
     if (accountFilter === "with-account") r = r.filter((x) => x.hasAccount);
     else if (accountFilter === "no-account") r = r.filter((x) => !x.hasAccount);
 
+    if (ageGroupFilter !== "all") {
+      const wanted = AGE_GROUP_LABELS[ageGroupFilter];
+      r = r.filter((x) => x.ageGroup === wanted);
+    }
+
     if (residentSearch.trim()) {
       const q = residentSearch.toLowerCase();
       r = r.filter((x) =>
@@ -657,7 +758,7 @@ const handleDeleteResident = async () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [residentSearch, statusFilter, accountFilter]);
+  }, [residentSearch, statusFilter, accountFilter, ageGroupFilter]);
 
   // ─── Sub-components ───────────────────────────────────────────────────────
   const MembershipCheckboxes = ({ isEdit }: { isEdit: boolean }) => {
@@ -677,12 +778,12 @@ const handleDeleteResident = async () => {
             }}
             className="w-4 h-4 text-[#005f63]"
           />
-          <span className="font-medium text-gray-700">Has Memberships?</span>
+          <span className="font-medium text-gray-700">{t("hasMembershipsLabel")}</span>
         </label>
 
         {hasMem &&
           (availableMemberships.length === 0 ? (
-            <p className="pl-6 text-xs text-gray-400 italic">No memberships available.</p>
+            <p className="pl-6 text-xs text-gray-400 italic">{t("noMembershipsAvailable")}</p>
           ) : (
             <div className="pl-6 grid grid-cols-2 gap-2">
               {availableMemberships.map((mem) => (
@@ -708,7 +809,7 @@ const handleDeleteResident = async () => {
     return (
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          ID Photo <span className="text-gray-900 font-bold">*</span>
+          {t("idPhotoFieldLabel")} <span className="text-gray-900 font-bold">*</span>
         </label>
         <input
           type="file"
@@ -741,18 +842,18 @@ const handleDeleteResident = async () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="sticky top-0 z-20 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm">
-        <div className="w-[1200px]">
-          <h1 className="text-4xl font-black text-[#005f63]">Residents Master List</h1>
+      <div className="sticky top-0 z-20 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm overflow-x-auto">
+        <div className="w-full min-w-0">
+          <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("residentsMasterList")}</h1>
           <p className="text-sm text-[#667777] mt-1">
-            Manage all registered residents, staff, and their account status.
+            {t("residentsSubtitle")}
           </p>
-          <div className="mt-4 flex items-center gap-4 w-[1580px]">
-            <div className="flex-1">
+          <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4 w-full">
+            <div className="flex-1 min-w-[220px]">
               <SearchBar
                 value={residentSearch}
                 onChange={setResidentSearch}
-                placeholder="Search by ID, name, contact, role or membership..."
+                placeholder={t("searchByIdNameContactPlaceholder")}
               />
             </div>
             <div className="relative">
@@ -761,9 +862,9 @@ const handleDeleteResident = async () => {
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:outline-none appearance-none"
               >
-                <option value="all">All Records</option>
-                <option value="residents">Role: Resident</option>
-                <option value="staff">Role: Staff</option>
+                <option value="all">{t("allRecordsOption")}</option>
+                <option value="residents">{t("roleResidentOption")}</option>
+                <option value="staff">{t("roleStaffOption")}</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
@@ -773,15 +874,29 @@ const handleDeleteResident = async () => {
                 onChange={(e) => setAccountFilter(e.target.value)}
                 className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:outline-none appearance-none"
               >
-                <option value="all">All Accounts</option>
-                <option value="with-account">Has Account</option>
-                <option value="no-account">No Account</option>
+                <option value="all">{t("allAccountsOption")}</option>
+                <option value="with-account">{t("hasAccountOption")}</option>
+                <option value="no-account">{t("noAccountOption")}</option>
+              </select>
+              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+            </div>
+            {/* Adviser recommendation: "Profiling (Filter for Age)" */}
+            <div className="relative">
+              <select
+                value={ageGroupFilter}
+                onChange={(e) => setAgeGroupFilter(e.target.value)}
+                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:outline-none appearance-none"
+                title={t("filterByAgeGroupTitle")}
+              >
+                {AGE_GROUPS.map((g) => (
+                  <option key={g.key} value={g.key}>{t(g.labelKey)}</option>
+                ))}
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            {filteredResidents.length} of {residentsData.length} record(s) match — showing {itemsPerPage} per page.
+            {filteredResidents.length} {t("ofPagesLabel")} {residentsData.length} {t("recordsMatchShowing")} {itemsPerPage} {t("perPageLabel")}
           </p>
         </div>
       </div>
@@ -814,35 +929,47 @@ const handleDeleteResident = async () => {
             onClick={handleOpenAddForm}
             className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm ml-auto"
           >
-            + Add New Record
+            {t("addNewRecordButton")}
           </button>
         </div>
 
         <div className="relative rounded-[20px] bg-white shadow-lg overflow-hidden">
           <div className="h-1 w-full bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-1 absolute top-0 left-0 right-0" />
           <div className="p-5 pt-6 max-h-[65vh] overflow-auto">
-            <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: "1310px" }}>
+            <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: "1400px" }}>
               <colgroup>
                 <col style={{ width: "110px" }} />
                 <col style={{ width: "130px" }} />
                 <col style={{ width: "120px" }} />
                 <col style={{ width: "120px" }} />
                 <col style={{ width: "140px" }} />
-                <col style={{ width: "280px" }} />
+                <col style={{ width: "260px" }} />
+                <col style={{ width: "90px" }} />
                 <col style={{ width: "100px" }} />
                 <col style={{ width: "110px" }} />
                 <col style={{ width: "100px" }} />
               </colgroup>
               <thead>
                 <tr className="border-b border-[#eee8e0]">
-                  {["ID", "Last Name", "First Name", "Middle Name", "Contact Number", "Memberships", "Role", "Has Account?", "Actions"].map(
+                  {[
+                    { key: "ID", labelKey: "idColumn" },
+                    { key: "Last Name", labelKey: "lastNameColumn" },
+                    { key: "First Name", labelKey: "firstNameColumn" },
+                    { key: "Middle Name", labelKey: "middleNameColumn" },
+                    { key: "Contact Number", labelKey: "contactNumberColumn" },
+                    { key: "Memberships", labelKey: "membershipsColumn" },
+                    { key: "Age", labelKey: "ageColumn" },
+                    { key: "Role", labelKey: "roleColumn" },
+                    { key: "Has Account?", labelKey: "hasAccountColumn" },
+                    { key: "Actions", labelKey: "actionsColumn" },
+                  ].map(
                     (h) => (
                       <th
-                        key={h}
-                        className={`py-7 px-2 font-bold text-[#005f63] whitespace-nowrap bg-[#f8f6f2] ${h === "Actions" ? "text-right" : "text-left"}`}
+                        key={h.key}
+                        className={`py-7 px-2 font-bold text-[#005f63] whitespace-nowrap bg-[#f8f6f2] ${h.key === "Actions" ? "text-right" : "text-left"}`}
                         style={{ position: "sticky", top: 0, zIndex: 10, boxShadow: "0 2px 0 0 #eee8e0" }}
                       >
-                        {h}
+                        {t(h.labelKey)}
                       </th>
                     )
                   )}
@@ -851,11 +978,11 @@ const handleDeleteResident = async () => {
               <tbody className="bg-white">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="py-6 text-center text-gray-500 italic">Loading...</td>
+                    <td colSpan={10} className="py-6 text-center text-gray-500 italic">{t("loading")}</td>
                   </tr>
                 ) : paginatedResidents.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-6 text-center text-gray-500 italic">No records match your search or filter.</td>
+                    <td colSpan={10} className="py-6 text-center text-gray-500 italic">{t("noRecordsMatchFilter")}</td>
                   </tr>
                 ) : (
                   paginatedResidents.map((r) => {
@@ -882,10 +1009,22 @@ const handleDeleteResident = async () => {
                               </span>
                             ))}
                             {extra > 0 && (
-                              <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">+{extra} more</span>
+                              <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">+{extra} {t("moreLabel")}</span>
                             )}
-                            {allMems.length === 0 && <span className="text-gray-400 text-xs">None</span>}
+                            {allMems.length === 0 && <span className="text-gray-400 text-xs">{t("noneLabel")}</span>}
                           </div>
+                        </td>
+                        <td className="py-3 px-2">
+                          {r.ageGroup ? (
+                            <span
+                              className="px-2 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-800"
+                              title={r.isHouseholdHead ? t("householdHeadTitle") : ""}
+                            >
+                              {r.age}{r.isHouseholdHead && <span className="ml-1">🏠</span>}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">—</span>
+                          )}
                         </td>
                         <td className="py-3 px-2">
                           <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
@@ -901,12 +1040,12 @@ const handleDeleteResident = async () => {
                           <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                             r.hasAccount ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
                           }`}>
-                            {r.hasAccount ? "✅ Yes" : "❌ No"}
+                            {r.hasAccount ? `✅ ${t("yesLabel")}` : `❌ ${t("noLabel")}`}
                           </span>
                         </td>
                         <td className="py-3 px-2 text-right">
                           <div className="inline-flex gap-1">
-                            <button onClick={() => setViewRecord(r.id)} className="p-2 rounded-full hover:bg-teal-50 transition" title="View">
+                            <button onClick={() => setViewRecord(r.id)} className="p-2 rounded-full hover:bg-teal-50 transition" title={t("viewTitleBtn")}>
                               <svg width="16" height="16" fill="none" stroke="#006666" strokeWidth={2} viewBox="0 0 24 24">
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                                 <circle cx="12" cy="12" r="3" />
@@ -914,13 +1053,13 @@ const handleDeleteResident = async () => {
                             </button>
                             {r.deleted_at === null ? (
                               <>
-                                <button onClick={() => setEditRecord(r.id)} className="p-2 rounded-full hover:bg-orange-50 transition" title="Edit">
+                                <button onClick={() => setEditRecord(r.id)} className="p-2 rounded-full hover:bg-orange-50 transition" title={t("editTitle")}>
                                   <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24">
                                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                                   </svg>
                                 </button>
-                                <button onClick={() => setDeleteRecord(r.id)} className="p-2 rounded-full hover:bg-red-50 transition" title="Delete">
+                                <button onClick={() => setDeleteRecord(r.id)} className="p-2 rounded-full hover:bg-red-50 transition" title={t("deleteTitle")}>
                                   <Archive className="h-4 w-4 text-red-500" />
                                 </button>
                               </>
@@ -928,7 +1067,7 @@ const handleDeleteResident = async () => {
                               <button
                                 onClick={() => setRestoreRecord(r.real_id)}
                                 className="p-2 rounded-full text-teal-600 hover:bg-teal-50 hover:text-teal-700 transition-colors duration-200"
-                                title="Restore Record"
+                                title={t("restoreRecordTitle")}
                               >
                                 <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
                                   <polyline points="23 4 23 10 17 10" />
@@ -956,43 +1095,56 @@ const handleDeleteResident = async () => {
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
             <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-black text-[#005f63]">Record Details</h2>
+                <h2 className="text-2xl font-black text-[#005f63]">{t("recordDetailsTitle")}</h2>
                 <button onClick={() => setViewRecord(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
               </div>
               <div className="text-sm">
                 {r.deleted_at !== null && (
-                  <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted</div>
+                  <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ {t("recordDeletedWarning")}</div>
                 )}
                 <div className="flex gap-6">
                   <div className="flex-1 space-y-2">
-                    <p><strong className="text-[#005f63]">ID:</strong> {r.id}</p>
-                    <p><strong className="text-[#005f63]">Full Name:</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
-                    <p><strong className="text-[#005f63]">Contact:</strong> {r.contactNumber}</p>
+                    <p><strong className="text-[#005f63]">{t("idFieldLabel")}</strong> {r.id}</p>
+                    <p><strong className="text-[#005f63]">{t("fullNameFieldLabel")}</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
+                    <p><strong className="text-[#005f63]">{t("contactFieldLabel")}</strong> {r.contactNumber}</p>
                     <p>
-                      <strong className="text-[#005f63]">Role:</strong> {r.role}{" "}
-                      {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">(Locked)</span>}
+                      <strong className="text-[#005f63]">{t("roleFieldLabel")}</strong> {r.role}{" "}
+                      {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">{t("lockedLabel")}</span>}
                     </p>
-                    <p><strong className="text-[#005f63]">Has Account:</strong> {r.hasAccount ? "Yes" : "No"}</p>
+                    <p><strong className="text-[#005f63]">{t("hasAccountFieldLabel")}</strong> {r.hasAccount ? t("yesLabel") : t("noLabel")}</p>
+                    {r.age !== null && (
+                      <p><strong className="text-[#005f63]">{t("ageFieldLabel")}</strong> {r.age} ({r.ageGroup})</p>
+                    )}
+                    {r.address && (
+                      <p><strong className="text-[#005f63]">{t("addressFieldLabelColon")}</strong> {r.address}</p>
+                    )}
+                    {(r.householdCode || r.isHouseholdHead) && (
+                      <p>
+                        <strong className="text-[#005f63]">{t("householdFieldLabel")}</strong>{" "}
+                        {r.householdCode || "—"}{" "}
+                        {r.isHouseholdHead && <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-800">🏠 {t("headBadgeLabel")}</span>}
+                      </p>
+                    )}
                   </div>
                   <div className="w-[160px]">
                     <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ minHeight: 180 }}>
                       {r.photo ? (
                         <img src={r.photo} alt="ID Photo" className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-2">No photo uploaded</div>
+                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-2">{t("noPhotoUploaded")}</div>
                       )}
                     </div>
                   </div>
                 </div>
                 <div className="mt-6">
-                  <strong className="text-[#005f63] block mb-2">Memberships:</strong>
+                  <strong className="text-[#005f63] block mb-2">{t("membershipsFieldLabel")}</strong>
                   <div className="flex flex-wrap gap-1.5">
                     {allMems.length > 0 ? (
                       allMems.map((m, i) => (
                         <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>{m}</span>
                       ))
                     ) : (
-                      <span className="text-gray-500">None</span>
+                      <span className="text-gray-500">{t("noneLabel")}</span>
                     )}
                   </div>
                 </div>
@@ -1007,7 +1159,7 @@ const handleDeleteResident = async () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-black text-[#005f63]">Add New Record</h2>
+              <h2 className="text-2xl font-black text-[#005f63]">{t("addNewRecordTitle")}</h2>
               <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
             </div>
 
@@ -1018,7 +1170,7 @@ const handleDeleteResident = async () => {
                 {(["firstName", "middleName", "lastName"] as const).map((field) => (
                   <div key={field}>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {field === "firstName" ? "First Name *" : field === "middleName" ? "Middle Name" : "Last Name *"}
+                      {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
                     </label>
                     <input
                       type="text"
@@ -1035,7 +1187,7 @@ const handleDeleteResident = async () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("roleRequiredLabel")}</label>
                 <select
                   required
                   value={newResident.role}
@@ -1044,15 +1196,15 @@ const handleDeleteResident = async () => {
                     !newResident.role ? "text-gray-400" : "text-gray-900"
                   } ${formErrors.role ? "border-red-500" : "border-gray-200"}`}
                 >
-                  <option value="" style={{ display: "none" }} className="text-gray-400">Choose a role</option>
-                  <option value="Resident" className="text-gray-900">Resident</option>
-                  <option value="Staff" className="text-gray-900">Staff</option>
+                  <option value="" style={{ display: "none" }} className="text-gray-400">{t("chooseARoleOption")}</option>
+                  <option value="Resident" className="text-gray-900">{t("residentOption")}</option>
+                  <option value="Staff" className="text-gray-900">{t("staffOption")}</option>
                 </select>
                 {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("contactNumberRequiredLabel")}</label>
                 <input
                   type="text"
                   required
@@ -1065,9 +1217,82 @@ const handleDeleteResident = async () => {
                   maxLength={13}
                 />
                 {newResident.contactNumber.length > 0 && !newResident.contactNumber.startsWith("09") && (
-                  <p className="text-amber-500 text-xs mt-1">⚠ Number must start with 09</p>
+                  <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
                 )}
                 {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+              </div>
+
+              {/* Adviser recommendations: age profiling + household SMS notify */}
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">{t("profileHouseholdLabel")}</p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("birthDateLabel")}</label>
+                    <input
+                      type="date"
+                      value={newResident.birthDate}
+                      max={new Date().toISOString().split("T")[0]}
+                      onChange={(e) => setNewResident((p) => ({ ...p, birthDate: e.target.value }))}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("addressPurokLabel")}</label>
+                    <input
+                      type="text"
+                      value={newResident.address}
+                      onChange={(e) => setNewResident((p) => ({ ...p, address: e.target.value }))}
+                      placeholder={t("purokPlaceholder")}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("civilStatusLabel")}</label>
+                    <select
+                      value={newResident.civilStatusId ?? ""}
+                      onChange={(e) => setNewResident((p) => ({ ...p, civilStatusId: e.target.value ? Number(e.target.value) : null }))}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    >
+                      <option value="">{t("anyOptionLabel")}</option>
+                      {civilStatuses.map((cs) => (
+                        <option key={cs.id} value={cs.id}>{cs.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdCodeLabel")}</label>
+                    <input
+                      type="text"
+                      value={newResident.householdCode}
+                      onChange={(e) => setNewResident((p) => ({ ...p, householdCode: e.target.value }))}
+                      placeholder={t("householdCodePlaceholder")}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdContactNumberLabel")}</label>
+                    <input
+                      type="text"
+                      value={newResident.householdContactNumber}
+                      onChange={(e) => setNewResident((p) => ({ ...p, householdContactNumber: formatContactNumber(e.target.value) }))}
+                      placeholder={t("householdContactPlaceholder")}
+                      maxLength={13}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    checked={newResident.isHouseholdHead}
+                    onChange={(e) => setNewResident((p) => ({ ...p, isHouseholdHead: e.target.checked }))}
+                    className="w-4 h-4 text-[#005f63]"
+                  />
+                  <span className="font-medium text-gray-700">{t("headOfHouseholdCheckboxLabel")}</span>
+                  <span className="text-gray-400">{t("receivesEventSmsNote")}</span>
+                </label>
               </div>
 
               <PhotoField isEdit={false} />
@@ -1080,12 +1305,12 @@ const handleDeleteResident = async () => {
                     onChange={(e) => setNewResident((p) => ({ ...p, hasMemberships: e.target.checked }))}
                     className="w-4 h-4 text-[#005f63]"
                   />
-                  <span className="font-medium text-gray-700">Has Memberships?</span>
+                  <span className="font-medium text-gray-700">{t("hasMembershipsLabel")}</span>
                 </label>
 
                 {newResident.hasMemberships &&
                   (availableMemberships.length === 0 ? (
-                    <p className="pl-6 text-xs text-gray-400 italic">No memberships available.</p>
+                    <p className="pl-6 text-xs text-gray-400 italic">{t("noMembershipsAvailable")}</p>
                   ) : (
                     <div className="pl-6 grid grid-cols-2 gap-2">
                       {availableMemberships.map((mem) => (
@@ -1102,6 +1327,9 @@ const handleDeleteResident = async () => {
                       ))}
                     </div>
                   ))}
+                {formErrors.membership_ids && (
+                  <p className="pl-6 text-red-500 text-xs">{formErrors.membership_ids}</p>
+                )}
 
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -1116,13 +1344,13 @@ const handleDeleteResident = async () => {
                     }
                     className="w-4 h-4 text-[#005f63]"
                   />
-                  <span className="font-medium text-gray-700">Need Account?</span>
+                  <span className="font-medium text-gray-700">{t("needAccountLabel")}</span>
                 </label>
 
                 {newResident.needAccount && (
                   <div className="pl-6 space-y-1">
                     <label className="block text-sm font-medium text-gray-700">
-                      Set a Temporary Password <span className="text-red-500">*</span>
+                      {t("setTempPasswordLabel")} <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="password"
@@ -1131,17 +1359,17 @@ const handleDeleteResident = async () => {
                       className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
                         formErrors.tempPassword ? "border-red-500" : "border-gray-200"
                       }`}
-                      placeholder="Enter a temporary password"
+                      placeholder={t("tempPasswordPlaceholder")}
                     />
                     {formErrors.tempPassword && <p className="text-red-500 text-xs mt-1">{formErrors.tempPassword}</p>}
-                    <p className="text-xs text-gray-400 mt-1">The resident can log in with this password and change it later.</p>
+                    <p className="text-xs text-gray-400 mt-1">{t("residentCanLoginNote")}</p>
                   </div>
                 )}
               </div>
 
               <div className="flex justify-between gap-3 pt-2">
                 <button type="button" onClick={handleCancelAdd} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
-                  Cancel
+                  {t("cancel")}
                 </button>
                 <button
                   type="submit"
@@ -1150,7 +1378,7 @@ const handleDeleteResident = async () => {
                     hasAddChanges ? "bg-[#005f63] text-white hover:bg-[#004d4f]" : "bg-gray-200 text-gray-400 cursor-not-allowed"
                   }`}
                 >
-                  Save Record
+                  {t("saveRecordButton")}
                 </button>
               </div>
             </form>
@@ -1163,12 +1391,12 @@ const handleDeleteResident = async () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-black text-[#005f63]">Edit Record</h2>
+              <h2 className="text-2xl font-black text-[#005f63]">{t("editRecordTitle")}</h2>
               <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
             </div>
 
             {editingResident.deleted_at !== null && (
-              <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ This record is deleted — editing disabled</div>
+              <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ {t("recordDeletedEditingDisabled")}</div>
             )}
             {apiError && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>}
 
@@ -1184,7 +1412,7 @@ const handleDeleteResident = async () => {
                 {(["firstName", "middleName", "lastName"] as const).map((field) => (
                   <div key={field}>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {field === "firstName" ? "First Name *" : field === "middleName" ? "Middle Name" : "Last Name *"}
+                      {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
                     </label>
                     <input
                       type="text"
@@ -1203,7 +1431,7 @@ const handleDeleteResident = async () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("roleRequiredLabel")}</label>
                 <select
                   required
                   value={editingResident.role}
@@ -1212,14 +1440,14 @@ const handleDeleteResident = async () => {
                     formErrors.role ? "border-red-500" : "border-gray-200"
                   }`}
                 >
-                  <option value="Resident">Resident</option>
-                  <option value="Staff">Staff</option>
+                  <option value="Resident">{t("residentOption")}</option>
+                  <option value="Staff">{t("staffOption")}</option>
                 </select>
                 {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Number *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("contactNumberRequiredLabel")}</label>
                 <input
                   type="text"
                   required
@@ -1234,9 +1462,82 @@ const handleDeleteResident = async () => {
                   maxLength={13}
                 />
                 {editingResident.contactNumber.length > 0 && !editingResident.contactNumber.startsWith("09") && (
-                  <p className="text-amber-500 text-xs mt-1">⚠ Number must start with 09</p>
+                  <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
                 )}
                 {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+              </div>
+
+              {/* Adviser recommendations: age profiling + household SMS notify */}
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">{t("profileHouseholdLabel")}</p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("birthDateLabel")}</label>
+                    <input
+                      type="date"
+                      value={editingResident.birthDate}
+                      max={new Date().toISOString().split("T")[0]}
+                      onChange={(e) => setEditingResident((p) => p ? { ...p, birthDate: e.target.value } : p)}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("addressPurokLabel")}</label>
+                    <input
+                      type="text"
+                      value={editingResident.address}
+                      onChange={(e) => setEditingResident((p) => p ? { ...p, address: e.target.value } : p)}
+                      placeholder={t("purokPlaceholder")}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("civilStatusLabel")}</label>
+                    <select
+                      value={editingResident.civilStatusId ?? ""}
+                      onChange={(e) => setEditingResident((p) => p ? { ...p, civilStatusId: e.target.value ? Number(e.target.value) : null } : p)}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    >
+                      <option value="">{t("anyOptionLabel")}</option>
+                      {civilStatuses.map((cs) => (
+                        <option key={cs.id} value={cs.id}>{cs.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdCodeLabel")}</label>
+                    <input
+                      type="text"
+                      value={editingResident.householdCode}
+                      onChange={(e) => setEditingResident((p) => p ? { ...p, householdCode: e.target.value } : p)}
+                      placeholder={t("householdCodePlaceholder")}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdContactNumberLabel")}</label>
+                    <input
+                      type="text"
+                      value={editingResident.householdContactNumber}
+                      onChange={(e) => setEditingResident((p) => p ? { ...p, householdContactNumber: formatContactNumber(e.target.value) } : p)}
+                      placeholder={t("householdContactPlaceholder")}
+                      maxLength={13}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    checked={editingResident.isHouseholdHead}
+                    onChange={(e) => setEditingResident((p) => p ? { ...p, isHouseholdHead: e.target.checked } : p)}
+                    className="w-4 h-4 text-[#005f63]"
+                  />
+                  <span className="font-medium text-gray-700">{t("headOfHouseholdCheckboxLabel")}</span>
+                  <span className="text-gray-400">{t("receivesEventSmsNote")}</span>
+                </label>
               </div>
 
               <PhotoField isEdit={true} />
@@ -1249,12 +1550,12 @@ const handleDeleteResident = async () => {
                     onChange={(e) => setEditingResident((p) => (p ? { ...p, hasMemberships: e.target.checked } : p))}
                     className="w-4 h-4 text-[#005f63]"
                   />
-                  <span className="font-medium text-gray-700">Has Memberships?</span>
+                  <span className="font-medium text-gray-700">{t("hasMembershipsLabel")}</span>
                 </label>
 
                 {editingResident.hasMemberships &&
                   (availableMemberships.length === 0 ? (
-                    <p className="pl-6 text-xs text-gray-400 italic">No memberships available.</p>
+                    <p className="pl-6 text-xs text-gray-400 italic">{t("noMembershipsAvailable")}</p>
                   ) : (
                     <div className="pl-6 grid grid-cols-2 gap-2">
                       {availableMemberships.map((mem) => (
@@ -1271,16 +1572,19 @@ const handleDeleteResident = async () => {
                       ))}
                     </div>
                   ))}
+                {formErrors.membership_ids && (
+                  <p className="pl-6 text-red-500 text-xs">{formErrors.membership_ids}</p>
+                )}
 
                 {editingResident.hasAccount ? (
                   <div className="space-y-3">
                     <label className="flex items-center gap-2 cursor-not-allowed opacity-70">
                       <input type="checkbox" checked={true} disabled className="w-4 h-4 text-[#005f63]" />
-                      <span className="font-medium text-gray-700">Has Account</span>
+                      <span className="font-medium text-gray-700">{t("hasAccountCheckboxLabel")}</span>
                     </label>
                     <div className="pl-6 space-y-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">{t("usernameLabel")}</label>
                         <input
                           type="text"
                           value={`PR-${String(editingResident.real_id).padStart(4, "0")}`}
@@ -1290,15 +1594,15 @@ const handleDeleteResident = async () => {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Password{" "}
-                          <span className="text-gray-400 text-xs font-normal">(enter a new password to reset, or leave blank to keep current)</span>
+                          {t("passwordLabel")}{" "}
+                          <span className="text-gray-400 text-xs font-normal">{t("passwordResetNote")}</span>
                         </label>
                         <input
                           type="password"
                           value={editingResident.password}
                           onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
                           className="w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 border-gray-200"
-                          placeholder="Enter new password to reset, or leave blank"
+                          placeholder={t("resetPasswordPlaceholder")}
                         />
                         {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
                       </div>
@@ -1317,12 +1621,12 @@ const handleDeleteResident = async () => {
                         }
                         className="w-4 h-4 text-[#005f63]"
                       />
-                      <span className="font-medium text-gray-700">Need Account?</span>
+                      <span className="font-medium text-gray-700">{t("needAccountLabel")}</span>
                     </label>
                     {editingResident.needAccount && (
                       <div className="pl-6 space-y-1">
                         <label className="block text-sm font-medium text-gray-700">
-                          Set a Temporary Password <span className="text-red-500">*</span>
+                          {t("setTempPasswordLabel")} <span className="text-red-500">*</span>
                         </label>
                         <input
                           type="password"
@@ -1331,10 +1635,10 @@ const handleDeleteResident = async () => {
                           className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
                             formErrors.tempPassword ? "border-red-500" : "border-gray-200"
                           }`}
-                          placeholder="Enter a temporary password"
+                          placeholder={t("tempPasswordPlaceholder")}
                         />
                         {formErrors.tempPassword && <p className="text-red-500 text-xs mt-1">{formErrors.tempPassword}</p>}
-                        <p className="text-xs text-gray-400 mt-1">The resident can log in with this password and change it later.</p>
+                        <p className="text-xs text-gray-400 mt-1">{t("residentCanLoginNote")}</p>
                       </div>
                     )}
                   </div>
@@ -1343,7 +1647,7 @@ const handleDeleteResident = async () => {
 
               <div className="flex justify-between gap-3 pt-2">
                 <button type="button" onClick={handleCancelEdit} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
-                  Cancel
+                  {t("cancel")}
                 </button>
                 <button
                   type="submit"
@@ -1354,7 +1658,7 @@ const handleDeleteResident = async () => {
                       : "bg-gray-200 text-gray-400 cursor-not-allowed"
                   }`}
                 >
-                  Update Record
+                  {t("updateRecordButton")}
                 </button>
               </div>
             </form>
@@ -1367,11 +1671,11 @@ const handleDeleteResident = async () => {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
              <div className="mb-4 text-red-500 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
-            <h3 className="text-xl font-bold text-red-600 mb-3">Confirm Deletion</h3>
-            <p className="text-[15px] text-gray-600 mb-5">This will move the record to trash. Are you sure you want to proceed?</p>
+            <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-5">{t("moveToTrashConfirm")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
-              <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">Yes, Delete</button>
+              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("cancel")}</button>
+              <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">{t("yesDeleteButton")}</button>
             </div>
           </div>
         </div>
@@ -1386,8 +1690,8 @@ const handleDeleteResident = async () => {
             <div className="mb-3 text-[#005f63] flex justify-center">
               <CheckCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">Success</h3>
-            <p className="text-[15px] text-gray-600 mb-6">Resident record deleted successfully!</p>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{t("residentDeletedSuccess")}</p>
           </div>
         </div>
       )}
@@ -1401,13 +1705,13 @@ const handleDeleteResident = async () => {
             <div className="mb-3 text-[#005f63] flex justify-center">
               <CheckCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">Success</h3>
-            <p className="text-[15px] text-gray-600 mb-6">Record updated successfully!</p>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{t("recordUpdatedSuccess")}</p>
             <button
               onClick={() => setShowUpdateSuccess(false)}
               className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
             >
-              OK
+              {t("okLabel")}
             </button>
           </div>
         </div>
@@ -1427,18 +1731,18 @@ const handleDeleteResident = async () => {
             </div>
 
             <h3 className="text-xl font-bold text-[#005f63] mb-2">
-                Success
+                {t("successTitle")}
             </h3>
 
             <p className="text-[15px] text-gray-600 mb-6">
-                Resident record added successfully!
+                {t("residentAddedSuccess")}
             </p>
 
             <button
                 onClick={() => setShowAddSuccess(false)}
                 className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
             >
-                OK
+                {t("okLabel")}
             </button>
             </div>
         </div>
@@ -1456,11 +1760,11 @@ const handleDeleteResident = async () => {
             </div>
 
             <h3 className="text-xl font-bold text-[#005f63] mb-2">
-                Role Updated
+                {t("roleUpdatedTitle")}
             </h3>
 
             <p className="text-[15px] text-gray-600 mb-6">
-                Your role has been changed to Resident. Please log in again.
+                {t("roleChangedToResidentMessage")}
             </p>
 
             <button
@@ -1470,7 +1774,7 @@ const handleDeleteResident = async () => {
                 }}
                 className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
             >
-                OK
+                {t("okLabel")}
             </button>
             </div>
         </div>
@@ -1480,11 +1784,11 @@ const handleDeleteResident = async () => {
       {restoreRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <h3 className="text-xl font-bold text-teal-600 mb-3">Restore Record</h3>
-            <p className="text-gray-600 mb-5">This will restore the record and make it active again. Continue?</p>
+            <h3 className="text-xl font-bold text-teal-600 mb-3">{t("restoreRecordTitle")}</h3>
+            <p className="text-gray-600 mb-5">{t("restoreConfirmMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setRestoreRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Cancel</button>
-              <button onClick={handleRestoreResident} className="px-5 py-2.5 rounded-full bg-teal-600 text-white hover:bg-teal-700 transition">Yes, Restore</button>
+              <button onClick={() => setRestoreRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("cancel")}</button>
+              <button onClick={handleRestoreResident} className="px-5 py-2.5 rounded-full bg-teal-600 text-white hover:bg-teal-700 transition">{t("yesRestoreButton")}</button>
             </div>
           </div>
         </div>
@@ -1494,10 +1798,10 @@ const handleDeleteResident = async () => {
       {showCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <h3 className="text-xl font-bold text-amber-500 mb-3">Unsaved Changes</h3>
-            <p className="text-gray-600 mb-5">You have unsaved changes. Are you sure you want to close without saving?</p>
+            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">Stay</button>
+              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   setShowCancelConfirm(null);
@@ -1506,7 +1810,7 @@ const handleDeleteResident = async () => {
                 }}
                 className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
               >
-                Discard & Close
+                {t("discardCloseButton")}
               </button>
             </div>
           </div>
