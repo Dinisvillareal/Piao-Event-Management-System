@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import Sidebar from "../../Components/Layout/Sidebar";
-import TopHeader from "../../Components/Layout/TopHeader";
-import SettingsView from "./Views/SettingsView";
-import DashboardView from "./Views/DashboardView";
-import QRCodesView from "./Views/QRCodesView";
-import AttendanceView, { AttendanceRecord } from "./Views/AttendanceView";
-import NotificationsView from "./Views/NotificationsView";
-import EventsView from "./Views/EventsView";
-import OfflineBanner from "../../Components/UI/OfflineBanner";
-import FeedbackPrompt from "../../Components/UI/FeedbackPrompt";
+import Sidebar from "../../components/layout/Sidebar";
+import TopHeader from "../../components/layout/TopHeader";
+import SettingsView from "./views/SettingsView";
+import DashboardView from "./views/DashboardView";
+import QRCodesView from "./views/QRCodesView";
+import AttendanceView, { AttendanceRecord } from "./views/AttendanceView";
+import NotificationsView from "./views/NotificationsView";
+import EventsView from "./views/EventsView";
+import OfflineBanner from "../../components/ui/OfflineBanner";
+import FeedbackPrompt from "../../components/ui/FeedbackPrompt";
 import api from "../../lib/api";
 
 export default function MemberDashboard() {

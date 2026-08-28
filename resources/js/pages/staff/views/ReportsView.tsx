@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Filter, Printer, TrendingUp, Users, CalendarDays, Star } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
-import { BarChart, DonutChart } from "../../../Components/UI/Charts";
+import { BarChart, DonutChart } from "../../../components/ui/Charts";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface Membership {

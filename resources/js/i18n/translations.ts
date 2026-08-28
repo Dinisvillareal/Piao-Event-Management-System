@@ -483,6 +483,7 @@ export const translations: Dict = {
   residentCanLoginNote: { en: "The resident can log in with this password and change it later.", tl: "Maaaring mag-login ang residente gamit ang password na ito at baguhin ito mamaya.", ceb: "Ang residente pwede mag-login gamit ani nga password ug usbon kini sa ulahi." },
   saveRecordButton: { en: "Save Record", tl: "I-save ang Tala", ceb: "I-save ang Rekord" },
   idPhotoFieldLabel: { en: "ID Photo", tl: "ID Photo", ceb: "ID Photo" },
+  optionalLabel: { en: "optional", tl: "opsyonal", ceb: "opsyonal" },
   editRecordTitle: { en: "Edit Record", tl: "I-edit ang Tala", ceb: "I-edit ang Rekord" },
   recordDeletedEditingDisabled: { en: "This record is deleted — editing disabled", tl: "Ang talang ito ay tinanggal — hindi puwedeng i-edit", ceb: "Kini nga rekord gitangtang na — dili pwede i-edit" },
   hasAccountCheckboxLabel: { en: "Has Account", tl: "May Account", ceb: "Naay Account" },

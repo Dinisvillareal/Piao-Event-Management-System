@@ -1,8 +1,26 @@
-import { useState, useMemo, useEffect } from "react";
-import SearchBar from "../../../Components/UI/SearchBar";
-import { Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, AlertTriangle, Filter } from "lucide-react";
-import { createPortal } from "react-dom";
+import React, { useState, useEffect, useMemo } from "react";
+import { Filter, Users, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, Smartphone, Home } from "lucide-react";
+import SearchBar from "../../../components/ui/SearchBar";
+import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
+
+
+interface Membership {
+   id: string | number;
+   name: string;
+   description: string;
+}
+
+
+interface Event {
+   id: number;
+   name: string;
+   description?: string;
+   event_start: string;
+   event_end?: string;
+   location?: string;
+   membership_ids: number[];
+}
 
 
 interface Notification {
@@ -12,70 +30,44 @@ interface Notification {
    created_at: string;
    is_updated: boolean;
    updated_at_notification: string | null;
+   target_name: string;
+   target_membership_id: number | null;
+   recipient_count: number;
    read: boolean;
-   type?: string;
-   event?: {
-       id: number;
-       name: string;
-       description: string;
-       location: string;
-       event_start: string;
-       event_end: string | null;
-       deleted_at?: string | null;
-   };
+   event?: Event;
 }
 
 
 interface NotificationsViewProps {
+   memberships?: Membership[];
    highlightText: (text: string, query: string) => React.ReactNode;
 }
 
 
-export default function NotificationsView({ highlightText }: NotificationsViewProps) {
-   const { t } = useLanguage();
-   const [notifications, setNotifications] = useState<Notification[]>([]);
-   const [loading, setLoading] = useState(true);
-   const [notificationSearch, setNotificationSearch] = useState("");
-   const [dateFilter, setDateFilter] = useState("all"); // All / Upcoming / Past
-   const [statusFilter, setStatusFilter] = useState("all"); // All / Read / Unread
+export default function NotificationsView({ memberships = [], highlightText }: NotificationsViewProps) {
+                       const { t } = useLanguage();
+   const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
+   const [loading, setLoading] = useState<boolean>(true);
+   const [searchQuery, setSearchQuery] = useState<string>("");
+   const [dateFilter, setDateFilter] = useState<string>("all");
+   const [targetFilter, setTargetFilter] = useState<string>("all-residents");
+   const [currentPage, setCurrentPage] = useState<number>(1);
    const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
-   const [currentPage, setCurrentPage] = useState(1);
    const itemsPerPage = 10;
 
 
    useEffect(() => {
-       if (selectedNotification) {
-           document.body.style.overflow = 'hidden';
-       } else {
-           document.body.style.overflow = 'unset';
-       }
-       return () => {
-           document.body.style.overflow = 'unset';
-       };
-   }, [selectedNotification]);
-
-
-   useEffect(() => {
-       fetchNotifications();
+       fetchAllNotifications();
    }, []);
 
 
-   const fetchNotifications = async () => {
+   const fetchAllNotifications = async (): Promise<void> => {
        setLoading(true);
        try {
-           const response = await fetch('/notifications', {
-               headers: {
-                   'Accept': 'application/json',
-                   'X-Requested-With': 'XMLHttpRequest'
-               },
-               credentials: 'include'
-           });
-
-
-           if (response.ok) {
-               const data = await response.json();
-               setNotifications(Array.isArray(data) ? data : (data.data || []));
-           }
+           const response = await api.get('/notifications/staff', { params: { per_page: 1000 } });
+           const data = response.data;
+           const notificationsData = Array.isArray(data) ? data : (data.data || []);
+           setAllNotifications(notificationsData);
        } catch (error) {
            console.error('Error fetching notifications:', error);
        } finally {
@@ -83,144 +75,69 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
        }
    };
 
+   // Adviser recommendation: "Notify by household — head of household — SMS
+   // contact number per household" — a staff-facing view of what was sent.
+   const [smsLogs, setSmsLogs] = useState<any[]>([]);
+   const [smsLoading, setSmsLoading] = useState<boolean>(true);
 
-   const getCsrfToken = () => {
-       const token = document.cookie
-           .split('; ')
-           .find(row => row.startsWith('XSRF-TOKEN='));
-       return token ? decodeURIComponent(token.split('=')[1]) : '';
-   };
-
-
-   const markAsRead = async (id: number) => {
+   const fetchSmsLogs = async (): Promise<void> => {
+       setSmsLoading(true);
        try {
-           const token = getCsrfToken();
-
-           const response = await fetch(`/notifications/${id}/read`, {
-               method: 'PUT',
-               headers: {
-                   'Accept': 'application/json',
-                   'Content-Type': 'application/json',
-                   'X-Requested-With': 'XMLHttpRequest',
-                   'X-XSRF-TOKEN': token
-               },
-               credentials: 'include'
-           });
-
-           if (response.ok) {
-               setNotifications(prev =>
-                   prev.map(n =>
-                       n.id === id ? { ...n, read: true } : n
-                   )
-               );
-           }
+           const response = await api.get('/notifications/sms-logs', { params: { per_page: 20 } });
+           const data = response.data;
+           setSmsLogs(Array.isArray(data) ? data : (data.data || []));
        } catch (error) {
-           console.error('Error marking as read:', error);
+           console.error('Error fetching SMS logs:', error);
+       } finally {
+           setSmsLoading(false);
        }
    };
 
-
-   const handleNotificationClick = (notification: Notification) => {
-       if (!notification.read) {
-           markAsRead(notification.id);
-       }
-
-       if (notification.type === 'event_deleted' || !notification.event || notification.event?.deleted_at) {
-           alert(t("eventCancelledAlert"));
-           return;
-       }
-
-       setSelectedNotification(notification);
-   };
-
-
-   const formatDateCard = (dateStr: string): string => {
-       const d = new Date(dateStr);
-       const day = String(d.getDate()).padStart(2, '0');
-       const month = String(d.getMonth() + 1).padStart(2, '0');
-       const year = d.getFullYear();
-       return `${day}/${month}/${year}`;
-   };
-
-
-   const formatDateModal = (dateStr: string): string => {
-       const d = new Date(dateStr);
-       const day = String(d.getDate()).padStart(2, '0');
-       const month = d.toLocaleString('en-US', { month: 'short' });
-       const year = d.getFullYear();
-       const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-       return `${day} ${month} ${year}, ${time}`;
-   };
-
-
-   const formatEventDate = (dateStr: string): string => {
-       const d = new Date(dateStr);
-       const day = String(d.getDate()).padStart(2, '0');
-       const month = d.toLocaleString('en-US', { month: 'short' });
-       const year = d.getFullYear();
-       return `${day} ${month} ${year}`;
-   };
-
-
-   const formatEventTime = (dateStr: string): string => {
-       const d = new Date(dateStr);
-       return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-   };
-
-
-   const parseMessage = (message: string): { staffName: string; title: string; actualMessage: string } => {
-       const parts = message.split(' • ');
-       if (parts.length >= 2) {
-           const staffName = parts[0];
-           const rest = parts.slice(1).join(' • ');
-
-           if (rest.includes(' — ')) {
-               const restParts = rest.split(' — ');
-               const title = restParts[0];
-               const actualMessage = restParts.slice(1).join(' — ');
-               return { staffName, title, actualMessage };
-           }
-           return { staffName, title: rest, actualMessage: '' };
-       }
-       return { staffName: '', title: message, actualMessage: '' };
-   };
+   useEffect(() => {
+       fetchSmsLogs();
+   }, []);
 
 
    const filteredNotifications = useMemo(() => {
-       let filtered = [...notifications];
+       let filtered = [...allNotifications];
 
-       // Search filter
-       if (notificationSearch.trim()) {
-           const q = notificationSearch.toLowerCase();
-           filtered = filtered.filter((n) =>
+
+       if (searchQuery.trim()) {
+           const q = searchQuery.toLowerCase();
+           filtered = filtered.filter(n =>
                n.title.toLowerCase().includes(q) ||
                n.message.toLowerCase().includes(q)
            );
        }
 
-       // Date filter: All / Upcoming / Past
+
        if (dateFilter !== 'all') {
            const now = new Date();
            if (dateFilter === 'upcoming') {
-               filtered = filtered.filter(n =>
-                   n.event?.event_start && new Date(n.event.event_start) > now
-               );
+               filtered = filtered.filter(n => {
+                   if (!n.event?.event_start) return false;
+                   return new Date(n.event.event_start) > now;
+               });
            } else if (dateFilter === 'past') {
-               filtered = filtered.filter(n =>
-                   n.event?.event_start && new Date(n.event.event_start) < now
-               );
+               filtered = filtered.filter(n => {
+                   if (!n.event?.event_start) return false;
+                   return new Date(n.event.event_start) < now;
+               });
            }
        }
 
-       // Status filter: All / Read / Unread
-       if (statusFilter === 'read') {
-           filtered = filtered.filter(n => n.read);
-       } else if (statusFilter === 'unread') {
-           filtered = filtered.filter(n => !n.read);
+
+       if (targetFilter !== 'all-residents') {
+           const targetId = parseInt(targetFilter);
+           filtered = filtered.filter(n => {
+               const membershipIds = n.event?.membership_ids || [];
+               return membershipIds.includes(targetId);
+           });
        }
 
+
        return filtered;
-   }, [notifications, notificationSearch, dateFilter, statusFilter]);
+   }, [allNotifications, searchQuery, dateFilter, targetFilter]);
 
 
    // Pagination logic
@@ -234,36 +151,65 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    // Reset to first page when filters change
    useEffect(() => {
        setCurrentPage(1);
-   }, [notificationSearch, dateFilter, statusFilter]);
+   }, [searchQuery, dateFilter, targetFilter]);
 
 
-   const closeModal = () => {
-       setSelectedNotification(null);
+   // For card view: DD/MM/YYYY
+   const formatDateCard = (dateStr: string): string => {
+       const d = new Date(dateStr);
+       const day = String(d.getDate()).padStart(2, '0');
+       const month = String(d.getMonth() + 1).padStart(2, '0');
+       const year = d.getFullYear();
+       return `${day}/${month}/${year}`;
    };
 
 
-   const handleBackdropClick = (e: React.MouseEvent) => {
-       if (e.target === e.currentTarget) {
-           closeModal();
-       }
+   // For modal view: DD MMM YYYY, HH:MM am/pm
+   const formatDateModal = (dateStr: string): string => {
+       const d = new Date(dateStr);
+       const day = String(d.getDate()).padStart(2, '0');
+       const month = d.toLocaleString('en-US', { month: 'short' });
+       const year = d.getFullYear();
+       const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+       return `${day} ${month} ${year}, ${time}`;
    };
 
 
-   useEffect(() => {
-       const handleEsc = (e: KeyboardEvent) => {
-           if (e.key === 'Escape') {
-               closeModal();
+   // Format event date for modal display (without time)
+   const formatEventDate = (dateStr: string): string => {
+       const d = new Date(dateStr);
+       const day = String(d.getDate()).padStart(2, '0');
+       const month = d.toLocaleString('en-US', { month: 'short' });
+       const year = d.getFullYear();
+       return `${day} ${month} ${year}`;
+   };
+
+
+   // Format event time for modal display
+   const formatEventTime = (dateStr: string): string => {
+       const d = new Date(dateStr);
+       return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+   };
+
+
+   const parseMessage = (notification: Notification): { title: string; actualMessage: string } => {
+       const message = notification.message;
+
+
+       const parts = message.split(' • ');
+       if (parts.length >= 2) {
+           const rest = parts.slice(1).join(' • ');
+
+
+           if (rest.includes(' — ')) {
+               const restParts = rest.split(' — ');
+               const title = restParts[0];
+               const actualMessage = restParts.slice(1).join(' — ');
+               return { title, actualMessage };
            }
-       };
-       if (selectedNotification) {
-           document.addEventListener('keydown', handleEsc);
+           return { title: rest, actualMessage: '' };
        }
-       return () => document.removeEventListener('keydown', handleEsc);
-   }, [selectedNotification]);
-
-
-   const isEventDeleted = (notification: Notification) => {
-       return notification.type === 'event_deleted' || !notification.event || notification.event?.deleted_at;
+       return { title: message, actualMessage: '' };
    };
 
 
@@ -282,10 +228,8 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
            <div className="flex-shrink-0 bg-[#fcfcf9] pt-2 pb-6 px-1 sm:px-2 shadow-b-sm">
                <div className="flex items-center justify-between">
                    <div>
-                       <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("notify")}</h1>
-                       <p className="text-xs sm:text-sm text-[#667777] mt-1">
-                           {t("notificationsSubtitle")}
-                       </p>
+                       <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("notificationsAndAnnouncements")}</h1>
+                       <p className="text-xs sm:text-sm text-[#667777] mt-1">{t("staffNotificationsSubtitle")}</p>
                    </div>
                </div>
 
@@ -293,14 +237,14 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                <div className="mt-4 flex flex-col sm:flex-row items-stretch gap-4 w-full">
                    <div className="flex-1">
                        <SearchBar
-                           value={notificationSearch}
-                           onChange={setNotificationSearch}
+                           value={searchQuery}
+                           onChange={setSearchQuery}
                            placeholder={t("searchNotificationsPlaceholder")}
                        />
                    </div>
 
+
                    <div className="flex gap-3 items-stretch">
-                       {/* Date Filter */}
                        <div className="relative h-full">
                            <select
                                value={dateFilter}
@@ -314,28 +258,35 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                            <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
                        </div>
 
-                       {/* Status Filter */}
-                       <div className="relative h-full">
-                           <select
-                               value={statusFilter}
-                               onChange={(e) => setStatusFilter(e.target.value)}
-                               className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
-                           >
-                               <option value="all">{t("allStatus")}</option>
-                               <option value="read">{t("readOption")}</option>
-                               <option value="unread">{t("unreadOption")}</option>
-                           </select>
-                           <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+
+                       <div className="flex items-center gap-2">
+                           <span className="text-sm font-medium text-gray-700">{t("toColon")}</span>
+                           <div className="relative h-full">
+                               <select
+                                   value={targetFilter}
+                                   onChange={(e) => setTargetFilter(e.target.value)}
+                                   className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
+                               >
+                                   <option value="all-residents">{t("allResidentsOption")}</option>
+                                   {memberships.map((m: Membership) => (
+                                       <option key={m.id} value={String(m.id)}>
+                                           {m.name}
+                                       </option>
+                                   ))}
+                               </select>
+                               <Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+                           </div>
                        </div>
                    </div>
                </div>
+
 
                <p className="mt-2 text-xs text-gray-500">
                    {filteredNotifications.length} {t("notificationsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
                </p>
 
 
-               {/* ✅ PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+               {/* ✅ PAGINATION - ← 1 → STYLE */}
                <div className="flex justify-end mt-4">
                    {totalPages > 1 && (
                        <div className="flex items-center gap-2">
@@ -374,71 +325,45 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                ) : (
                    <div className="space-y-3">
                        {paginatedNotifications.map((n) => {
-                           const isRead = n.read;
-                           const isDeleted = isEventDeleted(n);
-                           const { staffName, title, actualMessage } = parseMessage(n.message);
+                           const { title, actualMessage } = parseMessage(n);
+                           const targetText = n.target_name || t("allResidentsOption");
+
 
                            return (
                                <div
                                    key={n.id}
-                                   onClick={() => handleNotificationClick(n)}
-                                   className={`cursor-pointer relative rounded-2xl sm:rounded-3xl px-5 sm:px-6 py-6 sm:py-7 border-l-4 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.18)] hover:-translate-y-1 ${
-                                       isDeleted
-                                           ? 'border-l-gray-400 bg-gray-100 opacity-75 cursor-not-allowed hover:bg-gray-100'
-                                           : isRead
-                                               ? 'border-l-[#ecd862] bg-white hover:bg-gray-50'
-                                               : 'border-l-[#ecd862] bg-[#f8f3ee] hover:bg-[#fef8e8]'
-                                   } border-y border-r border-gray-200`}
+                                   onClick={() => setSelectedNotification(n)}
+                                   className="cursor-pointer relative rounded-2xl sm:rounded-3xl bg-white px-5 sm:px-6 py-6 sm:py-7 border-l-4 border-l-[#ecd862] border-y border-r border-gray-200 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.18)] hover:-translate-y-1 hover:bg-gray-50"
                                >
                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
                                        <div className="flex-1 min-w-0">
                                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs sm:text-sm">
-                                               {staffName && !isDeleted && (
-                                                   <>
-                                                       <div className="flex items-center gap-2 flex-wrap">
-                                                           <span className="text-gray-700 break-words text-xs sm:text-sm">
-                                                               {highlightText(staffName, notificationSearch)}
-                                                           </span>
-                                                       </div>
-                                                       <span className="text-gray-400 hidden sm:block">•</span>
-                                                   </>
-                                               )}
-
+                                               <div className="flex items-center gap-2 flex-wrap">
+                                                   <span className="font-medium text-gray-800 shrink-0 text-xs sm:text-sm">{t("toColon")}</span>
+                                                   <span className="text-gray-700 break-words text-xs sm:text-sm">
+                                                       {highlightText(targetText, searchQuery)}
+                                                   </span>
+                                               </div>
+                                               <span className="text-gray-400 hidden sm:block">•</span>
                                                <div className="flex-1 mt-1.5 sm:mt-0">
                                                    <div className="flex flex-wrap items-center gap-1.5">
-                                                       <span className={`font-semibold text-xs sm:text-sm ${
-                                                           !isRead && !isDeleted
-                                                               ? 'text-[#005f63] font-bold'
-                                                               : isDeleted
-                                                                   ? 'text-gray-500 line-through'
-                                                                   : 'text-[#005f63]'
-                                                       }`}>
-                                                           {highlightText(title, notificationSearch)}
+                                                       <span className="font-semibold text-[#005f63] text-xs sm:text-sm">
+                                                           {highlightText(title, searchQuery)}
                                                        </span>
-                                                       {actualMessage && !isDeleted && (
+                                                       {actualMessage && (
                                                            <>
                                                                <span className="text-gray-400">—</span>
-                                                               <span className={`text-gray-600 break-words text-xs sm:text-sm ${
-                                                                   !isRead && !isDeleted ? 'font-medium' : ''
-                                                               }`}>
-                                                                   {highlightText(actualMessage, notificationSearch)}
+                                                               <span className="text-gray-600 break-words text-xs sm:text-sm">
+                                                                   {highlightText(actualMessage, searchQuery)}
                                                                </span>
                                                            </>
                                                        )}
                                                    </div>
                                                </div>
                                            </div>
-                                           {isDeleted && (
-                                               <div className="flex items-center gap-2 mt-2">
-                                                   <AlertTriangle size={14} className="text-gray-500" />
-                                                   <span className="text-xs text-gray-500">{t("eventCancelledNote")}</span>
-                                               </div>
-                                           )}
                                        </div>
-
-                                       <div className={`shrink-0 text-xs whitespace-nowrap ${
-                                           !isRead && !isDeleted ? 'font-bold text-gray-700' : 'text-gray-500'
-                                       }`}>
+                                       {/* Card date: DD/MM/YYYY */}
+                                       <div className="shrink-0 text-xs text-gray-500 whitespace-nowrap">
                                            {formatDateCard(n.created_at)}
                                        </div>
                                    </div>
@@ -449,15 +374,56 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                )}
            </div>
 
+           {/* Adviser recommendation: household-head SMS delivery log */}
+           <div className="px-1 sm:px-2 pb-6">
+               <div className="rounded-3xl border border-[#ddd5ca] bg-white p-5">
+                   <div className="flex items-center gap-2 mb-1">
+                       <Smartphone className="h-5 w-5 text-[#005f63]" />
+                       <h2 className="text-lg font-bold text-[#005f63]">{t("householdSmsDeliveries")}</h2>
+                   </div>
+                   <p className="text-xs text-gray-500 mb-4">
+                       {t("householdSmsDesc")}
+                   </p>
+                   {smsLoading ? (
+                       <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+                   ) : smsLogs.length === 0 ? (
+                       <p className="text-sm text-gray-400 italic text-center py-6">{t("noSmsSentYet")}</p>
+                   ) : (
+                       <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+                           {smsLogs.map((log: any) => (
+                               <div key={log.id} className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                                   <div className="min-w-0 flex items-center gap-2">
+                                       {log.user?.is_household_head && <span title={t("householdHeadTitle")}><Home className="h-4 w-4 text-orange-500 shrink-0" /></span>}
+                                       <div className="min-w-0">
+                                           <p className="text-sm font-medium text-gray-800 truncate">
+                                               {log.user ? `${log.user.first_name} ${log.user.last_name}` : log.to_number} · {log.to_number}
+                                           </p>
+                                           <p className="text-xs text-gray-500 truncate">{log.event?.name ?? "—"}</p>
+                                       </div>
+                                   </div>
+                                   <span className={`px-2 py-1 rounded-full text-[11px] font-semibold shrink-0 ${
+                                       log.status === 'sent' ? 'bg-green-100 text-green-800'
+                                       : log.status === 'failed' ? 'bg-red-100 text-red-700'
+                                       : 'bg-gray-100 text-gray-600'
+                                   }`}>
+                                       {log.status === 'simulated' ? t("loggedNoGateway") : log.status}
+                                   </span>
+                               </div>
+                           ))}
+                       </div>
+                   )}
+               </div>
+           </div>
 
-           {/* Notification Detail Modal — with same styling as NotificationView */}
-           {selectedNotification && selectedNotification.event && !selectedNotification.event.deleted_at && (
+
+           {/* Notification Detail Modal */}
+           {selectedNotification && (
                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                    <div className="bg-white rounded-3xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl transform transition-all">
                        <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between rounded-t-3xl z-10">
                            <h3 className="text-lg font-bold text-[#005f63]">{t("notificationDetails")}</h3>
                            <button
-                               onClick={closeModal}
+                               onClick={() => setSelectedNotification(null)}
                                className="p-2 rounded-full hover:bg-gray-100 transition-colors"
                            >
                                <X size={18} className="text-gray-500" />
@@ -466,22 +432,21 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
 
                        <div className="px-6 py-5 space-y-4">
-                           {/* Staff and Sent Info */}
+                           {/* Recipient and Sent Info */}
                            <div className="flex items-center justify-between w-full">
                                <span className="text-sm text-gray-800">
-                                   {parseMessage(selectedNotification.message).staffName || t("barangayStaffFallback")}
+                                   {t("recipientColon")} {selectedNotification.target_name || t("allResidentsOption")}
                                </span>
                                <div className="flex items-center gap-2 text-gray-600">
-                                   <Send size={16} />
+                                   <Send size={16} className="text-[#005f63]" />
                                    <span className="text-sm">{formatDateModal(selectedNotification.created_at)}</span>
                                </div>
                            </div>
 
 
-                           {/* Event Details - Date, Time, Location, and Description */}
+                           {/* Event Details */}
                            {selectedNotification.event && (
                                <div className="space-y-3 pt-2 border-t border-gray-100">
-                                   {/* Date */}
                                    <div className="flex items-start gap-3 text-gray-700">
                                        <Calendar size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                        <div className="text-sm">
@@ -490,7 +455,6 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                        </div>
                                    </div>
 
-                                   {/* Time */}
                                    <div className="flex items-start gap-3 text-gray-700">
                                        <Clock size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
                                        <div className="text-sm">
@@ -499,7 +463,6 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                        </div>
                                    </div>
 
-                                   {/* Location */}
                                    {selectedNotification.event.location && (
                                        <div className="flex items-start gap-3 text-gray-700">
                                            <MapPin size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
@@ -510,7 +473,6 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                        </div>
                                    )}
 
-                                   {/* Event Description */}
                                    {selectedNotification.event.description && (
                                        <div className="flex items-start gap-3 text-gray-700">
                                            <FileText size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
@@ -531,7 +493,8 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                    <div className="text-sm">
                                        <span className="font-medium">{t("messageColon")}</span>
                                        <p className="text-gray-700 mt-1">
-                                           {parseMessage(selectedNotification.message).actualMessage || selectedNotification.message}
+                                           {parseMessage(selectedNotification).actualMessage ||
+                                            (selectedNotification.event?.name && selectedNotification.event.name)}
                                        </p>
                                    </div>
                                </div>

@@ -1,4 +1,4 @@
-import SummaryCard from "../../../Components/UI/SummaryCard";
+import SummaryCard from "../../../components/ui/SummaryCard";
 import { useMemo } from "react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 

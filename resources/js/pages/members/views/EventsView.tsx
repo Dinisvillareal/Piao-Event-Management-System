@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Filter } from "lucide-react";
-import SearchBar from "../../../Components/UI/SearchBar";
+import SearchBar from "../../../components/ui/SearchBar";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 const THIS_WEEK_KEY = "__THIS_WEEK__";

@@ -1,24 +1,24 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 // --- LAYOUT IMPORTS ---
-import Sidebar, { NAV, SETTINGS_NAV } from "./Components/Sidebar";
-import TopHeader from "./Components/TopHeader";
+import Sidebar, { NAV, SETTINGS_NAV } from "./components/Sidebar";
+import TopHeader from "./components/TopHeader";
 
 // --- VIEW IMPORTS ---
-import DashboardView from "./Views/DashboardView";
-import ScanView from "./Views/ScanView";
-import ResidentsView from "./Views/ResidentsView";
-import QRCodesView from "./Views/QRCodesView";
-import { EventsView } from "./Views/EventsView";
-import NotificationsView from "./Views/NotificationsView";
-import ActivityLogsView from "./Views/ActivityLogsView";
-import ArchiveView from "./Views/ArchiveView";
-import ReportsView from "./Views/ReportsView";
-import InventoryView from "./Views/InventoryView";
-import BudgetView from "./Views/BudgetView";
-import IntegrationsView from "./Views/IntegrationsView";
-import ProfilingSettingsView from "./Views/ProfilingSettingsView";
-import OfflineBanner from "../../Components/UI/OfflineBanner";
+import DashboardView from "./views/DashboardView";
+import ScanView from "./views/ScanView";
+import ResidentsView from "./views/ResidentsView";
+import QRCodesView from "./views/QRCodesView";
+import { EventsView } from "./views/EventsView";
+import NotificationsView from "./views/NotificationsView";
+import ActivityLogsView from "./views/ActivityLogsView";
+import ArchiveView from "./views/ArchiveView";
+import ReportsView from "./views/ReportsView";
+import InventoryView from "./views/InventoryView";
+import BudgetView from "./views/BudgetView";
+import IntegrationsView from "./views/IntegrationsView";
+import ProfilingSettingsView from "./views/ProfilingSettingsView";
+import OfflineBanner from "../../components/ui/OfflineBanner";
 import api from "../../lib/api";
 
 // --- TYPES & MOCK DATA ---

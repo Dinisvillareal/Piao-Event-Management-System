@@ -1,7 +1,7 @@
 // import React, { useEffect, useState } from "react";
 // import ReactDOM from "react-dom/client";
-// import MemberDashboard from "./Pages/Members/Members";
-// import LoginPage from "./Pages/Login/Login";
+// import MemberDashboard from "./pages/members/Members";
+// import LoginPage from "./pages/login/Login";
 
 
 // const rootElement = document.getElementById("app");
@@ -34,9 +34,9 @@
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
-import MemberDashboard from "./Pages/Members/Members";
-import StaffDashboard from "./Pages/Staff/Staff";
-import LoginPage from "./Pages/Login/Login";
+import MemberDashboard from "./pages/members/Members";
+import StaffDashboard from "./pages/staff/Staff";
+import LoginPage from "./pages/login/Login";
 import { LanguageProvider } from "./i18n/LanguageContext";
 
 const rootElement = document.getElementById("app");

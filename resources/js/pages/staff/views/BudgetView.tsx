@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Wallet, Plus, X, AlertTriangle } from "lucide-react";
-import SearchBar from "../../../Components/UI/SearchBar";
+import SearchBar from "../../../components/ui/SearchBar";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 

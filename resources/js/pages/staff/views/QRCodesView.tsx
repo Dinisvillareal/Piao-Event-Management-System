@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { Users, Plus, Pencil, Trash2, Search, Archive, CheckCircle } from "lucide-react";
-import { Button, Input } from "../../../Components/UI/Core";
-import SearchBar from "../../../Components/UI/SearchBar";
+import { Button, Input } from "../../../components/ui/Core";
+import SearchBar from "../../../components/ui/SearchBar";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 

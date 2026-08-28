@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, Filter, XCircle, CheckCircle } from 'lucide-react';
-import SearchBar from '../../../Components/UI/SearchBar';
+import SearchBar from '../../../components/ui/SearchBar';
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface TrashedItem {

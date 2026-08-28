@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Camera, CameraOff, CheckCircle, XCircle, LogIn, LogOut, IdCard, ScanLine } from "lucide-react";
 import { Scanner } from '@yudiel/react-qr-scanner';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Input, Label, Select, SelectItem, Badge } from "../../../Components/UI/Core";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Input, Label, Select, SelectItem, Badge } from "../../../components/ui/Core";
 import api from "../../../lib/api";
 import { queueAttendance } from "../../../lib/offlineQueue";
 import { useOnlineStatus } from "../../../hooks/useOnlineStatus";

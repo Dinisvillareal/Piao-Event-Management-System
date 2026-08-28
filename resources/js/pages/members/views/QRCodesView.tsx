@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import SearchBar from "../../../Components/UI/SearchBar";
+import SearchBar from "../../../components/ui/SearchBar";
 import { QRCodeCanvas } from "qrcode.react";
 import { QrCode } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";

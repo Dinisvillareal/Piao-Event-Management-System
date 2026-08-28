@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Filter, XCircle, Archive, CheckCircle } from "lucide-react";
-import SearchBar from "../../../Components/UI/SearchBar";
+import SearchBar from "../../../components/ui/SearchBar";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -378,7 +378,6 @@ export default function ResidentsView() {
     if (!raw) err.contactNumber = t("contactNumberRequired");
     else if (!raw.startsWith("09")) err.contactNumber = t("contactNumberMustStart09");
     else if (raw.length !== 11) err.contactNumber = t("mustBe11Digits");
-    if (!addPhotoFile) err.photo = t("idPhotoRequired");
     if (newResident.needAccount && !newResident.tempPassword.trim())
       err.tempPassword = t("tempPasswordRequired");
     setFormErrors(err);
@@ -397,7 +396,6 @@ export default function ResidentsView() {
     else if (raw.length !== 11) err.contactNumber = t("mustBe11Digits");
     if (!editingResident.hasAccount && editingResident.needAccount && !editingResident.tempPassword.trim())
       err.tempPassword = t("tempPasswordRequired");
-    if (!editPhotoFile && !editPhotoPreview) err.photo = t("idPhotoRequired");
     setFormErrors(err);
     return Object.keys(err).length === 0;
   };
@@ -809,7 +807,7 @@ const handleDeleteResident = async () => {
     return (
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
-          {t("idPhotoFieldLabel")} <span className="text-gray-900 font-bold">*</span>
+          {t("idPhotoFieldLabel")} <span className="text-gray-400 font-normal">({t("optionalLabel")})</span>
         </label>
         <input
           type="file"

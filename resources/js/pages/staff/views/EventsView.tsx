@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, Archive, Calendar, CheckCircle } from "lucide-react";
-import SearchBar from "../../../Components/UI/SearchBar";
+import SearchBar from "../../../components/ui/SearchBar";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -91,6 +91,19 @@ export function EventsView({
   const getTodayString = () => {
     const today = new Date();
     return today.toISOString().split('T')[0];
+  };
+
+  const getMembershipName = (id: any) => {
+    const found = memberships.find((m: any) => String(m.id) === String(id));
+    return found ? found.name : null;
+  };
+
+  const getMembershipNames = (e: MyEvent): string[] => {
+    if (e.membershipNames && e.membershipNames.length > 0) return e.membershipNames;
+    if (e.membershipIds && e.membershipIds.length > 0) {
+      return e.membershipIds.map((id) => getMembershipName(id)).filter(Boolean) as string[];
+    }
+    return [];
   };
 
   const formatDbEvent = (dbEvent: any): MyEvent => {
@@ -788,7 +801,8 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
                       const signedIn = attendanceList.filter((a: any) => a.timeIn).length;
                       const signedOut = attendanceList.filter((a: any) => a.timeOut).length;
                       const status = getEventStatus(e);
-                      const displayMembershipLabel = (e.membershipNames && e.membershipNames.length > 0) ? e.membershipNames.join(", ") : (e as any).membershipName || t("openEventLabel");
+                      const eventMembershipNames = getMembershipNames(e);
+                      const displayMembershipLabel = eventMembershipNames.length > 0 ? eventMembershipNames.join(", ") : t("openEventLabel");
                       return (
                         <div key={e.id} className="relative rounded-2xl border-l-4 border-[#f8e67d] bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)]">
                           <div className="absolute top-4 right-4 flex items-center gap-2">
@@ -865,7 +879,7 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4"><div><h2 className="text-2xl font-black text-[#005f63]">{viewEv.title}</h2><p className="text-sm text-gray-600 mt-1">{viewEv.startDate || viewEv.date} · {formatTime12Hour(viewEv.startTime)}</p><p className="text-sm text-gray-600">{viewEv.location}</p></div><button onClick={() => setViewEv(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button></div>
-            <div className="space-y-4"><div className={`px-3 py-2 rounded-full inline-block text-sm font-semibold ${getEventStatus(viewEv).color}`}>{eventStatusLabel(getEventStatus(viewEv).label)}</div><div><h4 className="font-semibold text-gray-700 mb-1">{t("descriptionLabel")}</h4><p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl">{viewEv.description || "—"}</p></div>{viewEv.notificationMessage && (<div><h4 className="font-semibold text-gray-700 mb-1">{t("notificationPreview")}</h4><p className="text-sm text-teal-700 bg-teal-50 p-3 rounded-xl">{viewEv.notificationMessage}</p></div>)}{viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined && (<p className="text-sm text-gray-600">{t("approvedBudgetColon")} <strong className="text-[#005f63]">₱{Number(viewEv.approvedBudget).toLocaleString()}</strong></p>)}<div className="grid grid-cols-3 gap-3 text-center"><div className="bg-teal-50 rounded-xl p-3"><p className="text-xs text-teal-600 font-medium">{t("targetMembersLabel")}</p><p className="font-bold text-teal-800 text-sm">{(viewEv.membershipNames && viewEv.membershipNames.length > 0) ? viewEv.membershipNames.join(", ") : t("openEventLabel")}</p></div><div className="bg-green-50 rounded-xl p-3"><p className="text-xs text-green-600 font-medium">{t("signedInLabel")}</p><p className="font-bold text-green-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length}</p></div>
+            <div className="space-y-4"><div className={`px-3 py-2 rounded-full inline-block text-sm font-semibold ${getEventStatus(viewEv).color}`}>{eventStatusLabel(getEventStatus(viewEv).label)}</div><div><h4 className="font-semibold text-gray-700 mb-1">{t("descriptionLabel")}</h4><p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl">{viewEv.description || "—"}</p></div>{viewEv.notificationMessage && (<div><h4 className="font-semibold text-gray-700 mb-1">{t("notificationPreview")}</h4><p className="text-sm text-teal-700 bg-teal-50 p-3 rounded-xl">{viewEv.notificationMessage}</p></div>)}{viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined && (<p className="text-sm text-gray-600">{t("approvedBudgetColon")} <strong className="text-[#005f63]">₱{Number(viewEv.approvedBudget).toLocaleString()}</strong></p>)}<div className="grid grid-cols-3 gap-3 text-center"><div className="bg-teal-50 rounded-xl p-3"><p className="text-xs text-teal-600 font-medium">{t("targetMembersLabel")}</p><p className="font-bold text-teal-800 text-sm">{(() => { const n = getMembershipNames(viewEv); return n.length > 0 ? n.join(", ") : t("openEventLabel"); })()}</p></div><div className="bg-green-50 rounded-xl p-3"><p className="text-xs text-green-600 font-medium">{t("signedInLabel")}</p><p className="font-bold text-green-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length}</p></div>
             <div className="bg-orange-50 rounded-xl p-3"><p className="text-xs text-orange-600 font-medium">{t("signedOutLabel")}</p><p className="font-bold text-orange-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeOut).length}</p></div></div><button onClick={() => setShowAttendance(viewEv)} className="w-full bg-[#f3b94e] hover:bg-[#ff9736] text-white py-2.5 rounded-full font-medium">{t("viewAttendanceList")}</button></div>
           </div>
         </div>
