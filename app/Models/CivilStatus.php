@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Cache;
 
 class CivilStatus extends Model
 {
@@ -13,18 +12,24 @@ class CivilStatus extends Model
         'sort_order' => 'integer',
     ];
 
-    const CACHE_KEY = 'civil_statuses.all';
+    /**
+     * Plain per-request static cache (NOT Laravel's Cache facade) -- this
+     * project has no `cache` table migration, so Cache::remember() would
+     * throw on the "database" cache store used in .env.
+     */
+    private static ?\Illuminate\Support\Collection $cached = null;
 
     public static function allCached()
     {
-        return Cache::remember(self::CACHE_KEY, 3600, function () {
-            return self::orderBy('sort_order')->get();
-        });
+        if (self::$cached === null) {
+            self::$cached = self::orderBy('sort_order')->get();
+        }
+        return self::$cached;
     }
 
     public static function forgetCache(): void
     {
-        Cache::forget(self::CACHE_KEY);
+        self::$cached = null;
     }
 
     public function users()

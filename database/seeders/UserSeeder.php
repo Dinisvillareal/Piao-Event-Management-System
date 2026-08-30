@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use App\Models\User;
+use App\Models\CivilStatus;
 use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
@@ -117,6 +118,9 @@ class UserSeeder extends Seeder
                 'role' => 'Resident',
                 'has_account' => 1,
                 'password' => 'ana123',
+                // Adviser example (Senior Citizen eligibility) demo resident
+                'birth_date' => '1955-05-10',
+                'civil_status' => 'Widowed',
             ],
             [
                 'first_name' => 'Bea',
@@ -126,6 +130,9 @@ class UserSeeder extends Seeder
                 'role' => 'Resident',
                 'has_account' => 0,
                 'password' => 'bea123',
+                // Solo Parent ("single mom") demo resident
+                'birth_date' => '1992-03-22',
+                'civil_status' => 'Solo Parent',
             ],
             [
                 'first_name' => 'Cathy',
@@ -135,6 +142,9 @@ class UserSeeder extends Seeder
                 'role' => 'Resident',
                 'has_account' => 1,
                 'password' => 'cathy123',
+                // Youth demo resident
+                'birth_date' => '2010-09-14',
+                'civil_status' => 'Single',
             ],
             [
                 'first_name' => 'Diana',
@@ -203,6 +213,8 @@ class UserSeeder extends Seeder
 
         $next = User::withTrashed()->count() + 1;
 
+        $civilStatusIds = CivilStatus::pluck('id', 'label');
+
         foreach ($users as $data) {
 
             $userCode = 'PR-' . str_pad($next, 4, '0', STR_PAD_LEFT);
@@ -224,6 +236,11 @@ class UserSeeder extends Seeder
 
                 // DO NOT AUTO CHANGE
                 'has_account' => $data['has_account'],
+
+                // Adviser example (Senior Citizen eligibility) extended to
+                // Youth / Solo Parent -- only set for the demo residents above.
+                'birth_date' => $data['birth_date'] ?? null,
+                'civil_status_id' => isset($data['civil_status']) ? ($civilStatusIds[$data['civil_status']] ?? null) : null,
             ]);
 
             $next++;

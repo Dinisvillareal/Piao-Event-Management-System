@@ -16,6 +16,13 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Adviser example (Senior Citizen eligibility) extended to Youth /
+        // Solo Parent -- must run first so UserSeeder / MembershipSeeder can
+        // reference real age bracket / civil status ids.
+        $this->call([
+            AgeBracketSeeder::class,
+            CivilStatusSeeder::class,
+        ]);
         $this->call([
             UserSeeder::class,
         ]);
