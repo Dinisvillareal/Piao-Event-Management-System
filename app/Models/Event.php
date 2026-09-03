@@ -18,6 +18,8 @@ class Event extends Model
         'location',
         'event_start',
         'event_end',
+        'call_time_start',
+        'call_time_end',
         'membership_ids',
         'notification_message',
         'deleted_by',
@@ -28,6 +30,8 @@ class Event extends Model
         'membership_ids' => 'array',
         'event_start' => 'datetime',
         'event_end' => 'datetime',
+        'call_time_start' => 'datetime',
+        'call_time_end' => 'datetime',
         'approved_budget' => 'decimal:2',
     ];
 
@@ -133,6 +137,13 @@ class Event extends Model
     public function expenses()
     {
         return $this->hasMany(EventExpense::class);
+    }
+
+    // ===== Items borrowed from Inventory for this event =====
+
+    public function borrowedItems()
+    {
+        return $this->hasMany(EventInventoryItem::class);
     }
 
     public function getTotalExpensesAttribute(): float

@@ -8,6 +8,7 @@ import TopHeader from "./components/TopHeader";
 import DashboardView from "./views/DashboardView";
 import ScanView from "./views/ScanView";
 import ResidentsView from "./views/ResidentsView";
+import HouseholdsView from "./views/HouseholdsView";
 import QRCodesView from "./views/QRCodesView";
 import { EventsView } from "./views/EventsView";
 import NotificationsView from "./views/NotificationsView";
@@ -205,16 +206,27 @@ export default function StaffDashboard() {
             const endDate = dbEvent.event_end?.split(' ')[0] ?? startDate;
             const startTime = dbEvent.event_start?.split(' ')[1]?.slice(0, 5) ?? '';
             const endTime = dbEvent.event_end?.split(' ')[1]?.slice(0, 5) ?? '';
+            const callStartTime = dbEvent.call_time_start?.split(' ')[1]?.slice(0, 5) ?? '';
+            const callEndTime = dbEvent.call_time_end?.split(' ')[1]?.slice(0, 5) ?? '';
 
             return {
               id: dbEvent.id,
               title: dbEvent.name,
               date: dbEvent.event_start,
               event_start: dbEvent.event_start,
+              // Previously dropped here -- ScanView's "is this event still
+              // scannable" check (and the Events page's Upcoming/Ongoing/
+              // Past status) both need the event's real end and call-time
+              // window, not just its start.
+              event_end: dbEvent.event_end,
+              call_time_start: dbEvent.call_time_start,
+              call_time_end: dbEvent.call_time_end,
               startDate,
               endDate,
               startTime,
               endTime,
+              callStartTime,
+              callEndTime,
               location: dbEvent.location,
               description: dbEvent.description,
               membershipIds,
@@ -232,22 +244,15 @@ export default function StaffDashboard() {
     fetchRealEvents();
   }, [membershipOptions, refreshEventsTrigger]);
 
+  // EventsView already shows its own confirm dialog before calling this,
+  // and its own success/error popups after -- this just does the request
+  // and lets EventsView's confirmDelete() catch failures, so there's no
+  // second (native, jarring) confirm()/alert() stacked on top of it.
   const handleDeleteEvent = async (id: string | number) => {
-    if (!window.confirm('Delete this event? It will be moved to Trash.')) {
-      return;
-    }
+    await api.delete(`/events/${id}`);
 
-    try {
-      await api.delete(`/events/${id}`);
-
-      setAllEvents((prev) => prev.filter((e) => e.id !== id));
-      setEventsCount(prev => Math.max(0, prev - 1));
-
-      alert('Event moved to Trash successfully!');
-    } catch (error: any) {
-      console.error('Error deleting event:', error);
-      alert(error?.response?.data?.message || 'Error deleting event');
-    }
+    setAllEvents((prev) => prev.filter((e) => e.id !== id));
+    setEventsCount(prev => Math.max(0, prev - 1));
   };
 
   // ✅ Get the display name from currentUser or fallback to staff.name
@@ -285,6 +290,7 @@ export default function StaffDashboard() {
           )}
          {active === "scan" && <ScanView events={allEvents} residents={allResidents} memberships={membershipOptions} />}
           {active === "residents" && <ResidentsView />}
+          {active === "households" && <HouseholdsView />}
           {active === "memberships" && <QRCodesView highlightText={highlightText} />}
           {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
           {active === "notify" && <NotificationsView memberships={membershipOptions} highlightText={highlightText} />}

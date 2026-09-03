@@ -6,6 +6,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 // ✅ Exported so Members.tsx can import and reuse it
 export interface AttendanceRecord {
   id: number;
+  eventId?: number;
   eventTitle: string;
   eventDate: string;
   location: string;

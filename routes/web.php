@@ -16,6 +16,7 @@ use App\Http\Controllers\EventExpenseController;
 use App\Http\Controllers\IntegrationController;
 use App\Http\Controllers\AgeBracketController;
 use App\Http\Controllers\CivilStatusController;
+use App\Http\Controllers\HouseholdController;
 
 /*
 |--------------------------------------------------------------------------
@@ -58,7 +59,7 @@ Route::middleware('auth')->group(function () {
     */
     Route::post('/logout', [UserController::class, 'logout']);
     Route::get('/me', [UserController::class, 'me']);
-    Route::post('/change-password', [UserController::class, 'changePassword']);
+    Route::patch('/users/{id}/change-password', [UserController::class, 'changePassword']);
 
     /*
     |--------------------------------------------------------------------------
@@ -76,6 +77,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
     Route::post('/users/{id}/restore', [UserController::class, 'restore']);
     Route::delete('/users/{id}/force-delete', [UserController::class, 'forceDelete']);
+    Route::patch('/users/{id}/contact-number', [UserController::class, 'updateContactNumber']);
 
     /*
     |--------------------------------------------------------------------------
@@ -96,11 +98,29 @@ Route::middleware('auth')->group(function () {
     Route::post('/age-brackets', [AgeBracketController::class, 'store']);
     Route::put('/age-brackets/{id}', [AgeBracketController::class, 'update']);
     Route::delete('/age-brackets/{id}', [AgeBracketController::class, 'destroy']);
+    Route::post('/age-brackets/{id}/restore', [AgeBracketController::class, 'restore']);
 
     Route::get('/civil-statuses', [CivilStatusController::class, 'index']);
     Route::post('/civil-statuses', [CivilStatusController::class, 'store']);
     Route::put('/civil-statuses/{id}', [CivilStatusController::class, 'update']);
     Route::delete('/civil-statuses/{id}', [CivilStatusController::class, 'destroy']);
+    Route::post('/civil-statuses/{id}/restore', [CivilStatusController::class, 'restore']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | HOUSEHOLDS -- real relational replacement for the old free-text
+    | household_code string matching on users.
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/households', [HouseholdController::class, 'index']);
+    Route::get('/households/unassigned', [HouseholdController::class, 'unassigned']);
+    Route::get('/households/{id}', [HouseholdController::class, 'show']);
+    Route::post('/households', [HouseholdController::class, 'store']);
+    Route::put('/households/{id}', [HouseholdController::class, 'update']);
+    Route::delete('/households/{id}', [HouseholdController::class, 'destroy']);
+    Route::post('/households/{id}/members', [HouseholdController::class, 'addMember']);
+    Route::delete('/households/{id}/members/{userId}', [HouseholdController::class, 'removeMember']);
+    Route::put('/households/{id}/head', [HouseholdController::class, 'setHead']);
 
     /*
     |--------------------------------------------------------------------------
@@ -192,6 +212,9 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::get('/reports/attendance-summary', [ReportController::class, 'attendanceSummary']);
+    Route::get('/reports/membership-summary', [ReportController::class, 'membershipSummary']);
+    Route::get('/reports/budget-summary', [ReportController::class, 'budgetSummary']);
+    Route::get('/reports/inventory-summary', [ReportController::class, 'inventorySummary']);
 
     /*
     |--------------------------------------------------------------------------
@@ -200,6 +223,7 @@ Route::middleware('auth')->group(function () {
     */
     Route::post('/feedback', [FeedbackController::class, 'store']);
     Route::get('/feedback/pending', [FeedbackController::class, 'pending']);
+    Route::get('/feedback/mine', [FeedbackController::class, 'mine']);
     Route::get('/feedback/event/{eventId}', [FeedbackController::class, 'forEvent']);
 
     /*
@@ -209,6 +233,7 @@ Route::middleware('auth')->group(function () {
     */
     Route::get('/events/{eventId}/expenses', [EventExpenseController::class, 'index']);
     Route::post('/events/{eventId}/expenses', [EventExpenseController::class, 'store']);
+    Route::put('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'update']);
     Route::delete('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'destroy']);
 
     /*
@@ -217,6 +242,7 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::get('/inventory', [InventoryController::class, 'index']);
+    Route::get('/inventory/borrowable', [InventoryController::class, 'borrowable']);
     Route::post('/inventory', [InventoryController::class, 'store']);
     Route::put('/inventory/{id}', [InventoryController::class, 'update']);
     Route::delete('/inventory/{id}', [InventoryController::class, 'destroy']);

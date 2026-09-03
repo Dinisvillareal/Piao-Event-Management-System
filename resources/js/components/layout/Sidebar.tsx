@@ -134,6 +134,8 @@ interface SidebarProps {
 export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile }: SidebarProps) {
   const { t } = useLanguage();
   const [isOpen, setIsOpen] = useState(true); // controls show/hide
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const handleNavClick = (page: string) => {
     setActive(page);
@@ -150,6 +152,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   ];
 
   const handleLogout = async () => {
+    setLoggingOut(true);
     try {
       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
 
@@ -249,7 +252,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                 >
                   <item.icon className="h-5 w-5 shrink-0" />
                   <span
-                    className={`transition-all duration-300 whitespace-nowrap ${
+                    className={`transition-all duration-300 truncate flex-1 min-w-0 text-left ${
                       isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"
                     }`}
                   >
@@ -264,14 +267,14 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
         {/* Logout */}
         <div className="border-t border-[#007777] p-2 shrink-0">
           <button
-            onClick={handleLogout}
+            onClick={() => setShowLogoutConfirm(true)}
             className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition hover:bg-[#007777] hover:text-white ${
               isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"
             }`}
           >
             <LogOut className="h-5 w-5 shrink-0" />
             <span
-              className={`transition-all duration-300 whitespace-nowrap ${
+              className={`transition-all duration-300 truncate flex-1 min-w-0 text-left ${
                 isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"
               }`}
             >
@@ -280,6 +283,23 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           </button>
         </div>
       </aside>
+
+      {/* Same "are you sure" confirm used on the staff side -- signing out
+          ends the session, so it gets a deliberate step instead of firing
+          the moment the button is tapped. */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-[#005f63] flex justify-center"><LogOut size={40} /></div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-3">{t("confirmLogoutTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-5">{t("confirmLogoutMessage")}</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setShowLogoutConfirm(false)} disabled={loggingOut} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition disabled:opacity-60">{t("cancel")}</button>
+              <button onClick={handleLogout} disabled={loggingOut} className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition disabled:opacity-60">{t("yesLogoutButton")}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

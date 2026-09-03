@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
-import { Camera, CameraOff, CheckCircle, XCircle, LogIn, LogOut, IdCard, ScanLine } from "lucide-react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { Camera, CameraOff, CheckCircle, XCircle, LogIn, LogOut, IdCard, ScanLine, Search, ChevronDown } from "lucide-react";
 import { Scanner } from '@yudiel/react-qr-scanner';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Input, Label, Select, SelectItem, Badge } from "../../../components/ui/Core";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Input, Label, Badge } from "../../../components/ui/Core";
 import api from "../../../lib/api";
 import { queueAttendance } from "../../../lib/offlineQueue";
 import { useOnlineStatus } from "../../../hooks/useOnlineStatus";
@@ -50,6 +50,54 @@ export default function ScanView({ events, residents, memberships }: any) {
   const [checkInMethod, setCheckInMethod] = useState<"camera" | "manual">("camera");
   const [manualQuery, setManualQuery] = useState("");
 
+  // Searchable "Select Event" combobox: results ordered A-Z and finished
+  // events (attendance window fully closed) filtered out so staff aren't
+  // scrolling past events that are already over.
+  const [eventSearchQuery, setEventSearchQuery] = useState("");
+  const [eventDropdownOpen, setEventDropdownOpen] = useState(false);
+  const eventDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!eventDropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (eventDropdownRef.current && !eventDropdownRef.current.contains(e.target as Node)) {
+        setEventDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [eventDropdownOpen]);
+
+  // Ticks every 15s so the "window not open yet" banner clears itself once
+  // the sign-in/out window actually opens, without needing a page refresh.
+  const [currentHHMM, setCurrentHHMM] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  });
+  // Live "as of" label shown above the Select Event list -- e.g. "Sep 3,
+  // 10:50 PM" -- so staff can tell today's/now's events apart from
+  // same-titled recurring ones (see filteredEventOptions below, which now
+  // also shows each option's own date/time for the same reason).
+  const [currentDateTimeLabel, setCurrentDateTimeLabel] = useState(() => {
+    const now = new Date();
+    return `${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`;
+  });
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const now = new Date();
+      setCurrentHHMM(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+      setCurrentDateTimeLabel(`${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`);
+    }, 15000);
+    return () => clearInterval(tick);
+  }, []);
+
+  const formatEventOptionDateTime = (isoLike?: string): string => {
+    if (!isoLike) return "";
+    const d = new Date(String(isoLike).replace(" ", "T"));
+    if (isNaN(d.getTime())) return "";
+    return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`;
+  };
+
   const isOnline = useOnlineStatus();
 
   const [modalConfig, setModalConfig] = useState<ModalConfig>({ isOpen: false, type: 'info', title: '', message: '' });
@@ -68,11 +116,43 @@ export default function ScanView({ events, residents, memberships }: any) {
     ? memberships?.filter((m: any) => ev.membershipIds.includes(m.id) || ev.membershipIds.includes(String(m.id)))
     : [];
 
+  // Events selectable in the "Select Event" combobox: alphabetically
+  // ascending, and with events whose attendance window is fully over
+  // (past Call Time End, or past End Time when no call time is set)
+  // filtered out -- a finished event has nothing left to scan for.
+  const nowDateTimeStr = `${String(new Date().getFullYear())}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')} ${String(new Date().getHours()).padStart(2, '0')}:${String(new Date().getMinutes()).padStart(2, '0')}:${String(new Date().getSeconds()).padStart(2, '0')}`;
+
+  // Incoming (not yet started) + ongoing (started, not yet over) events
+  // only -- a finished one has nothing left to scan for. Previously fell
+  // back to "always include" when an event had neither call_time_end nor
+  // event_end set, which is exactly the shape of the app's older seeded
+  // events (no call time recorded at all) -- so long-past events with
+  // missing end times were leaking into this list forever. Falling back
+  // to event_start (and, failing that, the plain date) closes that gap:
+  // an event with no end info at all is treated as "ends at its own
+  // start" instead of "never ends".
+  const upcomingEvents = useMemo(() => {
+    return (events ?? [])
+      .filter((e: any) => {
+        const effectiveEnd = e.call_time_end || e.event_end || e.event_start || e.date;
+        if (!effectiveEnd) return true;
+        return nowDateTimeStr <= effectiveEnd;
+      })
+      .sort((a: any, b: any) => (a.title ?? "").localeCompare(b.title ?? ""));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, currentHHMM]);
+
+  const filteredEventOptions = useMemo(() => {
+    const q = eventSearchQuery.trim().toLowerCase();
+    if (!q) return upcomingEvents;
+    return upcomingEvents.filter((e: any) => (e.title ?? "").toLowerCase().includes(q));
+  }, [upcomingEvents, eventSearchQuery]);
+
   useEffect(() => {
-    if (events && events.length > 0 && !eventId) {
-      setEventId(String(events[0].id));
+    if (upcomingEvents.length > 0 && (!eventId || !upcomingEvents.some((e: any) => String(e.id) === String(eventId)))) {
+      setEventId(String(upcomingEvents[0].id));
     }
-  }, [events]);
+  }, [upcomingEvents]);
 
   const getStatus = (timeIn: string | null, timeOut: string | null): AttendanceEntry['status'] => {
     if (timeIn && timeOut) return "complete";
@@ -106,30 +186,56 @@ export default function ScanView({ events, residents, memberships }: any) {
 
     fetchEventAttendance();
 
-    const savedData = localStorage.getItem(`qr_deadline_${eventId}`);
-    if (savedData) {
-      const { time, isActive } = JSON.parse(savedData);
-      setClosingTime(time);
-      setIsDeadlineActive(isActive);
-    } else {
-      setClosingTime("");
-      setIsDeadlineActive(false);
-    }
-
     const savedMode = localStorage.getItem(`qr_mode_${eventId}`);
     if (savedMode === "in" || savedMode === "out") setScanMode(savedMode);
     else setScanMode("in");
 
   }, [eventId]);
 
+  // The event itself already declares its schedule (Start Time / End Time /
+  // Call Time / Call Time End from the Events form) -- derive the
+  // sign-in/out window from THAT instead of asking staff to retype a
+  // closing time by hand every time they open the scanner.
+  const selectedEvent = React.useMemo(
+    () => (events ?? []).find((e: any) => String(e.id) === String(eventId)),
+    [events, eventId]
+  );
+
+  // "Not open yet" banner: sign-in opens at Call Time (if set), sign-out
+  // opens at the event's End Time. Null means either no event selected, no
+  // such boundary configured, or the window is already open.
+  const windowNotYetOpen = React.useMemo(() => {
+    if (!selectedEvent) return null;
+    const openTime = scanMode === "in" ? selectedEvent.call_time_start : selectedEvent.event_end;
+    if (!openTime) return null;
+    return nowDateTimeStr < openTime ? openTime : null;
+  }, [selectedEvent, scanMode, nowDateTimeStr]);
+
   useEffect(() => {
-    if (!eventId) return;
-    if (isDeadlineActive && closingTime) {
-      localStorage.setItem(`qr_deadline_${eventId}`, JSON.stringify({ time: closingTime, isActive: true }));
-    } else {
-      localStorage.removeItem(`qr_deadline_${eventId}`);
+    if (!selectedEvent) {
+      setClosingTime("");
+      setIsDeadlineActive(false);
+      return;
     }
-  }, [isDeadlineActive, closingTime, eventId]);
+    if (scanMode === "in") {
+      // Sign-in closes at the event's own Start Time -- the FULL
+      // datetime (event_start), not just its "HH:MM" time-of-day. Bare
+      // time-of-day comparisons don't know what DATE the event is on, so
+      // e.g. selecting a 6:00 PM event while it's 11:29 PM *today* looked
+      // like the deadline had already passed even for an event days away
+      // -- that's what was causing the sign-in/out modals to fire
+      // immediately and flip-flop the scan mode back and forth.
+      const derived = selectedEvent.event_start || "";
+      setClosingTime(derived);
+      setIsDeadlineActive(!!derived);
+    } else {
+      // Sign-out closes at Call Time End, if the event set one; otherwise
+      // there's no upper bound (matches the backend's fallback behavior).
+      const derived = selectedEvent.call_time_end || "";
+      setClosingTime(derived);
+      setIsDeadlineActive(!!derived);
+    }
+  }, [selectedEvent, scanMode]);
 
   useEffect(() => {
     if (!eventId) return;
@@ -141,9 +247,9 @@ export default function ScanView({ events, residents, memberships }: any) {
 
     const timer = setInterval(() => {
       const now = new Date();
-      const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const nowFullStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
 
-      if (currentHHMM >= closingTime) {
+      if (nowFullStr >= closingTime) {
         const expiredMode = scanMode;
         setScan(null);
         setScanMode(prev => prev === "in" ? "out" : "in");
@@ -273,9 +379,7 @@ export default function ScanView({ events, residents, memberships }: any) {
 
   const isPastClosingTime = () => {
     if (!isDeadlineActive || !closingTime) return false;
-    const now = new Date();
-    const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-    return currentHHMM >= closingTime;
+    return nowDateTimeStr >= closingTime;
   };
 
   const applyLocalAttendance = (residentId: string, residentName: string, now: string) => {
@@ -352,7 +456,7 @@ export default function ScanView({ events, residents, memberships }: any) {
     <div className="space-y-6">
       <div className="sticky top-0 z-10 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm rounded-[10px]">
         <div>
-          <h1 className="text-4xl font-black text-[#005f63]">{t("scan")}</h1>
+          <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("scan")}</h1>
           <p className="text-sm text-[#667777] mt-1">{t("scanSubtitle")}</p>
         </div>
       </div>
@@ -386,26 +490,75 @@ export default function ScanView({ events, residents, memberships }: any) {
 
           <CardContent className="space-y-4 p-5 rounded-b-[30px]">
             <div className="mb-6 space-y-4 rounded-[20px] bg-gray-50 p-5 border border-gray-100 shadow-inner">
-              <div>
+              <div ref={eventDropdownRef} className="relative">
                 <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">{t("selectEventStep1")}</Label>
-                <Select
-                  value={eventId}
-                  onValueChange={setEventId}
-                  disabled={isDeadlineActive}
-                  className={`!rounded-[20px] [&_button]:!rounded-[20px] [&_button]:!text-sm [&_div]:!rounded-[20px] !overflow-hidden ${isDeadlineActive ? '!bg-gray-100 !text-gray-500 !cursor-not-allowed !pointer-events-none' : ''}`}
-                  style={{
-                    borderRadius: '20px !important',
-                    WebkitBorderRadius: '20px !important',
-                    MozBorderRadius: '20px !important',
-                    pointerEvents: isDeadlineActive ? 'none !important' : 'auto !important'
-                  }}
+                <button
+                  type="button"
+                  onClick={() => setEventDropdownOpen((v) => !v)}
+                  className="w-full flex items-center justify-between gap-2 rounded-[20px] border px-4 py-2.5 text-left text-sm transition bg-white border-gray-200 hover:border-[#005f63]/40"
                 >
-                  {events?.map((e: any) => (
-                    <SelectItem key={e.id} value={String(e.id)} className="rounded-[12px] !text-sm">
-                      {e.title}
-                    </SelectItem>
-                  ))}
-                </Select>
+                  <span className={ev ? "text-gray-800 font-medium truncate" : "text-gray-400"}>
+                    {ev ? ev.title : t("selectEventStep1")}
+                  </span>
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${eventDropdownOpen ? "rotate-180" : ""}`} />
+                </button>
+
+                {eventDropdownOpen && (
+                  <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 rounded-[20px] border border-[#ddd5ca] bg-white shadow-xl overflow-hidden">
+                    {/* Divided like the Settings page's cards -- a thin
+                        gradient bar + its own header row -- so the live
+                        "as of" time reads as its own section, separate
+                        from the search box and the list below it. */}
+                    <div className="h-1 bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300" />
+                    <div className="px-4 py-2 flex items-center justify-between bg-teal-50/60 border-b border-gray-100">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-[#005f63]/70">{t("currentDateTimeLabel")}</span>
+                      <span className="text-xs font-bold text-[#005f63]">{currentDateTimeLabel}</span>
+                    </div>
+                    <div className="p-2 border-b border-gray-100">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                        <input
+                          autoFocus
+                          value={eventSearchQuery}
+                          onChange={(e) => setEventSearchQuery(e.target.value)}
+                          placeholder={t("scannerSearchEventPlaceholder")}
+                          className="w-full rounded-full border border-gray-200 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-[240px] overflow-y-auto">
+                      {filteredEventOptions.length === 0 ? (
+                        <p className="px-4 py-6 text-center text-xs text-gray-400 italic">
+                          {upcomingEvents.length === 0 ? t("noUpcomingEventsLabel") : t("noEventsMatchSearch")}
+                        </p>
+                      ) : (
+                        filteredEventOptions.map((e: any) => (
+                          <button
+                            key={e.id}
+                            type="button"
+                            onClick={() => {
+                              setEventId(String(e.id));
+                              setEventDropdownOpen(false);
+                              setEventSearchQuery("");
+                            }}
+                            className={`w-full text-left px-4 py-2.5 text-sm transition ${
+                              String(e.id) === String(eventId)
+                                ? "bg-teal-50 text-[#005f63] font-semibold"
+                                : "text-gray-700 hover:bg-gray-50"
+                            }`}
+                          >
+                            <span className="block truncate">{e.title}</span>
+                            {formatEventOptionDateTime(e.event_start) && (
+                              <span className="block text-[11px] font-normal text-gray-400 mt-0.5">
+                                {formatEventOptionDateTime(e.event_start)}
+                              </span>
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -467,35 +620,11 @@ export default function ScanView({ events, residents, memberships }: any) {
                 <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">
                   {scanMode === "in" ? t("signInClosingTimeLabel") : t("signOutClosingTimeLabel")}
                 </Label>
-                <div className="flex gap-3 items-center">
-                  <Input
-                    type="time"
-                    value={closingTime}
-                    onChange={(e: any) => {
-                      setClosingTime(e.target.value);
-                      setIsDeadlineActive(false);
-                    }}
-                    disabled={isDeadlineActive}
-                    className="flex-1 !rounded-[20px] disabled:!bg-gray-100 disabled:!text-gray-500"
-                    style={{ borderRadius: '20px !important' }}
-                  />
-                  {!isDeadlineActive ? (
-                    <Button
-                      onClick={() => closingTime ? setIsDeadlineActive(true) : showModal('error', t("timeRequiredTitle"), t("pleaseSelectTimeFirst"))}
-                      className="bg-[#dac935] hover:bg-[#bdba2a] text-white px-6 !rounded-[20px] shadow-sm"
-                      style={{ borderRadius: '20px !important' }}
-                    >
-                      {t("setTimeButton")}
-                    </Button>
-                  ) : (
-                    <Button
-                      disabled={true}
-                      className="bg-gray-100 text-gray-500 border border-gray-200 px-6 !rounded-[20px] cursor-not-allowed shadow-inner"
-                      style={{ borderRadius: '20px !important' }}
-                    >
-                      {t("lockedButtonLabel")} 🔒
-                    </Button>
-                  )}
+                {/* Read-only -- this window comes from the event's own Start
+                    Time / Call Time fields (set on the Events screen), not
+                    typed in here each session. */}
+                <div className="rounded-[20px] border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700">
+                  {closingTime ? `${t("closesAtLabel")} ${formatEventOptionDateTime(closingTime) || closingTime}` : t("noClosingTimeSet")}
                 </div>
               </div>
             </div>
@@ -627,13 +756,13 @@ export default function ScanView({ events, residents, memberships }: any) {
 
                   {scan.hasAccess && (
                     <>
-                      {scanMode === "in" && !isDeadlineActive ? (
-                        <div className="mt-4 p-3 bg-orange-100 border border-orange-300 text-orange-800 rounded-[20px] text-center font-bold text-sm shadow-sm">
-                          🔒 {t("lockedSetClosingTimeNote")}
+                      {windowNotYetOpen ? (
+                        <div className="mt-4 p-3 bg-blue-100 border border-blue-300 text-blue-800 rounded-[20px] text-center font-bold text-sm shadow-sm">
+                          🕐 {scanMode === "in" ? t("signInOpensAtBanner") : t("signOutOpensAtBanner")} {formatEventOptionDateTime(windowNotYetOpen) || windowNotYetOpen}
                         </div>
-                      ) : isPastClosingTime() && scanMode === "in" ? (
+                      ) : isPastClosingTime() ? (
                         <div className="mt-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded-[20px] text-center font-bold text-sm shadow-sm">
-                          ⚠️ {t("deadlinePassedPrefix")} ({closingTime}) {t("signInClosedSuffix")}
+                          ⚠️ {scanMode === "in" ? t("deadlinePassedPrefix") : t("signOutDeadlinePassedPrefix")} ({formatEventOptionDateTime(closingTime) || closingTime}) {scanMode === "in" ? t("signInClosedSuffix") : t("signOutClosedSuffix")}
                         </div>
                       ) : (
                         <Button

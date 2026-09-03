@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Event;
 use App\Models\EventAttendance;
+use App\Models\EventExpense;
 use App\Models\Feedback;
+use App\Models\InventoryItem;
+use App\Models\Membership;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
@@ -123,6 +126,152 @@ class ReportController extends Controller
             'per_event' => $perEvent,
             'per_month' => $perMonth,
             'age_breakdown' => $ageBreakdown,
+        ]);
+    }
+
+    /**
+     * UC-10 report type "membership" — how many residents belong to each
+     * membership, plus each membership's eligibility rules (age bracket /
+     * civil status / gender), so staff can see enrollment at a glance.
+     *
+     * Query params: membership_id (optional, narrows to a single membership)
+     */
+    public function membershipSummary(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $membershipId = $request->filled('membership_id') ? (int) $request->membership_id : null;
+
+        $query = Membership::withoutTrashed()
+            ->where('is_active', true)
+            ->with(['eligibleAgeBracket', 'eligibleCivilStatus'])
+            ->withCount('users');
+
+        if ($membershipId) {
+            $query->where('id', $membershipId);
+        }
+
+        $memberships = $query->orderBy('name')->get();
+
+        $perMembership = $memberships->map(function ($m) {
+            return [
+                'id' => $m->id,
+                'name' => $m->name,
+                'member_count' => $m->users_count,
+                'eligible_age_bracket' => $m->eligibleAgeBracket?->label,
+                'eligible_civil_status' => $m->eligibleCivilStatus?->label,
+                'eligible_gender' => $m->eligible_gender,
+            ];
+        })->values();
+
+        return response()->json([
+            'summary' => [
+                'total_memberships' => $memberships->count(),
+                'total_assignments' => $memberships->sum('users_count'),
+            ],
+            'per_membership' => $perMembership,
+        ]);
+    }
+
+    /**
+     * UC-10 report type "budget" — approved budget vs. actual expenses per
+     * event, so staff can see which events are over budget at a glance.
+     *
+     * Query params: date_from, date_to (filters by the event's start date)
+     */
+    public function budgetSummary(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $dateFrom = $request->filled('date_from') ? $request->date_from : null;
+        $dateTo = $request->filled('date_to') ? $request->date_to : null;
+
+        $eventsQuery = Event::withoutTrashed()->whereNotNull('approved_budget');
+        if ($dateFrom) $eventsQuery->whereDate('event_start', '>=', $dateFrom);
+        if ($dateTo) $eventsQuery->whereDate('event_start', '<=', $dateTo);
+
+        $events = $eventsQuery->orderBy('event_start')->get();
+
+        $perEvent = $events->map(function ($event) {
+            $approved = (float) $event->approved_budget;
+            $spent = (float) $event->total_expenses;
+
+            return [
+                'id' => $event->id,
+                'name' => $event->name,
+                'date' => optional($event->event_start)->format('Y-m-d'),
+                'approved_budget' => $approved,
+                'total_expenses' => $spent,
+                'remaining' => round($approved - $spent, 2),
+                'is_over_budget' => $spent > $approved,
+            ];
+        })->values();
+
+        $eventIds = $events->pluck('id');
+        $topExpenses = EventExpense::whereIn('event_id', $eventIds)
+            ->orderByDesc('amount')
+            ->limit(10)
+            ->get(['event_id', 'item', 'amount'])
+            ->map(fn ($e) => [
+                'event_name' => optional($events->firstWhere('id', $e->event_id))->name,
+                'item' => $e->item,
+                'amount' => (float) $e->amount,
+            ])
+            ->values();
+
+        return response()->json([
+            'summary' => [
+                'total_events' => $events->count(),
+                'total_approved_budget' => round($events->sum('approved_budget'), 2),
+                'total_expenses' => round($perEvent->sum('total_expenses'), 2),
+                'total_remaining' => round($perEvent->sum('remaining'), 2),
+                'events_over_budget' => $perEvent->where('is_over_budget', true)->count(),
+            ],
+            'per_event' => $perEvent,
+            'top_expenses' => $topExpenses,
+        ]);
+    }
+
+    /**
+     * UC-10 report type "inventory" — barangay asset counts grouped by
+     * condition, plus the full item list for the printable report.
+     *
+     * Query params: condition (optional, narrows to one condition)
+     */
+    public function inventorySummary(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $condition = $request->filled('condition') ? $request->condition : null;
+
+        $query = InventoryItem::query();
+        if ($condition) $query->where('condition', $condition);
+
+        $items = $query->orderBy('name')->get();
+
+        $byCondition = $items->groupBy('condition')
+            ->map(fn ($group, $label) => ['condition' => $label, 'count' => $group->count(), 'quantity' => $group->sum('quantity')])
+            ->values();
+
+        return response()->json([
+            'summary' => [
+                'total_items' => $items->count(),
+                'total_quantity' => $items->sum('quantity'),
+            ],
+            'by_condition' => $byCondition,
+            'items' => $items->map(fn ($i) => [
+                'id' => $i->id,
+                'name' => $i->name,
+                'quantity' => $i->quantity,
+                'condition' => $i->condition,
+                'storage_location' => $i->storage_location,
+            ])->values(),
         ]);
     }
 }

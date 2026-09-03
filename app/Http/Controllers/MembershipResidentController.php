@@ -61,6 +61,7 @@ public function index()
                 'address' => $user->address,
                 'civil_status_id' => $user->civil_status_id,
                 'civil_status' => $user->civil_status,
+                'gender' => $user->gender,
                 'household_code' => $user->household_code,
                 'is_household_head' => $user->is_household_head,
                 'household_contact_number' => $user->household_contact_number,

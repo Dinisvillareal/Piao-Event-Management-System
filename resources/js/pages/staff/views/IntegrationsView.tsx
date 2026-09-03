@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink } from "lucide-react";
+import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink, XCircle, CheckCircle } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -102,8 +102,6 @@ export default function IntegrationsView() {
                 </div>
               ) : (
                 <form onSubmit={handleConnect} className="space-y-3">
-                  {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{error}</div>}
-                  {success && <div className="rounded-xl bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">{success}</div>}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">{t("facebookPageIdLabel")}</label>
                     <input required value={pageId} onChange={(e) => setPageId(e.target.value)} className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm" placeholder="e.g. 123456789012345" />
@@ -141,6 +139,31 @@ export default function IntegrationsView() {
           </p>
         </div>
       </div>
+      {error && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setError(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
+            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{error}</p>
+            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {success && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setSuccess(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-[#005f63] flex justify-center"><CheckCircle size={40} /></div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{success}</p>
+            <button onClick={() => setSuccess(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

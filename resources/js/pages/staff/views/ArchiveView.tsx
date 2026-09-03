@@ -5,7 +5,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface TrashedItem {
   id: string | number;
-  type: 'event' | 'resident' | 'membership' | 'notification';
+  type: 'event' | 'resident' | 'membership' | 'notification' | 'age_bracket' | 'civil_status' | 'inventory_item' | 'expense';
   name: string;
   deletedAt: string;
   deletedBy: string;
@@ -17,6 +17,10 @@ const TYPE_LABEL_KEYS: Record<TrashedItem["type"], string> = {
   resident: "residents",
   membership: "memberships",
   notification: "notify",
+  age_bracket: "ageBracketsTitle",
+  civil_status: "civilStatusesTitle",
+  inventory_item: "inventory",
+  expense: "expenseTypeLabel",
 };
 
 export default function ArchiveView() {
@@ -173,13 +177,13 @@ export default function ArchiveView() {
       <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
         <div className="w-full">
           <div>
-            <h1 className="text-4xl font-black text-[#005f63]">{t("archive")}</h1>
+            <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("archive")}</h1>
             <p className="mt-1 text-sm text-[#667777]">{t("archiveSubtitle")}</p>
           </div>
 
           {/* Search and Filter Row */}
-          <div className="mt-4 flex items-center gap-4 w-full">
-            <div className="flex-1">
+          <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4 w-full">
+            <div className="flex-1 min-w-[220px]">
               <SearchBar
                 value={searchQuery}
                 onChange={setSearchQuery}
@@ -197,6 +201,10 @@ export default function ArchiveView() {
                 <option value="event">{t("events")}</option>
                 <option value="resident">{t("residents")}</option>
                 <option value="notification">{t("notify")}</option>
+                <option value="age_bracket">{t("ageBracketsTitle")}</option>
+                <option value="civil_status">{t("civilStatusesTitle")}</option>
+                <option value="inventory_item">{t("inventory")}</option>
+                <option value="expense">{t("expenseTypeLabel")}</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
@@ -254,10 +262,14 @@ export default function ArchiveView() {
                   <tr key={`${item.type}-${item.id}-${index}`} className="border-b hover:bg-gray-50 transition-colors">
                     <td className="p-3">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        item.type === 'membership' ? 'bg-[#ff8a36] text-white' :
-                        item.type === 'event'      ? 'bg-[#fbbf24] text-white' :
-                        item.type === 'resident'   ? 'bg-[#52b1b6] text-white' :
-                        item.type === 'notification' ? 'bg-[#ccaf63] text-white' :
+                        item.type === 'membership'    ? 'bg-orange-600 text-white' :
+                        item.type === 'event'         ? 'bg-amber-600 text-white'  :
+                        item.type === 'resident'      ? 'bg-green-600 text-white'  :
+                        item.type === 'notification'  ? 'bg-blue-600 text-white'   :
+                        item.type === 'age_bracket'   ? 'bg-indigo-600 text-white' :
+                        item.type === 'inventory_item' ? 'bg-violet-600 text-white' :
+                        item.type === 'civil_status'  ? 'bg-fuchsia-600 text-white' :
+                        item.type === 'expense'       ? 'bg-rose-600 text-white'   :
                         'bg-gray-100 text-gray-700'
                       }`}>
                         {t(TYPE_LABEL_KEYS[item.type])}
@@ -292,6 +304,7 @@ export default function ArchiveView() {
       {restoreItem && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="flex justify-center text-[#eb9b32] mb-3"><RefreshCw size={40} /></div>
             <h3 className="text-xl font-bold text-[#eb9b32] mb-3">{t("restoreItemModalTitle")}</h3>
             <p className="text-gray-600 mb-5">
               {t("restoreConfirmPrefix")} <strong>"{restoreItem.name}"</strong>{t("restoreConfirmSuffix")}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Search, Filter, Calendar } from "lucide-react";
+import { Search, Filter } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import DatePicker from "../../../components/ui/DatePicker";
 
 type Activity = {
   id: number;
@@ -135,7 +136,7 @@ export default function ActivityLogsView() {
     return (
       <div className="space-y-6">
         <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
-          <h1 className="text-4xl font-black text-[#005f63]">{t("activitylogs")}</h1>
+          <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("activitylogs")}</h1>
           <p className="mt-1 text-sm text-[#667777]">
             {t("activityLogsSubtitle")}
           </p>
@@ -153,7 +154,7 @@ export default function ActivityLogsView() {
   return (
     <div className="space-y-6">
       <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
-        <h1 className="text-4xl font-black text-[#005f63]">{t("activitylogs")}</h1>
+        <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("activitylogs")}</h1>
         <p className="mt-1 text-sm text-[#667777]">
           {t("activityLogsSubtitle")}
         </p>
@@ -190,14 +191,12 @@ export default function ActivityLogsView() {
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
 
-            <div className="relative h-full">
-              <input
-                type="date"
+            <div className="h-full">
+              <DatePicker
                 value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="h-full pl-10 pr-4 py-3.5 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30"
+                onChange={setSelectedDate}
+                className="h-full pl-4 pr-4 py-3.5"
               />
-              <Calendar className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
           </div>
         </div>

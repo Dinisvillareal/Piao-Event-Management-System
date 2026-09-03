@@ -27,9 +27,11 @@ class User extends Authenticatable
         'birth_date',
         'address',
         'civil_status_id',
+        'gender',
         'household_code',
         'is_household_head',
         'household_contact_number',
+        'household_id',
         'preferred_language',
     ];
 
@@ -92,6 +94,11 @@ class User extends Authenticatable
     public function feedback()
     {
         return $this->hasMany(Feedback::class);
+    }
+
+    public function household()
+    {
+        return $this->belongsTo(Household::class);
     }
 
     // =====================

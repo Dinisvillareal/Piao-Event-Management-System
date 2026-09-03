@@ -8,6 +8,8 @@ use App\Models\User;
 use App\Models\Notification;
 use App\Models\ActivityLog;
 use App\Models\EventAttendance;
+use App\Models\EventInventoryItem;
+use App\Models\InventoryItem;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use App\Services\SmsService;
@@ -27,7 +29,7 @@ class EventController extends Controller
 
         // ✅ MODIFIED: Exclude soft-deleted events
         if ($user->role === 'Staff') {
-            return response()->json(Event::withoutTrashed()->paginate($perPage));
+            return response()->json(Event::withoutTrashed()->with('borrowedItems.inventoryItem')->paginate($perPage));
         }
 
         $residentMembershipIds = DB::table('membership_residents')
@@ -45,6 +47,7 @@ class EventController extends Controller
             }
         })
         ->withoutTrashed()  // ✅ NEW: Exclude soft-deleted
+        ->with('borrowedItems.inventoryItem')
         ->paginate($perPage);
 
         return response()->json($events);
@@ -70,7 +73,7 @@ class EventController extends Controller
 
         if ($effectiveRole === 'Staff') {
             // Staff portal: show all active events (exclude soft-deleted)
-            $events = Event::withoutTrashed()->get();
+            $events = Event::withoutTrashed()->with('borrowedItems.inventoryItem')->get();
         } else {
             // Resident mode: filter by user's memberships (exclude soft-deleted)
             $residentMembershipIds = DB::table('membership_residents')
@@ -87,6 +90,7 @@ class EventController extends Controller
                 }
             })
             ->withoutTrashed()  // ✅ NEW: Exclude soft-deleted
+            ->with('borrowedItems.inventoryItem')
             ->get();
         }
 
@@ -96,13 +100,13 @@ class EventController extends Controller
     public function list()
     {
         // ✅ MODIFIED: Exclude soft-deleted events
-        return response()->json(Event::withoutTrashed()->get());
+        return response()->json(Event::withoutTrashed()->with('borrowedItems.inventoryItem')->get());
     }
 
     public function show($id)
     {
         // ✅ MODIFIED: Exclude soft-deleted events
-        return response()->json(Event::withoutTrashed()->findOrFail($id));
+        return response()->json(Event::withoutTrashed()->with('borrowedItems.inventoryItem')->findOrFail($id));
     }
 
     public function store(Request $request)
@@ -112,12 +116,43 @@ class EventController extends Controller
             'description'          => 'required|string',
             'location'             => 'nullable|string|max:100',
             'event_start'          => 'required|date',
+            'event_end'            => 'required|date|after:event_start',
+            // Call time = when sign-in/out actually opens, separate from
+            // the event's own start/end (e.g. call time 6:00, event starts
+            // 7:00 -- sign-in is only open 6:00-7:00).
+            'call_time_start'      => 'required|date|before_or_equal:event_start',
+            'call_time_end'        => 'required|date|after_or_equal:event_end',
             'membership_ids'       => 'nullable|array',
             'membership_ids.*'     => 'integer|exists:memberships,id',
             'notification_message' => 'nullable|string|max:500',
             'approved_budget'      => 'nullable|numeric|min:0',
             'post_to_facebook'     => 'nullable|boolean',
+            'borrowed_items'                     => 'nullable|array',
+            'borrowed_items.*.inventory_item_id'  => 'required_with:borrowed_items|integer|exists:inventory_items,id',
+            'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1',
         ]);
+
+        // Double-booking guard: two events can't reasonably share the same
+        // physical venue at overlapping times (residents and staff would
+        // have no way to tell which one they're actually at). `location`
+        // is free-typed, not a controlled venue list, so this only catches
+        // an exact match -- still worth catching, since staff usually type
+        // the same handful of venue names ("Barangay Hall", etc.) the same
+        // way each time.
+        $venue = trim((string) $request->location);
+        if ($venue !== '') {
+            $conflict = Event::withoutTrashed()
+                ->where('location', $venue)
+                ->where('event_start', '<', $request->event_end)
+                ->where('event_end', '>', $request->event_start)
+                ->first();
+
+            if ($conflict) {
+                return response()->json([
+                    'message' => "\"{$venue}\" is already booked for \"{$conflict->name}\" during that time. Please choose a different time or location.",
+                ], 422);
+            }
+        }
 
         DB::beginTransaction();
 
@@ -127,13 +162,16 @@ class EventController extends Controller
                 'description'          => $request->description,
                 'location'             => $request->location,
                 'event_start'          => $request->event_start,
-                'event_end'            => null,
+                'event_end'            => $request->event_end,
+                'call_time_start'      => $request->call_time_start,
+                'call_time_end'        => $request->call_time_end,
                 'membership_ids'       => $request->membership_ids ?? [],
                 'notification_message' => $request->notification_message,
                 'approved_budget'      => $request->approved_budget,
             ]);
 
             $event->createAttendanceRecords();
+            $this->applyBorrowedItems($event, $request->borrowed_items ?? []);
             $this->sendEventNotifications($event, false);
 
             // Adviser recommendation: "2 in 1 — Facebook Page" second announcement channel
@@ -168,7 +206,7 @@ class EventController extends Controller
 
             return response()->json([
                 'message' => 'Event created successfully',
-                'event'   => $event,
+                'event'   => $event->load('borrowedItems.inventoryItem'),
             ], 201);
 
         } catch (\Exception $e) {
@@ -186,19 +224,50 @@ class EventController extends Controller
             'description'          => 'required|string',
             'location'             => 'nullable|string|max:100',
             'event_start'          => 'required|date',
+            'event_end'            => 'required|date|after:event_start',
+            'call_time_start'      => 'required|date|before_or_equal:event_start',
+            'call_time_end'        => 'required|date|after_or_equal:event_end',
             'membership_ids'       => 'nullable|array',
             'membership_ids.*'     => 'integer|exists:memberships,id',
             'notification_message' => 'nullable|string|max:500',
             'approved_budget'      => 'nullable|numeric|min:0',
+            'borrowed_items'                     => 'nullable|array',
+            'borrowed_items.*.inventory_item_id'  => 'required_with:borrowed_items|integer|exists:inventory_items,id',
+            'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1',
         ]);
 
         // ✅ MODIFIED: Find event excluding soft-deleted
         $event = Event::withoutTrashed()->findOrFail($id);
 
+        // Same double-booking guard as store(), excluding this event
+        // itself so re-saving an event without changing its time/venue
+        // doesn't flag a conflict against its own previous record.
+        $venue = trim((string) $request->location);
+        if ($venue !== '') {
+            $conflict = Event::withoutTrashed()
+                ->where('id', '!=', $event->id)
+                ->where('location', $venue)
+                ->where('event_start', '<', $request->event_end)
+                ->where('event_end', '>', $request->event_start)
+                ->first();
+
+            if ($conflict) {
+                return response()->json([
+                    'message' => "\"{$venue}\" is already booked for \"{$conflict->name}\" during that time. Please choose a different time or location.",
+                ], 422);
+            }
+        }
+
         $originalMessage = $event->notification_message;
         $originalMembershipIds = $event->membership_ids ?? [];
         $newMembershipIds = $request->membership_ids ?? [];
         $membershipChanged = $originalMembershipIds != $newMembershipIds;
+
+        // Track the details residents actually rely on -- schedule and
+        // venue -- not just the notification message, so a rescheduled or
+        // moved event re-notifies people too (see $meaningfulChange below).
+        $originalEventStart = optional($event->event_start)->toDateTimeString();
+        $originalLocation = $event->location;
 
         DB::beginTransaction();
 
@@ -208,10 +277,19 @@ class EventController extends Controller
                 'description'          => $request->description,
                 'location'             => $request->location,
                 'event_start'          => $request->event_start,
+                'event_end'            => $request->event_end,
+                'call_time_start'      => $request->call_time_start,
+                'call_time_end'        => $request->call_time_end,
                 'membership_ids'       => $newMembershipIds,
                 'notification_message' => $request->notification_message,
                 'approved_budget'      => $request->approved_budget,
             ]);
+
+            // Undo the event's previous borrow (returns quantity to Inventory),
+            // then apply whatever the form submitted now -- simplest way to
+            // handle add/remove/quantity-change without diffing item-by-item.
+            $this->releaseBorrowedItems($event);
+            $this->applyBorrowedItems($event, $request->borrowed_items ?? []);
 
             if ($membershipChanged) {
                 $event->syncAttendanceRecords();
@@ -219,7 +297,14 @@ class EventController extends Controller
 
             $notificationUpdated = false;
 
-            if ($originalMessage != $request->notification_message) {
+            // A rescheduled date/time or a changed venue matters just as
+            // much to attendees as an edited message -- previously only
+            // the message was checked here.
+            $scheduleOrVenueChanged = $originalEventStart != optional($event->event_start)->toDateTimeString()
+                || $originalLocation != $event->location;
+            $messageChanged = $originalMessage != $request->notification_message;
+
+            if ($messageChanged || $scheduleOrVenueChanged) {
                 $this->sendEventNotifications($event, true);
                 $notificationUpdated = true;
             }
@@ -248,7 +333,7 @@ class EventController extends Controller
 
             return response()->json([
                 'message' => 'Event updated successfully',
-                'event'   => $event,
+                'event'   => $event->load('borrowedItems.inventoryItem'),
             ]);
 
         } catch (\Exception $e) {
@@ -274,7 +359,11 @@ public function destroy($id)
         // ✅ Record who archived before soft deleting
         $event->deleted_by = $user->user_code;
         $event->save();
-        
+
+        // ✅ Return any borrowed inventory items -- an archived event no
+        // longer needs them out on loan.
+        $this->releaseBorrowedItems($event);
+
         // ✅ Step 1: Soft delete the event (sets deleted_at timestamp)
         $event->delete();
 
@@ -357,9 +446,12 @@ public function destroy($id)
         DB::beginTransaction();
 
         try {
-            // Permanently delete notifications and attendance
+            // Permanently delete notifications, attendance, and any
+            // leftover borrow records (quantities were already returned to
+            // Inventory when the event was archived, via destroy()).
             Notification::where('event_id', $id)->forceDelete();
             EventAttendance::where('event_id', $id)->forceDelete();
+            EventInventoryItem::where('event_id', $id)->delete();
 
             // Permanently delete event
             $event->forceDelete();
@@ -397,16 +489,17 @@ public function destroy($id)
                 ->unique();
 
         // Adviser recommendation: household-head SMS, sent once per household so
-        // it complements (not duplicates) the in-app notifications below. Only
-        // fired on the initial announcement, not on every minor edit.
-        if (!$isUpdate) {
-            $residents = User::where('role', 'Resident')
-                ->whereIn('id', $userIds)
-                ->get(['id', 'contact_number', 'household_code', 'is_household_head', 'household_contact_number']);
+        // it complements (not duplicates) the in-app notifications below.
+        // Fired on the initial announcement AND on a meaningful update -- see
+        // update(), which only calls this with $isUpdate=true when the
+        // schedule, venue, or message actually changed.
+        $residents = User::where('role', 'Resident')
+            ->whereIn('id', $userIds)
+            ->get(['id', 'contact_number', 'household_id', 'household_code', 'is_household_head', 'household_contact_number']);
 
-            $smsMessage = trim($event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.'));
-            app(SmsService::class)->notifyHouseholds($residents, $event->id, $smsMessage);
-        }
+        $smsPrefix = $isUpdate ? 'UPDATED: ' : '';
+        $smsMessage = $smsPrefix . trim($event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.'));
+        app(SmsService::class)->notifyHouseholds($residents, $event->id, $smsMessage);
 
         $staff = auth()->user();
         $staffName = 'Staff: ' . $staff->last_name;
@@ -458,5 +551,56 @@ public function destroy($id)
                 ]);
             }
         }
+    }
+
+    // ===== Borrow items from Inventory for an Event (deduct on
+    // create/edit, return on edit/archive) =====
+
+    /**
+     * Deducts each requested quantity from Inventory and records a borrow
+     * row per item. Throws (caller is expected to be inside a DB
+     * transaction) if any item doesn't have enough stock left.
+     */
+    private function applyBorrowedItems(Event $event, array $items): void
+    {
+        foreach ($items as $bi) {
+            $quantity = (int) ($bi['quantity'] ?? 0);
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            $item = InventoryItem::findOrFail((int) $bi['inventory_item_id']);
+
+            if ($item->quantity < $quantity) {
+                throw new \Exception("Not enough stock for \"{$item->name}\" (available: {$item->quantity}, requested: {$quantity}).");
+            }
+
+            $item->quantity -= $quantity;
+            $item->save();
+
+            EventInventoryItem::create([
+                'event_id'           => $event->id,
+                'inventory_item_id'  => $item->id,
+                'quantity'           => $quantity,
+            ]);
+        }
+    }
+
+    /**
+     * Returns every item currently borrowed by this event back to
+     * Inventory and clears its borrow records. Called before re-applying
+     * an edited borrow list, and when an event is archived.
+     */
+    private function releaseBorrowedItems(Event $event): void
+    {
+        foreach ($event->borrowedItems()->get() as $borrowed) {
+            $item = InventoryItem::withTrashed()->find($borrowed->inventory_item_id);
+            if ($item) {
+                $item->quantity += $borrowed->quantity;
+                $item->save();
+            }
+        }
+
+        $event->borrowedItems()->delete();
     }
 }

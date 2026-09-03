@@ -41,6 +41,7 @@ class UpdateUserRequest extends FormRequest
             'birth_date'       => 'nullable|date|before_or_equal:today',
             'address'          => 'nullable|string|max:150',
             'civil_status_id'  => 'nullable|exists:civil_statuses,id',
+            'gender'           => 'nullable|in:Male,Female',
 
             // Adviser recommendation: "Notify by household -- head of household -- SMS contact number per household"
             'household_code'           => 'nullable|string|max:30',

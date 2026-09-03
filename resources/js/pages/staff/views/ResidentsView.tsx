@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Filter, XCircle, Archive, CheckCircle } from "lucide-react";
+import { Filter, XCircle, Archive, CheckCircle, RotateCcw, AlertTriangle } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import DatePicker from "../../../components/ui/DatePicker";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -34,6 +35,7 @@ interface ResidentRow {
   ageGroup: string | null;
   civilStatusId: number | null;
   civilStatus: string | null;
+  gender: string | null;
   isHouseholdHead: boolean;
   householdCode: string;
   householdContactNumber: string;
@@ -52,6 +54,7 @@ type AddForm = {
   birthDate: string;
   address: string;
   civilStatusId: number | null;
+  gender: string;
   isHouseholdHead: boolean;
   householdCode: string;
   householdContactNumber: string;
@@ -75,6 +78,7 @@ type EditForm = {
   birthDate: string;
   address: string;
   civilStatusId: number | null;
+  gender: string;
   isHouseholdHead: boolean;
   householdCode: string;
   householdContactNumber: string;
@@ -153,6 +157,7 @@ const emptyAdd = (): AddForm => ({
   birthDate: "",
   address: "",
   civilStatusId: null,
+  gender: "",
   isHouseholdHead: false,
   householdCode: "",
   householdContactNumber: "",
@@ -184,6 +189,10 @@ export default function ResidentsView() {
   const [availableMemberships, setAvailableMemberships] = useState<Membership[]>([]);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  // Popped up (instead of buried in an inline banner) for every save
+  // failure -- validation rejections (e.g. membership eligibility) and
+  // generic server/network failures alike -- per "all validations plsss".
+  const [apiErrorTitle, setApiErrorTitle] = useState<string>("");
 
   const [residentSearch, setResidentSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -295,6 +304,7 @@ export default function ResidentsView() {
         ageGroup: item.age_group ?? null,
         civilStatusId: item.civil_status_id ?? null,
         civilStatus: item.civil_status ?? null,
+        gender: item.gender ?? null,
         isHouseholdHead: !!item.is_household_head,
         householdCode: item.household_code ?? "",
         householdContactNumber: item.household_contact_number ?? "",
@@ -317,7 +327,8 @@ export default function ResidentsView() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      alert(t("uploadImageOnly"));
+      setApiErrorTitle(t("validationErrorTitle"));
+      setApiError(t("uploadImageOnly"));
       e.target.value = "";
       return;
     }
@@ -443,6 +454,7 @@ export default function ResidentsView() {
     if (newResident.birthDate) fd.append("birth_date", newResident.birthDate);
     if (newResident.address) fd.append("address", newResident.address);
     if (newResident.civilStatusId) fd.append("civil_status_id", String(newResident.civilStatusId));
+    if (newResident.gender) fd.append("gender", newResident.gender);
     if (newResident.householdCode) fd.append("household_code", newResident.householdCode);
     fd.append("is_household_head", newResident.isHouseholdHead ? "1" : "0");
     if (newResident.householdContactNumber)
@@ -463,7 +475,13 @@ export default function ResidentsView() {
             mapped[k] = (v as string[])[0];
           });
           setFormErrors(mapped);
+          // Pop up every validation message (not just the first per field)
+          // -- membership eligibility can return several at once, e.g.
+          // "requires age group: Senior Citizen" AND "requires gender: Female".
+          setApiErrorTitle(t("validationErrorTitle"));
+          setApiError(Object.values(body.errors).flat().join(" "));
         } else {
+          setApiErrorTitle(t("errorTitle"));
           setApiError(body.message ?? t("saveRecordFailed"));
         }
         return;
@@ -481,6 +499,7 @@ export default function ResidentsView() {
     fetchResidents();
     } catch (e) {
       console.error("Add error:", e);
+      setApiErrorTitle(t("errorTitle"));
       setApiError(t("networkErrorTryAgain"));
     }
   };
@@ -519,6 +538,7 @@ export default function ResidentsView() {
       birthDate: r.birthDate ?? "",
       address: r.address ?? "",
       civilStatusId: r.civilStatusId ?? null,
+      gender: r.gender ?? "",
       isHouseholdHead: r.isHouseholdHead ?? false,
       householdCode: r.householdCode ?? "",
       householdContactNumber: r.householdContactNumber ?? "",
@@ -583,6 +603,7 @@ export default function ResidentsView() {
     fd.append("birth_date", editingResident.birthDate || "");
     fd.append("address", editingResident.address || "");
     fd.append("civil_status_id", editingResident.civilStatusId ? String(editingResident.civilStatusId) : "");
+    fd.append("gender", editingResident.gender || "");
     fd.append("household_code", editingResident.householdCode || "");
     fd.append("is_household_head", editingResident.isHouseholdHead ? "1" : "0");
     fd.append("household_contact_number", editingResident.householdContactNumber ? editingResident.householdContactNumber.replace(/\D/g, "") : "");
@@ -608,7 +629,10 @@ export default function ResidentsView() {
             mapped[k] = (v as string[])[0];
           });
           setFormErrors(mapped);
+          setApiErrorTitle(t("validationErrorTitle"));
+          setApiError(Object.values(body.errors).flat().join(" "));
         } else {
+          setApiErrorTitle(t("errorTitle"));
           setApiError(body.message ?? t("updateRecordFailed"));
         }
         return;
@@ -633,6 +657,7 @@ export default function ResidentsView() {
       fetchResidents();
     } catch (e) {
       console.error("Update error:", e);
+      setApiErrorTitle(t("errorTitle"));
       setApiError(t("networkErrorTryAgain"));
     }
   };
@@ -783,7 +808,7 @@ const handleDeleteResident = async () => {
           (availableMemberships.length === 0 ? (
             <p className="pl-6 text-xs text-gray-400 italic">{t("noMembershipsAvailable")}</p>
           ) : (
-            <div className="pl-6 grid grid-cols-2 gap-2">
+            <div className="pl-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
               {availableMemberships.map((mem) => (
                 <label key={mem.id} className="flex items-center gap-2 text-sm cursor-pointer">
                   <input
@@ -1100,7 +1125,7 @@ const handleDeleteResident = async () => {
                 {r.deleted_at !== null && (
                   <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ {t("recordDeletedWarning")}</div>
                 )}
-                <div className="flex gap-6">
+                <div className="flex flex-col-reverse sm:flex-row gap-6">
                   <div className="flex-1 space-y-2">
                     <p><strong className="text-[#005f63]">{t("idFieldLabel")}</strong> {r.id}</p>
                     <p><strong className="text-[#005f63]">{t("fullNameFieldLabel")}</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
@@ -1113,6 +1138,9 @@ const handleDeleteResident = async () => {
                     {r.age !== null && (
                       <p><strong className="text-[#005f63]">{t("ageFieldLabel")}</strong> {r.age} ({r.ageGroup})</p>
                     )}
+                    {r.gender && (
+                      <p><strong className="text-[#005f63]">{t("genderLabel")}</strong> {r.gender === "Male" ? t("maleOption") : t("femaleOption")}</p>
+                    )}
                     {r.address && (
                       <p><strong className="text-[#005f63]">{t("addressFieldLabelColon")}</strong> {r.address}</p>
                     )}
@@ -1124,7 +1152,7 @@ const handleDeleteResident = async () => {
                       </p>
                     )}
                   </div>
-                  <div className="w-[160px]">
+                  <div className="w-full max-w-[160px] mx-auto sm:mx-0 sm:shrink-0">
                     <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ minHeight: 180 }}>
                       {r.photo ? (
                         <img src={r.photo} alt="ID Photo" className="w-full h-full object-cover" />
@@ -1161,7 +1189,6 @@ const handleDeleteResident = async () => {
               <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
             </div>
 
-            {apiError && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>}
 
             <form onSubmit={handleAddResident} className="space-y-4">
               <div className="grid md:grid-cols-3 gap-4">
@@ -1226,12 +1253,11 @@ const handleDeleteResident = async () => {
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">{t("birthDateLabel")}</label>
-                    <input
-                      type="date"
+                    <DatePicker
                       value={newResident.birthDate}
                       max={new Date().toISOString().split("T")[0]}
-                      onChange={(e) => setNewResident((p) => ({ ...p, birthDate: e.target.value }))}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                      onChange={(iso) => setNewResident((p) => ({ ...p, birthDate: iso }))}
+                      className="px-4 py-2.5"
                     />
                   </div>
                   <div>
@@ -1255,6 +1281,18 @@ const handleDeleteResident = async () => {
                       {civilStatuses.map((cs) => (
                         <option key={cs.id} value={cs.id}>{cs.label}</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("genderLabel")}</label>
+                    <select
+                      value={newResident.gender}
+                      onChange={(e) => setNewResident((p) => ({ ...p, gender: e.target.value }))}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    >
+                      <option value="">{t("anyOptionLabel")}</option>
+                      <option value="Male">{t("maleOption")}</option>
+                      <option value="Female">{t("femaleOption")}</option>
                     </select>
                   </div>
                 </div>
@@ -1310,7 +1348,7 @@ const handleDeleteResident = async () => {
                   (availableMemberships.length === 0 ? (
                     <p className="pl-6 text-xs text-gray-400 italic">{t("noMembershipsAvailable")}</p>
                   ) : (
-                    <div className="pl-6 grid grid-cols-2 gap-2">
+                    <div className="pl-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {availableMemberships.map((mem) => (
                         <label key={mem.id} className="flex items-center gap-2 text-sm cursor-pointer">
                           <input
@@ -1396,7 +1434,6 @@ const handleDeleteResident = async () => {
             {editingResident.deleted_at !== null && (
               <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ {t("recordDeletedEditingDisabled")}</div>
             )}
-            {apiError && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded text-sm">{apiError}</div>}
 
             <form
               onSubmit={handleUpdateResident}
@@ -1471,12 +1508,11 @@ const handleDeleteResident = async () => {
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">{t("birthDateLabel")}</label>
-                    <input
-                      type="date"
+                    <DatePicker
                       value={editingResident.birthDate}
                       max={new Date().toISOString().split("T")[0]}
-                      onChange={(e) => setEditingResident((p) => p ? { ...p, birthDate: e.target.value } : p)}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                      onChange={(iso) => setEditingResident((p) => p ? { ...p, birthDate: iso } : p)}
+                      className="px-4 py-2.5"
                     />
                   </div>
                   <div>
@@ -1500,6 +1536,18 @@ const handleDeleteResident = async () => {
                       {civilStatuses.map((cs) => (
                         <option key={cs.id} value={cs.id}>{cs.label}</option>
                       ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("genderLabel")}</label>
+                    <select
+                      value={editingResident.gender}
+                      onChange={(e) => setEditingResident((p) => p ? { ...p, gender: e.target.value } : p)}
+                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                    >
+                      <option value="">{t("anyOptionLabel")}</option>
+                      <option value="Male">{t("maleOption")}</option>
+                      <option value="Female">{t("femaleOption")}</option>
                     </select>
                   </div>
                 </div>
@@ -1555,7 +1603,7 @@ const handleDeleteResident = async () => {
                   (availableMemberships.length === 0 ? (
                     <p className="pl-6 text-xs text-gray-400 italic">{t("noMembershipsAvailable")}</p>
                   ) : (
-                    <div className="pl-6 grid grid-cols-2 gap-2">
+                    <div className="pl-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {availableMemberships.map((mem) => (
                         <label key={mem.id} className="flex items-center gap-2 text-sm cursor-pointer">
                           <input
@@ -1660,6 +1708,18 @@ const handleDeleteResident = async () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Validation / save-error popup (replaces the old inline red banner) ── */}
+      {apiError && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setApiError(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 text-red-500 flex justify-center"><XCircle size={40} /></div>
+            <h3 className="text-xl font-bold text-red-600 mb-3">{apiErrorTitle || t("errorTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-5">{apiError}</p>
+            <button onClick={() => setApiError(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">{t("okLabel")}</button>
           </div>
         </div>
       )}
@@ -1782,6 +1842,7 @@ const handleDeleteResident = async () => {
       {restoreRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-teal-600 flex justify-center"><RotateCcw size={40} /></div>
             <h3 className="text-xl font-bold text-teal-600 mb-3">{t("restoreRecordTitle")}</h3>
             <p className="text-gray-600 mb-5">{t("restoreConfirmMessage")}</p>
             <div className="flex justify-center gap-4">
@@ -1796,6 +1857,7 @@ const handleDeleteResident = async () => {
       {showCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">

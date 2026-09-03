@@ -34,6 +34,7 @@ class MembershipController extends Controller
             ->where('is_active', true)
             ->with(['eligibleAgeBracket', 'eligibleCivilStatus'])
             ->get();
+        // eligible_gender is a plain enum column (no relation to eager-load)
         
         return response()->json($memberships);
     }
@@ -52,6 +53,7 @@ class MembershipController extends Controller
             'description' => 'nullable|string',
             'eligible_age_bracket_id' => 'nullable|exists:age_brackets,id',
             'eligible_civil_status_id' => 'nullable|exists:civil_statuses,id',
+            'eligible_gender' => 'nullable|in:Male,Female',
         ]);
 
         DB::beginTransaction();
@@ -63,6 +65,7 @@ class MembershipController extends Controller
                 'is_active' => true,  // ✅ Explicitly set active
                 'eligible_age_bracket_id' => $request->eligible_age_bracket_id ?: null,
                 'eligible_civil_status_id' => $request->eligible_civil_status_id ?: null,
+                'eligible_gender' => $request->eligible_gender ?: null,
             ]);
 
             $this->createLog(
@@ -109,6 +112,7 @@ class MembershipController extends Controller
             'description' => 'nullable|string',
             'eligible_age_bracket_id' => 'nullable|exists:age_brackets,id',
             'eligible_civil_status_id' => 'nullable|exists:civil_statuses,id',
+            'eligible_gender' => 'nullable|in:Male,Female',
         ]);
 
         DB::beginTransaction();
@@ -121,6 +125,7 @@ class MembershipController extends Controller
                 'description' => $request->description,
                 'eligible_age_bracket_id' => $request->eligible_age_bracket_id ?: null,
                 'eligible_civil_status_id' => $request->eligible_civil_status_id ?: null,
+                'eligible_gender' => $request->eligible_gender ?: null,
             ]);
 
             $this->createLog(

@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, Archive, Calendar, CheckCircle } from "lucide-react";
+import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, ChevronDown, Archive, CheckCircle, AlertCircle, Package, Trash2, Star } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import SearchableSelect from "../../../components/ui/SearchableSelect";
+import DatePicker from "../../../components/ui/DatePicker";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -9,21 +11,35 @@ interface MyEvent {
   title: string;
   date: string;
   event_start?: string;
+  event_end?: string;
+  call_time_start?: string;
+  call_time_end?: string;
   startDate?: string;
   endDate?: string;
   startTime: string;
   endTime: string;
+  callStartTime?: string;
+  callEndTime?: string;
   location: string;
   description: string;
   notificationMessage?: string;
   membershipIds?: (string | number)[];
   membershipNames?: string[];
   approvedBudget?: number | string | null;
+  borrowedItems?: { inventoryItemId: string; name: string; quantity: number }[];
+}
+
+interface BorrowableInventoryItem {
+  id: number | string;
+  name: string;
+  quantity: number;
+  condition: string;
+  storage_location?: string | null;
 }
 
 interface EventsViewProps {
   allEvents: MyEvent[];
-  onDeleteEvent: (id: number | string) => void;
+  onDeleteEvent: (id: number | string) => Promise<void>;
   onCreateEvent?: (event: MyEvent) => void;
   highlightText: (text: string, query: string) => React.ReactNode;
   residents?: any[];
@@ -44,7 +60,7 @@ export function EventsView({
   attendanceRecords = [],
 }: EventsViewProps) {
   const { t } = useLanguage();
-  const eventStatusLabel = (label: string) => (label === "Upcoming" ? t("upcomingBadge") : t("pastBadge"));
+  const eventStatusLabel = (label: string) => (label === "Upcoming" ? t("upcomingBadge") : label === "Ongoing" ? t("ongoingBadge") : t("pastBadge"));
   const attendanceStatusLabel = (label: string) => {
     if (label === "Complete") return t("statusComplete");
     if (label === "Incomplete") return t("statusIncomplete");
@@ -54,9 +70,30 @@ export function EventsView({
   const [eventFilter, setEventFilter] = useState("all");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [viewEv, setViewEv] = useState<MyEvent | null>(null);
+  // UC-16 (staff side): the ratings/comments residents left for this
+  // event -- fetched from /feedback/event/{id} (backend already existed,
+  // it just wasn't wired into any staff screen yet).
+  const [eventFeedback, setEventFeedback] = useState<{ id: number; rating: number; comment: string | null; user?: { first_name: string; last_name: string } }[]>([]);
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
+
+  useEffect(() => {
+    if (!viewEv) {
+      setEventFeedback([]);
+      return;
+    }
+    let cancelled = false;
+    setFeedbackLoading(true);
+    api.get(`/feedback/event/${viewEv.id}`)
+      .then((res) => { if (!cancelled) setEventFeedback(res.data ?? []); })
+      .catch(() => { if (!cancelled) setEventFeedback([]); })
+      .finally(() => { if (!cancelled) setFeedbackLoading(false); });
+    return () => { cancelled = true; };
+  }, [viewEv]);
   const [showAttendance, setShowAttendance] = useState<MyEvent | null>(null);
   const [eventToDelete, setEventToDelete] = useState<number | string | null>(null);
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<MyEvent | null>(null);
+  const [originalEventForm, setOriginalEventForm] = useState<string>("");
   const [formOpen, setFormOpen] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,7 +104,7 @@ export function EventsView({
   const itemsPerPage = 6;
 
   const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
-  const attendanceItemsPerPage = 20;
+  const attendanceItemsPerPage = 10;
 
   const initialLoadDone = useRef(false);
   const [localEvents, setLocalEvents] = useState<MyEvent[]>([]);
@@ -120,22 +157,36 @@ export function EventsView({
     const endDate = dbEvent.event_end?.split(' ')[0] ?? startDate;
     const startTime = dbEvent.event_start?.split(' ')[1]?.slice(0, 5) ?? '';
     const endTime = dbEvent.event_end?.split(' ')[1]?.slice(0, 5) ?? '';
+    const callStartTime = dbEvent.call_time_start?.split(' ')[1]?.slice(0, 5) ?? '';
+    const callEndTime = dbEvent.call_time_end?.split(' ')[1]?.slice(0, 5) ?? '';
 
     return {
       id: dbEvent.id,
       title: dbEvent.name,
       date: dbEvent.event_start,
       event_start: dbEvent.event_start,
+      event_end: dbEvent.event_end,
+      call_time_start: dbEvent.call_time_start,
+      call_time_end: dbEvent.call_time_end,
       startDate,
       endDate,
       startTime,
       endTime,
+      callStartTime,
+      callEndTime,
       location: dbEvent.location,
       description: dbEvent.description,
       notificationMessage: dbEvent.notification_message ?? '',
       membershipIds,
       membershipNames: [],
       approvedBudget: dbEvent.approved_budget ?? null,
+      borrowedItems: Array.isArray(dbEvent.borrowed_items)
+        ? dbEvent.borrowed_items.map((bi: any) => ({
+            inventoryItemId: String(bi.inventory_item_id),
+            name: bi.inventory_item?.name ?? "",
+            quantity: Number(bi.quantity) || 0,
+          }))
+        : [],
     };
   };
 
@@ -228,13 +279,74 @@ export function EventsView({
     title: "",
     date: "",
     time: "",
+    endTime: "",
+    callTimeStart: "",
+    callTimeEnd: "",
     location: "",
     description: "",
     notificationMessage: "",
     targetMembership: "all",
     approvedBudget: "",
     postToFacebook: false,
+    borrowedItems: [] as { inventoryItemId: string; quantity: string }[],
   });
+
+  // UC-9 tie-in: items borrowed from Inventory for this event. Fetched
+  // once (excludes Disposed/Lost condition -- see InventoryController::
+  // borrowable()) and reused for both Create and Edit, since they share
+  // one form.
+  const [borrowableItems, setBorrowableItems] = useState<BorrowableInventoryItem[]>([]);
+  const [borrowableItemsLoading, setBorrowableItemsLoading] = useState(true);
+  const [borrowItemToAdd, setBorrowItemToAdd] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/inventory/borrowable")
+      .then((res) => { if (!cancelled) setBorrowableItems(res.data ?? []); })
+      .catch(() => { if (!cancelled) setBorrowableItems([]); })
+      .finally(() => { if (!cancelled) setBorrowableItemsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // When editing, the item's current stock in `borrowableItems` already
+  // has THIS event's own borrow deducted from it (the backend only
+  // returns it when the event is saved) -- add that amount back per item
+  // so the quantity cap reflects what's really available to re-select.
+  const originalBorrowedMap = useMemo(() => {
+    const map = new Map<string, number>();
+    (editingEvent?.borrowedItems ?? []).forEach((bi) => map.set(String(bi.inventoryItemId), bi.quantity));
+    return map;
+  }, [editingEvent]);
+
+  const availableStockFor = (itemId: string): number => {
+    const base = borrowableItems.find((it) => String(it.id) === String(itemId))?.quantity ?? 0;
+    return base + (originalBorrowedMap.get(String(itemId)) ?? 0);
+  };
+
+  const addBorrowRow = (itemId: string) => {
+    if (!itemId) return;
+    if (newEvent.borrowedItems.some((r) => r.inventoryItemId === itemId)) return;
+    setNewEvent((prev) => ({ ...prev, borrowedItems: [...prev.borrowedItems, { inventoryItemId: itemId, quantity: "1" }] }));
+    setBorrowItemToAdd("");
+  };
+
+  const updateBorrowQuantity = (itemId: string, quantity: string) => {
+    setNewEvent((prev) => ({
+      ...prev,
+      borrowedItems: prev.borrowedItems.map((r) => (r.inventoryItemId === itemId ? { ...r, quantity } : r)),
+    }));
+  };
+
+  const removeBorrowRow = (itemId: string) => {
+    setNewEvent((prev) => ({ ...prev, borrowedItems: prev.borrowedItems.filter((r) => r.inventoryItemId !== itemId) }));
+  };
+
+  const getBorrowItemName = (itemId: string): string => {
+    const fromList = borrowableItems.find((it) => String(it.id) === itemId);
+    if (fromList) return fromList.name;
+    const fromEditing = (editingEvent?.borrowedItems ?? []).find((bi) => bi.inventoryItemId === itemId);
+    return fromEditing?.name || t("unknownItemLabel");
+  };
 
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState("all");
@@ -274,35 +386,47 @@ export function EventsView({
     );
   };
 
-  const getEventStatus = (event: MyEvent) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    let dateValue = event.event_start || event.date || event.startDate;
-    if (!dateValue) {
-      return { label: "Upcoming", color: "bg-yellow-100 text-yellow-800" };
+  // Three real states now instead of just Upcoming/Past -- an event that
+  // has started but hasn't ended yet (its own event_start/event_end, not
+  // just the sign-in/out call-time window) reads as "Ongoing" rather than
+  // staying "Upcoming" all the way through, or flipping straight to
+  // "Past" the moment its date turns over.
+  const parseEventDateTime = (value?: string | null): Date | null => {
+    if (!value) return null;
+    const iso = value.includes("T") ? value : value.replace(" ", "T");
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const getEventStatus = (event: MyEvent): { label: "Upcoming" | "Ongoing" | "Past"; color: string } => {
+    const now = new Date();
+    const upcoming = { label: "Upcoming" as const, color: "bg-teal-100 text-teal-800" };
+    const ongoing = { label: "Ongoing" as const, color: "bg-amber-100 text-amber-800" };
+    const past = { label: "Past" as const, color: "bg-amber-50 text-amber-700" };
+
+    const start = parseEventDateTime(event.event_start) ?? parseEventDateTime(event.date) ?? parseEventDateTime(event.startDate);
+    if (!start) return upcoming;
+
+    // Prefer the event's own end time, then the attendance window's
+    // close, then (for legacy records with neither) end-of-day on the
+    // start date so a record with no end info at all doesn't read as
+    // "Ongoing" forever.
+    let end = parseEventDateTime(event.event_end) ?? parseEventDateTime(event.call_time_end);
+    if (!end) {
+      end = new Date(start);
+      end.setHours(23, 59, 59, 999);
     }
-    let dateStr = dateValue;
-    if (typeof dateValue === 'string' && dateValue.includes(" ")) {
-      dateStr = dateValue.split(" ")[0];
-    }
-    if (dateValue.includes("T")) {
-      dateStr = dateValue.split("T")[0];
-    }
-    const eventDate = new Date(dateStr);
-    if (isNaN(eventDate.getTime())) {
-      return { label: "Upcoming", color: "bg-yellow-100 text-yellow-800" };
-    }
-    eventDate.setHours(0, 0, 0, 0);
-    if (eventDate < today) {
-      return { label: "Past", color: "bg-teal-100 text-teal-800" };
-    }
-    return { label: "Upcoming", color: "bg-yellow-100 text-yellow-800" };
+
+    if (now < start) return upcoming;
+    if (now > end) return past;
+    return ongoing;
   };
 
   const getFilterStatus = (event: MyEvent, filter: string): boolean => {
     const status = getEventStatus(event);
     if (filter === "all") return true;
     if (filter === "upcoming") return status.label === "Upcoming";
+    if (filter === "ongoing") return status.label === "Ongoing";
     if (filter === "past") return status.label === "Past";
     return true;
   };
@@ -445,6 +569,13 @@ export function EventsView({
 
     const membershipIds = newEvent.targetMembership === "all" ? [] : [newEvent.targetMembership];
 
+    if (!newEvent.date) {
+      setErrorMessage(t("eventDateRequiredError"));
+      setShowErrorModal(true);
+      setIsSubmitting(false);
+      return;
+    }
+
     if (!editingEvent) {
       const selectedDateTime = new Date(`${newEvent.date}T${newEvent.time}`);
       const now = new Date();
@@ -468,8 +599,14 @@ export function EventsView({
       notification_message: newEvent.notificationMessage,
       location: newEvent.location,
       event_start: `${newEvent.date} ${newEvent.time}:00`,
+      event_end: newEvent.endTime ? `${newEvent.date} ${newEvent.endTime}:00` : null,
+      call_time_start: newEvent.callTimeStart ? `${newEvent.date} ${newEvent.callTimeStart}:00` : null,
+      call_time_end: newEvent.callTimeEnd ? `${newEvent.date} ${newEvent.callTimeEnd}:00` : null,
       membership_ids: membershipIds,
       approved_budget: newEvent.approvedBudget !== "" ? newEvent.approvedBudget : null,
+      borrowed_items: newEvent.borrowedItems
+        .filter((r) => r.inventoryItemId && Number(r.quantity) > 0)
+        .map((r) => ({ inventory_item_id: Number(r.inventoryItemId), quantity: Number(r.quantity) })),
     };
     // Adviser recommendation: "2 in 1 — Facebook Page" (only relevant on create)
     if (!editingEvent && newEvent.postToFacebook) {
@@ -499,8 +636,8 @@ export function EventsView({
       }
 
       setNewEvent({
-        title: "", date: "", time: "", location: "", description: "",
-        notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false,
+        title: "", date: "", time: "", endTime: "", callTimeStart: "", callTimeEnd: "", location: "", description: "",
+        notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [],
       });
 
       if (onCreateEvent && savedEvent) {
@@ -514,6 +651,13 @@ export function EventsView({
       console.error("Failed to save event:", error);
       setErrorMessage(error?.response?.data?.message || t("saveEventFailed"));
       setShowErrorModal(true);
+      // A rejected edit reverts the form to what was actually loaded --
+      // "Go Back" on the error popup should mean back to the real event,
+      // not leave whatever half-invalid values were just typed sitting
+      // in the fields.
+      if (editingEvent && originalEventForm) {
+        setNewEvent(JSON.parse(originalEventForm));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -537,40 +681,61 @@ export function EventsView({
       eventTime = event.startTime;
     }
 
+    // Call time / end time all share the event's own date -- only the
+    // time-of-day differs, so just pull HH:MM back out of each timestamp.
+    const timeOnly = (value?: string) => (value ? new Date(value).toTimeString().slice(0, 5) : "");
+    const eventEndTime = event.event_end ? timeOnly(event.event_end) : (event.endTime || "");
+    const callStart = event.call_time_start ? timeOnly(event.call_time_start) : (event.callStartTime || "");
+    const callEnd = event.call_time_end ? timeOnly(event.call_time_end) : (event.callEndTime || "");
+
     const currentMembershipId = event.membershipIds && event.membershipIds.length > 0 ? String(event.membershipIds[0]) : "all";
 
     setEditingEvent(event);
     setFormOpen(true);
-    setNewEvent({
+    const initialForm = {
       title: event.title,
       date: eventDate,
       time: eventTime,
+      endTime: eventEndTime,
+      callTimeStart: callStart,
+      callTimeEnd: callEnd,
       location: event.location,
       description: event.description,
       notificationMessage: event.notificationMessage || "",
       targetMembership: currentMembershipId,
       approvedBudget: event.approvedBudget !== null && event.approvedBudget !== undefined ? String(event.approvedBudget) : "",
       postToFacebook: false,
-    });
+      borrowedItems: (event.borrowedItems ?? []).map((bi) => ({ inventoryItemId: bi.inventoryItemId, quantity: String(bi.quantity) })),
+    };
+    setNewEvent(initialForm);
+    setOriginalEventForm(JSON.stringify(initialForm));
   };
+
+  // Nothing to submit if editing an event and the form still matches what
+  // was loaded (title, schedule, borrowed items, everything).
+  const isEventFormUnchanged = !!editingEvent && JSON.stringify(newEvent) === originalEventForm;
 
   const cancelEdit = () => {
     if (isSubmitting) return;
     setEditingEvent(null);
     setNewEvent({
-      title: "", date: "", time: "", location: "", description: "",
-      notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false,
+      title: "", date: "", time: "", endTime: "", callTimeStart: "", callTimeEnd: "", location: "", description: "",
+      notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [],
     });
   };
 
-  const confirmDelete = () => {
-    if (eventToDelete !== null) {
-      onDeleteEvent(eventToDelete);
-      setLocalEvents(prev => prev.filter(e => e.id !== eventToDelete));
+  const confirmDelete = async () => {
+    if (eventToDelete === null) return;
+    const id = eventToDelete;
+    try {
+      await onDeleteEvent(id);
+      setLocalEvents(prev => prev.filter(e => e.id !== id));
       setEventToDelete(null);
-      // ✅ Optional: Show success message after delete
       setSuccessMessage(t("eventDeletedSuccess"));
       setShowSuccessModal(true);
+    } catch (error: any) {
+      setEventToDelete(null);
+      setDeleteErrorMessage(error?.response?.data?.message || t("deleteEventFailed"));
     }
   };
 
@@ -653,7 +818,7 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
       <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
         <div className="w-full">
           <div>
-            <h1 className="text-4xl font-black text-[#005f63]">{t("eventsAndAttendance")}</h1>
+            <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("eventsAndAttendance")}</h1>
             <p className="mt-1 text-sm text-[#667777]">{t("staffEventsSubtitle")}</p>
           </div>
 
@@ -668,26 +833,29 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
 
             <div className="flex flex-wrap gap-3">
               <div className="relative">
+                {/* This is a real dropdown (All / Upcoming / Past) -- the
+                    trailing chevron makes that obvious, since appearance-none
+                    otherwise hides the browser's own arrow. */}
                 <select
                   value={eventFilter}
                   onChange={(e) => setEventFilter(e.target.value)}
-                  className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm appearance-none"
+                  className="h-14 pl-10 pr-9 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm appearance-none"
                 >
                   <option value="all">{t("allEvents")}</option>
                   <option value="upcoming">{t("upcomingEvents")}</option>
+                  <option value="ongoing">{t("ongoingEvents")}</option>
                   <option value="past">{t("pastEvents")}</option>
                 </select>
                 <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
+                <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
               </div>
 
-              <div className="relative h-full">
-                <input
-                  type="date"
+              <div className="h-14">
+                <DatePicker
                   value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="h-14 pl-10 pr-4 py-3.5 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30"
+                  onChange={setSelectedDate}
+                  className="h-14 pl-4 pr-4 py-3.5"
                 />
-                <Calendar className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
               </div>
             </div>
           </div>
@@ -724,12 +892,12 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
         </div>
       </div>
 
-      <div className="relative flex gap-6 items-start px-1 w-full h-[calc(100vh-180px)]">
-        <button onClick={() => setFormOpen(!formOpen)} className={`absolute top-2 z-50 bg-[#359ca0] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#2a7d82] ${formOpen ? "left-[calc(50%-18px)]" : "left-0"}`}>
+      <div className="relative flex flex-col lg:flex-row gap-6 items-start px-1 w-full h-auto lg:h-[calc(100vh-180px)]">
+        <button onClick={() => setFormOpen(!formOpen)} className={`absolute top-2 z-50 bg-[#359ca0] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#2a7d82] ${formOpen ? "right-2 lg:right-auto lg:left-[calc(50%-18px)]" : "left-0"}`}>
           {formOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
         </button>
 
-        <div className={`transition-all duration-300 overflow-hidden shrink-0 ${formOpen ? "w-1/2 opacity-100" : "w-0 opacity-0"}`}>
+        <div className={`transition-all duration-300 overflow-hidden shrink-0 ${formOpen ? "w-full lg:w-1/2 opacity-100" : "w-0 opacity-0"}`}>
           <div className="bg-white rounded-3xl border-gray-200 p-5 shadow-md h-full overflow-hidden flex flex-col">
             <h2 className="text-xl font-bold text-[#005f63] mb-4">{editingEvent ? t("editEventTitle") : t("createNewEvent")}</h2>
             <form onSubmit={handleSaveEvent} className="space-y-4 flex-1 overflow-y-auto pr-1">
@@ -737,17 +905,36 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t("dateRequired")}</label>
-                <input
-                  type="date"
-                  required
+                <DatePicker
                   value={newEvent.date}
-                  onChange={(e) => setNewEvent({ ...newEvent, date: e.target.value })}
-                  className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm"
+                  onChange={(iso) => setNewEvent({ ...newEvent, date: iso })}
+                  className="px-4 py-2"
                   min={getTodayString()}
+                  required
                 />
               </div>
 
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("startTimeRequired")}</label><input type="time" required value={newEvent.time} onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("startTimeRequired")}</label><input type="time" required value={newEvent.time} onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("endTimeLabel")}</label><input type="time" required value={newEvent.endTime} onChange={(e) => setNewEvent({ ...newEvent, endTime: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
+              </div>
+
+              {/* Call time: sign-in/out attendance window, separate from the event's own start/end */}
+              <div className="rounded-2xl border border-dashed border-[#005f63]/25 p-3 space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">{t("callTimeSectionTitle")}</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">{t("callTimeStartLabel")}</label>
+                    <input type="time" required value={newEvent.callTimeStart} onChange={(e) => setNewEvent({ ...newEvent, callTimeStart: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">{t("callTimeEndLabel")}</label>
+                    <input type="time" required value={newEvent.callTimeEnd} onChange={(e) => setNewEvent({ ...newEvent, callTimeEnd: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" disabled={!newEvent.endTime} title={!newEvent.endTime ? t("setEndTimeFirstHint") : undefined} />
+                  </div>
+                </div>
+                <p className="text-[11px] text-gray-400">{t("callTimeHint")}</p>
+              </div>
+
               <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("locationRequired")}</label><input type="text" required value={newEvent.location} placeholder={t("locationPlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("descriptionLabel")}</label><textarea value={newEvent.description} placeholder={t("descriptionPlaceholderEvent")} onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} className="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm" rows={3} /></div>
               <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("messageLabel")}</label><textarea value={newEvent.notificationMessage} placeholder={t("messagePlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, notificationMessage: e.target.value })} className="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm" rows={2} /></div>
@@ -768,6 +955,69 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
                 <p className="mt-1 text-[11px] text-gray-400">{t("trackExpensesHint")}</p>
               </div>
 
+              {/* Items borrowed from Inventory for this event -- excludes
+                  Disposed/Lost stock (see InventoryController::borrowable()),
+                  and deducts the chosen quantity from Inventory on save. */}
+              <div className="rounded-2xl border border-dashed border-[#005f63]/25 p-3 space-y-3">
+                <div className="flex items-center gap-1.5">
+                  <Package className="h-3.5 w-3.5 text-[#005f63]/70" />
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">{t("borrowedItemsSectionTitle")}</p>
+                </div>
+
+                {newEvent.borrowedItems.length > 0 && (
+                  <div className="space-y-2">
+                    {newEvent.borrowedItems.map((row) => {
+                      const max = Math.max(0, availableStockFor(row.inventoryItemId));
+                      return (
+                        <div key={row.inventoryItemId} className="flex items-center gap-2 rounded-xl bg-white border border-gray-200 px-3 py-2">
+                          <span className="flex-1 text-sm text-gray-700 truncate">{getBorrowItemName(row.inventoryItemId)}</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={max}
+                            value={row.quantity}
+                            onChange={(e) => {
+                              const raw = e.target.value;
+                              const clamped = raw === "" ? "" : String(Math.max(1, Math.min(max || 1, Number(raw) || 1)));
+                              updateBorrowQuantity(row.inventoryItemId, clamped);
+                            }}
+                            className="w-16 rounded-full border border-gray-200 px-2 py-1 text-sm text-center"
+                          />
+                          <span className="text-[11px] text-gray-400 shrink-0">/ {max} {t("availableStockShortLabel")}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeBorrowRow(row.inventoryItemId)}
+                            className="text-gray-400 hover:text-red-500 transition shrink-0"
+                            title={t("removeLabel")}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {!borrowableItemsLoading && borrowableItems.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">{t("noBorrowableItemsLabel")}</p>
+                ) : (
+                  <SearchableSelect
+                    onSelect={addBorrowRow}
+                    disabled={borrowableItemsLoading}
+                    placeholder={borrowableItemsLoading ? t("loadingLabel") : t("addBorrowedItemPlaceholder")}
+                    noResultsLabel={t("noMatchingBorrowItemsLabel")}
+                    options={borrowableItems
+                      .filter((it) => !newEvent.borrowedItems.some((r) => r.inventoryItemId === String(it.id)))
+                      .map((it) => ({
+                        value: String(it.id),
+                        label: it.name,
+                        hint: `(${it.quantity} ${t("availableStockShortLabel")})`,
+                      }))}
+                  />
+                )}
+                <p className="text-[11px] text-gray-400">{t("borrowedItemsHint")}</p>
+              </div>
+
               {/* Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)" */}
               {!editingEvent && (
                 <label className="flex items-center gap-2 cursor-pointer text-sm">
@@ -781,12 +1031,12 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
                 </label>
               )}
 
-              <div className="pt-2 flex gap-2"><button type="submit" disabled={isSubmitting} className={`flex-1 py-2.5 rounded-full font-bold ${isSubmitting ? 'bg-gray-400' : 'bg-[#359ca0] hover:bg-[#2a7d82] text-white'}`}>{isSubmitting ? t("savingLabel") : (editingEvent ? t("updateEvent") : t("postEvent"))}</button>{editingEvent && <button type="button" onClick={cancelEdit} disabled={isSubmitting} className="px-6 py-2.5 rounded-full border border-gray-300 bg-gray-50 text-gray-600">{t("cancelLabel")}</button>}</div>
+              <div className="pt-2 flex gap-2"><button type="submit" disabled={isSubmitting || isEventFormUnchanged} title={isEventFormUnchanged ? t("noChangesToSaveHint") : undefined} className="flex-1 py-2.5 rounded-full font-bold bg-[#359ca0] hover:bg-[#2a7d82] text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#359ca0]">{isSubmitting ? t("savingLabel") : (editingEvent ? t("updateEvent") : t("postEvent"))}</button>{editingEvent && <button type="button" onClick={cancelEdit} disabled={isSubmitting} className="px-6 py-2.5 rounded-full border border-gray-300 bg-gray-50 text-gray-600">{t("cancelLabel")}</button>}</div>
             </form>
           </div>
         </div>
 
-        <div className={`h-full overflow-y-auto pr-2 transition-all duration-300 ${formOpen ? "w-1/2" : "w-full pl-6"}`}>
+        <div className={`overflow-y-auto pr-2 transition-all duration-300 ${formOpen ? "hidden lg:block lg:w-1/2 h-full" : "w-full pl-6 h-auto lg:h-full"}`}>
           {filteredEvents.length === 0 ? (
             <div className="text-center py-12"><p className="text-gray-500 italic">{t("noEventsMatchStaff")}</p></div>
           ) : (
@@ -807,9 +1057,22 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
                         <div key={e.id} className="relative rounded-2xl border-l-4 border-[#f8e67d] bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)]">
                           <div className="absolute top-4 right-4 flex items-center gap-2">
                             <span className={`px-3 py-1 rounded-full text-xs font-semibold ${status.color}`}>{eventStatusLabel(status.label)}</span>
-                            <button onClick={() => startEditEvent(e)} disabled={isSubmitting || !!editingEvent} className="rounded-full p-2 text-orange-500 hover:bg-orange-100" title={t("editTitle")}><svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg></button>
-                            <button onClick={() => setViewEv(e)} className="rounded-full p-2 text-[#005f63] hover:bg-[#005f63]/10" title={t("viewDetailsTitle")}><Eye className="h-[18px] w-[18px]" /></button>
-                            <button onClick={() => setEventToDelete(e.id)} className="p-2 rounded-full hover:bg-red-100" title={t("deleteTitle")}><Archive className="h-4 w-4 text-red-500" /></button>
+                            {/* Editing/archiving stops making sense once an
+                                event is Ongoing (it's actively happening --
+                                changing it now would be confusing) or Past
+                                (already finished), same idea as a closed
+                                budget line. */}
+                            {(() => {
+                              const isLocked = status.label === "Past" || status.label === "Ongoing";
+                              const lockedHint = status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint");
+                              return (
+                                <>
+                                  <button onClick={() => startEditEvent(e)} disabled={isSubmitting || !!editingEvent || isLocked} className="rounded-full p-2 text-orange-500 hover:bg-orange-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent" title={isLocked ? lockedHint : t("editTitle")}><svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg></button>
+                                  <button onClick={() => setViewEv(e)} className="rounded-full p-2 text-[#005f63] hover:bg-[#005f63]/10" title={t("viewDetailsTitle")}><Eye className="h-[18px] w-[18px]" /></button>
+                                  <button onClick={() => setEventToDelete(e.id)} disabled={isLocked} className="p-2 rounded-full hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent" title={isLocked ? lockedHint : t("deleteTitle")}><Archive className="h-4 w-4 text-red-500" /></button>
+                                </>
+                              );
+                            })()}
                           </div>
                           <h2 className="pr-32 text-base font-bold text-[#005f63]">{highlightText(e.title, eventSearch)}</h2>
                           <p className="mt-1 text-sm text-gray-500">{e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || ""} · {formatTime12Hour(e.startTime)}</p>
@@ -863,7 +1126,7 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
             <div className="mb-3 flex justify-center text-red-500">
               <XCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-red-600 mb-2">{t("invalidDateTimeTitle")}</h3>
+            <h3 className="text-xl font-bold text-red-600 mb-2">{t("saveEventFailed")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{errorMessage}</p>
             <button
               onClick={() => setShowErrorModal(false)}
@@ -875,12 +1138,59 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
         </div>
       )}
 
+      {/* Delete failure modal -- was a native alert(), replaced to match the
+          rest of the app's popup template. */}
+      {deleteErrorMessage && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setDeleteErrorMessage(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 flex justify-center text-red-500">
+              <AlertCircle size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{deleteErrorMessage}</p>
+            <button
+              onClick={() => setDeleteErrorMessage(null)}
+              className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+            >
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>
+      )}
+
       {viewEv && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4"><div><h2 className="text-2xl font-black text-[#005f63]">{viewEv.title}</h2><p className="text-sm text-gray-600 mt-1">{viewEv.startDate || viewEv.date} · {formatTime12Hour(viewEv.startTime)}</p><p className="text-sm text-gray-600">{viewEv.location}</p></div><button onClick={() => setViewEv(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button></div>
-            <div className="space-y-4"><div className={`px-3 py-2 rounded-full inline-block text-sm font-semibold ${getEventStatus(viewEv).color}`}>{eventStatusLabel(getEventStatus(viewEv).label)}</div><div><h4 className="font-semibold text-gray-700 mb-1">{t("descriptionLabel")}</h4><p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl">{viewEv.description || "—"}</p></div>{viewEv.notificationMessage && (<div><h4 className="font-semibold text-gray-700 mb-1">{t("notificationPreview")}</h4><p className="text-sm text-teal-700 bg-teal-50 p-3 rounded-xl">{viewEv.notificationMessage}</p></div>)}{viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined && (<p className="text-sm text-gray-600">{t("approvedBudgetColon")} <strong className="text-[#005f63]">₱{Number(viewEv.approvedBudget).toLocaleString()}</strong></p>)}<div className="grid grid-cols-3 gap-3 text-center"><div className="bg-teal-50 rounded-xl p-3"><p className="text-xs text-teal-600 font-medium">{t("targetMembersLabel")}</p><p className="font-bold text-teal-800 text-sm">{(() => { const n = getMembershipNames(viewEv); return n.length > 0 ? n.join(", ") : t("openEventLabel"); })()}</p></div><div className="bg-green-50 rounded-xl p-3"><p className="text-xs text-green-600 font-medium">{t("signedInLabel")}</p><p className="font-bold text-green-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length}</p></div>
-            <div className="bg-orange-50 rounded-xl p-3"><p className="text-xs text-orange-600 font-medium">{t("signedOutLabel")}</p><p className="font-bold text-orange-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeOut).length}</p></div></div><button onClick={() => setShowAttendance(viewEv)} className="w-full bg-[#f3b94e] hover:bg-[#ff9736] text-white py-2.5 rounded-full font-medium">{t("viewAttendanceList")}</button></div>
+            <div className="space-y-4"><div className={`px-3 py-2 rounded-full inline-block text-sm font-semibold ${getEventStatus(viewEv).color}`}>{eventStatusLabel(getEventStatus(viewEv).label)}</div><div><h4 className="font-semibold text-gray-700 mb-1">{t("descriptionLabel")}</h4><p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl">{viewEv.description || "—"}</p></div>{viewEv.notificationMessage && (<div><h4 className="font-semibold text-gray-700 mb-1">{t("notificationPreview")}</h4><p className="text-sm text-teal-700 bg-teal-50 p-3 rounded-xl">{viewEv.notificationMessage}</p></div>)}{viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined && (<p className="text-sm text-gray-600">{t("approvedBudgetColon")} <strong className="text-[#005f63]">₱{Number(viewEv.approvedBudget).toLocaleString()}</strong></p>)}<div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center"><div className="bg-teal-50 rounded-xl p-3"><p className="text-xs text-teal-600 font-medium">{t("targetMembersLabel")}</p><p className="font-bold text-teal-800 text-sm">{(() => { const n = getMembershipNames(viewEv); return n.length > 0 ? n.join(", ") : t("openEventLabel"); })()}</p></div><div className="bg-green-50 rounded-xl p-3"><p className="text-xs text-green-600 font-medium">{t("signedInLabel")}</p><p className="font-bold text-green-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length}</p></div>
+            <div className="bg-orange-50 rounded-xl p-3"><p className="text-xs text-orange-600 font-medium">{t("signedOutLabel")}</p><p className="font-bold text-orange-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeOut).length}</p></div></div><button onClick={() => setShowAttendance(viewEv)} className="w-full bg-[#f3b94e] hover:bg-[#ff9736] text-white py-2.5 rounded-full font-medium">{t("viewAttendanceList")}</button>
+            {/* UC-16: residents' post-event ratings/comments -- previously
+                collected but never shown anywhere in the staff portal. */}
+            <div>
+              <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-1.5"><Star className="h-4 w-4 text-amber-400" /> {t("residentFeedbackLabel")}</h4>
+              {feedbackLoading ? (
+                <p className="text-xs text-gray-400 italic">{t("loadingLabel")}</p>
+              ) : eventFeedback.length === 0 ? (
+                <p className="text-xs text-gray-400 italic bg-gray-50 rounded-xl p-3">{t("noFeedbackYetLabel")}</p>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {eventFeedback.map((f) => (
+                    <div key={f.id} className="rounded-xl bg-gray-50 border border-gray-100 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-semibold text-gray-700 truncate">{f.user ? `${f.user.first_name} ${f.user.last_name}` : t("unknownItemLabel")}</span>
+                        <span className="flex items-center gap-0.5 shrink-0">
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <Star key={n} className={`h-3.5 w-3.5 ${n <= f.rating ? "text-amber-400 fill-amber-400" : "text-gray-200"}`} />
+                          ))}
+                        </span>
+                      </div>
+                      {f.comment && <p className="mt-1 text-xs text-gray-600">{f.comment}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
           </div>
         </div>
       )}
@@ -922,8 +1232,8 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
             </div>
 
             <div className="flex-1 px-6 pb-6 overflow-y-auto">
-              <div className="rounded-xl border border-[#ddd5ca] w-full">
-                <table className="w-full text-sm">
+              <div className="rounded-xl border border-[#ddd5ca] w-full overflow-x-auto">
+                <table className="w-full text-sm min-w-[560px]">
                   <thead className="bg-[#f8f6f2] sticky top-0 z-10">
                     <tr>
                       <th className="text-left p-4 font-medium text-[#005f63] w-[30%]">{t("residentNameColumn")}</th>
@@ -980,8 +1290,8 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
               </div>
 
               {attendanceTotalPages > 1 && (
-                <div className="flex justify-between items-center mt-6">
-                  <p className="text-sm text-gray-600">
+                <div className="flex flex-col sm:flex-row gap-3 justify-between items-center mt-6">
+                  <p className="text-sm text-gray-600 text-center sm:text-left">
                     {t("pageOfLabel")} {attendanceCurrentPage} {t("ofPagesLabel")} {attendanceTotalPages} • {paginatedAttendance.length} {t("recordsShownLabel")}
                   </p>
                   <div className="flex items-center gap-2">

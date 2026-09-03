@@ -71,7 +71,7 @@ class UserController extends Controller
      * whose age bracket / civil status doesn't match what the membership
      * requires (configured under Settings -> Profiling).
      */
-    private function checkMembershipEligibility(array $membershipIds, ?string $birthDate, ?int $civilStatusId): ?array
+    private function checkMembershipEligibility(array $membershipIds, ?string $birthDate, ?int $civilStatusId, ?string $gender = null): ?array
     {
         if (empty($membershipIds)) {
             return null;
@@ -81,7 +81,8 @@ class UserController extends Controller
             ->whereIn('id', $membershipIds)
             ->where(function ($q) {
                 $q->whereNotNull('eligible_age_bracket_id')
-                  ->orWhereNotNull('eligible_civil_status_id');
+                  ->orWhereNotNull('eligible_civil_status_id')
+                  ->orWhereNotNull('eligible_gender');
             })
             ->with(['eligibleAgeBracket', 'eligibleCivilStatus'])
             ->get();
@@ -115,6 +116,12 @@ class UserController extends Controller
                 $requiredStatus = $membership->eligibleCivilStatus;
                 if (!$civilStatusId || $civilStatusId !== $membership->eligible_civil_status_id) {
                     $violations[] = "\"{$membership->name}\" requires civil status: {$requiredStatus?->label}.";
+                }
+            }
+
+            if ($membership->eligible_gender) {
+                if (!$gender || $gender !== $membership->eligible_gender) {
+                    $violations[] = "\"{$membership->name}\" requires gender: {$membership->eligible_gender}.";
                 }
             }
         }
@@ -155,7 +162,8 @@ class UserController extends Controller
             $violations = $this->checkMembershipEligibility(
                 $incomingMembershipIds,
                 $request->birth_date,
-                $request->civil_status_id ? (int) $request->civil_status_id : null
+                $request->civil_status_id ? (int) $request->civil_status_id : null,
+                $request->gender ?: null
             );
             if ($violations) {
                 return response()->json(['errors' => ['membership_ids' => $violations]], 422);
@@ -191,6 +199,7 @@ class UserController extends Controller
                 'birth_date'                => $request->birth_date,
                 'address'                   => $request->address,
                 'civil_status_id'           => $request->civil_status_id ?: null,
+                'gender'                    => $request->gender ?: null,
                 'household_code'            => $request->household_code,
                 'is_household_head'         => filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN),
                 'household_contact_number'  => $request->household_contact_number,
@@ -278,7 +287,7 @@ class UserController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $query = User::withTrashed()->with('memberships');
+        $query = User::withTrashed()->with('memberships', 'household');
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -311,6 +320,10 @@ class UserController extends Controller
             $query->where('household_code', $request->household_code);
         }
 
+        if ($request->filled('household_id')) {
+            $query->where('household_id', $request->household_id);
+        }
+
         return response()->json($query->paginate((int) $request->get('per_page', 20)));
     }
 
@@ -325,7 +338,7 @@ class UserController extends Controller
         }
 
         return response()->json(
-            User::withTrashed()->with('memberships')->findOrFail($id)
+            User::withTrashed()->with('memberships', 'household')->findOrFail($id)
         );
     }
 
@@ -370,11 +383,15 @@ class UserController extends Controller
                     $effectiveCivilStatusId = $request->has('civil_status_id')
                         ? ($request->civil_status_id ? (int) $request->civil_status_id : null)
                         : $user->civil_status_id;
+                    $effectiveGender = $request->has('gender')
+                        ? ($request->gender ?: null)
+                        : $user->gender;
 
                     $violations = $this->checkMembershipEligibility(
                         $incomingMembershipIds,
                         $effectiveBirthDate,
-                        $effectiveCivilStatusId
+                        $effectiveCivilStatusId,
+                        $effectiveGender
                     );
                     if ($violations) {
                         DB::rollBack();
@@ -391,6 +408,7 @@ class UserController extends Controller
                 'birth_date',
                 'address',
                 'civil_status_id',
+                'gender',
                 'household_code',
                 'household_contact_number',
                 'preferred_language',
@@ -620,6 +638,49 @@ class UserController extends Controller
     }
 
     // =========================
+    // SELF-SERVICE: CONTACT NUMBER
+    // =========================
+    // Deliberately its own small endpoint rather than routing residents
+    // through the full staff-facing update() above -- that one expects
+    // (and duplicate-name-checks against) a whole resident record, which
+    // is the wrong shape for "a resident edits one field of their own
+    // profile".
+    public function updateContactNumber(Request $request, $id)
+    {
+        if (!$this->isOwnProfile($id) && !$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'contact_number' => [
+                'required',
+                'string',
+                function ($attribute, $value, $fail) {
+                    $stripped = preg_replace('/\D/', '', $value);
+                    if (!preg_match('/^(\+?63|0)9\d{9}$/', $stripped)) {
+                        $fail('The contact number format is invalid.');
+                    }
+                },
+            ],
+        ]);
+
+        $user = User::findOrFail($id);
+        $user->contact_number = $request->contact_number;
+        $user->save();
+
+        $this->createLog(
+            'Update',
+            'User',
+            "Updated contact number for user {$user->user_code}"
+        );
+
+        return response()->json([
+            'message' => 'Contact number updated successfully',
+            'contact_number' => $user->contact_number,
+        ]);
+    }
+
+    // =========================
     // LOGOUT
     // =========================
 
@@ -667,7 +728,7 @@ public function getAllForMemberships()
 
     try {
         $users = User::withTrashed()
-            ->with('memberships')
+            ->with('memberships', 'household')
             ->get();
 
         return response()->json(
@@ -686,9 +747,16 @@ public function getAllForMemberships()
                     'age' => $user->age,
                     'age_group' => $user->age_group,
                     'address' => $user->address,
+                    'civil_status_id' => $user->civil_status_id,
+                    'gender' => $user->gender,
                     'household_code' => $user->household_code,
                     'is_household_head' => $user->is_household_head,
                     'household_contact_number' => $user->household_contact_number,
+                    'household_id' => $user->household_id,
+                    'household' => $user->household ? [
+                        'id' => $user->household->id,
+                        'code' => $user->household->code,
+                    ] : null,
                     'preferred_language' => $user->preferred_language,
                     'memberships' => $user->memberships->map(function ($membership) {
                         return [

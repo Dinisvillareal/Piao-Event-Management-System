@@ -43,20 +43,27 @@ class EventAttendanceController extends Controller
         $user = User::findOrFail($request->user_id);
         $userName = $user->first_name . ' ' . $user->last_name;
 
+        // Sign-in window = [call_time_start, event_start]. Call time lets
+        // staff invite residents earlier than the event's actual start
+        // (e.g. call time 6:00, event starts 7:00) instead of sign-in being
+        // open for the whole event duration. Events with no call time set
+        // have no early bound at all (sign-in just stays open any time up
+        // to event_start) -- NOT the same instant as event_start, which
+        // would make the window zero-width.
         $currentTime = time();
-        $eventStart = strtotime($event->event_start);
+        $windowOpen = $event->call_time_start ? strtotime($event->call_time_start) : null;
+        $windowClose = strtotime($event->event_start);
 
-        // 1. Always check if it's too early
-        if ($currentTime < $eventStart) {
-            return response()->json(['message' => 'Sign-in is not available yet.'], 403);
+        if ($windowOpen !== null && $currentTime < $windowOpen) {
+            return response()->json([
+                'message' => 'Sign-in is not open yet. It opens at ' . date('g:i A', $windowOpen) . '.',
+            ], 403);
         }
 
-        // 2. ONLY check if it's too late IF the event actually has an end time
-        if ($event->event_end) {
-            $eventEnd = strtotime($event->event_end);
-            if ($currentTime > $eventEnd) {
-                return response()->json(['message' => 'Sign-in is closed.'], 403);
-            }
+        if ($currentTime > $windowClose) {
+            return response()->json([
+                'message' => 'Sign-in window has closed. It closed at ' . date('g:i A', $windowClose) . '.',
+            ], 403);
         }
 
         DB::beginTransaction();
@@ -121,6 +128,30 @@ class EventAttendanceController extends Controller
         $event = Event::findOrFail($request->event_id);
         $user = User::findOrFail($request->user_id);
         $userName = $user->first_name . ' ' . $user->last_name;
+
+        // Sign-out window = [event_end, call_time_end]. Events with no
+        // event_end skip this check entirely (old behavior -- no
+        // restriction). Events with event_end but no call_time_end get an
+        // open-ended window starting at event_end (no upper bound).
+        if ($event->event_end) {
+            $currentTime = time();
+            $windowOpen = strtotime($event->event_end);
+
+            if ($currentTime < $windowOpen) {
+                return response()->json([
+                    'message' => 'Sign-out is not open yet. It opens at ' . date('g:i A', $windowOpen) . '.',
+                ], 403);
+            }
+
+            if ($event->call_time_end) {
+                $windowClose = strtotime($event->call_time_end);
+                if ($currentTime > $windowClose) {
+                    return response()->json([
+                        'message' => 'Sign-out window has closed. It closed at ' . date('g:i A', $windowClose) . '.',
+                    ], 403);
+                }
+            }
+        }
 
         DB::beginTransaction();
 
@@ -196,6 +227,7 @@ class EventAttendanceController extends Controller
             
             return [
                 'id' => $attendance->id,
+                'eventId' => $attendance->event_id,
                 'eventTitle' => $isEventDeleted ? '' : $attendance->event->name,
                 'eventDate' => $isEventDeleted ? '' : $attendance->event->event_start,
                 'location' => $isEventDeleted ? '' : $attendance->event->location,

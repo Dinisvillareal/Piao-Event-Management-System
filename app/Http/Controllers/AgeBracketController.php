@@ -97,4 +97,19 @@ class AgeBracketController extends Controller
 
         return response()->json(['message' => 'Age bracket deleted successfully']);
     }
+
+    public function restore($id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $bracket = AgeBracket::onlyTrashed()->findOrFail($id);
+        $bracket->restore();
+
+        AgeBracket::forgetCache();
+        $this->createLog('Restore Age Bracket', 'Profiling Settings', "Restored age bracket '{$bracket->label}'");
+
+        return response()->json(['message' => 'Age bracket restored successfully']);
+    }
 }

@@ -244,7 +244,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                    </div>
 
 
-                   <div className="flex gap-3 items-stretch">
+                   <div className="flex flex-wrap gap-3 items-stretch">
                        <div className="relative h-full">
                            <select
                                value={dateFilter}

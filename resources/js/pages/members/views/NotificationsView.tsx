@@ -39,6 +39,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    const [dateFilter, setDateFilter] = useState("all"); // All / Upcoming / Past
    const [statusFilter, setStatusFilter] = useState("all"); // All / Read / Unread
    const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
+   const [showCancelledModal, setShowCancelledModal] = useState(false);
    const [currentPage, setCurrentPage] = useState(1);
    const itemsPerPage = 10;
 
@@ -126,7 +127,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
        }
 
        if (notification.type === 'event_deleted' || !notification.event || notification.event?.deleted_at) {
-           alert(t("eventCancelledAlert"));
+           setShowCancelledModal(true);
            return;
        }
 
@@ -537,6 +538,22 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                </div>
                            </div>
                        </div>
+                   </div>
+               </div>
+           )}
+
+           {showCancelledModal && (
+               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setShowCancelledModal(false)}>
+                   <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+                       <div className="mb-4 text-orange-500 flex justify-center"><AlertTriangle size={40} /></div>
+                       <h3 className="text-xl font-bold text-orange-600 mb-3">{t("eventCancelledTitle")}</h3>
+                       <p className="text-[15px] text-gray-600 mb-5">{t("eventCancelledAlert")}</p>
+                       <button
+                           onClick={() => setShowCancelledModal(false)}
+                           className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition"
+                       >
+                           {t("okLabel")}
+                       </button>
                    </div>
                </div>
            )}

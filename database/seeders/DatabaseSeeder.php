@@ -26,6 +26,12 @@ class DatabaseSeeder extends Seeder
         $this->call([
             UserSeeder::class,
         ]);
+        // Real Household module -- groups seeded residents into households
+        // (must run after UserSeeder, before anything that reports on SMS
+        // grouping / household membership).
+        $this->call([
+            HouseholdSeeder::class,
+        ]);
         // Add MembershipSeeder here
         $this->call([
             MembershipSeeder::class,
@@ -39,6 +45,23 @@ class DatabaseSeeder extends Seeder
         $this->call([
             EventAttendanceSeeder::class,
         ]);
-
+        // Realistic, interconnected demo data for the remaining modules --
+        // each references real rows from the seeders above instead of
+        // standing alone.
+        $this->call([
+            InventoryItemSeeder::class,
+        ]);
+        $this->call([
+            EventExpenseSeeder::class,
+        ]);
+        $this->call([
+            FeedbackSeeder::class,
+        ]);
+        // Must run last -- it reads back the households/events/inventory
+        // rows every seeder above just created to build a realistic audit
+        // trail referencing them.
+        $this->call([
+            ActivityLogSeeder::class,
+        ]);
     }
 }

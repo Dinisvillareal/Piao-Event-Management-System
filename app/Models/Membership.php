@@ -10,7 +10,7 @@ class Membership extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['name', 'description', 'is_active', 'deactivated_reason','deleted_by', 'eligible_age_bracket_id', 'eligible_civil_status_id'];
+    protected $fillable = ['name', 'description', 'is_active', 'deactivated_reason','deleted_by', 'eligible_age_bracket_id', 'eligible_civil_status_id', 'eligible_gender'];
 
     public $timestamps = false;
 

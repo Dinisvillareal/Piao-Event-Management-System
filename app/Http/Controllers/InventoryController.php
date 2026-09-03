@@ -47,6 +47,23 @@ class InventoryController extends Controller
         return response()->json($query->orderBy('name')->get());
     }
 
+    // Items selectable when borrowing inventory for an Event (Create/Edit
+    // Event form) -- Disposed and Lost stock is excluded since it can't
+    // actually be lent out, unlike the full Inventory grid which still
+    // lists it for record-keeping.
+    public function borrowable(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $items = InventoryItem::whereNotIn('condition', ['Disposed', 'Lost'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'quantity', 'condition', 'storage_location']);
+
+        return response()->json($items);
+    }
+
     public function store(Request $request)
     {
         if (!$this->isStaff()) {

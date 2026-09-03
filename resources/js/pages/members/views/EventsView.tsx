@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from "react";
-import { Filter } from "lucide-react";
+import { Filter, Star, Pencil, CheckCircle } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import api, { apiErrorMessage } from "../../../lib/api";
 
 const THIS_WEEK_KEY = "__THIS_WEEK__";
 
@@ -15,11 +16,26 @@ interface Event {
   memberships?: { id: number; name: string }[];
 }
 
+interface AttendanceRecord {
+  eventId?: number;
+  status: string;
+}
+
+interface FeedbackEntry {
+  id: number;
+  event_id: number;
+  rating: number;
+  comment: string | null;
+}
+
 interface EventsViewProps {
   allEvents: Event[];
   allMemberships: { id: number; name: string }[];
   userMemberships: { id: number; name: string }[];
   highlightText: (text: string, query: string) => React.ReactNode;
+  attendanceRecords?: AttendanceRecord[];
+  myFeedback?: FeedbackEntry[];
+  onFeedbackSubmitted?: (entry: FeedbackEntry) => void;
 }
 
 export default function EventsView({
@@ -27,6 +43,9 @@ export default function EventsView({
   allMemberships,
   userMemberships,
   highlightText,
+  attendanceRecords = [],
+  myFeedback = [],
+  onFeedbackSubmitted,
 }: EventsViewProps) {
   const { t } = useLanguage();
   const [eventSearch, setEventSearch] = useState("");
@@ -34,6 +53,81 @@ export default function EventsView({
   const [membershipFilter, setMembershipFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 6;
+
+  // ─── Reviews module (Past events only) ───────────────────────────────────
+  // Only an event the resident actually attended -- Complete OR Incomplete,
+  // both mean they signed in -- can be rated. "Missed" (never signed in,
+  // or no attendance record at all) never shows a review affordance; the
+  // backend enforces the same rule independently on submit.
+  const [reviewingEventId, setReviewingEventId] = useState<number | null>(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewHoverRating, setReviewHoverRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [justSubmittedEventId, setJustSubmittedEventId] = useState<number | null>(null);
+
+  // Brief inline confirmation after a successful submit -- clears itself so
+  // it does not linger indefinitely once the resident has seen it.
+  useEffect(() => {
+    if (justSubmittedEventId === null) return;
+    const timer = setTimeout(() => setJustSubmittedEventId(null), 4000);
+    return () => clearTimeout(timer);
+  }, [justSubmittedEventId]);
+
+  const getAttendanceForEvent = (eventId: number) =>
+    attendanceRecords.find((r) => Number(r.eventId) === Number(eventId));
+
+  const getFeedbackForEvent = (eventId: number) =>
+    myFeedback.find((f) => Number(f.event_id) === Number(eventId));
+
+  const canReviewEvent = (eventId: number) => {
+    const attendance = getAttendanceForEvent(eventId);
+    return !!attendance && (attendance.status === "complete" || attendance.status === "incomplete");
+  };
+
+  const startReview = (eventId: number) => {
+    const existing = getFeedbackForEvent(eventId);
+    setReviewingEventId(eventId);
+    setReviewRating(existing?.rating ?? 0);
+    setReviewComment(existing?.comment ?? "");
+    setReviewHoverRating(0);
+    setReviewError(null);
+    setJustSubmittedEventId(null);
+  };
+
+  const cancelReview = () => {
+    setReviewingEventId(null);
+    setReviewRating(0);
+    setReviewComment("");
+    setReviewError(null);
+  };
+
+  const submitReview = async (eventId: number) => {
+    if (reviewRating < 1) return;
+    setSubmittingReview(true);
+    setReviewError(null);
+    try {
+      const res = await api.post("/feedback", {
+        event_id: eventId,
+        rating: reviewRating,
+        comment: reviewComment || undefined,
+      });
+      const saved = res.data?.feedback;
+      onFeedbackSubmitted?.({
+        id: saved?.id ?? Date.now(),
+        event_id: eventId,
+        rating: reviewRating,
+        comment: reviewComment || null,
+      });
+      setReviewingEventId(null);
+      setJustSubmittedEventId(eventId);
+    } catch (err) {
+      setReviewError(apiErrorMessage(err, t("submitReviewFailed")));
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   // Format time function
   const formatTime = (dateTimeStr: string): string => {
@@ -315,6 +409,101 @@ export default function EventsView({
                             </span>
                           )}
                         </div>
+
+                        {/* Feedback module -- gated purely on attendance,
+                            not the Upcoming/Past date badge above: a resident
+                            with a Complete or Incomplete attendance record
+                            (i.e. they have a time_in) has necessarily already
+                            attended, regardless of how the event's own date
+                            field compares to "now" (test data / clock skew
+                            can otherwise make an attended event still read as
+                            "Upcoming"). Missed / no attendance record at all
+                            never gets a feedback affordance -- matches the
+                            backend's own whereNotNull('time_in') gate. */}
+                        {canReviewEvent(e.id) && (() => {
+                          const feedback = getFeedbackForEvent(e.id);
+                          const isReviewing = reviewingEventId === e.id;
+                          return (
+                            <div className="mt-4 pt-4 border-t border-gray-100">
+                              {isReviewing ? (
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70 mb-2">{t("rateThisEventLabel")}</p>
+                                  <div className="flex items-center gap-1">
+                                    {[1, 2, 3, 4, 5].map((n) => (
+                                      <button
+                                        key={n}
+                                        type="button"
+                                        onMouseEnter={() => setReviewHoverRating(n)}
+                                        onMouseLeave={() => setReviewHoverRating(0)}
+                                        onClick={() => setReviewRating(n)}
+                                        className="p-0.5"
+                                      >
+                                        <Star size={22} className={(reviewHoverRating || reviewRating) >= n ? "text-orange-400 fill-orange-400" : "text-gray-300"} />
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <textarea
+                                    value={reviewComment}
+                                    onChange={(ev) => setReviewComment(ev.target.value)}
+                                    placeholder={t("optionalCommentPlaceholder")}
+                                    rows={2}
+                                    className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                                  />
+                                  {reviewError && <p className="mt-1 text-xs text-red-500">{reviewError}</p>}
+                                  <div className="mt-2 flex gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => submitReview(e.id)}
+                                      disabled={reviewRating < 1 || submittingReview}
+                                      className="flex-1 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white text-sm font-bold py-2 disabled:opacity-50"
+                                    >
+                                      {submittingReview ? t("submittingLabel") : t("submitReviewButton")}
+                                    </button>
+                                    <button type="button" onClick={cancelReview} disabled={submittingReview} className="rounded-full border border-gray-200 text-gray-500 text-sm font-medium px-4 disabled:opacity-50">
+                                      {t("cancelLabel")}
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : feedback ? (
+                                <div>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70 mb-1.5">{t("yourRatingLabel")}</p>
+                                      <div className="flex items-center gap-1">
+                                        {[1, 2, 3, 4, 5].map((n) => (
+                                          <Star key={n} size={16} className={feedback.rating >= n ? "text-orange-400 fill-orange-400 shrink-0" : "text-gray-200 shrink-0"} />
+                                        ))}
+                                      </div>
+                                      {feedback.comment && <p className="mt-1 text-xs text-gray-500 truncate">"{feedback.comment}"</p>}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => startReview(e.id)}
+                                      title={t("editReviewTitle")}
+                                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-[#005f63]/20 text-[#005f63] text-xs font-semibold px-3 py-1.5 hover:bg-teal-50 transition"
+                                    >
+                                      <Pencil className="h-3 w-3" /> {t("editLabel")}
+                                    </button>
+                                  </div>
+                                  {justSubmittedEventId === e.id && (
+                                    <p className="mt-2 flex items-center gap-1 text-xs font-medium text-[#005f63]">
+                                      <CheckCircle className="h-3.5 w-3.5" /> {t("feedbackSavedConfirmation")}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+
+                                <button
+                                  type="button"
+                                  onClick={() => startReview(e.id)}
+                                  className="inline-flex items-center gap-1.5 rounded-full border border-[#005f63]/20 text-[#005f63] text-sm font-semibold px-4 py-2 hover:bg-teal-50 transition"
+                                >
+                                  <Star className="h-4 w-4" /> {t("rateThisEventButton")}
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}

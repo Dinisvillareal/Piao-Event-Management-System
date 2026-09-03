@@ -26,6 +26,7 @@ export default function MemberDashboard() {
   const [userMemberships, setUserMemberships] = useState<any[]>([]);
   const [userMembershipsCount, setUserMembershipsCount] = useState(0);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [myFeedback, setMyFeedback] = useState<{ id: number; event_id: number; rating: number; comment: string | null }[]>([]);
   const [attended, setAttended] = useState(0);
   const [missed, setMissed] = useState(0);
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
@@ -205,6 +206,7 @@ export default function MemberDashboard() {
 
         const records: AttendanceRecord[] = data.map((item: any) => ({
           id: item.id,
+          eventId: item.eventId,
           eventTitle: item.eventTitle ?? '—',      // ✅ Direct property
           eventDate: item.eventDate ?? '',          // ✅ Direct property
           location: item.location ?? '—',           // ✅ Direct property
@@ -227,6 +229,15 @@ export default function MemberDashboard() {
         }));
       })
       .catch(err => console.error('Failed to fetch attendance:', err));
+  }, [member.id]);
+
+  // ─── FETCH MY OWN EVENT FEEDBACK (drives the reviews module on Events) ─────
+  useEffect(() => {
+    if (!member.id) return;
+
+    api.get('/feedback/mine')
+      .then((res) => setMyFeedback(Array.isArray(res.data) ? res.data : []))
+      .catch((err) => console.error('Failed to fetch my feedback:', err));
   }, [member.id]);
 
   // ─── NAVIGATION ────────────────────────────────────────────────────────────
@@ -324,6 +335,14 @@ export default function MemberDashboard() {
                   highlightText={highlightText}
                   allMemberships={memberships}
                   userMemberships={userMemberships}
+                  attendanceRecords={attendanceRecords}
+                  myFeedback={myFeedback}
+                  onFeedbackSubmitted={(entry) =>
+                    setMyFeedback((prev) => {
+                      const rest = prev.filter((f) => f.event_id !== entry.event_id);
+                      return [...rest, entry];
+                    })
+                  }
                 />
               )}
 

@@ -62,6 +62,18 @@ class FeedbackController extends Controller
         return response()->json($pending);
     }
 
+    // The resident's own feedback across all events -- drives the
+    // "you rated this X stars" / edit-in-place state of the reviews
+    // module on the Events page, as opposed to pending() which only
+    // covers Complete-status events still awaiting a first rating.
+    public function mine(Request $request)
+    {
+        $feedback = Feedback::where('user_id', auth()->id())
+            ->get(['id', 'event_id', 'rating', 'comment']);
+
+        return response()->json($feedback);
+    }
+
     public function forEvent($eventId)
     {
         if (!$this->isStaff()) {

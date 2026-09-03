@@ -39,6 +39,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingMembership, setEditingMembership] = useState<any>(null);
+  const [originalEditMembership, setOriginalEditMembership] = useState<string>("");
   const [addFormErrors, setAddFormErrors] = useState<Record<string, string>>({});
   const [editFormErrors, setEditFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -49,6 +50,10 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   // NEW: Deletion failed modal state
   const [showDeleteFailed, setShowDeleteFailed] = useState(false);
+  // Generic error modal -- replaces native alert() for add/edit membership
+  // failures so it matches the rest of the app's popup template instead of
+  // a jarring native browser dialog.
+  const [genericError, setGenericError] = useState<string | null>(null);
 
   // ✅ NEW: Success modals
   const [showAddSuccess, setShowAddSuccess] = useState(false);
@@ -60,11 +65,13 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     description: string;
     eligibleAgeBracketId: number | null;
     eligibleCivilStatusId: number | null;
+    eligibleGender: string;
   }>({
     name: "",
     description: "",
     eligibleAgeBracketId: null,
     eligibleCivilStatusId: null,
+    eligibleGender: "",
   });
 
   // Adviser example (Senior Citizen eligibility) extended to Youth / Solo
@@ -88,7 +95,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   // Prevent body scroll when modal is open
   useEffect(() => {
-    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showDeleteSuccess || showUpdateSuccess || showAddSuccess) {
+    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showDeleteSuccess || showUpdateSuccess || showAddSuccess || genericError) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = 'unset';
@@ -96,7 +103,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showDeleteSuccess, showAddSuccess, showUpdateSuccess]);
+  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showDeleteSuccess, showAddSuccess, showUpdateSuccess, genericError]);
 
   const fetchMemberships = async () => {
     setLoading(true);
@@ -185,7 +192,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           name: newMembership.name,
           description: newMembership.description,
           eligible_age_bracket_id: newMembership.eligibleAgeBracketId,
-          eligible_civil_status_id: newMembership.eligibleCivilStatusId
+          eligible_civil_status_id: newMembership.eligibleCivilStatusId,
+          eligible_gender: newMembership.eligibleGender || null
         })
       });
 
@@ -194,17 +202,16 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       if (response.ok) {
         // ✅ NO MORE BROWSER ALERT — use your modal!
         setShowAddModal(false);
-        setNewMembership({ name: "", description: "", eligibleAgeBracketId: null, eligibleCivilStatusId: null });
+        setNewMembership({ name: "", description: "", eligibleAgeBracketId: null, eligibleCivilStatusId: null, eligibleGender: "" });
         fetchMemberships();
         window.dispatchEvent(new Event('refreshMemberships'));
         setShowAddSuccess(true); // <-- YOUR MODAL SHOWS
       } else {
-        // Optional: add error modal here too
-        alert(result.message || t("addMembershipFailedDefault"));
+        setGenericError(result.message || t("addMembershipFailedDefault"));
       }
     } catch (error) {
       console.error('Error adding membership:', error);
-      alert(t("addMembershipErrorOccurred"));
+      setGenericError(t("addMembershipErrorOccurred"));
     } finally {
       setIsSubmitting(false);
     }
@@ -243,7 +250,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           name: editingMembership.name,
           description: editingMembership.description,
           eligible_age_bracket_id: editingMembership.eligibleAgeBracketId,
-          eligible_civil_status_id: editingMembership.eligibleCivilStatusId
+          eligible_civil_status_id: editingMembership.eligibleCivilStatusId,
+          eligible_gender: editingMembership.eligibleGender || null
         })
       });
 
@@ -256,11 +264,15 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         fetchMemberships();
         window.dispatchEvent(new Event('refreshMemberships'));
       } else {
-        alert(result.message || t("updateMembershipFailedDefault"));
+        setGenericError(result.message || t("updateMembershipFailedDefault"));
+        // Revert to what's actually saved instead of leaving the
+        // rejected edit sitting in the form.
+        if (originalEditMembership) setEditingMembership(JSON.parse(originalEditMembership));
       }
     } catch (error) {
       console.error('Error updating membership:', error);
-      alert(t("updateMembershipErrorOccurred"));
+      setGenericError(t("updateMembershipErrorOccurred"));
+      if (originalEditMembership) setEditingMembership(JSON.parse(originalEditMembership));
     } finally {
       setIsSubmitting(false);
     }
@@ -316,15 +328,21 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   };
 
   const openEditModal = (membership: any) => {
-    setEditingMembership({
+    const initial = {
       id: membership.id,
       name: membership.name,
       description: membership.description || "",
       eligibleAgeBracketId: membership.eligible_age_bracket_id ?? null,
       eligibleCivilStatusId: membership.eligible_civil_status_id ?? null,
-    });
+      eligibleGender: membership.eligible_gender ?? "",
+    };
+    setEditingMembership(initial);
+    setOriginalEditMembership(JSON.stringify(initial));
     setShowEditModal(true);
   };
+
+  // Nothing to submit if the form still matches what was loaded.
+  const isEditMembershipUnchanged = !!editingMembership && JSON.stringify(editingMembership) === originalEditMembership;
 
   useEffect(() => {
     fetchMemberships();
@@ -405,6 +423,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       description: "",
       eligibleAgeBracketId: null,
       eligibleCivilStatusId: null,
+      eligibleGender: "",
     });
   };
 
@@ -421,6 +440,11 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   const closeDeleteFailed = () => {
     setShowDeleteFailed(false);
+  };
+
+  const closeGenericError = () => setGenericError(null);
+  const handleGenericErrorBackdropClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) closeGenericError();
   };
 
   // ✅ Close success modals
@@ -469,13 +493,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         closeAddSuccess();
         closeDeleteSuccess();
         closeUpdateSuccess();
+        closeGenericError();
       }
     };
-    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showAddSuccess || showDeleteSuccess || showUpdateSuccess) {
+    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showAddSuccess || showDeleteSuccess || showUpdateSuccess || genericError) {
       document.addEventListener('keydown', handleEsc);
     }
     return () => document.removeEventListener('keydown', handleEsc);
-  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showAddSuccess, showDeleteSuccess, showUpdateSuccess]);
+  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showAddSuccess, showDeleteSuccess, showUpdateSuccess, genericError]);
 
   if (loading) {
     return (
@@ -566,9 +591,9 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         <p className="text-xs sm:text-sm text-[#667777] mt-1 break-words line-clamp-2 sm:line-clamp-none">
                           {highlightText(m.description || t("noDescription"), searchQuery)}
                         </p>
-                        {(m.eligible_age_bracket?.label || m.eligible_civil_status?.label) && (
+                        {(m.eligible_age_bracket?.label || m.eligible_civil_status?.label || m.eligible_gender) && (
                           <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-200 px-2.5 py-0.5 text-[10px] sm:text-[11px] font-semibold text-teal-700">
-                            {t("requiresLabelShort")} {[m.eligible_age_bracket?.label, m.eligible_civil_status?.label].filter(Boolean).join(" • ")}
+                            {t("requiresLabelShort")} {[m.eligible_age_bracket?.label, m.eligible_civil_status?.label, m.eligible_gender].filter(Boolean).join(" • ")}
                           </p>
                         )}
                       </div>
@@ -777,6 +802,18 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                       ))}
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("eligibleGenderLabel")}</label>
+                    <select
+                      value={newMembership.eligibleGender}
+                      onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleGender: e.target.value }))}
+                      className="w-full rounded-full border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 text-sm sm:text-base"
+                    >
+                      <option value="">{t("anyOptionLabel")}</option>
+                      <option value="Male">{t("maleOption")}</option>
+                      <option value="Female">{t("femaleOption")}</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -879,6 +916,18 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                       ))}
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("eligibleGenderLabel")}</label>
+                    <select
+                      value={editingMembership.eligibleGender ?? ""}
+                      onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleGender: e.target.value }))}
+                      className="w-full rounded-full border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 text-sm sm:text-base"
+                    >
+                      <option value="">{t("anyOptionLabel")}</option>
+                      <option value="Male">{t("maleOption")}</option>
+                      <option value="Female">{t("femaleOption")}</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
@@ -892,8 +941,9 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 </button>
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] disabled:opacity-50 transition active:scale-95"
+                  disabled={isSubmitting || isEditMembershipUnchanged}
+                  title={isEditMembershipUnchanged ? t("noChangesToSaveHint") : undefined}
+                  className="px-4 py-2 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] disabled:opacity-50 disabled:cursor-not-allowed transition active:scale-95"
                 >
                   {isSubmitting ? t("savingLabel") : t("saveChanges")}
                 </button>
@@ -1026,6 +1076,32 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <p className="text-[15px] text-gray-600 mb-6">{t("membershipInUse")}</p>
             <button
               onClick={closeDeleteFailed}
+              className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+            >
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Generic Error Modal -- replaces native alert() for add/edit failures */}
+      {genericError && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          onClick={handleGenericErrorBackdropClick}
+        >
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 shadow-2xl relative text-center">
+            <div className="mb-4 text-red-500 flex justify-center">
+              <svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path d="M12 9v2m0 4h.01M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{genericError}</p>
+            <button
+              onClick={closeGenericError}
               className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
             >
               {t("okLabel")}

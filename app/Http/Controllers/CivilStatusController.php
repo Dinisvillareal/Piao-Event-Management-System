@@ -89,4 +89,19 @@ class CivilStatusController extends Controller
 
         return response()->json(['message' => 'Civil status deleted successfully']);
     }
+
+    public function restore($id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $status = CivilStatus::onlyTrashed()->findOrFail($id);
+        $status->restore();
+
+        CivilStatus::forgetCache();
+        $this->createLog('Restore Civil Status', 'Profiling Settings', "Restored civil status '{$status->label}'");
+
+        return response()->json(['message' => 'Civil status restored successfully']);
+    }
 }

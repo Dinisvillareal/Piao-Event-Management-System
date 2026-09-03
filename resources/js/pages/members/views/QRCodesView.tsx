@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
 import { QRCodeCanvas } from "qrcode.react";
-import { QrCode } from "lucide-react";
+import { QrCode, XCircle, CheckCircle } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 export default function QRCodesView({ highlightText, userId, userCode, fullName }: any) {
@@ -14,6 +14,8 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   const itemsPerPage = 6;
   const qrCodeRef = useRef<HTMLDivElement>(null);
   const [qrSize, setQrSize] = useState(280);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadSuccess, setDownloadSuccess] = useState(false);
 
   // Handle responsive QR size
   useEffect(() => {
@@ -114,6 +116,17 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     return filteredMemberships.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredMemberships, currentPage, itemsPerPage]);
 
+  // The QR panel is a fixed ~360px; each membership card tops out at
+  // 340px. Letting the page always claim max-w-6xl left a large dead
+  // rectangle to the right (and below, since the QR panel is taller)
+  // whenever a resident had only one or two memberships. Size the page
+  // to roughly how many cards are actually on screen instead.
+  const pageMaxWidthClass =
+    displayMemberships.length <= 1 ? "max-w-3xl" :
+    displayMemberships.length === 2 ? "max-w-4xl" :
+    displayMemberships.length <= 4 ? "max-w-5xl" :
+    "max-w-6xl";
+
   // Reset to page 1 when search query changes
   useEffect(() => {
     setCurrentPage(1);
@@ -121,13 +134,13 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
   const downloadQRCode = useCallback(() => {
     if (!qrCodeRef.current) {
-      alert("QR code container not found");
+      setDownloadError("QR code container not found");
       return;
     }
 
     const canvas = qrCodeRef.current.querySelector('canvas');
     if (!canvas) {
-      alert("Canvas not found. Please try again.");
+      setDownloadError("Canvas not found. Please try again.");
       return;
     }
 
@@ -136,9 +149,10 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
       link.download = `qr-code-${userCode || 'membership'}.png`;
       link.href = canvas.toDataURL('image/png', 1.0);
       link.click();
+      setDownloadSuccess(true);
     } catch (err) {
       console.error('Download failed:', err);
-      alert('Failed to download QR code. Please try again.');
+      setDownloadError('Failed to download QR code. Please try again.');
     }
   }, [userCode]);
 
@@ -201,7 +215,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     <div className="bg-[#fcfcf9] h-full flex flex-col">
       {/* Fixed Header - Never scrolls */}
       <div className="flex-shrink-0 bg-[#fcfcf9] px-2 sm:px-3 pt-2 pb-4 border-b border-[#ece7de] z-10">
-        <div className="max-w-[1580px] mx-auto">
+        <div className={`${pageMaxWidthClass} mx-auto transition-[max-width] duration-300`}>
           <h1 className="text-3xl sm:text-4xl font-black text-[#005f63]">
             {t("myQrAndMemberships")}
           </h1>
@@ -255,11 +269,11 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
       {/* Scrollable Content Area - Only memberships scroll */}
       <div className="flex-1 overflow-y-auto px-2 sm:px-3 mt-5 pb-4">
-        <div className="max-w-[1580px] mx-auto">
+        <div className={`${pageMaxWidthClass} mx-auto transition-[max-width] duration-300`}>
           <div className="flex flex-col lg:flex-row gap-4">
 
             {/* LEFT COLUMN - QR CODE SECTION */}
-            <div className="w-full lg:w-1/3">
+            <div className="w-full lg:w-[360px] lg:shrink-0">
               <div className="rounded-3xl border border-gray-200 bg-transparent p-4 sm:p-6 shadow-lg lg:sticky lg:top-24 overflow-hidden">
                 <p className="text-center mb-4 text-gray-500 text-sm">
                   {t("scanAtEvents")}
@@ -320,7 +334,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
             </div>
 
             {/* RIGHT COLUMN - MEMBERSHIP CARDS */}
-            <div className="w-full lg:w-2/3">
+            <div className="w-full lg:flex-1 lg:min-w-0">
               {allMemberships.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-96 bg-white rounded-xl border border-gray-200 shadow-sm">
                   <svg className="w-24 h-24 text-gray-300 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -343,7 +357,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   <p className="text-gray-400 text-sm mt-1">{t("tryDifferentSearch")}</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-4 justify-start grid-cols-1 sm:[grid-template-columns:repeat(auto-fit,minmax(260px,340px))]">
                   {displayMemberships.map((m: any) => (
                     <div
                       key={m.id}
@@ -370,6 +384,38 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
           </div>
         </div>
       </div>
+
+      {downloadError && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDownloadError(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 text-red-500 flex justify-center"><XCircle size={40} /></div>
+            <h3 className="text-xl font-bold text-red-600 mb-3">{t("errorTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-5">{downloadError}</p>
+            <button
+              onClick={() => setDownloadError(null)}
+              className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition"
+            >
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {downloadSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDownloadSuccess(false)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 text-[#005f63] flex justify-center"><CheckCircle size={40} /></div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-3">{t("successTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-5">{t("qrCodeDownloadedSuccess")}</p>
+            <button
+              onClick={() => setDownloadSuccess(false)}
+              className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition"
+            >
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

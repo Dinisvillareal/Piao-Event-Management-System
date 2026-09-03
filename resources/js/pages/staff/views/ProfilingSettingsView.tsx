@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Users2, Heart, Plus, Pencil, Trash2 } from "lucide-react";
+import { Users2, Heart, Plus, Pencil, Trash2, XCircle } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -38,8 +38,12 @@ export default function ProfilingSettingsView() {
 
   const [bracketForm, setBracketForm] = useState({ id: null as number | null, label: "", min_age: "", max_age: "" });
   const [statusForm, setStatusForm] = useState({ id: null as number | null, label: "" });
+  const [originalBracketForm, setOriginalBracketForm] = useState({ id: null as number | null, label: "", min_age: "", max_age: "" });
+  const [originalStatusForm, setOriginalStatusForm] = useState({ id: null as number | null, label: "" });
   const [savingBracket, setSavingBracket] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ type: "bracket" | "status"; id: number; label: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -62,8 +66,24 @@ export default function ProfilingSettingsView() {
     load();
   }, []);
 
-  const resetBracketForm = () => setBracketForm({ id: null, label: "", min_age: "", max_age: "" });
-  const resetStatusForm = () => setStatusForm({ id: null, label: "" });
+  const resetBracketForm = () => {
+    const empty = { id: null, label: "", min_age: "", max_age: "" };
+    setBracketForm(empty);
+    setOriginalBracketForm(empty);
+  };
+  const resetStatusForm = () => {
+    const empty = { id: null, label: "" };
+    setStatusForm(empty);
+    setOriginalStatusForm(empty);
+  };
+  const isBracketFormUnchanged =
+    !!bracketForm.id &&
+    bracketForm.label === originalBracketForm.label &&
+    bracketForm.min_age === originalBracketForm.min_age &&
+    bracketForm.max_age === originalBracketForm.max_age;
+  const isStatusFormUnchanged =
+    !!statusForm.id &&
+    statusForm.label === originalStatusForm.label;
 
   const submitBracket = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,6 +113,9 @@ export default function ProfilingSettingsView() {
     } catch (e) {
       console.error("save age bracket:", e);
       setError(t("saveAgeBracketFailed"));
+      // Revert to what's actually saved instead of leaving the rejected
+      // edit sitting in the form.
+      if (bracketForm.id) setBracketForm(originalBracketForm);
     } finally {
       setSavingBracket(false);
     }
@@ -137,6 +160,9 @@ export default function ProfilingSettingsView() {
     } catch (e) {
       console.error("save civil status:", e);
       setError(t("saveCivilStatusFailed"));
+      // Revert to what's actually saved instead of leaving the rejected
+      // edit sitting in the form.
+      if (statusForm.id) setStatusForm(originalStatusForm);
     } finally {
       setSavingStatus(false);
     }
@@ -157,14 +183,27 @@ export default function ProfilingSettingsView() {
     }
   };
 
+  const confirmPendingDelete = async () => {
+    if (!pendingDelete) return;
+    setDeleting(true);
+    try {
+      if (pendingDelete.type === "bracket") {
+        await deleteBracket(pendingDelete.id);
+      } else {
+        await deleteStatus(pendingDelete.id);
+      }
+    } finally {
+      setDeleting(false);
+      setPendingDelete(null);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("profilingSettingsTitle")}</h1>
         <p className="mt-1 text-sm text-[#667777]">{t("profilingSettingsSubtitle")}</p>
       </div>
-
-      {error && <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-600">{error}</div>}
 
       {/* Age Brackets card */}
       <div className="rounded-[24px] border border-[#ddd5ca] bg-white overflow-hidden">
@@ -193,7 +232,11 @@ export default function ProfilingSettingsView() {
                   <div className="flex gap-1">
                     <button
                       type="button"
-                      onClick={() => setBracketForm({ id: b.id, label: b.label, min_age: String(b.min_age), max_age: b.max_age === null ? "" : String(b.max_age) })}
+                      onClick={() => {
+                        const initial = { id: b.id, label: b.label, min_age: String(b.min_age), max_age: b.max_age === null ? "" : String(b.max_age) };
+                        setBracketForm(initial);
+                        setOriginalBracketForm(initial);
+                      }}
                       className="p-1.5 rounded-full hover:bg-orange-50 text-orange-600"
                       title={t("editLabel")}
                     >
@@ -201,7 +244,7 @@ export default function ProfilingSettingsView() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => deleteBracket(b.id)}
+                      onClick={() => setPendingDelete({ type: "bracket", id: b.id, label: b.label })}
                       className="p-1.5 rounded-full hover:bg-red-50 text-red-500"
                       title={t("deleteTitle")}
                     >
@@ -247,7 +290,7 @@ export default function ProfilingSettingsView() {
                       {t("cancelLabel")}
                     </button>
                   )}
-                  <button type="submit" disabled={savingBracket} className="inline-flex items-center gap-2 bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-full text-sm font-medium disabled:opacity-60">
+                  <button type="submit" disabled={savingBracket || isBracketFormUnchanged} title={isBracketFormUnchanged ? t("noChangesToSaveHint") : undefined} className="inline-flex items-center gap-2 bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-full text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">
                     <Plus className="h-4 w-4" /> {bracketForm.id ? t("saveChanges") : t("addAgeBracketLabel")}
                   </button>
                 </div>
@@ -281,7 +324,11 @@ export default function ProfilingSettingsView() {
                   <div className="flex gap-1">
                     <button
                       type="button"
-                      onClick={() => setStatusForm({ id: s.id, label: s.label })}
+                      onClick={() => {
+                        const initial = { id: s.id, label: s.label };
+                        setStatusForm(initial);
+                        setOriginalStatusForm(initial);
+                      }}
                       className="p-1.5 rounded-full hover:bg-orange-50 text-orange-600"
                       title={t("editLabel")}
                     >
@@ -289,7 +336,7 @@ export default function ProfilingSettingsView() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => deleteStatus(s.id)}
+                      onClick={() => setPendingDelete({ type: "status", id: s.id, label: s.label })}
                       className="p-1.5 rounded-full hover:bg-red-50 text-red-500"
                       title={t("deleteTitle")}
                     >
@@ -317,7 +364,7 @@ export default function ProfilingSettingsView() {
                         {t("cancelLabel")}
                       </button>
                     )}
-                    <button type="submit" disabled={savingStatus} className="inline-flex items-center gap-2 bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-full text-sm font-medium disabled:opacity-60 whitespace-nowrap">
+                    <button type="submit" disabled={savingStatus || isStatusFormUnchanged} title={isStatusFormUnchanged ? t("noChangesToSaveHint") : undefined} className="inline-flex items-center gap-2 bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-full text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
                       <Plus className="h-4 w-4" /> {statusForm.id ? t("saveChanges") : t("addCivilStatusLabel")}
                     </button>
                   </div>
@@ -327,6 +374,36 @@ export default function ProfilingSettingsView() {
           )}
         </div>
       </div>
+
+      {/* Templated delete-confirm modal, shared across every module -- reused
+          here instead of the old "delete immediately, no confirmation"
+          behavior. */}
+      {error && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setError(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
+            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{error}</p>
+            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-red-500 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
+            <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-5">{t("moveToTrashConfirm")}</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setPendingDelete(null)} disabled={deleting} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition disabled:opacity-60">{t("cancel")}</button>
+              <button onClick={confirmPendingDelete} disabled={deleting} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

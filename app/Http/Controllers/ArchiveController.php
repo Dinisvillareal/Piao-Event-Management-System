@@ -7,6 +7,10 @@ use App\Models\Event;
 use App\Models\User;
 use App\Models\Notification;
 use App\Models\ActivityLog;
+use App\Models\AgeBracket;
+use App\Models\CivilStatus;
+use App\Models\InventoryItem;
+use App\Models\EventExpense;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -76,11 +80,59 @@ class ArchiveController extends Controller
                     'deletedBy' => $item->event?->deleted_by ?? 'SYSTEM',
                 ]);
 
+        $ageBrackets = AgeBracket::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'age_bracket',
+                'name'      => $item->label,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => 'SYSTEM',
+            ]);
+
+        $civilStatuses = CivilStatus::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'civil_status',
+                'name'      => $item->label,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => 'SYSTEM',
+            ]);
+
+        $inventoryItems = InventoryItem::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'inventory_item',
+                'name'      => $item->name,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+        $expenses = EventExpense::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'expense',
+                'name'      => $item->item,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->recorded_by ?? 'SYSTEM',
+            ]);
+
         $archivedItems = array_merge(
             $memberships->toArray(),
             $events->toArray(),
             $users->toArray(),
-            $notifications->toArray()
+            $notifications->toArray(),
+            $ageBrackets->toArray(),
+            $civilStatuses->toArray(),
+            $inventoryItems->toArray(),
+            $expenses->toArray()
         );
 
         usort($archivedItems, function ($a, $b) {
@@ -97,7 +149,7 @@ class ArchiveController extends Controller
         }
 
         $request->validate([
-            'type' => 'required|string|in:membership,event,resident,notification',
+            'type' => 'required|string|in:membership,event,resident,notification,age_bracket,civil_status,inventory_item,expense',
             'id'   => 'required|integer',
         ]);
 
@@ -105,6 +157,33 @@ class ArchiveController extends Controller
             $itemName = '';
 
             switch ($request->type) {
+
+                case 'inventory_item':
+                    $item = InventoryItem::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->name;
+                    $item->deleted_by = null;
+                    $item->restore();
+                    break;
+
+                case 'expense':
+                    $item = EventExpense::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->item;
+                    $item->restore();
+                    break;
+
+                case 'age_bracket':
+                    $item = AgeBracket::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->restore();
+                    AgeBracket::forgetCache();
+                    break;
+
+                case 'civil_status':
+                    $item = CivilStatus::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->restore();
+                    CivilStatus::forgetCache();
+                    break;
 
                 case 'membership':
                     $item = Membership::onlyTrashed()->findOrFail($request->id);
@@ -196,7 +275,7 @@ class ArchiveController extends Controller
         }
 
         $request->validate([
-            'type' => 'required|string|in:membership,event,resident',
+            'type' => 'required|string|in:membership,event,resident,age_bracket,civil_status,inventory_item,expense',
             'id'   => 'required|integer',
         ]);
 
@@ -204,6 +283,32 @@ class ArchiveController extends Controller
             $itemName = '';
 
             switch ($request->type) {
+
+                case 'inventory_item':
+                    $item = InventoryItem::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->name;
+                    $item->forceDelete();
+                    break;
+
+                case 'expense':
+                    $item = EventExpense::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->item;
+                    $item->forceDelete();
+                    break;
+
+                case 'age_bracket':
+                    $item = AgeBracket::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->forceDelete();
+                    AgeBracket::forgetCache();
+                    break;
+
+                case 'civil_status':
+                    $item = CivilStatus::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->forceDelete();
+                    CivilStatus::forgetCache();
+                    break;
 
                 case 'membership':
                     $item = Membership::onlyTrashed()->findOrFail($request->id);

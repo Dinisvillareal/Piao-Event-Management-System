@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AgeBracket extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = ['label', 'min_age', 'max_age', 'sort_order'];
 
     protected $casts = [

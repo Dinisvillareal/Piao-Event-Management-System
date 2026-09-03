@@ -524,7 +524,7 @@
 // }
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowRight, Copy, LayoutDashboard, Users } from "lucide-react";
+import { ArrowRight, Copy, LayoutDashboard, Users, XCircle, CheckCircle } from "lucide-react";
 
 // ─── Staff Portal Selection Modal ─────────────────────────────────────────────
 function PortalSelectionModal({
@@ -608,6 +608,12 @@ export default function LoginPage() {
 
   const [showPortalModal, setShowPortalModal] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState<any>(null);
+  // Popped up instead of a blocking native alert() -- OK navigates to /login
+  // itself so the message stays on screen until the user has actually read it.
+  const [showAccountDeletedModal, setShowAccountDeletedModal] = useState(false);
+  // Brief, non-blocking, auto-dismissing toast (also replaces a native alert()) --
+  // a "copied!" confirmation doesn't need a click to dismiss.
+  const [showCopiedToast, setShowCopiedToast] = useState(false);
 
   const contactRef = useRef<HTMLDivElement>(null);
 
@@ -671,8 +677,7 @@ export default function LoginPage() {
       } else {
         if (response.status === 401) {
           if (data.message && data.message.includes("deleted")) {
-            alert("This account has been deleted. You cannot log in.");
-            window.location.href = "/login";
+            setShowAccountDeletedModal(true);
             return;
           }
           setError(data.message || "Invalid username or password");
@@ -717,7 +722,8 @@ export default function LoginPage() {
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(contactNumber);
-    alert("Number copied to clipboard!");
+    setShowCopiedToast(true);
+    setTimeout(() => setShowCopiedToast(false), 1800);
   };
 
   useEffect(() => {
@@ -743,6 +749,47 @@ export default function LoginPage() {
           onSelectStaff={handleGoToStaff}
           onSelectMember={handleGoToMember}
         />
+      )}
+
+      {showAccountDeletedModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-red-500 flex justify-center"><XCircle size={40} /></div>
+            <h3 className="text-xl font-bold text-red-600 mb-3">Account Deleted</h3>
+            <p className="text-[15px] text-gray-600 mb-5">This account has been deleted. You cannot log in.</p>
+            <button
+              onClick={() => { setShowAccountDeletedModal(false); window.location.href = "/login"; }}
+              className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sign-in error -- was an inline banner above the form fields, now a
+          popup like every other error in the app (invalid credentials,
+          account not activated, session expired, network error, etc). */}
+      {error && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-red-500 flex justify-center"><XCircle size={40} /></div>
+            <h3 className="text-xl font-bold text-red-600 mb-3">Sign In Failed</h3>
+            <p className="text-[15px] text-gray-600 mb-5">{error}</p>
+            <button
+              onClick={() => setError("")}
+              className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showCopiedToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full bg-teal-900 text-white text-sm font-medium px-5 py-2.5 shadow-xl animate-in fade-in slide-in-from-bottom-2">
+          <CheckCircle size={16} className="text-teal-300" /> Number copied to clipboard!
+        </div>
       )}
 
       <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-orange-300/40 blur-3xl" />
@@ -795,12 +842,6 @@ export default function LoginPage() {
             </p>
 
             <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-              {error && (
-                <div className="rounded-xl bg-red-50 p-3 text-sm text-red-600 border border-red-200">
-                  {error}
-                </div>
-              )}
-
               <div>
                 <label className="text-sm font-semibold text-gray-800">
                   Username

@@ -58,39 +58,67 @@ class SmsService
     }
 
     /**
-     * Send one SMS per household (to the household head's contact number),
-     * instead of texting every resident, so households aren't spammed and
-     * the barangay doesn't burn SMS credits per-member.
+     * Send one SMS per household (to the household head\'s contact number),
+     * instead of texting every resident, so households aren\'t spammed and
+     * the barangay doesn\'t burn SMS credits per-member.
+     *
+     * Groups by the real `household_id` relationship (Household module)
+     * when a resident has one; falls back to the legacy free-text
+     * `household_code` string for any older, unmigrated data.
      *
      * @param  iterable<\App\Models\User>  $residents
      * @return \App\Models\SmsLog[]
      */
     public function notifyHouseholds(iterable $residents, ?int $eventId, string $message): array
     {
-        $sentHouseholds = [];
         $logs = [];
 
+        // First pass: group residents by household so we can tell, per
+        // household, whether a head was actually designated.
+        $groups = [];
         foreach ($residents as $resident) {
-            $householdCode = $resident->household_code ?? null;
-            $isHead = (bool) ($resident->is_household_head ?? false);
+            if ($resident->household_id) {
+                $key = 'hh:' . $resident->household_id;
+            } elseif ($resident->household_code) {
+                $key = 'code:' . $resident->household_code;
+            } else {
+                $key = 'user:' . $resident->id;
+            }
+            $groups[$key][] = $resident;
+        }
 
-            // If grouped into a household, only the head's number receives the SMS.
-            if ($householdCode && !$isHead) {
+        foreach ($groups as $members) {
+            $head = null;
+            foreach ($members as $member) {
+                if ($member->is_household_head ?? false) {
+                    $head = $member;
+                    break;
+                }
+            }
+
+            if ($head) {
+                // Normal case: one SMS to the designated head\'s number only,
+                // so the rest of the household isn\'t texted separately.
+                $number = $head->household_contact_number ?: $head->contact_number;
+                if ($number) {
+                    $logs[] = $this->send($head->id, $eventId, $number, $message);
+                }
                 continue;
             }
 
-            $dedupeKey = $householdCode ?: ('user:' . $resident->id);
-            if (isset($sentHouseholds[$dedupeKey])) {
-                continue;
+            // No head was designated for this household (or the resident
+            // isn\'t grouped into one at all) — don\'t silently drop everyone.
+            // A household with no head checked used to mean nobody in it
+            // ever got notified; instead, notify every member on their own
+            // number so a missed "head" pick doesn\'t cost a whole family
+            // their event notice.
+            foreach ($members as $resident) {
+                $number = $resident->household_contact_number ?: $resident->contact_number;
+                if (!$number) {
+                    continue;
+                }
+                $logs[] = $this->send($resident->id, $eventId, $number, $message);
             }
-
-            $number = $resident->household_contact_number ?: $resident->contact_number;
-            if (!$number) {
-                continue;
-            }
-
-            $sentHouseholds[$dedupeKey] = true;
-            $logs[] = $this->send($resident->id, $eventId, $number, $message);
         }
 
         return $logs;
