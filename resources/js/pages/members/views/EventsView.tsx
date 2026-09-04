@@ -253,7 +253,7 @@ export default function EventsView({
 
   return (
     <div className="space-y-6">
-      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
+      <div className="sticky top-0 z-20 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
         <div className="w-full">
           <h1 className="text-4xl font-black text-[#005f63]">{t("eventsAndAttendance")}</h1>
           <p className="mt-1 text-sm text-[#667777]">
@@ -292,7 +292,7 @@ export default function EventsView({
                 className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
               >
                 <option value="all">{t("allMembershipsOption")}</option>
-                {userMemberships.map((m) => (
+                {userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.name}
                   </option>

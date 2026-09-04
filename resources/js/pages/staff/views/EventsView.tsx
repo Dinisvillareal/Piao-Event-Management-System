@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, ChevronDown, Archive, CheckCircle, AlertCircle, Package, Trash2, Star } from "lucide-react";
+import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, ChevronDown, Archive, CheckCircle, AlertCircle, Package, Trash2, Star, Plus, Pencil } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import DatePicker from "../../../components/ui/DatePicker";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -75,6 +76,8 @@ export function EventsView({
   // it just wasn't wired into any staff screen yet).
   const [eventFeedback, setEventFeedback] = useState<{ id: number; rating: number; comment: string | null; user?: { first_name: string; last_name: string } }[]>([]);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
+  const [feedbackCurrentPage, setFeedbackCurrentPage] = useState(1);
+  const feedbackItemsPerPage = 5;
 
   useEffect(() => {
     if (!viewEv) {
@@ -83,12 +86,18 @@ export function EventsView({
     }
     let cancelled = false;
     setFeedbackLoading(true);
+    setFeedbackCurrentPage(1);
     api.get(`/feedback/event/${viewEv.id}`)
       .then((res) => { if (!cancelled) setEventFeedback(res.data ?? []); })
       .catch(() => { if (!cancelled) setEventFeedback([]); })
       .finally(() => { if (!cancelled) setFeedbackLoading(false); });
     return () => { cancelled = true; };
   }, [viewEv]);
+  const feedbackTotalPages = Math.max(1, Math.ceil(eventFeedback.length / feedbackItemsPerPage));
+  const paginatedFeedback = useMemo(() => {
+    const start = (feedbackCurrentPage - 1) * feedbackItemsPerPage;
+    return eventFeedback.slice(start, start + feedbackItemsPerPage);
+  }, [eventFeedback, feedbackCurrentPage]);
   const [showAttendance, setShowAttendance] = useState<MyEvent | null>(null);
   const [eventToDelete, setEventToDelete] = useState<number | string | null>(null);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
@@ -99,6 +108,7 @@ export function EventsView({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [showErrorModal, setShowErrorModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const itemsPerPage = 6;
@@ -562,17 +572,17 @@ export function EventsView({
     return Object.fromEntries(sortedGroups);
   }, [paginatedEvents]);
 
-  const handleSaveEvent = async (e: React.FormEvent) => {
+  // Runs the field-level checks that used to live at the top of the old
+  // handleSaveEvent, then -- if they pass -- opens the confirm step
+  // instead of saving right away. The actual request now happens in
+  // performSaveEvent, only once the user confirms.
+  const handleSaveEvent = (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
-    setIsSubmitting(true);
-
-    const membershipIds = newEvent.targetMembership === "all" ? [] : [newEvent.targetMembership];
 
     if (!newEvent.date) {
       setErrorMessage(t("eventDateRequiredError"));
       setShowErrorModal(true);
-      setIsSubmitting(false);
       return;
     }
 
@@ -588,10 +598,19 @@ export function EventsView({
         });
         setErrorMessage(`${t("pastDateTimeError")} (${formattedDate}, ${formattedTime}) ${t("pastDateTimeErrorSuffix")}`);
         setShowErrorModal(true);
-        setIsSubmitting(false);
         return;
       }
     }
+
+    setShowSaveConfirm(true);
+  };
+
+  const performSaveEvent = async () => {
+    setShowSaveConfirm(false);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
+    const membershipIds = newEvent.targetMembership === "all" ? [] : [newEvent.targetMembership];
 
     const payload: any = {
       name: newEvent.title,
@@ -815,7 +834,7 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
 
   return (
     <div className="space-y-6">
-      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
+      <div className="sticky top-0 z-20 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
         <div className="w-full">
           <div>
             <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("eventsAndAttendance")}</h1>
@@ -1090,6 +1109,17 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
         </div>
       </div>
 
+      <ConfirmDialog
+        open={showSaveConfirm}
+        icon={editingEvent ? <Pencil size={32} /> : <Plus size={32} />}
+        title={editingEvent ? t("confirmUpdateEventTitle") : t("confirmAddEventTitle")}
+        body={editingEvent ? t("confirmUpdateEventBody") : t("confirmAddEventBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={editingEvent ? t("yesUpdate") : t("yesAdd")}
+        onCancel={() => setShowSaveConfirm(false)}
+        onConfirm={performSaveEvent}
+      />
+
       {/* ✅ CUSTOM DELETE MODAL — NO BROWSER DEFAULT */}
       {eventToDelete !== null && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
@@ -1173,21 +1203,49 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
               ) : eventFeedback.length === 0 ? (
                 <p className="text-xs text-gray-400 italic bg-gray-50 rounded-xl p-3">{t("noFeedbackYetLabel")}</p>
               ) : (
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {eventFeedback.map((f) => (
-                    <div key={f.id} className="rounded-xl bg-gray-50 border border-gray-100 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-gray-700 truncate">{f.user ? `${f.user.first_name} ${f.user.last_name}` : t("unknownItemLabel")}</span>
-                        <span className="flex items-center gap-0.5 shrink-0">
-                          {[1, 2, 3, 4, 5].map((n) => (
-                            <Star key={n} className={`h-3.5 w-3.5 ${n <= f.rating ? "text-amber-400 fill-amber-400" : "text-gray-200"}`} />
-                          ))}
-                        </span>
+                <>
+                  <div className="space-y-2">
+                    {paginatedFeedback.map((f) => (
+                      <div key={f.id} className="rounded-xl bg-gray-50 border border-gray-100 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold text-gray-700 truncate">{f.user ? `${f.user.first_name} ${f.user.last_name}` : t("unknownItemLabel")}</span>
+                          <span className="flex items-center gap-0.5 shrink-0">
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <Star key={n} className={`h-3.5 w-3.5 ${n <= f.rating ? "text-amber-400 fill-amber-400" : "text-gray-200"}`} />
+                            ))}
+                          </span>
+                        </div>
+                        {f.comment && <p className="mt-1 text-xs text-gray-600">{f.comment}</p>}
                       </div>
-                      {f.comment && <p className="mt-1 text-xs text-gray-600">{f.comment}</p>}
+                    ))}
+                  </div>
+                  {feedbackTotalPages > 1 && (
+                    <div className="flex items-center justify-between mt-3">
+                      <p className="text-xs text-gray-500">
+                        {t("pageOfLabel")} {feedbackCurrentPage} {t("ofPagesLabel")} {feedbackTotalPages} • {eventFeedback.length} {t("recordsShownLabel")}
+                      </p>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setFeedbackCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={feedbackCurrentPage === 1}
+                          className="h-7 w-7 rounded-full border border-gray-300 bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                        >
+                          ←
+                        </button>
+                        <span className="h-7 w-7 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-xs font-semibold">
+                          {feedbackCurrentPage}
+                        </span>
+                        <button
+                          onClick={() => setFeedbackCurrentPage(p => Math.min(feedbackTotalPages, p + 1))}
+                          disabled={feedbackCurrentPage === feedbackTotalPages}
+                          className="h-7 w-7 rounded-full border border-gray-300 bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                        >
+                          →
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </div>
           </div>

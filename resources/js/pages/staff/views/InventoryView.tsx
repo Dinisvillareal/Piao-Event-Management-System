@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Package, Plus, X, MapPin, Trash2, Pencil, XCircle, CheckCircle } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -54,6 +55,7 @@ export default function InventoryView() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
@@ -113,8 +115,15 @@ export default function InventoryView() {
     setShowForm(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Form submit only opens the "are you sure" step -- the actual save
+  // happens in performSave, once the user confirms.
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setShowConfirm(true);
+  };
+
+  const performSave = async () => {
+    setShowConfirm(false);
     setError(null);
     const wasEditing = !!editing;
     try {
@@ -260,7 +269,7 @@ export default function InventoryView() {
               <h2 className="text-xl font-black text-[#005f63]">{editing ? t("editItem") : t("addInventoryItem")}</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleFormSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t("itemNameRequired")}</label>
                 <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm" placeholder="Plastic chairs" />
@@ -344,6 +353,20 @@ export default function InventoryView() {
           </div>
         </div>
       )}
+
+      {/* Confirm-before-save step: shown on top of the open form when
+          Add/Update is clicked, so the request only fires once the user
+          confirms -- mirrors the delete-confirm pattern above. */}
+      <ConfirmDialog
+        open={showConfirm}
+        icon={editing ? <Pencil size={32} /> : <Plus size={32} />}
+        title={editing ? t("confirmUpdateItemTitle") : t("confirmAddItemTitle")}
+        body={editing ? t("confirmUpdateItemBody") : t("confirmAddItemBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={editing ? t("yesUpdate") : t("yesAdd")}
+        onCancel={() => setShowConfirm(false)}
+        onConfirm={performSave}
+      />
     </div>
   );
 }

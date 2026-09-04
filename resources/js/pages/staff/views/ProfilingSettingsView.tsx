@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Users2, Heart, Plus, Pencil, Trash2, XCircle } from "lucide-react";
+import { Users2, Heart, Plus, Pencil, Trash2, XCircle, CheckCircle } from "lucide-react";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -35,6 +36,7 @@ export default function ProfilingSettingsView() {
   const [civilStatuses, setCivilStatuses] = useState<CivilStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [bracketForm, setBracketForm] = useState({ id: null as number | null, label: "", min_age: "", max_age: "" });
   const [statusForm, setStatusForm] = useState({ id: null as number | null, label: "" });
@@ -44,6 +46,8 @@ export default function ProfilingSettingsView() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<{ type: "bracket" | "status"; id: number; label: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [confirmBracketSave, setConfirmBracketSave] = useState(false);
+  const [confirmStatusSave, setConfirmStatusSave] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -85,9 +89,14 @@ export default function ProfilingSettingsView() {
     !!statusForm.id &&
     statusForm.label === originalStatusForm.label;
 
-  const submitBracket = async (e: React.FormEvent) => {
+  const submitBracket = (e: React.FormEvent) => {
     e.preventDefault();
     if (!bracketForm.label.trim() || bracketForm.min_age === "") return;
+    setConfirmBracketSave(true);
+  };
+
+  const performSubmitBracket = async () => {
+    setConfirmBracketSave(false);
     setSavingBracket(true);
     setError(null);
     try {
@@ -108,8 +117,10 @@ export default function ProfilingSettingsView() {
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const wasEditing = !!bracketForm.id;
       resetBracketForm();
       load();
+      setSuccessMessage(wasEditing ? t("ageBracketUpdatedSuccess") : t("ageBracketAddedSuccess"));
     } catch (e) {
       console.error("save age bracket:", e);
       setError(t("saveAgeBracketFailed"));
@@ -130,15 +141,21 @@ export default function ProfilingSettingsView() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       load();
+      setSuccessMessage(t("ageBracketDeletedSuccess"));
     } catch (e) {
       console.error("delete age bracket:", e);
       setError(t("deleteAgeBracketFailed"));
     }
   };
 
-  const submitStatus = async (e: React.FormEvent) => {
+  const submitStatus = (e: React.FormEvent) => {
     e.preventDefault();
     if (!statusForm.label.trim()) return;
+    setConfirmStatusSave(true);
+  };
+
+  const performSubmitStatus = async () => {
+    setConfirmStatusSave(false);
     setSavingStatus(true);
     setError(null);
     try {
@@ -155,8 +172,10 @@ export default function ProfilingSettingsView() {
         body: JSON.stringify({ label: statusForm.label }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const wasEditing = !!statusForm.id;
       resetStatusForm();
       load();
+      setSuccessMessage(wasEditing ? t("civilStatusUpdatedSuccess") : t("civilStatusAddedSuccess"));
     } catch (e) {
       console.error("save civil status:", e);
       setError(t("saveCivilStatusFailed"));
@@ -177,6 +196,7 @@ export default function ProfilingSettingsView() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       load();
+      setSuccessMessage(t("civilStatusDeletedSuccess"));
     } catch (e) {
       console.error("delete civil status:", e);
       setError(t("deleteCivilStatusFailed"));
@@ -375,6 +395,19 @@ export default function ProfilingSettingsView() {
         </div>
       </div>
 
+      {successMessage && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setSuccessMessage(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-[#005f63] flex justify-center"><CheckCircle size={48} /></div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{successMessage}</p>
+            <button onClick={() => setSuccessMessage(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Templated delete-confirm modal, shared across every module -- reused
           here instead of the old "delete immediately, no confirmation"
           behavior. */}
@@ -390,6 +423,28 @@ export default function ProfilingSettingsView() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmBracketSave}
+        icon={bracketForm.id ? <Pencil size={32} /> : <Plus size={32} />}
+        title={bracketForm.id ? t("confirmUpdateAgeBracketTitle") : t("confirmAddAgeBracketTitle")}
+        body={bracketForm.id ? t("confirmUpdateAgeBracketBody") : t("confirmAddAgeBracketBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={bracketForm.id ? t("yesUpdate") : t("yesAdd")}
+        onCancel={() => setConfirmBracketSave(false)}
+        onConfirm={performSubmitBracket}
+      />
+
+      <ConfirmDialog
+        open={confirmStatusSave}
+        icon={statusForm.id ? <Pencil size={32} /> : <Plus size={32} />}
+        title={statusForm.id ? t("confirmUpdateCivilStatusTitle") : t("confirmAddCivilStatusTitle")}
+        body={statusForm.id ? t("confirmUpdateCivilStatusBody") : t("confirmAddCivilStatusBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={statusForm.id ? t("yesUpdate") : t("yesAdd")}
+        onCancel={() => setConfirmStatusSave(false)}
+        onConfirm={performSubmitStatus}
+      />
 
       {pendingDelete && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">

@@ -90,6 +90,10 @@ class AgeBracketController extends Controller
 
         $bracket = AgeBracket::findOrFail($id);
         $name = $bracket->label;
+        // Record who archived it before soft-deleting -- otherwise the
+        // Archive page has nothing to show but "SYSTEM".
+        $bracket->deleted_by = auth()->user()->user_code;
+        $bracket->save();
         $bracket->delete();
 
         AgeBracket::forgetCache();
@@ -105,6 +109,7 @@ class AgeBracketController extends Controller
         }
 
         $bracket = AgeBracket::onlyTrashed()->findOrFail($id);
+        $bracket->deleted_by = null;
         $bracket->restore();
 
         AgeBracket::forgetCache();

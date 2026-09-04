@@ -82,6 +82,10 @@ class CivilStatusController extends Controller
 
         $status = CivilStatus::findOrFail($id);
         $name = $status->label;
+        // Record who archived it before soft-deleting -- otherwise the
+        // Archive page has nothing to show but "SYSTEM".
+        $status->deleted_by = auth()->user()->user_code;
+        $status->save();
         $status->delete();
 
         CivilStatus::forgetCache();
@@ -97,6 +101,7 @@ class CivilStatusController extends Controller
         }
 
         $status = CivilStatus::onlyTrashed()->findOrFail($id);
+        $status->deleted_by = null;
         $status->restore();
 
         CivilStatus::forgetCache();

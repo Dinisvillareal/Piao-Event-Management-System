@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Filter, XCircle, Archive, CheckCircle, RotateCcw, AlertTriangle } from "lucide-react";
+import { Filter, XCircle, Archive, CheckCircle, RotateCcw, AlertTriangle, Plus, Pencil } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import DatePicker from "../../../components/ui/DatePicker";
+import SearchableSelect from "../../../components/ui/SearchableSelect";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -13,6 +15,12 @@ interface Membership {
 interface CivilStatusOption {
   id: number;
   label: string;
+}
+
+interface HouseholdOption {
+  id: number;
+  code: string;
+  address: string | null;
 }
 
 interface ResidentRow {
@@ -37,8 +45,7 @@ interface ResidentRow {
   civilStatus: string | null;
   gender: string | null;
   isHouseholdHead: boolean;
-  householdCode: string;
-  householdContactNumber: string;
+  household: HouseholdOption | null;
 }
 
 type AddForm = {
@@ -56,8 +63,7 @@ type AddForm = {
   civilStatusId: number | null;
   gender: string;
   isHouseholdHead: boolean;
-  householdCode: string;
-  householdContactNumber: string;
+  householdId: number | null;
 };
 
 type EditForm = {
@@ -80,8 +86,7 @@ type EditForm = {
   civilStatusId: number | null;
   gender: string;
   isHouseholdHead: boolean;
-  householdCode: string;
-  householdContactNumber: string;
+  householdId: number | null;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -159,8 +164,7 @@ const emptyAdd = (): AddForm => ({
   civilStatusId: null,
   gender: "",
   isHouseholdHead: false,
-  householdCode: "",
-  householdContactNumber: "",
+  householdId: null,
 });
 
 const AGE_GROUPS = [
@@ -187,6 +191,7 @@ export default function ResidentsView() {
   const { t } = useLanguage();
   const [residentsData, setResidentsData] = useState<ResidentRow[]>([]);
   const [availableMemberships, setAvailableMemberships] = useState<Membership[]>([]);
+  const [householdOptions, setHouseholdOptions] = useState<HouseholdOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   // Popped up (instead of buried in an inline banner) for every save
@@ -211,6 +216,8 @@ export default function ResidentsView() {
   const [showAddSuccess, setShowAddSuccess] = useState(false);
   const [showRoleChangedModal, setShowRoleChangedModal] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState<"edit" | "add" | null>(null);
+  const [showAddConfirm, setShowAddConfirm] = useState(false);
+  const [showEditConfirm, setShowEditConfirm] = useState(false);
 
   const [newResident, setNewResident] = useState<AddForm>(emptyAdd());
   const [addPhotoFile, setAddPhotoFile] = useState<File | null>(null);
@@ -275,6 +282,17 @@ export default function ResidentsView() {
       .catch((e) => console.error("civil statuses load:", e));
   }, []);
 
+  // ─── Fetch households (for the "link to household" picker) ───────────────
+  useEffect(() => {
+    fetch("/households/options", { headers: { Accept: "application/json" } })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d: HouseholdOption[]) => setHouseholdOptions(Array.isArray(d) ? d : []))
+      .catch((e) => console.error("households load:", e));
+  }, []);
+
   // ─── Fetch residents ──────────────────────────────────────────────────────
   const fetchResidents = async () => {
     setLoading(true);
@@ -306,8 +324,9 @@ export default function ResidentsView() {
         civilStatus: item.civil_status ?? null,
         gender: item.gender ?? null,
         isHouseholdHead: !!item.is_household_head,
-        householdCode: item.household_code ?? "",
-        householdContactNumber: item.household_contact_number ?? "",
+        household: item.household
+          ? { id: item.household.id, code: item.household.code, address: item.household.address ?? null }
+          : null,
       }));
 
       setResidentsData(formatted);
@@ -412,7 +431,10 @@ export default function ResidentsView() {
   };
 
   // ─── ADD: POST /users ─────────────────────────────────────────────────────
-  const handleAddResident = async (e: React.FormEvent) => {
+  // Runs the local validation + duplicate-name check synchronously, and
+  // only opens the confirm step once those pass -- the actual POST moved
+  // to performAddResident, which fires after the user confirms.
+  const handleAddResident = (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateAdd()) return;
     setApiError(null);
@@ -436,6 +458,11 @@ export default function ResidentsView() {
     }
     // ──────────────────────────────────────────────────────────────────────
 
+    setShowAddConfirm(true);
+  };
+
+  const performAddResident = async () => {
+    setShowAddConfirm(false);
     const fd = new FormData();
     fd.append("first_name", newResident.firstName);
     fd.append("middle_name", newResident.middleName);
@@ -455,10 +482,8 @@ export default function ResidentsView() {
     if (newResident.address) fd.append("address", newResident.address);
     if (newResident.civilStatusId) fd.append("civil_status_id", String(newResident.civilStatusId));
     if (newResident.gender) fd.append("gender", newResident.gender);
-    if (newResident.householdCode) fd.append("household_code", newResident.householdCode);
+    if (newResident.householdId) fd.append("household_id", String(newResident.householdId));
     fd.append("is_household_head", newResident.isHouseholdHead ? "1" : "0");
-    if (newResident.householdContactNumber)
-      fd.append("household_contact_number", newResident.householdContactNumber.replace(/\D/g, ""));
 
     try {
       const res = await fetch("/users", {
@@ -540,8 +565,7 @@ export default function ResidentsView() {
       civilStatusId: r.civilStatusId ?? null,
       gender: r.gender ?? "",
       isHouseholdHead: r.isHouseholdHead ?? false,
-      householdCode: r.householdCode ?? "",
-      householdContactNumber: r.householdContactNumber ?? "",
+      householdId: r.household?.id ?? null,
     };
 
     setEditingResident(state);
@@ -552,7 +576,7 @@ export default function ResidentsView() {
   }, [editRecord, residentsData, availableMemberships]);
 
   // ─── UPDATE: POST /users/{id} with _method=PUT ───────────────────────────
-  const handleUpdateResident = async (e: React.FormEvent) => {
+  const handleUpdateResident = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editRecord || !editingResident || !validateEdit()) return;
     setApiError(null);
@@ -576,6 +600,13 @@ export default function ResidentsView() {
       return;
     }
     // ──────────────────────────────────────────────────────────────────────
+
+    setShowEditConfirm(true);
+  };
+
+  const performUpdateResident = async () => {
+    setShowEditConfirm(false);
+    if (!editRecord || !editingResident) return;
 
     const fd = new FormData();
     fd.append("_method", "PUT");
@@ -604,9 +635,8 @@ export default function ResidentsView() {
     fd.append("address", editingResident.address || "");
     fd.append("civil_status_id", editingResident.civilStatusId ? String(editingResident.civilStatusId) : "");
     fd.append("gender", editingResident.gender || "");
-    fd.append("household_code", editingResident.householdCode || "");
+    fd.append("household_id", editingResident.householdId ? String(editingResident.householdId) : "");
     fd.append("is_household_head", editingResident.isHouseholdHead ? "1" : "0");
-    fd.append("household_contact_number", editingResident.householdContactNumber ? editingResident.householdContactNumber.replace(/\D/g, "") : "");
 
     if (editingResident.hasMemberships && editingResident.selectedMemberships.length > 0) {
       editingResident.selectedMemberships.forEach((id) => fd.append("membership_ids[]", String(id)));
@@ -1144,10 +1174,11 @@ const handleDeleteResident = async () => {
                     {r.address && (
                       <p><strong className="text-[#005f63]">{t("addressFieldLabelColon")}</strong> {r.address}</p>
                     )}
-                    {(r.householdCode || r.isHouseholdHead) && (
+                    {r.household && (
                       <p>
                         <strong className="text-[#005f63]">{t("householdFieldLabel")}</strong>{" "}
-                        {r.householdCode || "—"}{" "}
+                        {r.household.code}
+                        {r.household.address ? ` · ${r.household.address}` : ""}{" "}
                         {r.isHouseholdHead && <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-800">🏠 {t("headBadgeLabel")}</span>}
                       </p>
                     )}
@@ -1296,38 +1327,45 @@ const handleDeleteResident = async () => {
                     </select>
                   </div>
                 </div>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdCodeLabel")}</label>
-                    <input
-                      type="text"
-                      value={newResident.householdCode}
-                      onChange={(e) => setNewResident((p) => ({ ...p, householdCode: e.target.value }))}
-                      placeholder={t("householdCodePlaceholder")}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdContactNumberLabel")}</label>
-                    <input
-                      type="text"
-                      value={newResident.householdContactNumber}
-                      onChange={(e) => setNewResident((p) => ({ ...p, householdContactNumber: formatContactNumber(e.target.value) }))}
-                      placeholder={t("householdContactPlaceholder")}
-                      maxLength={13}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdCodeLabel")}</label>
+                  <SearchableSelect
+                    options={householdOptions.map((h) => ({
+                      value: String(h.id),
+                      label: h.code,
+                      hint: h.address ? `(${h.address})` : undefined,
+                    }))}
+                    onSelect={(value) => setNewResident((p) => ({ ...p, householdId: Number(value) }))}
+                    placeholder={t("householdCodePlaceholder")}
+                    noResultsLabel={t("householdLinkNoResults")}
+                  />
+                  <p className="mt-1 text-xs text-gray-400">{t("manageHouseholdHint")}</p>
+                  {newResident.householdId && (() => {
+                    const picked = householdOptions.find((h) => h.id === newResident.householdId);
+                    return (
+                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-teal-50 text-[#005f63] text-xs font-medium px-3 py-1">
+                        🏠 {picked?.code ?? `#${newResident.householdId}`}
+                        <button
+                          type="button"
+                          onClick={() => setNewResident((p) => ({ ...p, householdId: null, isHouseholdHead: false }))}
+                          className="ml-1 text-[#005f63]/60 hover:text-[#005f63]"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                <label className={`flex items-center gap-2 text-sm ${newResident.householdId ? "cursor-pointer" : "cursor-not-allowed"}`}>
                   <input
                     type="checkbox"
                     checked={newResident.isHouseholdHead}
+                    disabled={!newResident.householdId}
                     onChange={(e) => setNewResident((p) => ({ ...p, isHouseholdHead: e.target.checked }))}
-                    className="w-4 h-4 text-[#005f63]"
+                    className="w-4 h-4 text-[#005f63] disabled:opacity-40"
                   />
-                  <span className="font-medium text-gray-700">{t("headOfHouseholdCheckboxLabel")}</span>
-                  <span className="text-gray-400">{t("receivesEventSmsNote")}</span>
+                  <span className={`font-medium ${newResident.householdId ? "text-gray-700" : "text-gray-400"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
+                  <span className="text-gray-400">{newResident.householdId ? t("receivesEventSmsNote") : t("householdHeadDisabledHint")}</span>
                 </label>
               </div>
 
@@ -1551,38 +1589,45 @@ const handleDeleteResident = async () => {
                     </select>
                   </div>
                 </div>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdCodeLabel")}</label>
-                    <input
-                      type="text"
-                      value={editingResident.householdCode}
-                      onChange={(e) => setEditingResident((p) => p ? { ...p, householdCode: e.target.value } : p)}
-                      placeholder={t("householdCodePlaceholder")}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdContactNumberLabel")}</label>
-                    <input
-                      type="text"
-                      value={editingResident.householdContactNumber}
-                      onChange={(e) => setEditingResident((p) => p ? { ...p, householdContactNumber: formatContactNumber(e.target.value) } : p)}
-                      placeholder={t("householdContactPlaceholder")}
-                      maxLength={13}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdCodeLabel")}</label>
+                  <SearchableSelect
+                    options={householdOptions.map((h) => ({
+                      value: String(h.id),
+                      label: h.code,
+                      hint: h.address ? `(${h.address})` : undefined,
+                    }))}
+                    onSelect={(value) => setEditingResident((p) => p ? { ...p, householdId: Number(value) } : p)}
+                    placeholder={t("householdCodePlaceholder")}
+                    noResultsLabel={t("householdLinkNoResults")}
+                  />
+                  <p className="mt-1 text-xs text-gray-400">{t("manageHouseholdHint")}</p>
+                  {editingResident.householdId && (() => {
+                    const picked = householdOptions.find((h) => h.id === editingResident.householdId);
+                    return (
+                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-teal-50 text-[#005f63] text-xs font-medium px-3 py-1">
+                        🏠 {picked?.code ?? `#${editingResident.householdId}`}
+                        <button
+                          type="button"
+                          onClick={() => setEditingResident((p) => p ? { ...p, householdId: null, isHouseholdHead: false } : p)}
+                          className="ml-1 text-[#005f63]/60 hover:text-[#005f63]"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                <label className={`flex items-center gap-2 text-sm ${editingResident.householdId ? "cursor-pointer" : "cursor-not-allowed"}`}>
                   <input
                     type="checkbox"
                     checked={editingResident.isHouseholdHead}
+                    disabled={!editingResident.householdId}
                     onChange={(e) => setEditingResident((p) => p ? { ...p, isHouseholdHead: e.target.checked } : p)}
-                    className="w-4 h-4 text-[#005f63]"
+                    className="w-4 h-4 text-[#005f63] disabled:opacity-40"
                   />
-                  <span className="font-medium text-gray-700">{t("headOfHouseholdCheckboxLabel")}</span>
-                  <span className="text-gray-400">{t("receivesEventSmsNote")}</span>
+                  <span className={`font-medium ${editingResident.householdId ? "text-gray-700" : "text-gray-400"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
+                  <span className="text-gray-400">{editingResident.householdId ? t("receivesEventSmsNote") : t("householdHeadDisabledHint")}</span>
                 </label>
               </div>
 
@@ -1723,6 +1768,30 @@ const handleDeleteResident = async () => {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={showAddConfirm}
+        icon={<Plus size={32} />}
+        title={t("confirmAddResidentTitle")}
+        body={t("confirmAddResidentBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesAdd")}
+        onCancel={() => setShowAddConfirm(false)}
+        onConfirm={performAddResident}
+        z={60}
+      />
+
+      <ConfirmDialog
+        open={showEditConfirm}
+        icon={<Pencil size={32} />}
+        title={t("confirmUpdateResidentTitle")}
+        body={t("confirmUpdateResidentBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesUpdate")}
+        onCancel={() => setShowEditConfirm(false)}
+        onConfirm={performUpdateResident}
+        z={60}
+      />
 
       {/* ─── Delete Confirm Modal ─────────────────────────────────────────────── */}
       {deleteRecord && (

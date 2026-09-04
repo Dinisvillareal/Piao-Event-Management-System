@@ -495,6 +495,7 @@ public function destroy($id)
         // schedule, venue, or message actually changed.
         $residents = User::where('role', 'Resident')
             ->whereIn('id', $userIds)
+            ->with('household:id,contact_number')
             ->get(['id', 'contact_number', 'household_id', 'household_code', 'is_household_head', 'household_contact_number']);
 
         $smsPrefix = $isUpdate ? 'UPDATED: ' : '';

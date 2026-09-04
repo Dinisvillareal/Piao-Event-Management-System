@@ -88,7 +88,7 @@ class ArchiveController extends Controller
                 'type'      => 'age_bracket',
                 'name'      => $item->label,
                 'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
-                'deletedBy' => 'SYSTEM',
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
             ]);
 
         $civilStatuses = CivilStatus::onlyTrashed()
@@ -99,7 +99,7 @@ class ArchiveController extends Controller
                 'type'      => 'civil_status',
                 'name'      => $item->label,
                 'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
-                'deletedBy' => 'SYSTEM',
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
             ]);
 
         $inventoryItems = InventoryItem::onlyTrashed()
@@ -174,6 +174,7 @@ class ArchiveController extends Controller
                 case 'age_bracket':
                     $item = AgeBracket::onlyTrashed()->findOrFail($request->id);
                     $itemName = $item->label;
+                    $item->deleted_by = null;
                     $item->restore();
                     AgeBracket::forgetCache();
                     break;
@@ -181,6 +182,7 @@ class ArchiveController extends Controller
                 case 'civil_status':
                     $item = CivilStatus::onlyTrashed()->findOrFail($request->id);
                     $itemName = $item->label;
+                    $item->deleted_by = null;
                     $item->restore();
                     CivilStatus::forgetCache();
                     break;

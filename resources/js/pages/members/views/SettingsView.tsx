@@ -210,7 +210,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
                   <Home className="h-3.5 w-3.5" /> {t("householdLabel")}
                 </span>
                 <span className="flex items-center gap-2 text-sm font-semibold text-[#005f63]">
-                  {profile.household_code || t("notSet")}
+                  {profile.household ? profile.household.code : t("notSet")}
                   {profile.is_household_head && (
                     <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-600">
                       {t("headBadge")}

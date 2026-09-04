@@ -21,6 +21,9 @@ import {
   Link2,
   Tags,
   X as XIcon,
+  IdCard,
+  CalendarCheck,
+  Boxes,
 } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -53,10 +56,15 @@ export const SETTINGS_NAV = [
 // category), same as Settings' own trigger button below.
 const NAV_BY_KEY: Record<string, typeof NAV[number]> = Object.fromEntries(NAV.map((item) => [item.key, item]));
 
+// Each group icon is deliberately different from every icon used by its
+// own children below -- reusing a child's icon (e.g. the Events & Check-in
+// group and the Events item both showing a calendar) reads as a visual
+// duplicate, especially in the collapsed icon-only rail where there's no
+// label left to tell the two apart.
 const NAV_GROUP_DEFS: { key: string; labelKey: string; icon: any; itemKeys: string[] }[] = [
-  { key: "membershipGroup", labelKey: "navGroupMembership", icon: Users, itemKeys: ["residents", "households", "memberships"] },
-  { key: "eventsGroup", labelKey: "navGroupEvents", icon: CalendarDays, itemKeys: ["events", "scan", "notify"] },
-  { key: "resourcesGroup", labelKey: "navGroupResources", icon: Package, itemKeys: ["inventory", "budget"] },
+  { key: "membershipGroup", labelKey: "navGroupMembership", icon: IdCard, itemKeys: ["residents", "households", "memberships"] },
+  { key: "eventsGroup", labelKey: "navGroupEvents", icon: CalendarCheck, itemKeys: ["events", "scan", "notify"] },
+  { key: "resourcesGroup", labelKey: "navGroupResources", icon: Boxes, itemKeys: ["inventory", "budget"] },
 ];
 
 export const NAV_GROUPS = NAV_GROUP_DEFS.map((g) => ({
@@ -209,14 +217,14 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                 </button>
 
                 {openGroups[group.key] && (
-                  <div className={`pl-${isOpen ? '6' : '0'} space-y-1 mt-1`}>
+                  <div className={`${isOpen ? "pl-6" : "pl-0"} space-y-1 mt-1`}>
                     {group.items.map((item) => (
                       <button
                         key={item.key}
                         onClick={() => handleNavClick(item.key, item.path)}
-                        className={`flex items-center w-full rounded-[20px] py-2.5 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} ${active === item.key ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]" : "text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1"}`}
+                        className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} ${active === item.key ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]" : "text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1"}`}
                       >
-                        <item.icon className="h-4 w-4 shrink-0" />
+                        <item.icon className="h-5 w-5 shrink-0" />
                         <span className={`transition-all duration-300 truncate flex-1 min-w-0 text-left ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>{t(item.key)}</span>
                       </button>
                     ))}
@@ -238,14 +246,14 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
 
               {/* SUB NAVIGATION */}
               {openGroups["settings"] && (
-                <div className={`pl-${isOpen ? '6' : '0'} space-y-1 mt-1`}>
+                <div className={`${isOpen ? "pl-6" : "pl-0"} space-y-1 mt-1`}>
                   {SETTINGS_NAV.map((item) => (
                     <button
                       key={item.key}
                       onClick={() => handleNavClick(item.key, item.path)}
-                      className={`flex items-center w-full rounded-[20px] py-2.5 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} ${active === item.key ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]" : "text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1"}`}
+                      className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} ${active === item.key ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]" : "text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1"}`}
                     >
-                      <item.icon className="h-4 w-4 shrink-0" />
+                      <item.icon className="h-5 w-5 shrink-0" />
                       <span className={`transition-all duration-300 truncate flex-1 min-w-0 text-left ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>{t(item.key)}</span>
                     </button>
                   ))}

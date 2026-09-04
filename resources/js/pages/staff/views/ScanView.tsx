@@ -242,6 +242,39 @@ export default function ScanView({ events, residents, memberships }: any) {
     localStorage.setItem(`qr_mode_${eventId}`, scanMode);
   }, [scanMode, eventId]);
 
+  // "Window just opened" pop-up -- the mirror of the "window just closed"
+  // timer below. windowNotYetOpen already flips from a timestamp to null
+  // the moment the window opens (ticked by currentHHMM every 15s above);
+  // this just announces that transition with a modal instead of letting
+  // the "not open yet" banner silently disappear. A ref (not state) skips
+  // the very first render for a given event/mode so switching to an
+  // already-open event doesn't fire a false "just opened" popup.
+  const windowOpenBaseline = useRef<{ key: string; wasClosed: boolean } | null>(null);
+  useEffect(() => {
+    if (!selectedEvent) {
+      windowOpenBaseline.current = null;
+      return;
+    }
+    const key = `${selectedEvent.id}_${scanMode}`;
+    const baseline = windowOpenBaseline.current;
+
+    if (!baseline || baseline.key !== key) {
+      // First observation of this event/mode combo -- just record where
+      // things stand, don't announce anything yet.
+      windowOpenBaseline.current = { key, wasClosed: !!windowNotYetOpen };
+      return;
+    }
+
+    if (baseline.wasClosed && !windowNotYetOpen) {
+      showModal(
+        'success',
+        scanMode === "in" ? t("signInOpenedTitle") : t("signOutOpenedTitle"),
+        scanMode === "in" ? t("signInOpenedMessage") : t("signOutOpenedMessage")
+      );
+    }
+    windowOpenBaseline.current = { key, wasClosed: !!windowNotYetOpen };
+  }, [windowNotYetOpen, selectedEvent, scanMode]);
+
   useEffect(() => {
     if (!isDeadlineActive || !closingTime) return;
 

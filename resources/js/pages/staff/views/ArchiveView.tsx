@@ -174,7 +174,7 @@ export default function ArchiveView() {
   return (
     <div className="space-y-6">
       {/* Fixed Header */}
-      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
+      <div className="sticky top-0 z-20 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
         <div className="w-full">
           <div>
             <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("archive")}</h1>
@@ -197,14 +197,14 @@ export default function ArchiveView() {
                 className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
               >
                 <option value="all">{t("allTypes")}</option>
-                <option value="membership">{t("memberships")}</option>
-                <option value="event">{t("events")}</option>
-                <option value="resident">{t("residents")}</option>
-                <option value="notification">{t("notify")}</option>
                 <option value="age_bracket">{t("ageBracketsTitle")}</option>
                 <option value="civil_status">{t("civilStatusesTitle")}</option>
-                <option value="inventory_item">{t("inventory")}</option>
+                <option value="event">{t("events")}</option>
                 <option value="expense">{t("expenseTypeLabel")}</option>
+                <option value="inventory_item">{t("inventory")}</option>
+                <option value="membership">{t("memberships")}</option>
+                <option value="notification">{t("notify")}</option>
+                <option value="resident">{t("residents")}</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
             </div>
@@ -282,11 +282,11 @@ export default function ArchiveView() {
                       <button
                         onClick={() => setRestoreItem(item)}
                         disabled={restoringId === item.id}
-                        className="p-2 rounded-full hover:bg-orange-50 transition text-orange-600 active:bg-orange-100 disabled:opacity-50"
+                        className="p-2 rounded-full hover:bg-green-50 transition text-green-600 active:bg-green-100 disabled:opacity-50"
                         title={t("restoreTitle")}
                       >
                         {restoringId === item.id ? (
-                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-orange-600"></div>
+                          <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-green-600"></div>
                         ) : (
                           <RefreshCw size={16} />
                         )}
@@ -300,12 +300,14 @@ export default function ArchiveView() {
         )}
       </div>
 
-      {/* Restore Confirm Modal */}
+      {/* Restore Confirm Modal -- green throughout (button, this confirm
+          step, and the success modal below) since restoring is the
+          positive/undo action here, not the app's usual save/delete. */}
       {restoreItem && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="flex justify-center text-[#eb9b32] mb-3"><RefreshCw size={40} /></div>
-            <h3 className="text-xl font-bold text-[#eb9b32] mb-3">{t("restoreItemModalTitle")}</h3>
+            <div className="flex justify-center text-green-600 mb-3"><RefreshCw size={40} /></div>
+            <h3 className="text-xl font-bold text-green-600 mb-3">{t("restoreItemModalTitle")}</h3>
             <p className="text-gray-600 mb-5">
               {t("restoreConfirmPrefix")} <strong>"{restoreItem.name}"</strong>{t("restoreConfirmSuffix")}
             </p>
@@ -318,7 +320,7 @@ export default function ArchiveView() {
               </button>
               <button
                 onClick={handleRestoreConfirm}
-                className="px-5 py-2.5 rounded-full bg-[#e2850d] text-white hover:bg-[#e69d3e] transition"
+                className="px-5 py-2.5 rounded-full bg-green-600 text-white hover:bg-green-700 transition"
               >
                 {t("yesRestore")}
               </button>
@@ -327,18 +329,21 @@ export default function ArchiveView() {
         </div>
       )}
 
-      {/* Success Modal */}
+      {/* Success Modal -- green because "restore" is the action being
+          confirmed here (bring-back / undo), not a plain save -- matches
+          the green already used for the "active/restored" state badge
+          above instead of the app's usual teal/amber. */}
       {showSuccessModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="flex justify-center text-[#eb9b32] mb-3">
+            <div className="flex justify-center text-green-600 mb-3">
               <CheckCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-[#eb9b32] mb-2">{t("successTitle")}</h3>
+            <h3 className="text-xl font-bold text-green-600 mb-2">{t("successTitle")}</h3>
             <p className="text-gray-600 mb-5">{t("itemRestoredSuccess")}</p>
             <button
               onClick={() => setShowSuccessModal(false)}
-              className="px-5 py-2.5 rounded-full bg-[#eb9b32] text-white hover:bg-[#e2850d] transition"
+              className="px-5 py-2.5 rounded-full bg-green-600 text-white hover:bg-green-700 transition"
             >
               {t("okLabel")}
             </button>

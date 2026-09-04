@@ -219,7 +219,7 @@ export default function ReportsView({ memberships = [] }: ReportsViewProps) {
               <div className="relative">
                 <select value={membershipId} onChange={(e) => setMembershipId(e.target.value)} className="h-11 pl-9 pr-6 rounded-full border border-[#005f63]/20 bg-white text-sm appearance-none">
                   <option value="">{t("allMembershipsOption")}</option>
-                  {memberships.map((m) => (
+                  {memberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
                     <option key={m.id} value={String(m.id)}>{m.name}</option>
                   ))}
                 </select>
@@ -240,7 +240,7 @@ export default function ReportsView({ memberships = [] }: ReportsViewProps) {
             <div className="relative">
               <select value={membershipId} onChange={(e) => setMembershipId(e.target.value)} className="h-11 pl-9 pr-6 rounded-full border border-[#005f63]/20 bg-white text-sm appearance-none">
                 <option value="">{t("allMembershipsOption")}</option>
-                {memberships.map((m) => (
+                {memberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
                   <option key={m.id} value={String(m.id)}>{m.name}</option>
                 ))}
               </select>

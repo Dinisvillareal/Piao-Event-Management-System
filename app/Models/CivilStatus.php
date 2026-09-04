@@ -9,7 +9,7 @@ class CivilStatus extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['label', 'sort_order'];
+    protected $fillable = ['label', 'sort_order', 'deleted_by'];
 
     protected $casts = [
         'sort_order' => 'integer',

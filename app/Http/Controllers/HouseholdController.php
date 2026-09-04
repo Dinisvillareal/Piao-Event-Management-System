@@ -251,4 +251,21 @@ class HouseholdController extends Controller
 
         return response()->json($residents);
     }
+
+    /**
+     * Flat, unpaginated {id, code, address} list for pickers -- e.g. the
+     * "link this resident to a household" combobox on the Residents form.
+     * index() is paginated and eager-loads full member lists, which is
+     * more than a simple dropdown needs.
+     */
+    public function options()
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json(
+            Household::orderBy('code')->get(['id', 'code', 'address'])
+        );
+    }
 }

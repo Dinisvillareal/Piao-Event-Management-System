@@ -43,20 +43,12 @@ class UpdateUserRequest extends FormRequest
             'civil_status_id'  => 'nullable|exists:civil_statuses,id',
             'gender'           => 'nullable|in:Male,Female',
 
-            // Adviser recommendation: "Notify by household -- head of household -- SMS contact number per household"
-            'household_code'           => 'nullable|string|max:30',
-            'is_household_head'        => 'nullable|boolean',
-            'household_contact_number' => [
-                'nullable',
-                'string',
-                function ($attribute, $value, $fail) {
-                    if (!$value) return;
-                    $stripped = preg_replace('/\D/', '', $value);
-                    if (!preg_match('/^(\+?63|0)9\d{9}$/', $stripped)) {
-                        $fail('The household contact number format is invalid.');
-                    }
-                },
-            ],
+            // Real Household module -- link this resident to an existing
+            // household record (see HouseholdController) instead of the
+            // old free-text household_code/household_contact_number pair,
+            // which never actually connected to the households table.
+            'household_id'      => 'nullable|integer|exists:households,id',
+            'is_household_head' => 'nullable|boolean',
 
             // UC-17: Switch Interface Language
             'preferred_language' => 'nullable|in:en,tl,ceb',

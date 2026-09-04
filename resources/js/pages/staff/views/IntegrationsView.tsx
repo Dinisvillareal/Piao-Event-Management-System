@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink, XCircle, CheckCircle } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -19,6 +20,7 @@ export default function IntegrationsView() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [confirmConnect, setConfirmConnect] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -36,8 +38,13 @@ export default function IntegrationsView() {
     load();
   }, []);
 
-  const handleConnect = async (e: React.FormEvent) => {
+  const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();
+    setConfirmConnect(true);
+  };
+
+  const performConnect = async () => {
+    setConfirmConnect(false);
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -139,6 +146,17 @@ export default function IntegrationsView() {
           </p>
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmConnect}
+        icon={<Link2 size={32} />}
+        title={t("confirmConnectFbTitle")}
+        body={t("confirmConnectFbBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesConnect")}
+        onCancel={() => setConfirmConnect(false)}
+        onConfirm={performConnect}
+      />
+
       {error && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setError(null)}>
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>

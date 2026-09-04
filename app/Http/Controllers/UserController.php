@@ -200,11 +200,20 @@ class UserController extends Controller
                 'address'                   => $request->address,
                 'civil_status_id'           => $request->civil_status_id ?: null,
                 'gender'                    => $request->gender ?: null,
-                'household_code'            => $request->household_code,
-                'is_household_head'         => filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN),
-                'household_contact_number'  => $request->household_contact_number,
+                'household_id'               => $request->filled('household_id') ? (int) $request->household_id : null,
                 'preferred_language'        => $request->preferred_language ?? 'en',
             ]);
+
+            if (filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN)) {
+                if (!$user->household_id) {
+                    DB::rollBack();
+                    return response()->json([
+                        'errors' => ['is_household_head' => ['Link this resident to a household before making them the head.']],
+                    ], 422);
+                }
+                User::where('household_id', $user->household_id)->update(['is_household_head' => false]);
+                $user->update(['is_household_head' => true]);
+            }
 
             if ($request->has('membership_ids')) {
                 $ids = array_filter((array) $request->membership_ids);
@@ -409,13 +418,44 @@ class UserController extends Controller
                 'address',
                 'civil_status_id',
                 'gender',
-                'household_code',
-                'household_contact_number',
                 'preferred_language',
             ]));
 
+            if ($request->has('household_id')) {
+                $originalHouseholdId = $user->household_id;
+                $user->household_id = $request->filled('household_id') ? (int) $request->household_id : null;
+
+                // Unlinking, or moving to a different household, clears any
+                // stale head flag -- "head of household" is meaningless once
+                // detached from the household it applied to, and silently
+                // carrying it over to a new household could double it up
+                // with whoever is already the head there. A request that
+                // wants the head flag re-applied to the new household sends
+                // is_household_head explicitly alongside household_id, which
+                // the block below still honors.
+                if ($user->household_id !== $originalHouseholdId) {
+                    $user->is_household_head = false;
+                }
+            }
+
             if ($request->has('is_household_head')) {
-                $user->is_household_head = filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN);
+                $wantsHead = filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN);
+
+                if ($wantsHead && !$user->household_id) {
+                    DB::rollBack();
+                    return response()->json([
+                        'errors' => ['is_household_head' => ['Link this resident to a household before making them the head.']],
+                    ], 422);
+                }
+
+                if ($wantsHead) {
+                    // Only one head per household -- clear any stale flag first.
+                    User::where('household_id', $user->household_id)
+                        ->where('id', '!=', $user->id)
+                        ->update(['is_household_head' => false]);
+                }
+
+                $user->is_household_head = $wantsHead;
             }
 
         if ($this->isStaff() && $request->filled('role')) {
@@ -714,7 +754,7 @@ class UserController extends Controller
     public function me(Request $request)
     {
         return response()->json(
-            $request->user()->load('memberships')
+            $request->user()->load('memberships', 'household')
         );
     }
 

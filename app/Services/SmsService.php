@@ -99,7 +99,12 @@ class SmsService
             if ($head) {
                 // Normal case: one SMS to the designated head\'s number only,
                 // so the rest of the household isn\'t texted separately.
-                $number = $head->household_contact_number ?: $head->contact_number;
+                // Prefer the real Household record\'s shared contact_number
+                // (the number staff actually manage on the Households page)
+                // over the legacy per-user household_contact_number, which
+                // is never shown or editable there -- falling all the way
+                // back to the head\'s own personal number if neither is set.
+                $number = $head->household?->contact_number ?: $head->household_contact_number ?: $head->contact_number;
                 if ($number) {
                     $logs[] = $this->send($head->id, $eventId, $number, $message);
                 }
@@ -113,7 +118,7 @@ class SmsService
             // number so a missed "head" pick doesn\'t cost a whole family
             // their event notice.
             foreach ($members as $resident) {
-                $number = $resident->household_contact_number ?: $resident->contact_number;
+                $number = $resident->household?->contact_number ?: $resident->household_contact_number ?: $resident->contact_number;
                 if (!$number) {
                     continue;
                 }

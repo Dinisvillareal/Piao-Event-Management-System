@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Wallet, Plus, X, AlertTriangle, Trash2, XCircle, Pencil } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import api, { apiErrorMessage } from "../../../lib/api";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 const THIS_WEEK_KEY = "📅 This Week";
@@ -32,6 +33,8 @@ interface ExpenseSummary {
 export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption[] }) {
   const { t } = useLanguage();
   const [search, setSearch] = useState("");
+  const [eventListPage, setEventListPage] = useState(1);
+  const eventListPerPage = 8;
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [summary, setSummary] = useState<ExpenseSummary | null>(null);
   const [loadingSummary, setLoadingSummary] = useState(false);
@@ -43,8 +46,22 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   const [editForm, setEditForm] = useState({ item: "", amount: "", notes: "" });
   const [originalEditForm, setOriginalEditForm] = useState({ item: "", amount: "", notes: "" });
   const [savingEdit, setSavingEdit] = useState(false);
+  const [showAddExpenseConfirm, setShowAddExpenseConfirm] = useState(false);
+  const [showEditExpenseConfirm, setShowEditExpenseConfirm] = useState(false);
 
   const filteredEvents = allEvents.filter((e) => e.title?.toLowerCase().includes(search.toLowerCase()));
+
+  // Reset to page 1 whenever the search narrows/widens the list, so a
+  // stale page number never lands on an out-of-range (empty) page.
+  useEffect(() => {
+    setEventListPage(1);
+  }, [search]);
+
+  const eventListTotalPages = Math.max(1, Math.ceil(filteredEvents.length / eventListPerPage));
+  const paginatedFilteredEvents = filteredEvents.slice(
+    (eventListPage - 1) * eventListPerPage,
+    eventListPage * eventListPerPage
+  );
 
   // Same "This Week" / weekday-grouping convention as the Events page --
   // a flat list of raw "2026-06-03 07:00:00" timestamps is hostile to
@@ -119,7 +136,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     const weekStart = getStartOfWeek(today);
     const weekEnd = getEndOfWeek(today);
 
-    filteredEvents.forEach((e) => {
+    paginatedFilteredEvents.forEach((e) => {
       let dateString = e.date || e.event_start || "";
       if (dateString.includes(" ")) dateString = dateString.split(" ")[0];
       if (dateString.includes("T")) dateString = dateString.split("T")[0];
@@ -150,11 +167,13 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       const dateA = new Date(keyA);
       const dateB = new Date(keyB);
       if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
-        return dateA.getTime() - dateB.getTime();
+        // Newest day first (descending) -- "This Week" still leads since
+        // it's pinned above, unrelated to this ordering.
+        return dateB.getTime() - dateA.getTime();
       }
       return 0;
     });
-  }, [filteredEvents]);
+  }, [paginatedFilteredEvents]);
 
   const selectedEvent = allEvents.find((e) => String(e.id) === String(selectedEventId));
   const selectedEventStatus = selectedEvent ? getEventStatus(selectedEvent) : null;
@@ -176,10 +195,16 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     if (selectedEventId) loadSummary(selectedEventId);
   }, [selectedEventId]);
 
-  const handleAddExpense = async (e: React.FormEvent) => {
+  const handleAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEventId || isExpenseLocked) return;
     setError(null);
+    setShowAddExpenseConfirm(true);
+  };
+
+  const performAddExpense = async () => {
+    setShowAddExpenseConfirm(false);
+    if (!selectedEventId) return;
     try {
       await api.post(`/events/${selectedEventId}/expenses`, {
         item: form.item,
@@ -206,8 +231,14 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     editForm.amount === originalEditForm.amount &&
     editForm.notes === originalEditForm.notes;
 
-  const handleUpdateExpense = async (e: React.FormEvent) => {
+  const handleUpdateExpense = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingExpense || !selectedEventId) return;
+    setShowEditExpenseConfirm(true);
+  };
+
+  const performUpdateExpense = async () => {
+    setShowEditExpenseConfirm(false);
     if (!editingExpense || !selectedEventId) return;
     setSavingEdit(true);
     try {
@@ -289,6 +320,32 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               ))
             )}
           </div>
+          {eventListTotalPages > 1 && (
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
+              <p className="text-xs text-gray-500">
+                {t("pageOfLabel")} {eventListPage} {t("ofPagesLabel")} {eventListTotalPages}
+              </p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={() => setEventListPage((p) => Math.max(1, p - 1))}
+                  disabled={eventListPage === 1}
+                  className="h-7 w-7 rounded-full border border-gray-300 bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  ←
+                </button>
+                <span className="h-7 w-7 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-xs font-semibold">
+                  {eventListPage}
+                </span>
+                <button
+                  onClick={() => setEventListPage((p) => Math.min(eventListTotalPages, p + 1))}
+                  disabled={eventListPage === eventListTotalPages}
+                  className="h-7 w-7 rounded-full border border-gray-300 bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-[24px] border border-[#ddd5ca] bg-white p-5">
@@ -432,6 +489,28 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={showAddExpenseConfirm}
+        icon={<Plus size={32} />}
+        title={t("confirmAddExpenseTitle")}
+        body={t("confirmAddExpenseBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesAdd")}
+        onCancel={() => setShowAddExpenseConfirm(false)}
+        onConfirm={performAddExpense}
+      />
+
+      <ConfirmDialog
+        open={showEditExpenseConfirm}
+        icon={<Pencil size={32} />}
+        title={t("confirmUpdateExpenseTitle")}
+        body={t("confirmUpdateExpenseBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesUpdate")}
+        onCancel={() => setShowEditExpenseConfirm(false)}
+        onConfirm={performUpdateExpense}
+      />
 
       {deleteExpense && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => !deletingExpense && setDeleteExpense(null)}>

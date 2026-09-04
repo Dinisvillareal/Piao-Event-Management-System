@@ -9,7 +9,7 @@ class AgeBracket extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['label', 'min_age', 'max_age', 'sort_order'];
+    protected $fillable = ['label', 'min_age', 'max_age', 'sort_order', 'deleted_by'];
 
     protected $casts = [
         'min_age'    => 'integer',

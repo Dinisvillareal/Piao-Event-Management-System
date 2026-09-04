@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { QRCodeCanvas } from "qrcode.react";
-import { QrCode, XCircle, CheckCircle } from "lucide-react";
+import { QrCode, XCircle, CheckCircle, Download } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 export default function QRCodesView({ highlightText, userId, userCode, fullName }: any) {
@@ -16,6 +17,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   const [qrSize, setQrSize] = useState(280);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
 
   // Handle responsive QR size
   useEffect(() => {
@@ -116,23 +118,14 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     return filteredMemberships.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredMemberships, currentPage, itemsPerPage]);
 
-  // The QR panel is a fixed ~360px; each membership card tops out at
-  // 340px. Letting the page always claim max-w-6xl left a large dead
-  // rectangle to the right (and below, since the QR panel is taller)
-  // whenever a resident had only one or two memberships. Size the page
-  // to roughly how many cards are actually on screen instead.
-  const pageMaxWidthClass =
-    displayMemberships.length <= 1 ? "max-w-3xl" :
-    displayMemberships.length === 2 ? "max-w-4xl" :
-    displayMemberships.length <= 4 ? "max-w-5xl" :
-    "max-w-6xl";
-
   // Reset to page 1 when search query changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
 
-  const downloadQRCode = useCallback(() => {
+  const performDownloadQRCode = useCallback(() => {
+    setShowDownloadConfirm(false);
+
     if (!qrCodeRef.current) {
       setDownloadError("QR code container not found");
       return;
@@ -214,8 +207,8 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   return (
     <div className="bg-[#fcfcf9] h-full flex flex-col">
       {/* Fixed Header - Never scrolls */}
-      <div className="flex-shrink-0 bg-[#fcfcf9] px-2 sm:px-3 pt-2 pb-4 border-b border-[#ece7de] z-10">
-        <div className={`${pageMaxWidthClass} mx-auto transition-[max-width] duration-300`}>
+      <div className="flex-shrink-0 bg-[#fcfcf9] px-2 sm:px-3 pt-2 z-10">
+        <div className="max-w-6xl pb-4 border-b border-[#ece7de]">
           <h1 className="text-3xl sm:text-4xl font-black text-[#005f63]">
             {t("myQrAndMemberships")}
           </h1>
@@ -269,7 +262,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
       {/* Scrollable Content Area - Only memberships scroll */}
       <div className="flex-1 overflow-y-auto px-2 sm:px-3 mt-5 pb-4">
-        <div className={`${pageMaxWidthClass} mx-auto transition-[max-width] duration-300`}>
+        <div className="max-w-6xl">
           <div className="flex flex-col lg:flex-row gap-4">
 
             {/* LEFT COLUMN - QR CODE SECTION */}
@@ -304,7 +297,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
                   <div className="mt-6">
                     <button
-                      onClick={downloadQRCode}
+                      onClick={() => setShowDownloadConfirm(true)}
                       disabled={!qrData}
                       className={`font-semibold py-3 px-6 rounded-full transition-colors duration-300 shadow-md w-full max-w-[280px] mx-auto block ${
                         qrData
@@ -384,6 +377,18 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={showDownloadConfirm}
+        icon={<Download size={40} />}
+        title={t("confirmDownloadQrTitle")}
+        body={t("confirmDownloadQrBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesDownload")}
+        onCancel={() => setShowDownloadConfirm(false)}
+        onConfirm={performDownloadQRCode}
+        tone="brand"
+      />
 
       {downloadError && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => setDownloadError(null)}>

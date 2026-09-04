@@ -30,7 +30,7 @@ class MembershipResidentController extends Controller
 
 public function index()
 {
-   $users = User::with('memberships')->get();
+   $users = User::with('memberships', 'household')->get();
 
     return response()->json(
         $users->map(function ($user) {
@@ -62,9 +62,17 @@ public function index()
                 'civil_status_id' => $user->civil_status_id,
                 'civil_status' => $user->civil_status,
                 'gender' => $user->gender,
-                'household_code' => $user->household_code,
+                // Real Household module -- household_code/household_contact_number
+                // were the old free-text pair that never actually linked to
+                // a real household record; household_id (via the household
+                // relation below) is the real, interrelated source of truth.
                 'is_household_head' => $user->is_household_head,
-                'household_contact_number' => $user->household_contact_number,
+                'household_id' => $user->household_id,
+                'household' => $user->household ? [
+                    'id' => $user->household->id,
+                    'code' => $user->household->code,
+                    'address' => $user->household->address,
+                ] : null,
             ];
         })
     );

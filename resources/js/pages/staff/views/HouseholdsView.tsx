@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -84,6 +85,8 @@ export default function HouseholdsView() {
 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [confirmAdd, setConfirmAdd] = useState(false);
+  const [confirmEdit, setConfirmEdit] = useState(false);
 
   const load = async (searchValue = search, pageValue = page) => {
     setLoading(true);
@@ -124,8 +127,15 @@ export default function HouseholdsView() {
     );
   }, [unassigned, memberSearch]);
 
-  const submitAdd = async (e: React.FormEvent) => {
+  // The form's own submit only opens the confirm step; the actual
+  // POST happens in performAdd once the user confirms.
+  const submitAdd = (e: React.FormEvent) => {
     e.preventDefault();
+    setConfirmAdd(true);
+  };
+
+  const performAdd = async () => {
+    setConfirmAdd(false);
     setSaving(true);
     try {
       await api("/households", {
@@ -153,9 +163,15 @@ export default function HouseholdsView() {
     editForm.address === (editRecord.address ?? "") &&
     editForm.contact_number === (editRecord.contact_number ?? "");
 
-  const submitEdit = async (e: React.FormEvent) => {
+  const submitEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editRecord) return;
+    setConfirmEdit(true);
+  };
+
+  const performEdit = async () => {
+    if (!editRecord) return;
+    setConfirmEdit(false);
     setSaving(true);
     try {
       await api(`/households/${editRecord.id}`, {
@@ -433,7 +449,7 @@ export default function HouseholdsView() {
 
       {/* Edit modal */}
       {editRecord && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setEditRecord(null)}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => { setEditRecord(null); setConfirmEdit(false); }}>
           <form
             onSubmit={submitEdit}
             onClick={(e) => e.stopPropagation()}
@@ -468,6 +484,28 @@ export default function HouseholdsView() {
           </form>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmAdd}
+        icon={<Plus size={32} />}
+        title={t("confirmAddHouseholdTitle")}
+        body={t("confirmAddHouseholdBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesAdd")}
+        onCancel={() => setConfirmAdd(false)}
+        onConfirm={performAdd}
+      />
+
+      <ConfirmDialog
+        open={confirmEdit}
+        icon={<Pencil size={32} />}
+        title={t("confirmUpdateHouseholdTitle")}
+        body={t("confirmUpdateHouseholdBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesUpdate")}
+        onCancel={() => setConfirmEdit(false)}
+        onConfirm={performEdit}
+      />
 
       {/* Delete confirm modal */}
       {deleteRecord && (

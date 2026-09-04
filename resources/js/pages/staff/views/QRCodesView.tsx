@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Users, Plus, Pencil, Trash2, Search, Archive, CheckCircle } from "lucide-react";
 import { Button, Input } from "../../../components/ui/Core";
 import SearchBar from "../../../components/ui/SearchBar";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 
@@ -59,6 +60,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   const [showAddSuccess, setShowAddSuccess] = useState(false);
   const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
   const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
+  const [confirmAddMembership, setConfirmAddMembership] = useState(false);
+  const [confirmEditMembership, setConfirmEditMembership] = useState(false);
 
   const [newMembership, setNewMembership] = useState<{
     name: string;
@@ -159,7 +162,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     }
   };
 
-  const handleAddMembership = async (e: React.FormEvent) => {
+  const handleAddMembership = (e: React.FormEvent) => {
     e.preventDefault();
 
     const errors: Record<string, string> = {};
@@ -169,6 +172,11 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     setAddFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
+    setConfirmAddMembership(true);
+  };
+
+  const performAddMembership = async () => {
+    setConfirmAddMembership(false);
     setIsSubmitting(true);
 
     try {
@@ -217,7 +225,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     }
   };
 
-  const handleEditMembership = async (e: React.FormEvent) => {
+  const handleEditMembership = (e: React.FormEvent) => {
     e.preventDefault();
 
     const errors: Record<string, string> = {};
@@ -227,6 +235,11 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     setEditFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
+    setConfirmEditMembership(true);
+  };
+
+  const performEditMembership = async () => {
+    setConfirmEditMembership(false);
     setIsSubmitting(true);
 
     try {
@@ -951,6 +964,36 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             </form>
           </div>
         </div>,
+        document.body
+      )}
+
+      {createPortal(
+        <ConfirmDialog
+          open={confirmAddMembership}
+          icon={<Plus size={32} />}
+          title={t("confirmAddMembershipTitle")}
+          body={t("confirmAddMembershipBody")}
+          cancelLabel={t("cancelLabel")}
+          confirmLabel={t("yesAdd")}
+          onCancel={() => setConfirmAddMembership(false)}
+          onConfirm={performAddMembership}
+          z={9999}
+        />,
+        document.body
+      )}
+
+      {createPortal(
+        <ConfirmDialog
+          open={confirmEditMembership}
+          icon={<Pencil size={32} />}
+          title={t("confirmUpdateMembershipTitle")}
+          body={t("confirmUpdateMembershipBody")}
+          cancelLabel={t("cancelLabel")}
+          confirmLabel={t("yesUpdate")}
+          onCancel={() => setConfirmEditMembership(false)}
+          onConfirm={performEditMembership}
+          z={9999}
+        />,
         document.body
       )}
 

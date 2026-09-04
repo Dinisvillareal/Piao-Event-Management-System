@@ -52,6 +52,9 @@ class DatabaseSeeder extends Seeder
             InventoryItemSeeder::class,
         ]);
         $this->call([
+            EventInventoryItemSeeder::class,
+        ]);
+        $this->call([
             EventExpenseSeeder::class,
         ]);
         $this->call([

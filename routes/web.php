@@ -114,6 +114,7 @@ Route::middleware('auth')->group(function () {
     */
     Route::get('/households', [HouseholdController::class, 'index']);
     Route::get('/households/unassigned', [HouseholdController::class, 'unassigned']);
+    Route::get('/households/options', [HouseholdController::class, 'options']);
     Route::get('/households/{id}', [HouseholdController::class, 'show']);
     Route::post('/households', [HouseholdController::class, 'store']);
     Route::put('/households/{id}', [HouseholdController::class, 'update']);

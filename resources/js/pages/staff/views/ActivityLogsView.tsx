@@ -135,7 +135,7 @@ export default function ActivityLogsView() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
+        <div className="sticky top-0 z-20 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
           <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("activitylogs")}</h1>
           <p className="mt-1 text-sm text-[#667777]">
             {t("activityLogsSubtitle")}
@@ -153,7 +153,7 @@ export default function ActivityLogsView() {
 
   return (
     <div className="space-y-6">
-      <div className="sticky top-0 z-40 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
+      <div className="sticky top-0 z-20 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
         <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("activitylogs")}</h1>
         <p className="mt-1 text-sm text-[#667777]">
           {t("activityLogsSubtitle")}
@@ -182,10 +182,10 @@ export default function ActivityLogsView() {
               >
                 <option value="all">{t("allActivities")}</option>
                 <option value="event">{t("events")}</option>
-                <option value="resident">{t("residents")}</option>
                 <option value="membership">{t("memberships")}</option>
                 <option value="notification">{t("notify")}</option>
                 <option value="scan">{t("qrScansOption")}</option>
+                <option value="resident">{t("residents")}</option>
                 <option value="system">{t("systemAuthOption")}</option>
               </select>
               <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />

@@ -268,7 +268,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                    className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
                                >
                                    <option value="all-residents">{t("allResidentsOption")}</option>
-                                   {memberships.map((m: Membership) => (
+                                   {memberships.slice().sort((a: Membership, b: Membership) => a.name.localeCompare(b.name)).map((m: Membership) => (
                                        <option key={m.id} value={String(m.id)}>
                                            {m.name}
                                        </option>
