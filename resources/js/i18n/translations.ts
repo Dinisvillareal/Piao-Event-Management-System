@@ -451,6 +451,10 @@ export const translations: Dict = {
   timeOutColumn: { en: "Time Out", tl: "Oras ng Labas", ceb: "Oras sa Paggawas" },
   statusColumn: { en: "Status", tl: "Status", ceb: "Status" },
   noMatchingRecords: { en: "No matching records found.", tl: "Walang natagpuang tumugmang rekord.", ceb: "Walay nakit-an nga parehas nga rekord." },
+  firstPageLabel: { en: "First page", tl: "Unang pahina", ceb: "Unang panid" },
+  previousPageLabel: { en: "Previous page", tl: "Nakaraang pahina", ceb: "Miaging panid" },
+  nextPageLabel: { en: "Next page", tl: "Susunod na pahina", ceb: "Sunod nga panid" },
+  lastPageLabel: { en: "Last page", tl: "Huling pahina", ceb: "Kataposang panid" },
   pageOfLabel: { en: "Page", tl: "Pahina", ceb: "Panid" },
   ofPagesLabel: { en: "of", tl: "ng", ceb: "sa" },
   recordsShownLabel: { en: "record(s) shown", tl: "rekord ang ipinapakita", ceb: "rekord ang gipakita" },
@@ -749,6 +753,17 @@ export const translations: Dict = {
   callTimeHint: { en: "Required. Sign-in is only allowed between Call Time and Start Time. Sign-out is only allowed between End Time and Call Time End.", tl: "Kinakailangan. Sign-in lang sa pagitan ng Call Time at Start Time. Sign-out lang sa pagitan ng End Time at Call Time End.", ceb: "Gikinahanglan. Ang sign-in gitugotan lang tunga-tunga sa Call Time ug Start Time. Ang sign-out gitugotan lang tunga-tunga sa End Time ug Call Time End." },
   setEndTimeFirstHint: { en: "Set End Time first", tl: "Itakda muna ang End Time", ceb: "I-set una ang End Time" },
   eventDateRequiredError: { en: "Please select an event date.", tl: "Pumili ng petsa ng kaganapan.", ceb: "Pagpili og petsa sa kalihokan." },
+  // Custom, on-brand replacements for the browser's own native "Please
+  // enter a valid value" popup -- every number field below now runs its
+  // own check (see noValidate on each form) and shows one of these
+  // instead of that native bubble.
+  itemNameRequiredError: { en: "Please enter an item name.", tl: "Maglagay ng pangalan ng item.", ceb: "Pagbutang og ngalan sa item." },
+  invalidQuantityError: { en: "Quantity must be a whole number of 0 or more.", tl: "Ang dami ay dapat buong numero na 0 o higit pa.", ceb: "Ang kantidad kinahanglan usa ka tibuok numero nga 0 o mas taas." },
+  bracketLabelRequiredError: { en: "Please enter a label for this age bracket.", tl: "Maglagay ng label para sa age bracket na ito.", ceb: "Pagbutang og label niini nga age bracket." },
+  invalidMinAgeError: { en: "Minimum age must be a whole number of 0 or more.", tl: "Ang pinakamababang edad ay dapat buong numero na 0 o higit pa.", ceb: "Ang pinakaubos nga edad kinahanglan usa ka tibuok numero nga 0 o mas taas." },
+  invalidMaxAgeError: { en: "Maximum age must be a whole number of 0 or more.", tl: "Ang pinakamataas na edad ay dapat buong numero na 0 o higit pa.", ceb: "Ang pinakataas nga edad kinahanglan usa ka tibuok numero nga 0 o mas taas." },
+  maxAgeLessThanMinError: { en: "Maximum age can't be less than minimum age.", tl: "Hindi maaaring mas mababa ang pinakamataas na edad kaysa sa pinakamababang edad.", ceb: "Ang pinakataas nga edad dili pwede nga ubos sa pinakaubos nga edad." },
+  invalidAmountError: { en: "Please enter a valid amount of 0 or more.", tl: "Maglagay ng wastong halaga na 0 o higit pa.", ceb: "Pagbutang og balido nga kantidad nga 0 o mas taas." },
   updateExpenseFailed: { en: "Failed to update expense.", tl: "Hindi na-update ang gastos.", ceb: "Napakyas pag-update sa gasto." },
   editExpenseTitle: { en: "Edit Expense", tl: "I-edit ang Gastos", ceb: "I-edit ang Gasto" },
   expenseTypeLabel: { en: "Expense", tl: "Gastos", ceb: "Gasto" },

@@ -163,7 +163,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
         <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={onCloseMobile} />
       )}
 
-      <button onClick={() => setIsOpen(!isOpen)} className={`hidden md:flex fixed top-4 z-50 bg-[#006666] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#005555] ${isOpen ? "left-[235px]" : "left-[50px]"}`}>
+      <button onClick={() => setIsOpen(!isOpen)} className={`hidden md:flex fixed top-4 z-[45] bg-[#006666] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#005555] ${isOpen ? "left-[235px]" : "left-[50px]"}`}>
         {isOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
       </button>
       <aside

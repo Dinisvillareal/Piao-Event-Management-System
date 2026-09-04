@@ -658,7 +658,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Floating Action Button */}
       <button
         onClick={() => setShowAddModal(true)}
-        className="sm:hidden fixed bottom-6 right-6 z-50 bg-[#005f63] hover:bg-[#004a4d] text-white rounded-full p-4 shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
+        className="sm:hidden fixed bottom-6 right-6 z-[45] bg-[#005f63] hover:bg-[#004a4d] text-white rounded-full p-4 shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
         aria-label={t("addNewMembershipAria")}
       >
         <Plus className="h-6 w-6" />

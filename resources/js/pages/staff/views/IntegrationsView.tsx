@@ -163,7 +163,7 @@ export default function IntegrationsView() {
             <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{error}</p>
-            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
+            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">
               {t("okLabel")}
             </button>
           </div>

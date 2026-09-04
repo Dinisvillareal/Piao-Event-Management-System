@@ -89,9 +89,31 @@ export default function ProfilingSettingsView() {
     !!statusForm.id &&
     statusForm.label === originalStatusForm.label;
 
+  // The form now carries noValidate (see below), so the browser's own
+  // "please enter a valid value" bubble never fires for the age fields --
+  // this is the app's own replacement, with an actual message instead of
+  // the old silent no-op when a field was missing.
   const submitBracket = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bracketForm.label.trim() || bracketForm.min_age === "") return;
+    setError(null);
+
+    if (!bracketForm.label.trim()) {
+      setError(t("bracketLabelRequiredError"));
+      return;
+    }
+    if (!/^\d+$/.test(bracketForm.min_age.trim())) {
+      setError(t("invalidMinAgeError"));
+      return;
+    }
+    if (bracketForm.max_age.trim() !== "" && !/^\d+$/.test(bracketForm.max_age.trim())) {
+      setError(t("invalidMaxAgeError"));
+      return;
+    }
+    if (bracketForm.max_age.trim() !== "" && Number(bracketForm.max_age) < Number(bracketForm.min_age)) {
+      setError(t("maxAgeLessThanMinError"));
+      return;
+    }
+
     setConfirmBracketSave(true);
   };
 
@@ -274,7 +296,7 @@ export default function ProfilingSettingsView() {
                 </div>
               ))}
 
-              <form onSubmit={submitBracket} className="mt-4 rounded-2xl border border-dashed border-gray-200 p-4 space-y-3">
+              <form onSubmit={submitBracket} noValidate className="mt-4 rounded-2xl border border-dashed border-gray-200 p-4 space-y-3">
                 <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">
                   {bracketForm.id ? t("editAgeBracketLabel") : t("addAgeBracketLabel")}
                 </p>
@@ -417,7 +439,7 @@ export default function ProfilingSettingsView() {
             <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{error}</p>
-            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
+            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">
               {t("okLabel")}
             </button>
           </div>

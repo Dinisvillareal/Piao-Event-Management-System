@@ -398,7 +398,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
             <p className="text-[15px] text-gray-600 mb-5">{downloadError}</p>
             <button
               onClick={() => setDownloadError(null)}
-              className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition"
+              className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition"
             >
               {t("okLabel")}
             </button>

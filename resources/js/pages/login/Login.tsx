@@ -759,7 +759,7 @@ export default function LoginPage() {
             <p className="text-[15px] text-gray-600 mb-5">This account has been deleted. You cannot log in.</p>
             <button
               onClick={() => { setShowAccountDeletedModal(false); window.location.href = "/login"; }}
-              className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition"
+              className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition"
             >
               OK
             </button>
@@ -778,7 +778,7 @@ export default function LoginPage() {
             <p className="text-[15px] text-gray-600 mb-5">{error}</p>
             <button
               onClick={() => setError("")}
-              className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition"
+              className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition"
             >
               OK
             </button>
@@ -787,7 +787,7 @@ export default function LoginPage() {
       )}
 
       {showCopiedToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full bg-teal-900 text-white text-sm font-medium px-5 py-2.5 shadow-xl animate-in fade-in slide-in-from-bottom-2">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2 rounded-full bg-teal-900 text-white text-sm font-medium px-5 py-2.5 shadow-xl animate-in fade-in slide-in-from-bottom-2">
           <CheckCircle size={16} className="text-teal-300" /> Number copied to clipboard!
         </div>
       )}

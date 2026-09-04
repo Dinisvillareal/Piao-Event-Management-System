@@ -187,7 +187,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
       {/* Toggle Button (desktop collapse) */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`hidden md:flex fixed top-4 z-50 bg-[#006666] text-white p-1.5 rounded-full shadow-md transition-all duration-300 ${
+        className={`hidden md:flex fixed top-4 z-[45] bg-[#006666] text-white p-1.5 rounded-full shadow-md transition-all duration-300 ${
           isOpen ? "left-[235px]" : "left-[55px]"
         }`}
       >

@@ -1764,7 +1764,7 @@ const handleDeleteResident = async () => {
             <div className="mb-4 text-red-500 flex justify-center"><XCircle size={40} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-3">{apiErrorTitle || t("errorTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-5">{apiError}</p>
-            <button onClick={() => setApiError(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">{t("okLabel")}</button>
+            <button onClick={() => setApiError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">{t("okLabel")}</button>
           </div>
         </div>
       )}

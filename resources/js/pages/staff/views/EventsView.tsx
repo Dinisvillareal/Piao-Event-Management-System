@@ -602,6 +602,15 @@ export function EventsView({
       }
     }
 
+    if (newEvent.approvedBudget.trim() !== "") {
+      const budgetValue = Number(newEvent.approvedBudget);
+      if (!Number.isFinite(budgetValue) || budgetValue < 0) {
+        setErrorMessage(t("invalidAmountError"));
+        setShowErrorModal(true);
+        return;
+      }
+    }
+
     setShowSaveConfirm(true);
   };
 
@@ -919,7 +928,7 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
         <div className={`transition-all duration-300 overflow-hidden shrink-0 ${formOpen ? "w-full lg:w-1/2 opacity-100" : "w-0 opacity-0"}`}>
           <div className="bg-white rounded-3xl border-gray-200 p-5 shadow-md h-full overflow-hidden flex flex-col">
             <h2 className="text-xl font-bold text-[#005f63] mb-4">{editingEvent ? t("editEventTitle") : t("createNewEvent")}</h2>
-            <form onSubmit={handleSaveEvent} className="space-y-4 flex-1 overflow-y-auto pr-1">
+            <form onSubmit={handleSaveEvent} noValidate className="space-y-4 flex-1 overflow-y-auto pr-1">
               <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("eventTitleRequired")}</label><input type="text" required value={newEvent.title} placeholder={t("eventTitlePlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
 
               <div>
@@ -997,7 +1006,7 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
                             value={row.quantity}
                             onChange={(e) => {
                               const raw = e.target.value;
-                              const clamped = raw === "" ? "" : String(Math.max(1, Math.min(max || 1, Number(raw) || 1)));
+                              const clamped = raw === "" ? "" : String(Math.max(1, Math.min(max || 1, Math.round(Number(raw)) || 1)));
                               updateBorrowQuantity(row.inventoryItemId, clamped);
                             }}
                             className="w-16 rounded-full border border-gray-200 px-2 py-1 text-sm text-center"

@@ -550,7 +550,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                        <p className="text-[15px] text-gray-600 mb-5">{t("eventCancelledAlert")}</p>
                        <button
                            onClick={() => setShowCancelledModal(false)}
-                           className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition"
+                           className="px-6 py-2.5 rounded-full bg-orange-500 hover:bg-orange-600 text-white transition"
                        >
                            {t("okLabel")}
                        </button>

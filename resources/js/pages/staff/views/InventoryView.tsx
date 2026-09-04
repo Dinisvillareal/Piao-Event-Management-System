@@ -116,9 +116,24 @@ export default function InventoryView() {
   };
 
   // Form submit only opens the "are you sure" step -- the actual save
-  // happens in performSave, once the user confirms.
+  // happens in performSave, once the user confirms. The form now carries
+  // noValidate (see below), so this is the ONLY thing standing between a
+  // bad value and the API -- the browser's own "please enter a valid
+  // value" bubble no longer fires, on purpose, in favor of the app's own
+  // error modal below.
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
+    if (!form.name.trim()) {
+      setError(t("itemNameRequiredError"));
+      return;
+    }
+    if (!Number.isInteger(form.quantity) || form.quantity < 0) {
+      setError(t("invalidQuantityError"));
+      return;
+    }
+
     setShowConfirm(true);
   };
 
@@ -269,7 +284,7 @@ export default function InventoryView() {
               <h2 className="text-xl font-black text-[#005f63]">{editing ? t("editItem") : t("addInventoryItem")}</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
             </div>
-            <form onSubmit={handleFormSubmit} className="space-y-4">
+            <form onSubmit={handleFormSubmit} noValidate className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t("itemNameRequired")}</label>
                 <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm" placeholder="Plastic chairs" />
@@ -318,7 +333,7 @@ export default function InventoryView() {
             <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{error}</p>
-            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
+            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">
               {t("okLabel")}
             </button>
           </div>

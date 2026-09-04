@@ -199,6 +199,17 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     e.preventDefault();
     if (!selectedEventId || isExpenseLocked) return;
     setError(null);
+
+    if (!form.item.trim()) {
+      setError(t("itemNameRequiredError"));
+      return;
+    }
+    const amountValue = Number(form.amount);
+    if (form.amount.trim() === "" || !Number.isFinite(amountValue) || amountValue < 0) {
+      setError(t("invalidAmountError"));
+      return;
+    }
+
     setShowAddExpenseConfirm(true);
   };
 
@@ -234,6 +245,18 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   const handleUpdateExpense = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingExpense || !selectedEventId) return;
+    setError(null);
+
+    if (!editForm.item.trim()) {
+      setError(t("itemNameRequiredError"));
+      return;
+    }
+    const amountValue = Number(editForm.amount);
+    if (editForm.amount.trim() === "" || !Number.isFinite(amountValue) || amountValue < 0) {
+      setError(t("invalidAmountError"));
+      return;
+    }
+
     setShowEditExpenseConfirm(true);
   };
 
@@ -327,8 +350,17 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               </p>
               <div className="flex items-center gap-1.5">
                 <button
+                  onClick={() => setEventListPage(1)}
+                  disabled={eventListPage === 1}
+                  title={t("firstPageLabel")}
+                  className="h-7 w-7 rounded-full border border-gray-300 bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  «
+                </button>
+                <button
                   onClick={() => setEventListPage((p) => Math.max(1, p - 1))}
                   disabled={eventListPage === 1}
+                  title={t("previousPageLabel")}
                   className="h-7 w-7 rounded-full border border-gray-300 bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
                 >
                   ←
@@ -339,9 +371,18 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                 <button
                   onClick={() => setEventListPage((p) => Math.min(eventListTotalPages, p + 1))}
                   disabled={eventListPage === eventListTotalPages}
+                  title={t("nextPageLabel")}
                   className="h-7 w-7 rounded-full border border-gray-300 bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
                 >
                   →
+                </button>
+                <button
+                  onClick={() => setEventListPage(eventListTotalPages)}
+                  disabled={eventListPage === eventListTotalPages}
+                  title={t("lastPageLabel")}
+                  className="h-7 w-7 rounded-full border border-gray-300 bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                >
+                  »
                 </button>
               </div>
             </div>
@@ -395,7 +436,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                   {t("expenseAddLockedHint")}
                 </p>
               )}
-              <form onSubmit={handleAddExpense} className="grid sm:grid-cols-[1fr_140px_auto] gap-2">
+              <form onSubmit={handleAddExpense} noValidate className="grid sm:grid-cols-[1fr_140px_auto] gap-2">
                 <input required disabled={isExpenseLocked} value={form.item} onChange={(e) => setForm((p) => ({ ...p, item: e.target.value }))} placeholder={t("itemExpenseDescPlaceholder")} className="rounded-full border border-gray-200 px-4 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed" />
                 <input required disabled={isExpenseLocked} type="number" min={0} step="0.01" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} placeholder={t("amountPlaceholder")} className="rounded-full border border-gray-200 px-4 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed" />
                 <button
@@ -454,7 +495,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
             <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{error}</p>
-            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
+            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">
               {t("okLabel")}
             </button>
           </div>
@@ -468,7 +509,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               <h2 className="text-xl font-black text-[#005f63]">{t("editExpenseTitle")}</h2>
               <button onClick={() => setEditingExpense(null)} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
             </div>
-            <form onSubmit={handleUpdateExpense} className="space-y-4">
+            <form onSubmit={handleUpdateExpense} noValidate className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{t("itemExpenseDescPlaceholder")}</label>
                 <input required value={editForm.item} onChange={(e) => setEditForm((p) => ({ ...p, item: e.target.value }))} className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm" />
