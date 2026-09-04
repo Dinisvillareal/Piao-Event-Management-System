@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Package, Plus, X, MapPin, Trash2, Pencil, XCircle, CheckCircle } from "lucide-react";
+import { Package, Plus, X, MapPin, Trash2, Pencil, XCircle, CheckCircle, AlertTriangle } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -14,6 +15,10 @@ interface InventoryItem {
   condition: Condition;
   storage_location: string | null;
   notes: string | null;
+  // How many units are currently lent out to a still-active event (see
+  // InventoryItem::borrows() on the backend). >0 means the item can't be
+  // deleted yet -- it has to be returned to Inventory first.
+  borrowed_quantity: number;
 }
 
 const CONDITION_STYLES: Record<Condition, string> = {
@@ -51,6 +56,9 @@ export default function InventoryView() {
   const [conditionFilter, setConditionFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<InventoryItem | null>(null);
+  // Closing the Add/Edit Item modal (X, Cancel, or the backdrop) with
+  // unsaved changes asks first instead of silently discarding them.
+  const [showFormCancelConfirm, setShowFormCancelConfirm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -94,6 +102,15 @@ export default function InventoryView() {
     form.storage_location === (editing.storage_location ?? "") &&
     form.notes === (editing.notes ?? "")
   );
+
+  const hasFormChanges = editing
+    ? !isFormUnchanged
+    : JSON.stringify(form) !== JSON.stringify(emptyForm);
+
+  const handleCloseForm = () => {
+    if (hasFormChanges) setShowFormCancelConfirm(true);
+    else setShowForm(false);
+  };
 
   const openAdd = () => {
     setEditing(null);
@@ -195,16 +212,18 @@ export default function InventoryView() {
         <div className="flex-1">
           <SearchBar value={search} onChange={setSearch} placeholder={t("searchInventoryPlaceholder")} />
         </div>
-        <select
+        <FilterDropdown
           value={conditionFilter}
-          onChange={(e) => setConditionFilter(e.target.value)}
-          className="h-14 px-4 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm"
-        >
-          <option value="">{t("allConditions")}</option>
-          {(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as Condition[]).map((c) => (
-            <option key={c} value={c}>{t(CONDITION_LABEL_KEYS[c])}</option>
-          ))}
-        </select>
+          onChange={setConditionFilter}
+          options={[
+            { value: "", label: t("allConditions") },
+            ...(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as Condition[]).map((c) => ({
+              value: c,
+              label: t(CONDITION_LABEL_KEYS[c]),
+            })),
+          ]}
+          className="h-14 px-4"
+        />
       </div>
 
       {loading ? (
@@ -221,11 +240,16 @@ export default function InventoryView() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {paginatedItems.map((item) => (
             <div key={item.id} className="rounded-[24px] border border-[#ddd5ca] bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#005f63]/10">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#005f63]/10 shrink-0">
                   <Package className="h-5 w-5 text-[#005f63]" />
                 </div>
-                <span className={`px-2 py-1 rounded-full text-[11px] font-semibold ${CONDITION_STYLES[item.condition]}`}>{t(CONDITION_LABEL_KEYS[item.condition])}</span>
+                <div className="flex flex-wrap justify-end gap-1">
+                  {item.borrowed_quantity > 0 && (
+                    <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700">{t("onLoanBadge")}</span>
+                  )}
+                  <span className={`px-2 py-1 rounded-full text-[11px] font-semibold ${CONDITION_STYLES[item.condition]}`}>{t(CONDITION_LABEL_KEYS[item.condition])}</span>
+                </div>
               </div>
               <h3 className="mt-3 font-bold text-[#005f63] truncate" title={item.name}>{item.name}</h3>
               <p className="text-2xl font-black text-gray-800 mt-1">{item.quantity} <span className="text-xs font-medium text-gray-400">{t("inStock")}</span></p>
@@ -235,12 +259,24 @@ export default function InventoryView() {
                 </p>
               )}
               {/* Same size/shape for both -- Edit amber, Delete red,
-                  matching the Edit/Delete color pairing used on Residents. */}
+                  matching the Edit/Delete color pairing used on Residents.
+                  Delete is disabled while any units are out on loan --
+                  deleting an item that an active event still points to
+                  would orphan its borrow record (see InventoryController::destroy). */}
               <div className="mt-4 flex gap-2">
                 <button onClick={() => openEdit(item)} className="flex-1 rounded-full border border-amber-200 p-2 flex items-center justify-center text-amber-500 hover:bg-amber-50 transition" title={t("editLabel")}>
                   <Pencil className="h-4 w-4" />
                 </button>
-                <button onClick={() => setDeleteId(item.id)} className="flex-1 rounded-full border border-red-200 p-2 flex items-center justify-center text-red-500 hover:bg-red-50 transition" title={t("removeLabel")}>
+                <button
+                  onClick={() => item.borrowed_quantity === 0 && setDeleteId(item.id)}
+                  disabled={item.borrowed_quantity > 0}
+                  className={`flex-1 rounded-full border p-2 flex items-center justify-center transition ${
+                    item.borrowed_quantity > 0
+                      ? "border-gray-200 text-gray-300 cursor-not-allowed"
+                      : "border-red-200 text-red-500 hover:bg-red-50"
+                  }`}
+                  title={item.borrowed_quantity > 0 ? t("itemCurrentlyBorrowedTooltip") : t("removeLabel")}
+                >
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
@@ -278,11 +314,11 @@ export default function InventoryView() {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setShowForm(false)}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={handleCloseForm}>
           <div className="bg-white rounded-[30px] w-full max-w-lg p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-black text-[#005f63]">{editing ? t("editItem") : t("addInventoryItem")}</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
+              <button onClick={handleCloseForm} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
             </div>
             <form onSubmit={handleFormSubmit} noValidate className="space-y-4">
               <div>
@@ -320,9 +356,32 @@ export default function InventoryView() {
                 >
                   {editing ? t("updateItem") : t("addItem")}
                 </button>
-                <button type="button" onClick={() => setShowForm(false)} className="px-6 py-2.5 rounded-full border border-gray-300 bg-gray-50 text-gray-600">{t("cancelLabel")}</button>
+                <button type="button" onClick={handleCloseForm} className="px-6 py-2.5 rounded-full border border-gray-300 bg-gray-50 text-gray-600">{t("cancelLabel")}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved-changes guard for the Add/Edit Item modal */}
+      {showFormCancelConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setShowFormCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("stayButton")}</button>
+              <button
+                onClick={() => {
+                  setShowFormCancelConfirm(false);
+                  setShowForm(false);
+                }}
+                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+              >
+                {t("discardCloseButton")}
+              </button>
+            </div>
           </div>
         </div>
       )}

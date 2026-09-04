@@ -1,13 +1,18 @@
 import React, { useEffect, useState } from "react";
-import { Users2, Heart, Plus, Pencil, Trash2, XCircle, CheckCircle } from "lucide-react";
+import { Users2, Heart, Tag, Plus, Pencil, Trash2, XCircle, CheckCircle } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
  * Adviser example (Senior Citizen eligibility) — extended to Youth and
- * Solo Parent: this screen lets Staff manage the age brackets and
- * civil/current statuses used to gate membership eligibility, instead of
- * those being hardcoded in the backend.
+ * Solo Parent: this screen lets Staff manage the age brackets, civil
+ * statuses, and current statuses used to gate membership eligibility,
+ * instead of those being hardcoded in the backend.
+ *
+ * Civil Status (Single/Married/Widowed/Separated) and Current Status
+ * (Solo Parent, etc.) are two independent taxonomies -- a resident's
+ * civil status and current status are set separately, and either can be
+ * used on its own as a membership eligibility gate.
  */
 
 interface AgeBracket {
@@ -24,6 +29,12 @@ interface CivilStatus {
   sort_order: number;
 }
 
+interface CurrentStatus {
+  id: number;
+  label: string;
+  sort_order: number;
+}
+
 const csrfToken = () =>
   decodeURIComponent(
     document.cookie.split("; ").find((r) => r.startsWith("XSRF-TOKEN="))?.split("=")[1] ?? ""
@@ -34,30 +45,37 @@ export default function ProfilingSettingsView() {
 
   const [ageBrackets, setAgeBrackets] = useState<AgeBracket[]>([]);
   const [civilStatuses, setCivilStatuses] = useState<CivilStatus[]>([]);
+  const [currentStatuses, setCurrentStatuses] = useState<CurrentStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const [bracketForm, setBracketForm] = useState({ id: null as number | null, label: "", min_age: "", max_age: "" });
   const [statusForm, setStatusForm] = useState({ id: null as number | null, label: "" });
+  const [currentStatusForm, setCurrentStatusForm] = useState({ id: null as number | null, label: "" });
   const [originalBracketForm, setOriginalBracketForm] = useState({ id: null as number | null, label: "", min_age: "", max_age: "" });
   const [originalStatusForm, setOriginalStatusForm] = useState({ id: null as number | null, label: "" });
+  const [originalCurrentStatusForm, setOriginalCurrentStatusForm] = useState({ id: null as number | null, label: "" });
   const [savingBracket, setSavingBracket] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
-  const [pendingDelete, setPendingDelete] = useState<{ type: "bracket" | "status"; id: number; label: string } | null>(null);
+  const [savingCurrentStatus, setSavingCurrentStatus] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<{ type: "bracket" | "civilStatus" | "currentStatus"; id: number; label: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [confirmBracketSave, setConfirmBracketSave] = useState(false);
   const [confirmStatusSave, setConfirmStatusSave] = useState(false);
+  const [confirmCurrentStatusSave, setConfirmCurrentStatusSave] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [b, c] = await Promise.all([
+      const [b, c, cs] = await Promise.all([
         fetch("/age-brackets", { headers: { Accept: "application/json" } }).then((r) => r.json()),
         fetch("/civil-statuses", { headers: { Accept: "application/json" } }).then((r) => r.json()),
+        fetch("/current-statuses", { headers: { Accept: "application/json" } }).then((r) => r.json()),
       ]);
       setAgeBrackets(Array.isArray(b) ? b : []);
       setCivilStatuses(Array.isArray(c) ? c : []);
+      setCurrentStatuses(Array.isArray(cs) ? cs : []);
     } catch (e) {
       console.error("profiling settings load:", e);
       setError(t("loadProfilingSettingsFailed"));
@@ -80,6 +98,11 @@ export default function ProfilingSettingsView() {
     setStatusForm(empty);
     setOriginalStatusForm(empty);
   };
+  const resetCurrentStatusForm = () => {
+    const empty = { id: null, label: "" };
+    setCurrentStatusForm(empty);
+    setOriginalCurrentStatusForm(empty);
+  };
   const isBracketFormUnchanged =
     !!bracketForm.id &&
     bracketForm.label === originalBracketForm.label &&
@@ -88,6 +111,9 @@ export default function ProfilingSettingsView() {
   const isStatusFormUnchanged =
     !!statusForm.id &&
     statusForm.label === originalStatusForm.label;
+  const isCurrentStatusFormUnchanged =
+    !!currentStatusForm.id &&
+    currentStatusForm.label === originalCurrentStatusForm.label;
 
   // The form now carries noValidate (see below), so the browser's own
   // "please enter a valid value" bubble never fires for the age fields --
@@ -229,14 +255,75 @@ export default function ProfilingSettingsView() {
     }
   };
 
+  const submitCurrentStatus = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (!currentStatusForm.label.trim()) {
+      setError(t("currentStatusLabelRequiredError"));
+      return;
+    }
+    setConfirmCurrentStatusSave(true);
+  };
+
+  const performSubmitCurrentStatus = async () => {
+    setConfirmCurrentStatusSave(false);
+    setSavingCurrentStatus(true);
+    setError(null);
+    try {
+      const url = currentStatusForm.id ? `/current-statuses/${currentStatusForm.id}` : "/current-statuses";
+      const method = currentStatusForm.id ? "PUT" : "POST";
+      const res = await fetch(url, {
+        method,
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          "X-XSRF-TOKEN": csrfToken(),
+        },
+        body: JSON.stringify({ label: currentStatusForm.label }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const wasEditing = !!currentStatusForm.id;
+      resetCurrentStatusForm();
+      load();
+      setSuccessMessage(wasEditing ? t("currentStatusUpdatedSuccess") : t("currentStatusAddedSuccess"));
+    } catch (e) {
+      console.error("save current status:", e);
+      setError(t("saveCurrentStatusFailed"));
+      // Revert to what's actually saved instead of leaving the rejected
+      // edit sitting in the form.
+      if (currentStatusForm.id) setCurrentStatusForm(originalCurrentStatusForm);
+    } finally {
+      setSavingCurrentStatus(false);
+    }
+  };
+
+  const deleteCurrentStatus = async (id: number) => {
+    try {
+      const res = await fetch(`/current-statuses/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: { Accept: "application/json", "X-XSRF-TOKEN": csrfToken() },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      load();
+      setSuccessMessage(t("currentStatusDeletedSuccess"));
+    } catch (e) {
+      console.error("delete current status:", e);
+      setError(t("deleteCurrentStatusFailed"));
+    }
+  };
+
   const confirmPendingDelete = async () => {
     if (!pendingDelete) return;
     setDeleting(true);
     try {
       if (pendingDelete.type === "bracket") {
         await deleteBracket(pendingDelete.id);
-      } else {
+      } else if (pendingDelete.type === "civilStatus") {
         await deleteStatus(pendingDelete.id);
+      } else {
+        await deleteCurrentStatus(pendingDelete.id);
       }
     } finally {
       setDeleting(false);
@@ -382,7 +469,7 @@ export default function ProfilingSettingsView() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPendingDelete({ type: "status", id: s.id, label: s.label })}
+                      onClick={() => setPendingDelete({ type: "civilStatus", id: s.id, label: s.label })}
                       className="p-1.5 rounded-full hover:bg-red-50 text-red-500"
                       title={t("deleteTitle")}
                     >
@@ -412,6 +499,81 @@ export default function ProfilingSettingsView() {
                     )}
                     <button type="submit" disabled={savingStatus || isStatusFormUnchanged} title={isStatusFormUnchanged ? t("noChangesToSaveHint") : undefined} className="inline-flex items-center gap-2 bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-full text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
                       <Plus className="h-4 w-4" /> {statusForm.id ? t("saveChanges") : t("addCivilStatusLabel")}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Current Status card */}
+      <div className="rounded-[24px] border border-[#ddd5ca] bg-white overflow-hidden">
+        <div className="h-1.5 bg-gradient-to-r from-purple-400 to-pink-300" />
+        <div className="p-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-purple-100">
+              <Tag className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-black text-[#005f63]">{t("currentStatusesTitle")}</h2>
+              <p className="text-xs text-gray-500">{t("currentStatusesDesc")}</p>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="mt-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+          ) : (
+            <div className="mt-5 space-y-2">
+              {currentStatuses.map((s) => (
+                <div key={s.id} className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 border border-gray-100 px-4 py-2.5">
+                  <p className="text-sm font-semibold text-gray-800">{s.label}</p>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const initial = { id: s.id, label: s.label };
+                        setCurrentStatusForm(initial);
+                        setOriginalCurrentStatusForm(initial);
+                      }}
+                      className="p-1.5 rounded-full hover:bg-orange-50 text-orange-600"
+                      title={t("editLabel")}
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDelete({ type: "currentStatus", id: s.id, label: s.label })}
+                      className="p-1.5 rounded-full hover:bg-red-50 text-red-500"
+                      title={t("deleteTitle")}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              <form onSubmit={submitCurrentStatus} className="mt-4 rounded-2xl border border-dashed border-gray-200 p-4 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">
+                  {currentStatusForm.id ? t("editCurrentStatusLabel") : t("addCurrentStatusLabel")}
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    value={currentStatusForm.label}
+                    onChange={(e) => setCurrentStatusForm((p) => ({ ...p, label: e.target.value }))}
+                    placeholder={t("currentStatusLabelPlaceholder")}
+                    className="flex-1 rounded-full border border-gray-200 px-4 py-2 text-sm"
+                    required
+                  />
+                  <div className="flex gap-2 justify-end">
+                    {currentStatusForm.id && (
+                      <button type="button" onClick={resetCurrentStatusForm} className="px-4 py-2 rounded-full border border-gray-300 text-gray-700 text-sm hover:bg-gray-50">
+                        {t("cancelLabel")}
+                      </button>
+                    )}
+                    <button type="submit" disabled={savingCurrentStatus || isCurrentStatusFormUnchanged} title={isCurrentStatusFormUnchanged ? t("noChangesToSaveHint") : undefined} className="inline-flex items-center gap-2 bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-full text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap">
+                      <Plus className="h-4 w-4" /> {currentStatusForm.id ? t("saveChanges") : t("addCurrentStatusLabel")}
                     </button>
                   </div>
                 </div>
@@ -470,6 +632,17 @@ export default function ProfilingSettingsView() {
         confirmLabel={statusForm.id ? t("yesUpdate") : t("yesAdd")}
         onCancel={() => setConfirmStatusSave(false)}
         onConfirm={performSubmitStatus}
+      />
+
+      <ConfirmDialog
+        open={confirmCurrentStatusSave}
+        icon={currentStatusForm.id ? <Pencil size={32} /> : <Plus size={32} />}
+        title={currentStatusForm.id ? t("confirmUpdateCurrentStatusTitle") : t("confirmAddCurrentStatusTitle")}
+        body={currentStatusForm.id ? t("confirmUpdateCurrentStatusBody") : t("confirmAddCurrentStatusBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={currentStatusForm.id ? t("yesUpdate") : t("yesAdd")}
+        onCancel={() => setConfirmCurrentStatusSave(false)}
+        onConfirm={performSubmitCurrentStatus}
       />
 
       {pendingDelete && (

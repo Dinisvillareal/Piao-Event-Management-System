@@ -33,6 +33,11 @@ class ActivityLogController extends Controller
                 'notification'=> 'Notifications',
                 'scan'         => 'QR',
                 'system'       => 'Authentication',
+                'inventory'    => 'Inventory',
+                'budget'       => 'Budget',
+                'household'    => 'Households',
+                'profiling'    => 'Profiling Settings',
+                'archive'      => 'Archive',
             ];
 
             if (isset($moduleMap[$request->type])) {

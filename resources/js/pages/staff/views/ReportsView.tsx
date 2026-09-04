@@ -3,6 +3,7 @@ import { Filter, Printer, TrendingUp, Users, CalendarDays, Star, Award, Wallet, 
 import api, { apiErrorMessage } from "../../../lib/api";
 import { BarChart, DonutChart } from "../../../components/ui/Charts";
 import DateRangePicker from "../../../components/ui/DateRangePicker";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface Membership {
@@ -216,36 +217,37 @@ export default function ReportsView({ memberships = [] }: ReportsViewProps) {
                 clearLabel={t("clearLabel")}
                 applyLabel={t("applyLabel")}
               />
-              <div className="relative">
-                <select value={membershipId} onChange={(e) => setMembershipId(e.target.value)} className="h-11 pl-9 pr-6 rounded-full border border-[#005f63]/20 bg-white text-sm appearance-none">
-                  <option value="">{t("allMembershipsOption")}</option>
-                  {memberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
-                    <option key={m.id} value={String(m.id)}>{m.name}</option>
-                  ))}
-                </select>
-                <Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-              </div>
-              <div className="relative">
-                <select value={ageGroup} onChange={(e) => setAgeGroup(e.target.value)} className="h-11 pl-9 pr-6 rounded-full border border-[#005f63]/20 bg-white text-sm appearance-none">
-                  {AGE_GROUPS.map((g) => (
-                    <option key={g.key} value={g.key}>{t(g.labelKey)}</option>
-                  ))}
-                </select>
-                <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-              </div>
+              <FilterDropdown
+                value={membershipId}
+                onChange={setMembershipId}
+                options={[
+                  { value: "", label: t("allMembershipsOption") },
+                  ...memberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
+                ]}
+                className="h-11 pl-9 pr-6"
+                icon={<Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+              />
+              <FilterDropdown
+                value={ageGroup}
+                onChange={setAgeGroup}
+                options={AGE_GROUPS.map((g) => ({ value: g.key, label: t(g.labelKey) }))}
+                className="h-11 pl-9 pr-6"
+                icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+              />
             </>
           )}
 
           {reportType === "membership" && (
-            <div className="relative">
-              <select value={membershipId} onChange={(e) => setMembershipId(e.target.value)} className="h-11 pl-9 pr-6 rounded-full border border-[#005f63]/20 bg-white text-sm appearance-none">
-                <option value="">{t("allMembershipsOption")}</option>
-                {memberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
-                  <option key={m.id} value={String(m.id)}>{m.name}</option>
-                ))}
-              </select>
-              <Award className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-            </div>
+            <FilterDropdown
+              value={membershipId}
+              onChange={setMembershipId}
+              options={[
+                { value: "", label: t("allMembershipsOption") },
+                ...memberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
+              ]}
+              className="h-11 pl-9 pr-6"
+              icon={<Award className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+            />
           )}
 
           {reportType === "budget" && (
@@ -266,15 +268,16 @@ export default function ReportsView({ memberships = [] }: ReportsViewProps) {
           )}
 
           {reportType === "inventory" && (
-            <div className="relative">
-              <select value={conditionFilter} onChange={(e) => setConditionFilter(e.target.value)} className="h-11 pl-9 pr-6 rounded-full border border-[#005f63]/20 bg-white text-sm appearance-none">
-                <option value="">{t("allConditionsOption")}</option>
-                {CONDITIONS.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <Package className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-            </div>
+            <FilterDropdown
+              value={conditionFilter}
+              onChange={setConditionFilter}
+              options={[
+                { value: "", label: t("allConditionsOption") },
+                ...CONDITIONS.map((c) => ({ value: c, label: c })),
+              ]}
+              className="h-11 pl-9 pr-6"
+              icon={<Package className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+            />
           )}
         </div>
       </div>

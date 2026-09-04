@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
 import { Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, AlertTriangle, Filter } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -302,32 +303,30 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
                    <div className="flex gap-3 items-stretch">
                        {/* Date Filter */}
-                       <div className="relative h-full">
-                           <select
-                               value={dateFilter}
-                               onChange={(e) => setDateFilter(e.target.value)}
-                               className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
-                           >
-                               <option value="all">{t("allNotifications")}</option>
-                               <option value="upcoming">{t("upcomingOption")}</option>
-                               <option value="past">{t("pastOption")}</option>
-                           </select>
-                           <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-                       </div>
+                       <FilterDropdown
+                           value={dateFilter}
+                           onChange={setDateFilter}
+                           options={[
+                               { value: "all", label: t("allNotifications") },
+                               { value: "upcoming", label: t("upcomingOption") },
+                               { value: "past", label: t("pastOption") },
+                           ]}
+                           className="h-full pl-10 pr-8"
+                           icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+                       />
 
                        {/* Status Filter */}
-                       <div className="relative h-full">
-                           <select
-                               value={statusFilter}
-                               onChange={(e) => setStatusFilter(e.target.value)}
-                               className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
-                           >
-                               <option value="all">{t("allStatus")}</option>
-                               <option value="read">{t("readOption")}</option>
-                               <option value="unread">{t("unreadOption")}</option>
-                           </select>
-                           <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-                       </div>
+                       <FilterDropdown
+                           value={statusFilter}
+                           onChange={setStatusFilter}
+                           options={[
+                               { value: "all", label: t("allStatus") },
+                               { value: "read", label: t("readOption") },
+                               { value: "unread", label: t("unreadOption") },
+                           ]}
+                           className="h-full pl-10 pr-8"
+                           icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+                       />
                    </div>
                </div>
 

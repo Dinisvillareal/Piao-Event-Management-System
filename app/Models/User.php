@@ -53,6 +53,7 @@ class User extends Authenticatable
         'age',
         'age_group',
         'civil_status',
+        'current_statuses',
     ];
 
     // =====================
@@ -141,7 +142,8 @@ class User extends Authenticatable
 
     /**
      * Adviser example (Senior Citizen eligibility) extended to a
-     * Staff-configurable civil/current status -- covers Solo Parent, etc.
+     * Staff-configurable civil status list (Single/Married/Widowed/
+     * Separated -- mutually exclusive marital facts).
      */
     public function civilStatus()
     {
@@ -154,5 +156,27 @@ class User extends Authenticatable
         // studly-case collision between the "civilStatus" relation and this
         // "civil_status" accessor, which would otherwise recurse infinitely.
         return $this->getRelationValue('civilStatus')?->label;
+    }
+
+    /**
+     * Staff-configurable "current status" tags (Solo Parent, PWD,
+     * Indigent, and similar social/economic categories) -- deliberately
+     * separate from civil status, and many-to-many rather than a single
+     * column, since these aren't mutually exclusive: a resident can be,
+     * say, both a Solo Parent and PWD at once.
+     */
+    public function currentStatuses()
+    {
+        return $this->belongsToMany(CurrentStatus::class, 'current_status_user')->orderBy('sort_order');
+    }
+
+    public function getCurrentStatusesAttribute(): array
+    {
+        // Use getRelationValue() (not $this->currentStatuses) to avoid the
+        // same accessor/relation name collision guarded against above.
+        return $this->getRelationValue('currentStatuses')
+            ->map(fn (CurrentStatus $status) => ['id' => $status->id, 'label' => $status->label])
+            ->values()
+            ->all();
     }
 }

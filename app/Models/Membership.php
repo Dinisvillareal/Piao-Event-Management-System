@@ -10,7 +10,7 @@ class Membership extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['name', 'description', 'is_active', 'deactivated_reason','deleted_by', 'eligible_age_bracket_id', 'eligible_civil_status_id', 'eligible_gender'];
+    protected $fillable = ['name', 'description', 'is_active', 'deactivated_reason','deleted_by', 'eligible_age_bracket_id', 'eligible_civil_status_id', 'eligible_current_status_id', 'eligible_gender'];
 
     public $timestamps = false;
 
@@ -53,6 +53,11 @@ class Membership extends Model
     public function eligibleCivilStatus()
     {
         return $this->belongsTo(CivilStatus::class, 'eligible_civil_status_id');
+    }
+
+    public function eligibleCurrentStatus()
+    {
+        return $this->belongsTo(CurrentStatus::class, 'eligible_current_status_id');
     }
 
     // ✅ ADD THIS METHOD - Archive (soft delete)

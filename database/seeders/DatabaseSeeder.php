@@ -18,10 +18,11 @@ class DatabaseSeeder extends Seeder
     {
         // Adviser example (Senior Citizen eligibility) extended to Youth /
         // Solo Parent -- must run first so UserSeeder / MembershipSeeder can
-        // reference real age bracket / civil status ids.
+        // reference real age bracket / civil status / current status ids.
         $this->call([
             AgeBracketSeeder::class,
             CivilStatusSeeder::class,
+            CurrentStatusSeeder::class,
         ]);
         $this->call([
             UserSeeder::class,

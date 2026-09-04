@@ -3,6 +3,7 @@ import { Filter, XCircle, Archive, CheckCircle, RotateCcw, AlertTriangle, Plus, 
 import SearchBar from "../../../components/ui/SearchBar";
 import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -15,6 +16,18 @@ interface Membership {
 interface CivilStatusOption {
   id: number;
   label: string;
+}
+
+interface CurrentStatusOption {
+  id: number;
+  label: string;
+}
+
+interface AgeBracketOption {
+  id: number;
+  label: string;
+  min_age: number;
+  max_age: number | null;
 }
 
 interface HouseholdOption {
@@ -43,6 +56,8 @@ interface ResidentRow {
   ageGroup: string | null;
   civilStatusId: number | null;
   civilStatus: string | null;
+  currentStatusIds: number[];
+  currentStatuses: { id: number; label: string }[];
   gender: string | null;
   isHouseholdHead: boolean;
   household: HouseholdOption | null;
@@ -61,6 +76,7 @@ type AddForm = {
   birthDate: string;
   address: string;
   civilStatusId: number | null;
+  currentStatusIds: number[];
   gender: string;
   isHouseholdHead: boolean;
   householdId: number | null;
@@ -84,6 +100,7 @@ type EditForm = {
   birthDate: string;
   address: string;
   civilStatusId: number | null;
+  currentStatusIds: number[];
   gender: string;
   isHouseholdHead: boolean;
   householdId: number | null;
@@ -162,25 +179,11 @@ const emptyAdd = (): AddForm => ({
   birthDate: "",
   address: "",
   civilStatusId: null,
+  currentStatusIds: [],
   gender: "",
   isHouseholdHead: false,
   householdId: null,
 });
-
-const AGE_GROUPS = [
-  { key: "all", labelKey: "ageGroupAllOption" },
-  { key: "child", labelKey: "ageGroupChildOption" },
-  { key: "youth", labelKey: "ageGroupYouthOption" },
-  { key: "adult", labelKey: "ageGroupAdultOption" },
-  { key: "senior", labelKey: "ageGroupSeniorOption" },
-];
-
-const AGE_GROUP_LABELS: Record<string, string> = {
-  child: "Child",
-  youth: "Youth",
-  adult: "Adult",
-  senior: "Senior Citizen",
-};
 
 // ─── Normalize helper for duplicate checking ──────────────────────────────────
 const normalizeName = (s: string) =>
@@ -254,6 +257,33 @@ export default function ResidentsView() {
     [editingResident, initialEditData, editPhotoChanged]
   );
 
+  // The member currently flagged as head of the selected household (if
+  // any). Only one member can ever be head, so reassigning it is never a
+  // silent side effect of checking a box on someone else's form -- while
+  // this household already has a head, the checkbox stays disabled and
+  // explains who to uncheck first. It goes back to editable the moment
+  // that person steps down (or is removed from the household).
+  const addFormExistingHead = useMemo(() => {
+    if (!newResident.householdId) return null;
+    return (
+      residentsData.find(
+        (r) => r.household?.id === newResident.householdId && r.isHouseholdHead
+      ) ?? null
+    );
+  }, [residentsData, newResident.householdId]);
+
+  const editFormExistingHead = useMemo(() => {
+    if (!editingResident?.householdId) return null;
+    return (
+      residentsData.find(
+        (r) =>
+          r.household?.id === editingResident.householdId &&
+          r.isHouseholdHead &&
+          r.real_id !== editingResident.real_id
+      ) ?? null
+    );
+  }, [residentsData, editingResident?.householdId, editingResident?.real_id]);
+
   // ─── Fetch memberships ────────────────────────────────────────────────────
   useEffect(() => {
     fetch("/api/memberships", { headers: { Accept: "application/json" } })
@@ -282,6 +312,33 @@ export default function ResidentsView() {
       .catch((e) => console.error("civil statuses load:", e));
   }, []);
 
+  const [currentStatuses, setCurrentStatuses] = useState<CurrentStatusOption[]>([]);
+  useEffect(() => {
+    fetch("/current-statuses", { headers: { Accept: "application/json" } })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d: CurrentStatusOption[]) => setCurrentStatuses(Array.isArray(d) ? d : []))
+      .catch((e) => console.error("current statuses load:", e));
+  }, []);
+
+  // ─── Fetch age brackets (Settings -> Profiling) so the "Filter by Age"
+  // dropdown always matches whatever bands staff have actually configured,
+  // instead of the old hardcoded Child/Youth/Adult/Senior Citizen bands
+  // that getAgeGroupAttribute() on the backend no longer uses once a
+  // custom bracket is set up. ──────────────────────────────────────────────
+  const [ageBrackets, setAgeBrackets] = useState<AgeBracketOption[]>([]);
+  useEffect(() => {
+    fetch("/age-brackets", { headers: { Accept: "application/json" } })
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((d: AgeBracketOption[]) => setAgeBrackets(Array.isArray(d) ? d : []))
+      .catch((e) => console.error("age brackets load:", e));
+  }, []);
+
   // ─── Fetch households (for the "link to household" picker) ───────────────
   useEffect(() => {
     fetch("/households/options", { headers: { Accept: "application/json" } })
@@ -301,6 +358,18 @@ export default function ResidentsView() {
         headers: { Accept: "application/json" },
       });
       const data = await res.json();
+
+      // The endpoint can fail (e.g. a pending migration) and still return
+      // a 200 with a non-array JSON body, or a non-2xx status with an
+      // error payload -- either way, data.map() below would throw and get
+      // silently swallowed by the catch, which used to leave the table
+      // looking like "no records" instead of surfacing what went wrong.
+      if (!res.ok || !Array.isArray(data)) {
+        throw new Error(
+          (data && typeof data === "object" && "message" in data ? data.message : null) ||
+            `HTTP ${res.status}`
+        );
+      }
 
       const formatted: ResidentRow[] = data.map((item: any) => ({
         id: item.user_code,
@@ -322,6 +391,8 @@ export default function ResidentsView() {
         ageGroup: item.age_group ?? null,
         civilStatusId: item.civil_status_id ?? null,
         civilStatus: item.civil_status ?? null,
+        currentStatusIds: Array.isArray(item.current_status_ids) ? item.current_status_ids : [],
+        currentStatuses: Array.isArray(item.current_statuses) ? item.current_statuses : [],
         gender: item.gender ?? null,
         isHouseholdHead: !!item.is_household_head,
         household: item.household
@@ -332,6 +403,8 @@ export default function ResidentsView() {
       setResidentsData(formatted);
     } catch (e) {
       console.error("residents load:", e);
+      setApiErrorTitle(t("errorTitle"));
+      setApiError(t("loadResidentsFailed"));
     } finally {
       setLoading(false);
     }
@@ -483,6 +556,7 @@ export default function ResidentsView() {
     if (newResident.birthDate) fd.append("birth_date", newResident.birthDate);
     if (newResident.address) fd.append("address", newResident.address);
     if (newResident.civilStatusId) fd.append("civil_status_id", String(newResident.civilStatusId));
+    newResident.currentStatusIds.forEach((id) => fd.append("current_status_ids[]", String(id)));
     if (newResident.gender) fd.append("gender", newResident.gender);
     if (newResident.householdId) fd.append("household_id", String(newResident.householdId));
     fd.append("is_household_head", newResident.isHouseholdHead ? "1" : "0");
@@ -565,6 +639,7 @@ export default function ResidentsView() {
       birthDate: r.birthDate ?? "",
       address: r.address ?? "",
       civilStatusId: r.civilStatusId ?? null,
+      currentStatusIds: r.currentStatusIds ?? [],
       gender: r.gender ?? "",
       isHouseholdHead: r.isHouseholdHead ?? false,
       householdId: r.household?.id ?? null,
@@ -636,6 +711,11 @@ export default function ResidentsView() {
     fd.append("birth_date", editingResident.birthDate || "");
     fd.append("address", editingResident.address || "");
     fd.append("civil_status_id", editingResident.civilStatusId ? String(editingResident.civilStatusId) : "");
+    if (editingResident.currentStatusIds.length > 0) {
+      editingResident.currentStatusIds.forEach((id) => fd.append("current_status_ids[]", String(id)));
+    } else {
+      fd.append("current_status_ids", "");
+    }
     fd.append("gender", editingResident.gender || "");
     fd.append("household_id", editingResident.householdId ? String(editingResident.householdId) : "");
     fd.append("is_household_head", editingResident.isHouseholdHead ? "1" : "0");
@@ -789,9 +869,12 @@ const handleDeleteResident = async () => {
     if (accountFilter === "with-account") r = r.filter((x) => x.hasAccount);
     else if (accountFilter === "no-account") r = r.filter((x) => !x.hasAccount);
 
+    // ageGroupFilter now holds an actual bracket label (see the
+    // ageBrackets fetch above) instead of a fixed "child"/"youth"/etc.
+    // key, so this always matches whatever getAgeGroupAttribute() on the
+    // backend currently resolves to, custom brackets included.
     if (ageGroupFilter !== "all") {
-      const wanted = AGE_GROUP_LABELS[ageGroupFilter];
-      r = r.filter((x) => x.ageGroup === wanted);
+      r = r.filter((x) => x.ageGroup === ageGroupFilter);
     }
 
     if (residentSearch.trim()) {
@@ -802,7 +885,7 @@ const handleDeleteResident = async () => {
       );
     }
     return r;
-  }, [residentsData, statusFilter, accountFilter, residentSearch]);
+  }, [residentsData, statusFilter, accountFilter, ageGroupFilter, residentSearch]);
 
   const totalPages = useMemo(() => Math.ceil(filteredResidents.length / itemsPerPage), [filteredResidents]);
 
@@ -816,6 +899,58 @@ const handleDeleteResident = async () => {
   }, [residentSearch, statusFilter, accountFilter, ageGroupFilter]);
 
   // ─── Sub-components ───────────────────────────────────────────────────────
+  // Current Status is many-to-many (a resident can be, say, both a Solo
+  // Parent and PWD at once), so this is a checkbox list rather than a
+  // single-select dropdown -- same shape as MembershipCheckboxes below.
+  const CurrentStatusCheckboxes = ({ isEdit }: { isEdit: boolean }) => {
+    const selected = isEdit ? editingResident?.currentStatusIds ?? [] : newResident.currentStatusIds;
+
+    const toggle = (id: number) => {
+      if (isEdit) {
+        setEditingResident((p) =>
+          p
+            ? {
+                ...p,
+                currentStatusIds: p.currentStatusIds.includes(id)
+                  ? p.currentStatusIds.filter((x) => x !== id)
+                  : [...p.currentStatusIds, id],
+              }
+            : p
+        );
+      } else {
+        setNewResident((p) => ({
+          ...p,
+          currentStatusIds: p.currentStatusIds.includes(id)
+            ? p.currentStatusIds.filter((x) => x !== id)
+            : [...p.currentStatusIds, id],
+        }));
+      }
+    };
+
+    return (
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">{t("currentStatusLabel")}</label>
+        {currentStatuses.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">{t("noCurrentStatusesAvailable")}</p>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-2xl border border-gray-200 px-4 py-3">
+            {currentStatuses.map((cs) => (
+              <label key={cs.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selected.includes(cs.id)}
+                  onChange={() => toggle(cs.id)}
+                  className="w-4 h-4 text-[#005f63]"
+                />
+                <span>{cs.label}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const MembershipCheckboxes = ({ isEdit }: { isEdit: boolean }) => {
     const hasMem = isEdit ? editingResident?.hasMemberships ?? false : newResident.hasMemberships;
     const selMems = isEdit ? editingResident?.selectedMemberships ?? [] : newResident.selectedMemberships;
@@ -911,44 +1046,42 @@ const handleDeleteResident = async () => {
                 placeholder={t("searchByIdNameContactPlaceholder")}
               />
             </div>
-            <div className="relative">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:outline-none appearance-none"
-              >
-                <option value="all">{t("allRecordsOption")}</option>
-                <option value="residents">{t("roleResidentOption")}</option>
-                <option value="staff">{t("roleStaffOption")}</option>
-              </select>
-              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-            </div>
-            <div className="relative">
-              <select
-                value={accountFilter}
-                onChange={(e) => setAccountFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:outline-none appearance-none"
-              >
-                <option value="all">{t("allAccountsOption")}</option>
-                <option value="with-account">{t("hasAccountOption")}</option>
-                <option value="no-account">{t("noAccountOption")}</option>
-              </select>
-              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-            </div>
+            <FilterDropdown
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={[
+                { value: "all", label: t("allRecordsOption") },
+                { value: "residents", label: t("roleResidentOption") },
+                { value: "staff", label: t("roleStaffOption") },
+              ]}
+              className="h-14 pl-10 pr-8"
+              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+            />
+            <FilterDropdown
+              value={accountFilter}
+              onChange={setAccountFilter}
+              options={[
+                { value: "all", label: t("allAccountsOption") },
+                { value: "with-account", label: t("hasAccountOption") },
+                { value: "no-account", label: t("noAccountOption") },
+              ]}
+              className="h-14 pl-10 pr-8"
+              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+            />
             {/* Adviser recommendation: "Profiling (Filter for Age)" */}
-            <div className="relative">
-              <select
-                value={ageGroupFilter}
-                onChange={(e) => setAgeGroupFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:outline-none appearance-none"
-                title={t("filterByAgeGroupTitle")}
-              >
-                {AGE_GROUPS.map((g) => (
-                  <option key={g.key} value={g.key}>{t(g.labelKey)}</option>
-                ))}
-              </select>
-              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-            </div>
+            <FilterDropdown
+              value={ageGroupFilter}
+              onChange={setAgeGroupFilter}
+              options={[
+                { value: "all", label: t("ageGroupAllOption") },
+                ...ageBrackets.map((b) => ({
+                  value: b.label,
+                  label: `${b.label} (${b.min_age}${b.max_age !== null ? `-${b.max_age}` : "+"})`,
+                })),
+              ]}
+              className="h-14 pl-10 pr-8"
+              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+            />
           </div>
           <p className="mt-2 text-xs text-gray-500">
             {filteredResidents.length} {t("ofPagesLabel")} {residentsData.length} {t("recordsMatchShowing")} {itemsPerPage} {t("perPageLabel")}
@@ -1329,6 +1462,7 @@ const handleDeleteResident = async () => {
                     </select>
                   </div>
                 </div>
+                <CurrentStatusCheckboxes isEdit={false} />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdCodeLabel")}</label>
                   <SearchableSelect
@@ -1337,7 +1471,7 @@ const handleDeleteResident = async () => {
                       label: h.code,
                       hint: h.address ? `(${h.address})` : undefined,
                     }))}
-                    onSelect={(value) => setNewResident((p) => ({ ...p, householdId: Number(value) }))}
+                    onSelect={(value) => setNewResident((p) => ({ ...p, householdId: Number(value), isHouseholdHead: false }))}
                     placeholder={t("householdCodePlaceholder")}
                     noResultsLabel={t("householdLinkNoResults")}
                   />
@@ -1358,17 +1492,28 @@ const handleDeleteResident = async () => {
                     );
                   })()}
                 </div>
-                <label className={`flex items-center gap-2 text-sm ${newResident.householdId ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                <label className={`flex items-center gap-2 text-sm ${newResident.householdId && !addFormExistingHead ? "cursor-pointer" : "cursor-not-allowed"}`}>
                   <input
                     type="checkbox"
                     checked={newResident.isHouseholdHead}
-                    disabled={!newResident.householdId}
+                    disabled={!newResident.householdId || !!addFormExistingHead}
                     onChange={(e) => setNewResident((p) => ({ ...p, isHouseholdHead: e.target.checked }))}
                     className="w-4 h-4 text-[#005f63] disabled:opacity-40"
                   />
-                  <span className={`font-medium ${newResident.householdId ? "text-gray-700" : "text-gray-400"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
-                  <span className="text-gray-400">{newResident.householdId ? t("receivesEventSmsNote") : t("householdHeadDisabledHint")}</span>
+                  <span className={`font-medium ${newResident.householdId && !addFormExistingHead ? "text-gray-700" : "text-gray-400"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
+                  <span className="text-gray-400">
+                    {!newResident.householdId
+                      ? t("householdHeadDisabledHint")
+                      : addFormExistingHead
+                      ? t("householdHeadTakenHint")
+                      : t("receivesEventSmsNote")}
+                  </span>
                 </label>
+                {addFormExistingHead && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5">
+                    ⚠️ {t("currentHeadLabel")}: <span className="font-medium">{[addFormExistingHead.firstName, addFormExistingHead.lastName].filter(Boolean).join(" ")}</span> · {t("uncheckHeadFirstNote")}
+                  </p>
+                )}
               </div>
 
               <PhotoField isEdit={false} />
@@ -1592,6 +1737,7 @@ const handleDeleteResident = async () => {
                     </select>
                   </div>
                 </div>
+                <CurrentStatusCheckboxes isEdit={true} />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdCodeLabel")}</label>
                   <SearchableSelect
@@ -1600,7 +1746,7 @@ const handleDeleteResident = async () => {
                       label: h.code,
                       hint: h.address ? `(${h.address})` : undefined,
                     }))}
-                    onSelect={(value) => setEditingResident((p) => p ? { ...p, householdId: Number(value) } : p)}
+                    onSelect={(value) => setEditingResident((p) => p ? { ...p, householdId: Number(value), isHouseholdHead: false } : p)}
                     placeholder={t("householdCodePlaceholder")}
                     noResultsLabel={t("householdLinkNoResults")}
                   />
@@ -1621,17 +1767,28 @@ const handleDeleteResident = async () => {
                     );
                   })()}
                 </div>
-                <label className={`flex items-center gap-2 text-sm ${editingResident.householdId ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                <label className={`flex items-center gap-2 text-sm ${editingResident.householdId && !editFormExistingHead ? "cursor-pointer" : "cursor-not-allowed"}`}>
                   <input
                     type="checkbox"
                     checked={editingResident.isHouseholdHead}
-                    disabled={!editingResident.householdId}
+                    disabled={!editingResident.householdId || !!editFormExistingHead}
                     onChange={(e) => setEditingResident((p) => p ? { ...p, isHouseholdHead: e.target.checked } : p)}
                     className="w-4 h-4 text-[#005f63] disabled:opacity-40"
                   />
-                  <span className={`font-medium ${editingResident.householdId ? "text-gray-700" : "text-gray-400"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
-                  <span className="text-gray-400">{editingResident.householdId ? t("receivesEventSmsNote") : t("householdHeadDisabledHint")}</span>
+                  <span className={`font-medium ${editingResident.householdId && !editFormExistingHead ? "text-gray-700" : "text-gray-400"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
+                  <span className="text-gray-400">
+                    {!editingResident.householdId
+                      ? t("householdHeadDisabledHint")
+                      : editFormExistingHead
+                      ? t("householdHeadTakenHint")
+                      : t("receivesEventSmsNote")}
+                  </span>
                 </label>
+                {editFormExistingHead && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5">
+                    ⚠️ {t("currentHeadLabel")}: <span className="font-medium">{[editFormExistingHead.firstName, editFormExistingHead.lastName].filter(Boolean).join(" ")}</span> · {t("uncheckHeadFirstNote")}
+                  </p>
+                )}
               </div>
 
               <PhotoField isEdit={true} />

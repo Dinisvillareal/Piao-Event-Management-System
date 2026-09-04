@@ -41,6 +41,8 @@ class UpdateUserRequest extends FormRequest
             'birth_date'       => 'nullable|date|before_or_equal:today',
             'address'          => 'nullable|string|max:150',
             'civil_status_id'  => 'nullable|exists:civil_statuses,id',
+            'current_status_ids'   => 'nullable|array',
+            'current_status_ids.*' => 'integer|exists:current_statuses,id',
             'gender'           => 'nullable|in:Male,Female',
 
             // Real Household module -- link this resident to an existing

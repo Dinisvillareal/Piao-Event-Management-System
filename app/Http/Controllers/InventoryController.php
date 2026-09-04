@@ -44,7 +44,18 @@ class InventoryController extends Controller
             $query->where('condition', $request->condition);
         }
 
-        return response()->json($query->orderBy('name')->get());
+        // borrowed_quantity: how many units are currently lent out to a
+        // still-active event (see InventoryItem::borrows()) -- the grid
+        // uses this to grey out Delete on an item that's out on loan.
+        $items = $query->withSum('borrows as borrowed_quantity', 'quantity')
+            ->orderBy('name')
+            ->get();
+
+        $items->each(function ($item) {
+            $item->borrowed_quantity = (int) ($item->borrowed_quantity ?? 0);
+        });
+
+        return response()->json($items);
     }
 
     // Items selectable when borrowing inventory for an Event (Create/Edit
@@ -112,6 +123,21 @@ class InventoryController extends Controller
         }
 
         $item = InventoryItem::findOrFail($id);
+
+        // Block deleting an item that's currently lent out to a live event.
+        // InventoryItem only soft-deletes, so nothing here would actually
+        // cascade-remove the outstanding event_inventory_items row -- the
+        // event would keep pointing at a "deleted" item, and returning it
+        // later (event archived/edited) would silently add its quantity
+        // back onto a record no one can see or manage anymore. Staff need
+        // to return the item to Inventory first (edit or archive the
+        // event) before it can be removed.
+        if ($item->borrows()->exists()) {
+            return response()->json([
+                'message' => '"' . $item->name . '" is currently borrowed for an event and can\'t be deleted until it\'s returned to Inventory.',
+            ], 409);
+        }
+
         $item->deleted_by = auth()->user()->user_code;
         $item->save();
         $item->delete();

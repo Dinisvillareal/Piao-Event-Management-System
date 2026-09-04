@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
+import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, CheckCircle, AlertCircle, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -79,6 +79,9 @@ export default function HouseholdsView() {
 
   const [editRecord, setEditRecord] = useState<Household | null>(null);
   const [editForm, setEditForm] = useState({ address: "", contact_number: "" });
+  // Closing the Edit Household modal (backdrop or Cancel) with unsaved
+  // changes asks first instead of silently discarding them.
+  const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false);
 
   const [deleteRecord, setDeleteRecord] = useState<Household | null>(null);
   const [saving, setSaving] = useState(false);
@@ -162,6 +165,11 @@ export default function HouseholdsView() {
   const isEditFormUnchanged = !!editRecord &&
     editForm.address === (editRecord.address ?? "") &&
     editForm.contact_number === (editRecord.contact_number ?? "");
+
+  const handleCloseEdit = () => {
+    if (!isEditFormUnchanged) setShowEditCancelConfirm(true);
+    else setEditRecord(null);
+  };
 
   const submitEdit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -449,7 +457,7 @@ export default function HouseholdsView() {
 
       {/* Edit modal */}
       {editRecord && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => { setEditRecord(null); setConfirmEdit(false); }}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={handleCloseEdit}>
           <form
             onSubmit={submitEdit}
             onClick={(e) => e.stopPropagation()}
@@ -469,7 +477,7 @@ export default function HouseholdsView() {
               className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm"
             />
             <div className="flex justify-center gap-4 pt-2">
-              <button type="button" onClick={() => setEditRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
+              <button type="button" onClick={handleCloseEdit} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
                 {t("cancelLabel")}
               </button>
               <button
@@ -482,6 +490,30 @@ export default function HouseholdsView() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Unsaved-changes guard for the Edit Household modal */}
+      {showEditCancelConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("stayButton")}</button>
+              <button
+                onClick={() => {
+                  setShowEditCancelConfirm(false);
+                  setEditRecord(null);
+                  setConfirmEdit(false);
+                }}
+                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+              >
+                {t("discardCloseButton")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

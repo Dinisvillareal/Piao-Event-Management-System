@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Filter } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 // ✅ Exported so Members.tsx can import and reuse it
@@ -122,22 +123,18 @@ export default function AttendanceView({ attendanceRecords, highlightText }: Att
                 placeholder={t("searchAttendancePlaceholder")}
               />
             </div>
-            <div className="relative">
-              <select
-                value={attendanceFilter}
-                onChange={(e) => setAttendanceFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
-              >
-                <option value="all">{t("allRecords")}</option>
-                <option value="complete">{t("completeInOut")}</option>
-                <option value="incomplete">{t("incompleteInOut")}</option>
-                <option value="missed">{t("missedNoRecord")}</option>
-              </select>
-              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-              <svg className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
+            <FilterDropdown
+              value={attendanceFilter}
+              onChange={setAttendanceFilter}
+              options={[
+                { value: "all", label: t("allRecords") },
+                { value: "complete", label: t("completeInOut") },
+                { value: "incomplete", label: t("incompleteInOut") },
+                { value: "missed", label: t("missedNoRecord") },
+              ]}
+              className="h-14 pl-10 pr-8"
+              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+            />
           </div>
           
           <p className="mt-2 text-xs text-gray-500">

@@ -48,6 +48,9 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   const [savingEdit, setSavingEdit] = useState(false);
   const [showAddExpenseConfirm, setShowAddExpenseConfirm] = useState(false);
   const [showEditExpenseConfirm, setShowEditExpenseConfirm] = useState(false);
+  // Closing the Edit Expense modal (X, Cancel, or the backdrop) with
+  // unsaved changes asks first instead of silently discarding them.
+  const [showEditCancelConfirm, setShowEditCancelConfirm] = useState(false);
 
   const filteredEvents = allEvents.filter((e) => e.title?.toLowerCase().includes(search.toLowerCase()));
 
@@ -241,6 +244,11 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     editForm.item === originalEditForm.item &&
     editForm.amount === originalEditForm.amount &&
     editForm.notes === originalEditForm.notes;
+
+  const handleCloseEditExpense = () => {
+    if (!isEditExpenseUnchanged) setShowEditCancelConfirm(true);
+    else setEditingExpense(null);
+  };
 
   const handleUpdateExpense = (e: React.FormEvent) => {
     e.preventDefault();
@@ -503,11 +511,11 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       )}
 
       {editingExpense && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => !savingEdit && setEditingExpense(null)}>
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => !savingEdit && handleCloseEditExpense()}>
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-black text-[#005f63]">{t("editExpenseTitle")}</h2>
-              <button onClick={() => setEditingExpense(null)} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
+              <button onClick={handleCloseEditExpense} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
             </div>
             <form onSubmit={handleUpdateExpense} noValidate className="space-y-4">
               <div>
@@ -524,9 +532,32 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               </div>
               <div className="flex gap-2 pt-2">
                 <button type="submit" disabled={savingEdit || isEditExpenseUnchanged} title={isEditExpenseUnchanged ? t("noChangesToSaveHint") : undefined} className="flex-1 py-2.5 rounded-full font-bold bg-[#005f63] hover:bg-[#004a4d] text-white disabled:opacity-60 disabled:cursor-not-allowed">{savingEdit ? t("savingLabel") : t("saveChanges")}</button>
-                <button type="button" onClick={() => setEditingExpense(null)} disabled={savingEdit} className="px-6 py-2.5 rounded-full border border-gray-300 bg-gray-50 text-gray-600 disabled:opacity-60">{t("cancelLabel")}</button>
+                <button type="button" onClick={handleCloseEditExpense} disabled={savingEdit} className="px-6 py-2.5 rounded-full border border-gray-300 bg-gray-50 text-gray-600 disabled:opacity-60">{t("cancelLabel")}</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved-changes guard for the Edit Expense modal */}
+      {showEditCancelConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("stayButton")}</button>
+              <button
+                onClick={() => {
+                  setShowEditCancelConfirm(false);
+                  setEditingExpense(null);
+                }}
+                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+              >
+                {t("discardCloseButton")}
+              </button>
+            </div>
           </div>
         </div>
       )}

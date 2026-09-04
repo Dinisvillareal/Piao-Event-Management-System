@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Users, Plus, Pencil, Trash2, Search, Archive, CheckCircle } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, Search, Archive, CheckCircle, AlertTriangle } from "lucide-react";
 import { Button, Input } from "../../../components/ui/Core";
 import SearchBar from "../../../components/ui/SearchBar";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
@@ -19,6 +19,11 @@ interface AgeBracketOption {
 }
 
 interface CivilStatusOption {
+  id: number;
+  label: string;
+}
+
+interface CurrentStatusOption {
   id: number;
   label: string;
 }
@@ -63,24 +68,35 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   const [confirmAddMembership, setConfirmAddMembership] = useState(false);
   const [confirmEditMembership, setConfirmEditMembership] = useState(false);
 
+  // Unsaved-changes guard for the Add/Edit Membership modals -- closing
+  // (X, Cancel, or clicking the backdrop) while the form differs from
+  // where it started asks first instead of silently discarding, matching
+  // the same pattern used on the Residents form.
+  const [showCancelConfirm, setShowCancelConfirm] = useState<"add" | "edit" | null>(null);
+
+  const emptyMembership = {
+    name: "",
+    description: "",
+    eligibleAgeBracketId: null as number | null,
+    eligibleCivilStatusId: null as number | null,
+    eligibleCurrentStatusId: null as number | null,
+    eligibleGender: "",
+  };
+
   const [newMembership, setNewMembership] = useState<{
     name: string;
     description: string;
     eligibleAgeBracketId: number | null;
     eligibleCivilStatusId: number | null;
+    eligibleCurrentStatusId: number | null;
     eligibleGender: string;
-  }>({
-    name: "",
-    description: "",
-    eligibleAgeBracketId: null,
-    eligibleCivilStatusId: null,
-    eligibleGender: "",
-  });
+  }>(emptyMembership);
 
   // Adviser example (Senior Citizen eligibility) extended to Youth / Solo
   // Parent: Staff-configurable lists used to optionally gate a membership.
   const [ageBrackets, setAgeBrackets] = useState<AgeBracketOption[]>([]);
   const [civilStatuses, setCivilStatuses] = useState<CivilStatusOption[]>([]);
+  const [currentStatuses, setCurrentStatuses] = useState<CurrentStatusOption[]>([]);
 
   useEffect(() => {
     fetch("/age-brackets", { headers: { Accept: "application/json" } })
@@ -92,6 +108,11 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => setCivilStatuses(Array.isArray(d) ? d : []))
       .catch((e) => console.error("civil statuses load:", e));
+
+    fetch("/current-statuses", { headers: { Accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => setCurrentStatuses(Array.isArray(d) ? d : []))
+      .catch((e) => console.error("current statuses load:", e));
   }, []);
 
   const itemsPerPage = 6;
@@ -204,6 +225,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           description: newMembership.description,
           eligible_age_bracket_id: newMembership.eligibleAgeBracketId,
           eligible_civil_status_id: newMembership.eligibleCivilStatusId,
+          eligible_current_status_id: newMembership.eligibleCurrentStatusId,
           eligible_gender: newMembership.eligibleGender || null
         })
       });
@@ -213,7 +235,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       if (response.ok) {
         // ✅ NO MORE BROWSER ALERT — use your modal!
         setShowAddModal(false);
-        setNewMembership({ name: "", description: "", eligibleAgeBracketId: null, eligibleCivilStatusId: null, eligibleGender: "" });
+        setNewMembership({ name: "", description: "", eligibleAgeBracketId: null, eligibleCivilStatusId: null, eligibleCurrentStatusId: null, eligibleGender: "" });
         fetchMemberships();
         window.dispatchEvent(new Event('refreshMemberships'));
         setShowAddSuccess(true); // <-- YOUR MODAL SHOWS
@@ -270,6 +292,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           description: editingMembership.description,
           eligible_age_bracket_id: editingMembership.eligibleAgeBracketId,
           eligible_civil_status_id: editingMembership.eligibleCivilStatusId,
+          eligible_current_status_id: editingMembership.eligibleCurrentStatusId,
           eligible_gender: editingMembership.eligibleGender || null
         })
       });
@@ -353,6 +376,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       description: membership.description || "",
       eligibleAgeBracketId: membership.eligible_age_bracket_id ?? null,
       eligibleCivilStatusId: membership.eligible_civil_status_id ?? null,
+      eligibleCurrentStatusId: membership.eligible_current_status_id ?? null,
       eligibleGender: membership.eligible_gender ?? "",
     };
     setEditingMembership(initial);
@@ -442,6 +466,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       description: "",
       eligibleAgeBracketId: null,
       eligibleCivilStatusId: null,
+      eligibleCurrentStatusId: null,
       eligibleGender: "",
     });
   };
@@ -450,6 +475,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     setShowEditModal(false);
     setEditingMembership(null);
     setEditFormErrors({});
+  };
+
+  // Nothing typed yet -- safe to close without asking.
+  const hasAddChanges = JSON.stringify(newMembership) !== JSON.stringify(emptyMembership);
+
+  const handleCancelAdd = () => {
+    if (hasAddChanges) setShowCancelConfirm("add");
+    else closeAddModal();
+  };
+
+  const handleCancelEdit = () => {
+    if (!isEditMembershipUnchanged) setShowCancelConfirm("edit");
+    else closeEditModal();
   };
 
   const closeDeleteConfirm = () => {
@@ -476,11 +514,11 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   };
 
   const handleAddBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) closeAddModal();
+    if (e.target === e.currentTarget) handleCancelAdd();
   };
 
   const handleEditBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) closeEditModal();
+    if (e.target === e.currentTarget) handleCancelEdit();
   };
 
   const handleDeleteBackdropClick = (e: React.MouseEvent) => {
@@ -504,9 +542,15 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // The unsaved-changes prompt itself takes priority -- Escape just
+        // dismisses it (equivalent to "Stay"), never discards on its own.
+        if (showCancelConfirm) {
+          setShowCancelConfirm(null);
+          return;
+        }
         closeModal();
-        closeAddModal();
-        closeEditModal();
+        if (showAddModal) handleCancelAdd();
+        if (showEditModal) handleCancelEdit();
         closeDeleteConfirm();
         closeDeleteFailed();
         closeAddSuccess();
@@ -515,11 +559,11 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         closeGenericError();
       }
     };
-    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showAddSuccess || showDeleteSuccess || showUpdateSuccess || genericError) {
+    if (showModal || showAddModal || showEditModal || showDeleteConfirm || showDeleteFailed || showAddSuccess || showDeleteSuccess || showUpdateSuccess || genericError || showCancelConfirm) {
       document.addEventListener('keydown', handleEsc);
     }
     return () => document.removeEventListener('keydown', handleEsc);
-  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showAddSuccess, showDeleteSuccess, showUpdateSuccess, genericError]);
+  }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showAddSuccess, showDeleteSuccess, showUpdateSuccess, genericError, showCancelConfirm]);
 
   if (loading) {
     return (
@@ -610,9 +654,9 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         <p className="text-xs sm:text-sm text-[#667777] mt-1 break-words line-clamp-2 sm:line-clamp-none">
                           {highlightText(m.description || t("noDescription"), searchQuery)}
                         </p>
-                        {(m.eligible_age_bracket?.label || m.eligible_civil_status?.label || m.eligible_gender) && (
+                        {(m.eligible_age_bracket?.label || m.eligible_civil_status?.label || m.eligible_current_status?.label || m.eligible_gender) && (
                           <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-teal-50 border border-teal-200 px-2.5 py-0.5 text-[10px] sm:text-[11px] font-semibold text-teal-700">
-                            {t("requiresLabelShort")} {[m.eligible_age_bracket?.label, m.eligible_civil_status?.label, m.eligible_gender].filter(Boolean).join(" • ")}
+                            {t("requiresLabelShort")} {[m.eligible_age_bracket?.label, m.eligible_civil_status?.label, m.eligible_current_status?.label, m.eligible_gender].filter(Boolean).join(" • ")}
                           </p>
                         )}
                       </div>
@@ -754,7 +798,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           <div className="bg-white rounded-[2rem] w-full max-w-md max-h-[85vh] overflow-hidden shadow-2xl relative">
             <div className="bg-white px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg sm:text-xl font-bold text-gray-800">{t("addNewMembership")}</h2>
-              <button onClick={closeAddModal} className="text-gray-400 hover:text-gray-600 p-1">
+              <button onClick={handleCancelAdd} className="text-gray-400 hover:text-gray-600 p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -822,6 +866,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                     </select>
                   </div>
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("eligibleCurrentStatusLabel")}</label>
+                    <select
+                      value={newMembership.eligibleCurrentStatusId ?? ""}
+                      onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
+                      className="w-full rounded-full border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 text-sm sm:text-base"
+                    >
+                      <option value="">{t("anyOptionLabel")}</option>
+                      {currentStatuses.map((cs) => (
+                        <option key={cs.id} value={cs.id}>{cs.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">{t("eligibleGenderLabel")}</label>
                     <select
                       value={newMembership.eligibleGender}
@@ -839,7 +896,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={closeAddModal}
+                  onClick={handleCancelAdd}
                   className="px-4 py-2 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition active:bg-gray-100"
                 >
                   {t("cancelLabel")}
@@ -868,7 +925,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           <div className="bg-white rounded-[2rem] w-full max-w-md max-h-[85vh] overflow-hidden shadow-2xl relative">
             <div className="bg-white px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg sm:text-xl font-bold text-gray-800">{t("editMembershipTitle")}</h2>
-              <button onClick={closeEditModal} className="text-gray-400 hover:text-gray-600 p-1">
+              <button onClick={handleCancelEdit} className="text-gray-400 hover:text-gray-600 p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -936,6 +993,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                     </select>
                   </div>
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("eligibleCurrentStatusLabel")}</label>
+                    <select
+                      value={editingMembership.eligibleCurrentStatusId ?? ""}
+                      onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
+                      className="w-full rounded-full border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 text-sm sm:text-base"
+                    >
+                      <option value="">{t("anyOptionLabel")}</option>
+                      {currentStatuses.map((cs) => (
+                        <option key={cs.id} value={cs.id}>{cs.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">{t("eligibleGenderLabel")}</label>
                     <select
                       value={editingMembership.eligibleGender ?? ""}
@@ -953,7 +1023,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={closeEditModal}
+                  onClick={handleCancelEdit}
                   className="px-4 py-2 rounded-full border border-gray-300 text-gray-700 hover:bg-gray-50 transition active:bg-gray-100"
                 >
                   {t("cancelLabel")}
@@ -1155,6 +1225,38 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             >
               {t("okLabel")}
             </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Cancel Unsaved Changes Confirm Modal -- same pattern as the Residents form */}
+      {showCancelConfirm && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCancelConfirm(null);
+          }}
+        >
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("stayButton")}</button>
+              <button
+                onClick={() => {
+                  const target = showCancelConfirm;
+                  setShowCancelConfirm(null);
+                  if (target === "add") closeAddModal();
+                  if (target === "edit") closeEditModal();
+                }}
+                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+              >
+                {t("discardCloseButton")}
+              </button>
+            </div>
           </div>
         </div>,
         document.body

@@ -16,6 +16,7 @@ use App\Http\Controllers\EventExpenseController;
 use App\Http\Controllers\IntegrationController;
 use App\Http\Controllers\AgeBracketController;
 use App\Http\Controllers\CivilStatusController;
+use App\Http\Controllers\CurrentStatusController;
 use App\Http\Controllers\HouseholdController;
 
 /*
@@ -105,6 +106,12 @@ Route::middleware('auth')->group(function () {
     Route::put('/civil-statuses/{id}', [CivilStatusController::class, 'update']);
     Route::delete('/civil-statuses/{id}', [CivilStatusController::class, 'destroy']);
     Route::post('/civil-statuses/{id}/restore', [CivilStatusController::class, 'restore']);
+
+    Route::get('/current-statuses', [CurrentStatusController::class, 'index']);
+    Route::post('/current-statuses', [CurrentStatusController::class, 'store']);
+    Route::put('/current-statuses/{id}', [CurrentStatusController::class, 'update']);
+    Route::delete('/current-statuses/{id}', [CurrentStatusController::class, 'destroy']);
+    Route::post('/current-statuses/{id}/restore', [CurrentStatusController::class, 'restore']);
 
     /*
     |--------------------------------------------------------------------------

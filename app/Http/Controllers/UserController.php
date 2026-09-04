@@ -30,6 +30,20 @@ class UserController extends Controller
         return auth()->id() == $id;
     }
 
+    /**
+     * True when $e is the DB rejecting a second is_household_head = true
+     * row for the same household (see the users_one_head_per_household
+     * unique index) -- the rare case of two truly concurrent requests
+     * both passing the PHP-level "no head yet" check before either
+     * commits. Lets callers turn that into a friendly message instead of
+     * a raw SQL error.
+     */
+    private function isHeadConflict(\Throwable $e): bool
+    {
+        return $e instanceof \Illuminate\Database\QueryException
+            && str_contains($e->getMessage(), 'users_one_head_per_household');
+    }
+
     private function createLog($action, $module, $description)
     {
         ActivityLog::create([
@@ -71,7 +85,7 @@ class UserController extends Controller
      * whose age bracket / civil status doesn't match what the membership
      * requires (configured under Settings -> Profiling).
      */
-    private function checkMembershipEligibility(array $membershipIds, ?string $birthDate, ?int $civilStatusId, ?string $gender = null): ?array
+    private function checkMembershipEligibility(array $membershipIds, ?string $birthDate, ?int $civilStatusId, ?string $gender = null, array $currentStatusIds = []): ?array
     {
         if (empty($membershipIds)) {
             return null;
@@ -82,9 +96,10 @@ class UserController extends Controller
             ->where(function ($q) {
                 $q->whereNotNull('eligible_age_bracket_id')
                   ->orWhereNotNull('eligible_civil_status_id')
+                  ->orWhereNotNull('eligible_current_status_id')
                   ->orWhereNotNull('eligible_gender');
             })
-            ->with(['eligibleAgeBracket', 'eligibleCivilStatus'])
+            ->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
             ->get();
 
         if ($memberships->isEmpty()) {
@@ -116,6 +131,13 @@ class UserController extends Controller
                 $requiredStatus = $membership->eligibleCivilStatus;
                 if (!$civilStatusId || $civilStatusId !== $membership->eligible_civil_status_id) {
                     $violations[] = "\"{$membership->name}\" requires civil status: {$requiredStatus?->label}.";
+                }
+            }
+
+            if ($membership->eligible_current_status_id) {
+                $requiredCurrentStatus = $membership->eligibleCurrentStatus;
+                if (!in_array($membership->eligible_current_status_id, $currentStatusIds, true)) {
+                    $violations[] = "\"{$membership->name}\" requires current status: {$requiredCurrentStatus?->label}.";
                 }
             }
 
@@ -158,12 +180,14 @@ class UserController extends Controller
         // membership (Youth / Senior Citizen / Solo Parent, etc.) to a resident
         // who doesn't match its required age bracket / civil status.
         $incomingMembershipIds = array_filter((array) $request->membership_ids);
+        $incomingCurrentStatusIds = array_map('intval', array_filter((array) $request->current_status_ids));
         if (!empty($incomingMembershipIds)) {
             $violations = $this->checkMembershipEligibility(
                 $incomingMembershipIds,
                 $request->birth_date,
                 $request->civil_status_id ? (int) $request->civil_status_id : null,
-                $request->gender ?: null
+                $request->gender ?: null,
+                $incomingCurrentStatusIds
             );
             if ($violations) {
                 return response()->json(['errors' => ['membership_ids' => $violations]], 422);
@@ -204,6 +228,10 @@ class UserController extends Controller
                 'preferred_language'        => $request->preferred_language ?? 'en',
             ]);
 
+            if (!empty($incomingCurrentStatusIds)) {
+                $user->currentStatuses()->sync($incomingCurrentStatusIds);
+            }
+
             if (filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN)) {
                 if (!$user->household_id) {
                     DB::rollBack();
@@ -228,7 +256,7 @@ class UserController extends Controller
 
             return response()->json([
                 'message' => 'User created successfully',
-                'user' => $user->load('memberships')
+                'user' => $user->load('memberships', 'currentStatuses')
             ], 201);
 
         } catch (\Exception $e) {
@@ -237,6 +265,12 @@ class UserController extends Controller
 
             if ($path) {
                 $this->localDelete($path);
+            }
+
+            if ($this->isHeadConflict($e)) {
+                return response()->json([
+                    'message' => 'This household already has a head from another request just now -- please refresh and try again.',
+                ], 409);
             }
 
             return response()->json([
@@ -392,6 +426,9 @@ class UserController extends Controller
                     $effectiveCivilStatusId = $request->has('civil_status_id')
                         ? ($request->civil_status_id ? (int) $request->civil_status_id : null)
                         : $user->civil_status_id;
+                    $effectiveCurrentStatusIds = $request->has('current_status_ids')
+                        ? array_map('intval', array_filter((array) $request->current_status_ids))
+                        : $user->getRelationValue('currentStatuses')->pluck('id')->all();
                     $effectiveGender = $request->has('gender')
                         ? ($request->gender ?: null)
                         : $user->gender;
@@ -400,7 +437,8 @@ class UserController extends Controller
                         $incomingMembershipIds,
                         $effectiveBirthDate,
                         $effectiveCivilStatusId,
-                        $effectiveGender
+                        $effectiveGender,
+                        $effectiveCurrentStatusIds
                     );
                     if ($violations) {
                         DB::rollBack();
@@ -500,18 +538,29 @@ class UserController extends Controller
                 }
             }
 
+            if ($request->has('current_status_ids')) {
+                $statusIds = array_map('intval', array_filter((array) $request->current_status_ids));
+                $user->currentStatuses()->sync($statusIds);
+            }
+
             $this->createLog('Update User', 'User', "Updated user {$user->user_code}");
 
             DB::commit();
 
             return response()->json([
                 'message' => 'User updated successfully',
-                'user' => $user->load('memberships')
+                'user' => $user->load('memberships', 'currentStatuses')
             ]);
 
         } catch (\Exception $e) {
 
             DB::rollBack();
+
+            if ($this->isHeadConflict($e)) {
+                return response()->json([
+                    'message' => 'This household already has a head from another request just now -- please refresh and try again.',
+                ], 409);
+            }
 
             return response()->json([
                 'message' => 'Update failed',
@@ -768,7 +817,7 @@ public function getAllForMemberships()
 
     try {
         $users = User::withTrashed()
-            ->with('memberships', 'household')
+            ->with('memberships', 'household', 'currentStatuses')
             ->get();
 
         return response()->json(
@@ -788,6 +837,7 @@ public function getAllForMemberships()
                     'age_group' => $user->age_group,
                     'address' => $user->address,
                     'civil_status_id' => $user->civil_status_id,
+                    'current_status_ids' => $user->getRelationValue('currentStatuses')->pluck('id'),
                     'gender' => $user->gender,
                     'household_code' => $user->household_code,
                     'is_household_head' => $user->is_household_head,

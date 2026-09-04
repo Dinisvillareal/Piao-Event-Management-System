@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Search, Filter } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import DatePicker from "../../../components/ui/DatePicker";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
 
 type Activity = {
   id: number;
@@ -118,6 +119,21 @@ export default function ActivityLogsView() {
     return activities;
   }, [activities]);
 
+  const typeOptions = [
+    { value: "all", label: t("allActivities") },
+    { value: "event", label: t("events") },
+    { value: "membership", label: t("memberships") },
+    { value: "notification", label: t("notify") },
+    { value: "scan", label: t("qrScansOption") },
+    { value: "resident", label: t("residents") },
+    { value: "system", label: t("systemAuthOption") },
+    { value: "inventory", label: t("inventory") },
+    { value: "budget", label: t("budget") },
+    { value: "household", label: t("households") },
+    { value: "profiling", label: t("profilingSettingsOption") },
+    { value: "archive", label: t("archiveActivityOption") },
+  ];
+
   // =========================
   // SKELETON LOADING
   // =========================
@@ -174,22 +190,13 @@ export default function ActivityLogsView() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <div className="relative h-full">
-              <select
-                value={filterType}
-                onChange={(e) => setFilterType(e.target.value)}
-                className="h-full pl-10 pr-8 py-3.5 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
-              >
-                <option value="all">{t("allActivities")}</option>
-                <option value="event">{t("events")}</option>
-                <option value="membership">{t("memberships")}</option>
-                <option value="notification">{t("notify")}</option>
-                <option value="scan">{t("qrScansOption")}</option>
-                <option value="resident">{t("residents")}</option>
-                <option value="system">{t("systemAuthOption")}</option>
-              </select>
-              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-            </div>
+            <FilterDropdown
+              value={filterType}
+              onChange={setFilterType}
+              options={typeOptions}
+              className="h-full pl-10 pr-8 py-3.5"
+              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+            />
 
             <div className="h-full">
               <DatePicker

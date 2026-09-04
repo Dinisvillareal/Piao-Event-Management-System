@@ -16,14 +16,17 @@ return new class extends Migration
             $table->timestamps();
         });
 
-        // Adviser example: Senior Citizen eligibility — extended here to also
-        // cover Solo Parent ("single mom") so both can be validated the same way.
+        // Solo Parent used to be seeded here too (as a stand-in for "current
+        // status" eligibility, alongside real civil statuses) -- it now
+        // lives in current_statuses instead (see
+        // 2026_09_04_100003_create_current_statuses_table), since it isn't
+        // a marital status and forcing residents to pick only one of the
+        // two meant a widowed solo parent could never be recorded as both.
         DB::table('civil_statuses')->insert([
             ['label' => 'Single',      'sort_order' => 1, 'created_at' => now(), 'updated_at' => now()],
             ['label' => 'Married',     'sort_order' => 2, 'created_at' => now(), 'updated_at' => now()],
             ['label' => 'Widowed',     'sort_order' => 3, 'created_at' => now(), 'updated_at' => now()],
             ['label' => 'Separated',   'sort_order' => 4, 'created_at' => now(), 'updated_at' => now()],
-            ['label' => 'Solo Parent', 'sort_order' => 5, 'created_at' => now(), 'updated_at' => now()],
         ]);
     }
 

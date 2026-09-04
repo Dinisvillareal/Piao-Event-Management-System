@@ -21,4 +21,12 @@ class InventoryItem extends Model
     protected $casts = [
         'quantity' => 'integer',
     ];
+
+    // Outstanding "borrowed for an event" rows -- see EventInventoryItem.
+    // A row here is deleted (and the quantity restored) once its event is
+    // archived, so "has any rows" == "currently lent out to a live event".
+    public function borrows()
+    {
+        return $this->hasMany(EventInventoryItem::class, 'inventory_item_id');
+    }
 }

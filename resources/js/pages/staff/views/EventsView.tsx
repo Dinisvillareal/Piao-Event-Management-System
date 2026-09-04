@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, ChevronDown, Archive, CheckCircle, AlertCircle, Package, Trash2, Star, Plus, Pencil } from "lucide-react";
+import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, Archive, CheckCircle, AlertCircle, Package, Trash2, Star, Plus, Pencil } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
 import DatePicker from "../../../components/ui/DatePicker";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import api from "../../../lib/api";
@@ -860,23 +861,18 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <div className="relative">
-                {/* This is a real dropdown (All / Upcoming / Past) -- the
-                    trailing chevron makes that obvious, since appearance-none
-                    otherwise hides the browser's own arrow. */}
-                <select
-                  value={eventFilter}
-                  onChange={(e) => setEventFilter(e.target.value)}
-                  className="h-14 pl-10 pr-9 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm appearance-none"
-                >
-                  <option value="all">{t("allEvents")}</option>
-                  <option value="upcoming">{t("upcomingEvents")}</option>
-                  <option value="ongoing">{t("ongoingEvents")}</option>
-                  <option value="past">{t("pastEvents")}</option>
-                </select>
-                <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-                <ChevronDown className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-              </div>
+              <FilterDropdown
+                value={eventFilter}
+                onChange={setEventFilter}
+                options={[
+                  { value: "all", label: t("allEvents") },
+                  { value: "upcoming", label: t("upcomingEvents") },
+                  { value: "ongoing", label: t("ongoingEvents") },
+                  { value: "past", label: t("pastEvents") },
+                ]}
+                className="h-14 pl-10 pr-9"
+                icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+              />
 
               <div className="h-14">
                 <DatePicker
@@ -1026,7 +1022,7 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
                   </div>
                 )}
 
-                {!borrowableItemsLoading && borrowableItems.length === 0 ? (
+                {!borrowableItemsLoading && borrowableItems.filter((it) => it.quantity > 0).length === 0 ? (
                   <p className="text-xs text-gray-400 italic">{t("noBorrowableItemsLabel")}</p>
                 ) : (
                   <SearchableSelect
@@ -1035,6 +1031,10 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
                     placeholder={borrowableItemsLoading ? t("loadingLabel") : t("addBorrowedItemPlaceholder")}
                     noResultsLabel={t("noMatchingBorrowItemsLabel")}
                     options={borrowableItems
+                      // Out-of-stock items can't actually be borrowed --
+                      // don't list them just to have staff pick one and
+                      // hit the quantity-exceeds-stock error.
+                      .filter((it) => it.quantity > 0)
                       .filter((it) => !newEvent.borrowedItems.some((r) => r.inventoryItemId === String(it.id)))
                       .map((it) => ({
                         value: String(it.id),
@@ -1283,19 +1283,18 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
                   placeholder={t("searchResidentNamePlaceholder")}
                 />
               </div>
-              <div className="relative">
-                <select
-                  value={attendanceStatusFilter}
-                  onChange={(e) => setAttendanceStatusFilter(e.target.value)}
-                  className="h-12 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm"
-                >
-                  <option value="all">{t("allStatus")}</option>
-                  <option value="complete">{t("statusComplete")}</option>
-                  <option value="incomplete">{t("statusIncomplete")}</option>
-                  <option value="missed">{t("statusMissed")}</option>
-                </select>
-                <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70" />
-              </div>
+              <FilterDropdown
+                value={attendanceStatusFilter}
+                onChange={setAttendanceStatusFilter}
+                options={[
+                  { value: "all", label: t("allStatus") },
+                  { value: "complete", label: t("statusComplete") },
+                  { value: "incomplete", label: t("statusIncomplete") },
+                  { value: "missed", label: t("statusMissed") },
+                ]}
+                className="h-12 pl-10 pr-8"
+                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+              />
             </div>
 
             <div className="flex-1 px-6 pb-6 overflow-y-auto">

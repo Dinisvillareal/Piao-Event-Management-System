@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use App\Models\User;
 use App\Models\CivilStatus;
+use App\Models\CurrentStatus;
 use Illuminate\Support\Facades\Hash;
 
 class UserSeeder extends Seeder
@@ -133,7 +134,7 @@ class UserSeeder extends Seeder
                 'has_account' => 0,
                 'password' => 'emily123',
                 'birth_date' => '1991-08-17',
-                'civil_status' => 'Solo Parent',
+                'current_statuses' => ['Solo Parent'],
                 'gender' => 'Female',
             ],
 
@@ -166,7 +167,7 @@ class UserSeeder extends Seeder
                 'password' => 'bea123',
                 // Solo Parent ("single mom") demo resident
                 'birth_date' => '1992-03-22',
-                'civil_status' => 'Solo Parent',
+                'current_statuses' => ['Solo Parent'],
                 'gender' => 'Female',
             ],
             [
@@ -231,7 +232,7 @@ class UserSeeder extends Seeder
                 // Solo Parent -- enrolled in Solo Parent Support via
                 // MembershipResidentSeeder membership_id 5
                 'birth_date' => '1987-03-11',
-                'civil_status' => 'Solo Parent',
+                'current_statuses' => ['Solo Parent'],
                 'gender' => 'Female',
             ],
             [
@@ -277,12 +278,13 @@ class UserSeeder extends Seeder
         $next = User::withTrashed()->count() + 1;
 
         $civilStatusIds = CivilStatus::pluck('id', 'label');
+        $currentStatusIds = CurrentStatus::pluck('id', 'label');
 
         foreach ($users as $data) {
 
             $userCode = 'PR-' . str_pad($next, 4, '0', STR_PAD_LEFT);
 
-            User::create([
+            $user = User::create([
                 'user_code' => $userCode,
                 'first_name' => $data['first_name'],
                 'last_name' => $data['last_name'],
@@ -308,6 +310,16 @@ class UserSeeder extends Seeder
                 'civil_status_id' => isset($data['civil_status']) ? ($civilStatusIds[$data['civil_status']] ?? null) : null,
                 'gender' => $data['gender'] ?? null,
             ]);
+
+            if (!empty($data['current_statuses'])) {
+                $ids = collect($data['current_statuses'])
+                    ->map(fn ($label) => $currentStatusIds[$label] ?? null)
+                    ->filter()
+                    ->values();
+                if ($ids->isNotEmpty()) {
+                    $user->currentStatuses()->attach($ids);
+                }
+            }
 
             $next++;
         }

@@ -146,7 +146,7 @@ class ReportController extends Controller
 
         $query = Membership::withoutTrashed()
             ->where('is_active', true)
-            ->with(['eligibleAgeBracket', 'eligibleCivilStatus'])
+            ->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
             ->withCount('users');
 
         if ($membershipId) {
@@ -162,6 +162,7 @@ class ReportController extends Controller
                 'member_count' => $m->users_count,
                 'eligible_age_bracket' => $m->eligibleAgeBracket?->label,
                 'eligible_civil_status' => $m->eligibleCivilStatus?->label,
+                'eligible_current_status' => $m->eligibleCurrentStatus?->label,
                 'eligible_gender' => $m->eligible_gender,
             ];
         })->values();

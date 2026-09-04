@@ -111,6 +111,13 @@ class HouseholdController extends Controller
             );
         } catch (\Exception $e) {
             DB::rollBack();
+
+            if ($this->isHeadConflict($e)) {
+                return response()->json([
+                    'message' => 'The chosen head already has a head flag on another household -- please refresh and try again.',
+                ], 409);
+            }
+
             return response()->json(['message' => 'Failed to create household: ' . $e->getMessage()], 500);
         }
     }
@@ -177,7 +184,20 @@ class HouseholdController extends Controller
         ]);
 
         $user = User::findOrFail($request->user_id);
-        $user->update(['household_id' => $household->id]);
+
+        // A resident being linked in from outside this household never
+        // carries an is_household_head flag with them -- it could be
+        // stale from a pre-Household-module free-text household, or from
+        // being detached without passing through removeMember() /
+        // UserController::update() (both of which clear it). Left alone,
+        // a stale true here plus this household's own existing head
+        // (set via the star button) is exactly how a household ends up
+        // with two heads. "Head of THIS household" is a fresh decision
+        // staff make afterward with the star button, never inherited.
+        $user->update([
+            'household_id'      => $household->id,
+            'is_household_head' => false,
+        ]);
 
         $this->createLog('Update', "Added {$user->first_name} {$user->last_name} to household '{$household->code}'");
 
@@ -222,15 +242,50 @@ class HouseholdController extends Controller
             'user_id' => 'nullable|integer|exists:users,id',
         ]);
 
-        User::where('household_id', $household->id)->update(['is_household_head' => false]);
+        DB::beginTransaction();
+        try {
+            // Lock this household's members for the swap so a concurrent
+            // "set head" request on the same household can't interleave
+            // between the demote and the promote below and leave two
+            // members flagged as head.
+            User::where('household_id', $household->id)->lockForUpdate()->get();
 
-        if ($request->filled('user_id')) {
-            $user = User::where('household_id', $household->id)->findOrFail($request->user_id);
-            $user->update(['is_household_head' => true]);
-            $this->createLog('Update', "Set {$user->first_name} {$user->last_name} as head of household '{$household->code}'");
+            User::where('household_id', $household->id)->update(['is_household_head' => false]);
+
+            if ($request->filled('user_id')) {
+                $user = User::where('household_id', $household->id)->findOrFail($request->user_id);
+                $user->update(['is_household_head' => true]);
+                $this->createLog('Update', "Set {$user->first_name} {$user->last_name} as head of household '{$household->code}'");
+            }
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            if ($this->isHeadConflict($e)) {
+                return response()->json([
+                    'message' => 'This household already has a head from another request just now -- please refresh and try again.',
+                ], 409);
+            }
+
+            return response()->json(['message' => 'Failed to set household head: ' . $e->getMessage()], 500);
         }
 
         return response()->json($household->load('members'));
+    }
+
+    /**
+     * True when $e is the DB rejecting a second is_household_head = true
+     * row for the same household (see the users_one_head_per_household
+     * unique index) -- the rare case of two truly concurrent requests
+     * both passing the PHP-level "no head yet" check before either
+     * commits. Lets callers turn that into a friendly message instead of
+     * a raw SQL error.
+     */
+    private function isHeadConflict(\Throwable $e): bool
+    {
+        return $e instanceof \Illuminate\Database\QueryException
+            && str_contains($e->getMessage(), 'users_one_head_per_household');
     }
 
     /**

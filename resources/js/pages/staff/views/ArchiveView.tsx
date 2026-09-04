@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, Filter, XCircle, CheckCircle } from 'lucide-react';
 import SearchBar from '../../../components/ui/SearchBar';
+import FilterDropdown from '../../../components/ui/FilterDropdown';
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface TrashedItem {
   id: string | number;
-  type: 'event' | 'resident' | 'membership' | 'notification' | 'age_bracket' | 'civil_status' | 'inventory_item' | 'expense';
+  type: 'event' | 'resident' | 'membership' | 'notification' | 'age_bracket' | 'civil_status' | 'current_status' | 'inventory_item' | 'expense';
   name: string;
   deletedAt: string;
   deletedBy: string;
@@ -19,6 +20,7 @@ const TYPE_LABEL_KEYS: Record<TrashedItem["type"], string> = {
   notification: "notify",
   age_bracket: "ageBracketsTitle",
   civil_status: "civilStatusesTitle",
+  current_status: "currentStatusesTitle",
   inventory_item: "inventory",
   expense: "expenseTypeLabel",
 };
@@ -163,6 +165,19 @@ export default function ArchiveView() {
   useEffect(() => { setCurrentPage(1); }, [typeFilter, searchQuery]);
   useEffect(() => { fetchArchivedItems(); }, []);
 
+  const typeOptions = [
+    { value: 'all', label: t('allTypes') },
+    { value: 'age_bracket', label: t('ageBracketsTitle') },
+    { value: 'civil_status', label: t('civilStatusesTitle') },
+    { value: 'current_status', label: t('currentStatusesTitle') },
+    { value: 'event', label: t('events') },
+    { value: 'expense', label: t('expenseTypeLabel') },
+    { value: 'inventory_item', label: t('inventory') },
+    { value: 'membership', label: t('memberships') },
+    { value: 'notification', label: t('notify') },
+    { value: 'resident', label: t('residents') },
+  ];
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -190,24 +205,14 @@ export default function ArchiveView() {
                 placeholder={t("searchArchivePlaceholder")}
               />
             </div>
-            <div className="relative">
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
-              >
-                <option value="all">{t("allTypes")}</option>
-                <option value="age_bracket">{t("ageBracketsTitle")}</option>
-                <option value="civil_status">{t("civilStatusesTitle")}</option>
-                <option value="event">{t("events")}</option>
-                <option value="expense">{t("expenseTypeLabel")}</option>
-                <option value="inventory_item">{t("inventory")}</option>
-                <option value="membership">{t("memberships")}</option>
-                <option value="notification">{t("notify")}</option>
-                <option value="resident">{t("residents")}</option>
-              </select>
-              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-            </div>
+            <FilterDropdown
+              value={typeFilter}
+              onChange={setTypeFilter}
+              options={typeOptions}
+              align="right"
+              className="h-14 pl-10 pr-8"
+              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+            />
           </div>
 
           <p className="mt-2 text-xs text-gray-500">
@@ -269,6 +274,7 @@ export default function ArchiveView() {
                         item.type === 'age_bracket'   ? 'bg-indigo-600 text-white' :
                         item.type === 'inventory_item' ? 'bg-violet-600 text-white' :
                         item.type === 'civil_status'  ? 'bg-fuchsia-600 text-white' :
+                        item.type === 'current_status' ? 'bg-cyan-600 text-white'  :
                         item.type === 'expense'       ? 'bg-rose-600 text-white'   :
                         'bg-gray-100 text-gray-700'
                       }`}>

@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { Filter, Star, Pencil, CheckCircle } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import api, { apiErrorMessage } from "../../../lib/api";
 
@@ -269,40 +270,28 @@ export default function EventsView({
               />
             </div>
 
-            <div className="relative">
-              <select
-                value={eventFilter}
-                onChange={(e) => setEventFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
-              >
-                <option value="all">{t("allEvents")}</option>
-                <option value="upcoming">{t("upcomingEvents")}</option>
-                <option value="past">{t("pastEvents")}</option>
-              </select>
-              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-              <svg className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
+            <FilterDropdown
+              value={eventFilter}
+              onChange={setEventFilter}
+              options={[
+                { value: "all", label: t("allEvents") },
+                { value: "upcoming", label: t("upcomingEvents") },
+                { value: "past", label: t("pastEvents") },
+              ]}
+              className="h-14 pl-10 pr-8"
+              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+            />
 
-            <div className="relative">
-              <select
-                value={membershipFilter}
-                onChange={(e) => setMembershipFilter(e.target.value)}
-                className="h-14 pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
-              >
-                <option value="all">{t("allMembershipsOption")}</option>
-                {userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-              <Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-              <svg className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
+            <FilterDropdown
+              value={membershipFilter}
+              onChange={setMembershipFilter}
+              options={[
+                { value: "all", label: t("allMembershipsOption") },
+                ...userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
+              ]}
+              className="h-14 pl-10 pr-8"
+              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+            />
           </div>
 
           <p className="mt-2 text-xs text-gray-500">

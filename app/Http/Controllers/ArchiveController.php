@@ -9,6 +9,7 @@ use App\Models\Notification;
 use App\Models\ActivityLog;
 use App\Models\AgeBracket;
 use App\Models\CivilStatus;
+use App\Models\CurrentStatus;
 use App\Models\InventoryItem;
 use App\Models\EventExpense;
 use Illuminate\Http\Request;
@@ -102,6 +103,17 @@ class ArchiveController extends Controller
                 'deletedBy' => $item->deleted_by ?? 'SYSTEM',
             ]);
 
+        $currentStatuses = CurrentStatus::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'current_status',
+                'name'      => $item->label,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
         $inventoryItems = InventoryItem::onlyTrashed()
             ->orderBy('deleted_at', 'desc')
             ->get()
@@ -131,6 +143,7 @@ class ArchiveController extends Controller
             $notifications->toArray(),
             $ageBrackets->toArray(),
             $civilStatuses->toArray(),
+            $currentStatuses->toArray(),
             $inventoryItems->toArray(),
             $expenses->toArray()
         );
@@ -149,7 +162,7 @@ class ArchiveController extends Controller
         }
 
         $request->validate([
-            'type' => 'required|string|in:membership,event,resident,notification,age_bracket,civil_status,inventory_item,expense',
+            'type' => 'required|string|in:membership,event,resident,notification,age_bracket,civil_status,current_status,inventory_item,expense',
             'id'   => 'required|integer',
         ]);
 
@@ -185,6 +198,14 @@ class ArchiveController extends Controller
                     $item->deleted_by = null;
                     $item->restore();
                     CivilStatus::forgetCache();
+                    break;
+
+                case 'current_status':
+                    $item = CurrentStatus::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->deleted_by = null;
+                    $item->restore();
+                    CurrentStatus::forgetCache();
                     break;
 
                 case 'membership':
@@ -277,7 +298,7 @@ class ArchiveController extends Controller
         }
 
         $request->validate([
-            'type' => 'required|string|in:membership,event,resident,age_bracket,civil_status,inventory_item,expense',
+            'type' => 'required|string|in:membership,event,resident,age_bracket,civil_status,current_status,inventory_item,expense',
             'id'   => 'required|integer',
         ]);
 
@@ -310,6 +331,13 @@ class ArchiveController extends Controller
                     $itemName = $item->label;
                     $item->forceDelete();
                     CivilStatus::forgetCache();
+                    break;
+
+                case 'current_status':
+                    $item = CurrentStatus::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->forceDelete();
+                    CurrentStatus::forgetCache();
                     break;
 
                 case 'membership':

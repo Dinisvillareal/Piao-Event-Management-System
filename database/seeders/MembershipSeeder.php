@@ -6,6 +6,7 @@ use Illuminate\Database\Seeder;
 use App\Models\Membership;
 use App\Models\AgeBracket;
 use App\Models\CivilStatus;
+use App\Models\CurrentStatus;
 
 class MembershipSeeder extends Seeder
 {
@@ -15,7 +16,7 @@ class MembershipSeeder extends Seeder
         // Parent -- these two pre-existing demo memberships get a real
         // eligibility gate so the feature is visible with seeded data.
         $seniorBracketId = AgeBracket::where('label', 'Senior Citizen')->value('id');
-        $soloParentStatusId = CivilStatus::where('label', 'Solo Parent')->value('id');
+        $soloParentStatusId = CurrentStatus::where('label', 'Solo Parent')->value('id');
 
         Membership::create([
             'name' => 'Pantawid Pamilya',
@@ -41,7 +42,7 @@ class MembershipSeeder extends Seeder
         Membership::create([
             'name' => 'Solo Parent Support',
             'description' => 'Assistance program for solo parents providing parental leave benefits, educational support, and livelihood training',
-            'eligible_civil_status_id' => $soloParentStatusId,
+            'eligible_current_status_id' => $soloParentStatusId,
         ]);
 
         Membership::create([

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Filter, Users, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, Smartphone, Home } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -213,6 +214,20 @@ export default function NotificationsView({ memberships = [], highlightText }: N
    };
 
 
+   const dateFilterOptions = [
+       { value: "all", label: t("allNotifications") },
+       { value: "upcoming", label: t("upcomingOption") },
+       { value: "past", label: t("pastOption") },
+   ];
+
+   const targetFilterOptions = useMemo(() => [
+       { value: "all-residents", label: t("allResidentsOption") },
+       ...memberships
+           .slice()
+           .sort((a: Membership, b: Membership) => a.name.localeCompare(b.name))
+           .map((m: Membership) => ({ value: String(m.id), label: m.name })),
+   ], [memberships, t]);
+
    if (loading) {
        return (
            <div className="flex justify-center items-center h-64">
@@ -245,37 +260,25 @@ export default function NotificationsView({ memberships = [], highlightText }: N
 
 
                    <div className="flex flex-wrap gap-3 items-stretch">
-                       <div className="relative h-full">
-                           <select
-                               value={dateFilter}
-                               onChange={(e) => setDateFilter(e.target.value)}
-                               className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
-                           >
-                               <option value="all">{t("allNotifications")}</option>
-                               <option value="upcoming">{t("upcomingOption")}</option>
-                               <option value="past">{t("pastOption")}</option>
-                           </select>
-                           <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-                       </div>
-
+                       <FilterDropdown
+                           value={dateFilter}
+                           onChange={setDateFilter}
+                           options={dateFilterOptions}
+                           className="h-full pl-10 pr-8"
+                           icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+                       />
 
                        <div className="flex items-center gap-2">
                            <span className="text-sm font-medium text-gray-700">{t("toColon")}</span>
-                           <div className="relative h-full">
-                               <select
-                                   value={targetFilter}
-                                   onChange={(e) => setTargetFilter(e.target.value)}
-                                   className="h-full pl-10 pr-8 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 appearance-none"
-                               >
-                                   <option value="all-residents">{t("allResidentsOption")}</option>
-                                   {memberships.slice().sort((a: Membership, b: Membership) => a.name.localeCompare(b.name)).map((m: Membership) => (
-                                       <option key={m.id} value={String(m.id)}>
-                                           {m.name}
-                                       </option>
-                                   ))}
-                               </select>
-                               <Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />
-                           </div>
+                           <FilterDropdown
+                               value={targetFilter}
+                               onChange={setTargetFilter}
+                               options={targetFilterOptions}
+                               align="right"
+                               panelWidthPx={256}
+                               className="h-full pl-10 pr-8"
+                               icon={<Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+                           />
                        </div>
                    </div>
                </div>

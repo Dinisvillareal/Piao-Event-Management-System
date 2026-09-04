@@ -30,7 +30,7 @@ class MembershipResidentController extends Controller
 
 public function index()
 {
-   $users = User::with('memberships', 'household')->get();
+   $users = User::with('memberships', 'household', 'currentStatuses')->get();
 
     return response()->json(
         $users->map(function ($user) {
@@ -61,6 +61,8 @@ public function index()
                 'address' => $user->address,
                 'civil_status_id' => $user->civil_status_id,
                 'civil_status' => $user->civil_status,
+                'current_status_ids' => $user->getRelationValue('currentStatuses')->pluck('id'),
+                'current_statuses' => $user->current_statuses,
                 'gender' => $user->gender,
                 // Real Household module -- household_code/household_contact_number
                 // were the old free-text pair that never actually linked to
