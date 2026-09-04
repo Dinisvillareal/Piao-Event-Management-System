@@ -16,6 +16,7 @@ import ActivityLogsView from "./views/ActivityLogsView";
 import ArchiveView from "./views/ArchiveView";
 import ReportsView from "./views/ReportsView";
 import InventoryView from "./views/InventoryView";
+import ReturnsView from "./views/ReturnsView";
 import BudgetView from "./views/BudgetView";
 import IntegrationsView from "./views/IntegrationsView";
 import ProfilingSettingsView from "./views/ProfilingSettingsView";
@@ -296,6 +297,7 @@ export default function StaffDashboard() {
           {active === "notify" && <NotificationsView memberships={membershipOptions} highlightText={highlightText} />}
           {active === "reports" && <ReportsView memberships={membershipOptions} />}
           {active === "inventory" && <InventoryView />}
+          {active === "returns" && <ReturnsView />}
           {active === "budget" && <BudgetView allEvents={allEvents} />}
           {active === "activitylogs" && <ActivityLogsView />}
           {active === "archive" && <ArchiveView/>}

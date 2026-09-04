@@ -13,12 +13,6 @@ class MembershipResidentController extends Controller
     // AUTH HELPERS
     // =========================
 
-    private function isStaff()
-    {
-        $user = auth()->user();
-        return $user && $user->role === 'Staff';
-    }
-
     private function isOwnProfile($id)
     {
         return auth()->id() == $id;
@@ -268,7 +262,4 @@ public function index()
         ]);
     }
 }
-
-
-
 

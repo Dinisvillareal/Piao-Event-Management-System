@@ -10,20 +10,7 @@ use Illuminate\Support\Facades\DB;
 
 class HouseholdController extends Controller
 {
-    private function isStaff()
-    {
-        return auth()->user()?->role === 'Staff';
-    }
-
-    private function createLog($action, $description)
-    {
-        ActivityLog::create([
-            'user_code'   => auth()->user()?->user_code ?? 'SYSTEM',
-            'action'      => $action,
-            'module'      => 'Households',
-            'description' => $description,
-        ]);
-    }
+    protected $logModule = 'Households';
 
     private function memberFields(): array
     {

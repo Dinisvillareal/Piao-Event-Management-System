@@ -29,6 +29,11 @@ export default function DashboardView({
   const [loading, setLoading] = useState(true);
   const [appUrl, setAppUrl] = useState("");
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
+  // Events that already ended but still hold borrowed inventory --
+  // nothing in the system releases these on its own (see
+  // EventController::overdueBorrows), so the Dashboard surfaces them
+  // directly instead of relying on staff noticing the Inventory badge.
+  const [overdueBorrows, setOverdueBorrows] = useState<any[]>([]);
 
   const getCsrfToken = () => {
     const token = document.cookie
@@ -95,6 +100,16 @@ export default function DashboardView({
     }
   };
 
+  const fetchOverdueBorrows = async () => {
+    try {
+      const response = await api.get('/events/overdue-borrows');
+      setOverdueBorrows(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Error fetching overdue borrows:', error);
+      setOverdueBorrows([]);
+    }
+  };
+
   const fetchAllStats = async () => {
     try {
       const [residentsResponse, membershipsResponse] = await Promise.all([
@@ -133,6 +148,7 @@ export default function DashboardView({
           fetchCurrentUser(),
           fetchAllStats(),
           fetchRecentActivities(),
+          fetchOverdueBorrows(),
         ]);
       } catch (error) {
         console.error('Error loading dashboard:', error);
@@ -231,6 +247,23 @@ export default function DashboardView({
           </button>
         ))}
       </div>
+
+      {overdueBorrows.length > 0 && (
+        <button
+          onClick={() => setActive("returns")}
+          className="w-full text-left rounded-[30px] border border-red-200 bg-red-50 p-5 flex items-center justify-between gap-4 flex-wrap hover:bg-red-100/70 transition-colors"
+        >
+          <div>
+            <h2 className="text-lg font-black text-red-700">{t("overdueBorrowsTitle")}</h2>
+            <p className="text-sm text-red-700/80 mt-1">
+              {overdueBorrows.length} {overdueBorrows.length === 1 ? t("eventSingularLabel") : t("eventPluralLabel")} &mdash; {t("overdueBorrowsSubtitle")}
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-red-600 text-white text-xs font-semibold px-4 py-2.5">
+            {t("reviewReturnsLabel")}
+          </span>
+        </button>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">

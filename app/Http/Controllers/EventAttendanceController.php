@@ -11,16 +11,6 @@ use App\Models\ActivityLog;
 
 class EventAttendanceController extends Controller
 {
-    private function createLog($action, $module, $description)
-    {
-        ActivityLog::create([
-            'user_code'   => auth()->user()?->user_code ?? 'SYSTEM',
-            'action'      => $action,
-            'module'      => $module,
-            'description' => $description,
-        ]);
-    }
-
   private function determineStatus($timeIn, $timeOut)
     {
         if ($timeIn && $timeOut) return 'Complete';

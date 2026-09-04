@@ -17,16 +17,6 @@ use Illuminate\Support\Facades\DB;
 
 class ArchiveController extends Controller
 {
-    private function createLog($action, $module, $description)
-    {
-        ActivityLog::create([
-            'user_code'   => auth()->user()?->user_code ?? 'SYSTEM',
-            'action'      => $action,
-            'module'      => $module,
-            'description' => $description,
-        ]);
-    }
-
     public function index()
     {
         if (auth()->user()?->role !== 'Staff') {

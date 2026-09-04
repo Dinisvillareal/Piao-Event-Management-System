@@ -40,6 +40,11 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   const [loadingSummary, setLoadingSummary] = useState(false);
   const [form, setForm] = useState({ item: "", amount: "", notes: "" });
   const [error, setError] = useState<string | null>(null);
+  // Recording an expense that pushes an event over budget is allowed
+  // (approved_budget is a soft cap, not a hard wall -- see
+  // EventExpenseController::store) but staff should find out right when
+  // it happens, not only by later noticing a red progress bar.
+  const [budgetWarning, setBudgetWarning] = useState<string | null>(null);
   const [deleteExpense, setDeleteExpense] = useState<{ id: number; item: string } | null>(null);
   const [deletingExpense, setDeletingExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState<{ id: number; item: string } | null>(null);
@@ -220,13 +225,19 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     setShowAddExpenseConfirm(false);
     if (!selectedEventId) return;
     try {
-      await api.post(`/events/${selectedEventId}/expenses`, {
+      const result = await api.post(`/events/${selectedEventId}/expenses`, {
         item: form.item,
         amount: form.amount,
         notes: form.notes || undefined,
       });
       setForm({ item: "", amount: "", notes: "" });
       loadSummary(selectedEventId);
+      if (result?.data?.is_over_budget) {
+        setBudgetWarning(
+          t("expenseOverBudgetWarning")
+            .replace("{total}", Number(result.data.total_expenses).toLocaleString())
+        );
+      }
     } catch (e) {
       setError(apiErrorMessage(e, t("recordExpenseFailed")));
     }
@@ -504,6 +515,19 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
             <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{error}</p>
             <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {budgetWarning && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setBudgetWarning(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-600 mb-2">{t("overBudgetTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{budgetWarning}</p>
+            <button onClick={() => setBudgetWarning(null)} className="px-6 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white transition">
               {t("okLabel")}
             </button>
           </div>

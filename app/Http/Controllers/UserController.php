@@ -20,11 +20,6 @@ class UserController extends Controller
     // HELPERS
     // =========================
 
-    private function isStaff()
-    {
-        return auth()->user()?->role === 'Staff';
-    }
-
     private function isOwnProfile($id)
     {
         return auth()->id() == $id;
@@ -42,16 +37,6 @@ class UserController extends Controller
     {
         return $e instanceof \Illuminate\Database\QueryException
             && str_contains($e->getMessage(), 'users_one_head_per_household');
-    }
-
-    private function createLog($action, $module, $description)
-    {
-        ActivityLog::create([
-            'user_code'   => auth()->user()?->user_code ?? 'SYSTEM',
-            'action'      => $action,
-            'module'      => $module,
-            'description' => $description,
-        ]);
     }
 
     private function localUpload($file): string
@@ -568,7 +553,6 @@ class UserController extends Controller
             ], 500);
         }
     }
-
 
     // =========================
     // DELETE USER

@@ -230,10 +230,16 @@ export default function HouseholdsView() {
     }
   };
 
-  const removeMember = async (householdId: number, userId: number) => {
+  const removeMember = async (householdId: number, userId: number, wasHead: boolean) => {
     try {
       await api(`/households/${householdId}/members/${userId}`, { method: "DELETE" });
       await load(search, page);
+      // The head badge on the card already flags a headless household
+      // passively, but staff should also know it happened right when
+      // they took the action that caused it, not just on next glance.
+      if (wasHead) {
+        setSuccessMessage(t("removedHeadNowUnassigned"));
+      }
     } catch (e: any) {
       setErrorMessage(e?.message || t("removeMemberFailed"));
     }
@@ -378,7 +384,7 @@ export default function HouseholdsView() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => removeMember(h.id, m.id)}
+                              onClick={() => removeMember(h.id, m.id, m.is_household_head)}
                               title={t("removeMemberLabel")}
                               className="p-1 rounded-full text-gray-300 hover:text-red-500"
                             >

@@ -28,7 +28,7 @@ class NotificationController extends Controller
     // For Staff - grouped by event (one notification per event)
     public function staffNotifications(Request $request)
     {
-        if (Auth::user()->role !== 'Staff') {
+        if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
         
@@ -150,7 +150,7 @@ class NotificationController extends Controller
      */
     public function smsLogs(Request $request)
     {
-        if (Auth::user()->role !== 'Staff') {
+        if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 

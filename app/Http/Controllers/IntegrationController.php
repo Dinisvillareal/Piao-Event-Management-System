@@ -8,11 +8,6 @@ use Illuminate\Support\Facades\Log;
 
 class IntegrationController extends Controller
 {
-    private function isStaff()
-    {
-        return auth()->user()?->role === 'Staff';
-    }
-
     // Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)"
     public function facebookStatus(FacebookService $fb)
     {

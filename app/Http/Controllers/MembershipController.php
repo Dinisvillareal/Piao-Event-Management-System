@@ -4,26 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\Membership;
 use App\Models\ActivityLog;
+use App\Models\AgeBracket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class MembershipController extends Controller
 {
-    private function isStaff()
-    {
-        return auth()->user()?->role === 'Staff';
-    }
-
-    private function createLog($action, $module, $description)
-    {
-        ActivityLog::create([
-            'user_code'   => auth()->user()?->user_code ?? 'SYSTEM',
-            'action'      => $action,
-            'module'      => $module,
-            'description' => $description,
-        ]);
-    }
-
     // =========================
     // GET ALL (ACTIVE ONLY)
     // =========================
@@ -309,5 +295,74 @@ class MembershipController extends Controller
                 ->orderBy($sortBy, $sortOrder)
                 ->paginate($perPage)
         );
+    }
+
+    /**
+     * Residents currently enrolled in this membership who no longer match
+     * its eligibility rule (age bracket / civil status / current status /
+     * gender). Eligibility is only checked when a resident is FIRST
+     * assigned to a gated membership (see UserController::
+     * checkMembershipEligibility) -- nothing re-checks it afterward, so a
+     * resident who ages out of a bracket or whose status changes stays
+     * enrolled indefinitely unless staff notice and remove them by hand.
+     * This lets staff proactively find those cases instead of relying on
+     * noticing by accident.
+     */
+    public function ineligibleMembers($id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $membership = Membership::withoutTrashed()->findOrFail($id);
+
+        if (!$membership->eligible_age_bracket_id
+            && !$membership->eligible_civil_status_id
+            && !$membership->eligible_current_status_id
+            && !$membership->eligible_gender) {
+            return response()->json(['ineligible' => []]);
+        }
+
+        $members = $membership->users()->with('currentStatuses')->get();
+
+        $ineligible = [];
+
+        foreach ($members as $user) {
+            $reasons = [];
+
+            if ($membership->eligible_age_bracket_id) {
+                $bracket = AgeBracket::resolveForAge($user->age);
+                if (!$bracket || (int) $bracket->id !== (int) $membership->eligible_age_bracket_id) {
+                    $reasons[] = 'no longer in the required age group';
+                }
+            }
+
+            if ($membership->eligible_civil_status_id
+                && (int) $user->civil_status_id !== (int) $membership->eligible_civil_status_id) {
+                $reasons[] = 'civil status no longer matches';
+            }
+
+            if ($membership->eligible_current_status_id) {
+                $currentStatusIds = $user->getRelationValue('currentStatuses')->pluck('id')->map(fn ($v) => (int) $v)->all();
+                if (!in_array((int) $membership->eligible_current_status_id, $currentStatusIds, true)) {
+                    $reasons[] = 'current status no longer matches';
+                }
+            }
+
+            if ($membership->eligible_gender && $user->gender !== $membership->eligible_gender) {
+                $reasons[] = 'gender no longer matches';
+            }
+
+            if (!empty($reasons)) {
+                $ineligible[] = [
+                    'id' => $user->id,
+                    'name' => trim("{$user->first_name} {$user->last_name}"),
+                    'user_code' => $user->user_code,
+                    'reasons' => $reasons,
+                ];
+            }
+        }
+
+        return response()->json(['ineligible' => $ineligible]);
     }
 }

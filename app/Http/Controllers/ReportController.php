@@ -12,11 +12,6 @@ use Illuminate\Http\Request;
 
 class ReportController extends Controller
 {
-    private function isStaff()
-    {
-        return auth()->user()?->role === 'Staff';
-    }
-
     /**
      * Adviser recommendation: "Filtering (First) Data Analytics — Date,
      * Summary — Attendance, Percentage" + "What Events usually happen per

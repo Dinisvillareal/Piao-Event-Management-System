@@ -24,6 +24,7 @@ import {
   IdCard,
   CalendarCheck,
   Boxes,
+  Undo2,
 } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -39,6 +40,7 @@ export const NAV = [
   { key: "reports", path: "reports", label: "Reports & Analytics", icon: BarChart3 },
   { key: "inventory", path: "inventory", label: "Inventory", icon: Package },
   { key: "budget", path: "budget", label: "Budget & Expenses", icon: Wallet },
+  { key: "returns", path: "returns", label: "Returns", icon: Undo2 },
 ];
 
 export const SETTINGS_NAV = [
@@ -64,7 +66,7 @@ const NAV_BY_KEY: Record<string, typeof NAV[number]> = Object.fromEntries(NAV.ma
 const NAV_GROUP_DEFS: { key: string; labelKey: string; icon: any; itemKeys: string[] }[] = [
   { key: "membershipGroup", labelKey: "navGroupMembership", icon: IdCard, itemKeys: ["residents", "households", "memberships"] },
   { key: "eventsGroup", labelKey: "navGroupEvents", icon: CalendarCheck, itemKeys: ["events", "scan", "notify"] },
-  { key: "resourcesGroup", labelKey: "navGroupResources", icon: Boxes, itemKeys: ["inventory", "budget"] },
+  { key: "resourcesGroup", labelKey: "navGroupResources", icon: Boxes, itemKeys: ["inventory", "budget", "returns"] },
 ];
 
 export const NAV_GROUPS = NAV_GROUP_DEFS.map((g) => ({

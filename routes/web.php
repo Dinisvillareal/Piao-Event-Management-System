@@ -136,6 +136,7 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::resource('api/memberships', MembershipController::class);
+    Route::get('/memberships/{id}/ineligible-members', [MembershipController::class, 'ineligibleMembers']);
     Route::post('/memberships/{id}/restore', [MembershipController::class, 'restore']);
 
     /*
@@ -155,6 +156,7 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::get('/events-data', [EventController::class, 'data']);
+    Route::get('/events/overdue-borrows', [EventController::class, 'overdueBorrows']);
     Route::post('/events', [EventController::class, 'store']);
     Route::put('/events/{id}', [EventController::class, 'update']);
     Route::delete('/events/{id}', [EventController::class, 'destroy']);  // Now soft deletes
@@ -162,6 +164,8 @@ Route::middleware('auth')->group(function () {
     
     // 🆕 SOFT DELETE ROUTES (ADDED)
     Route::post('/events/{id}/restore', [EventController::class, 'restore']);        // Restore soft-deleted event
+    Route::post('/events/{id}/release-borrowed-items', [EventController::class, 'returnBorrowedItems']);
+    Route::post('/events/{eventId}/borrowed-items/{borrowId}/release', [EventController::class, 'releaseBorrowedItem']);
     Route::delete('/events/{id}/force-delete', [EventController::class, 'forceDelete']); // Permanently delete
 
     /*

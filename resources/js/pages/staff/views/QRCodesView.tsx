@@ -41,6 +41,12 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [selectedMembership, setSelectedMembership] = useState<any>(null);
+  // Eligibility is only enforced when a resident is first assigned to a
+  // gated membership -- nothing re-checks it afterward, so residents can
+  // drift out of eligibility over time (aged out of a bracket, status
+  // changed) and stay enrolled unnoticed. This lets staff proactively ask.
+  const [eligibilityCheck, setEligibilityCheck] = useState<{ membershipId: number; membershipName: string; ineligible: any[] } | null>(null);
+  const [checkingEligibilityId, setCheckingEligibilityId] = useState<number | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -180,6 +186,22 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     } catch (error) {
       console.error('Error fetching residents:', error);
       setAllResidents([]);
+    }
+  };
+
+  const checkEligibility = async (m: any) => {
+    setCheckingEligibilityId(m.id);
+    try {
+      const response = await fetch(`/api/memberships/${m.id}/ineligible-members`, {
+        credentials: 'include',
+        headers: { 'Accept': 'application/json' },
+      });
+      const result = await response.json();
+      setEligibilityCheck({ membershipId: m.id, membershipName: m.name, ineligible: result.ineligible || [] });
+    } catch {
+      setEligibilityCheck({ membershipId: m.id, membershipName: m.name, ineligible: [] });
+    } finally {
+      setCheckingEligibilityId(null);
     }
   };
 
@@ -695,6 +717,17 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         >
                           <Users className="mr-1 h-5 w-3.5" /> {t("viewMembers")} ({residentCount})
                         </Button>
+                        {(m.eligible_age_bracket?.label || m.eligible_civil_status?.label || m.eligible_current_status?.label || m.eligible_gender) && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full border-amber-500/30 text-amber-700 hover:bg-amber-50 w-full sm:w-auto justify-center"
+                            onClick={() => checkEligibility(m)}
+                            disabled={checkingEligibilityId === m.id}
+                          >
+                            <AlertTriangle className="mr-1 h-3.5 w-3.5" /> {checkingEligibilityId === m.id ? t("checkingEligibility") : t("checkEligibilityLabel")}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -780,6 +813,64 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
             <div className="bg-white px-4 sm:px-6 py-4 border-t border-gray-100 flex justify-end">
               <button onClick={closeModal} className="bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-full text-sm font-medium transition active:scale-95">
+                {t("closeLabel")}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {eligibilityCheck && createPortal(
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 sm:p-0"
+          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
+          onClick={() => setEligibilityCheck(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl relative mx-4 sm:mx-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-white px-4 sm:px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-gray-800">{t("eligibilityCheckTitle")}</h2>
+                <p className="text-xs sm:text-sm text-gray-500 mt-0.5">{eligibilityCheck.membershipName}</p>
+              </div>
+              <button onClick={() => setEligibilityCheck(null)} className="text-gray-400 hover:text-gray-600 p-1">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-6 overflow-y-auto max-h-[60vh]">
+              {eligibilityCheck.ineligible.length === 0 ? (
+                <div className="text-center py-8">
+                  <CheckCircle className="h-10 w-10 mx-auto text-teal-600 mb-2" />
+                  <p className="text-gray-600 text-sm">{t("allMembersStillEligible")}</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3">
+                    {t("ineligibleMembersFoundHint")}
+                  </p>
+                  {eligibilityCheck.ineligible.map((r: any) => (
+                    <div key={r.id} className="rounded-xl bg-gray-50 p-3">
+                      <p className="font-semibold text-gray-800 text-sm">{r.name}</p>
+                      <p className="text-xs text-gray-400 font-mono">{r.user_code}</p>
+                      <ul className="mt-1 list-disc list-inside text-xs text-amber-700">
+                        {r.reasons.map((reason: string, i: number) => (
+                          <li key={i}>{reason}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white px-4 sm:px-6 py-4 border-t border-gray-100 flex justify-end">
+              <button onClick={() => setEligibilityCheck(null)} className="bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-2 rounded-full text-sm font-medium transition active:scale-95">
                 {t("closeLabel")}
               </button>
             </div>

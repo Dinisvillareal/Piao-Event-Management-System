@@ -6,7 +6,6 @@ use Illuminate\Http\Request;
 use App\Models\Event;
 use App\Models\User;
 use App\Models\Notification;
-use App\Models\ActivityLog;
 use App\Models\EventAttendance;
 use App\Models\EventInventoryItem;
 use App\Models\InventoryItem;
@@ -73,7 +72,7 @@ class EventController extends Controller
 
         if ($effectiveRole === 'Staff') {
             // Staff portal: show all active events (exclude soft-deleted)
-            $events = Event::withoutTrashed()->with('borrowedItems.inventoryItem')->get();
+            $events = Event::withoutTrashed()->with('borrowedItems.inventoryItem')->orderByDesc('event_start')->get();
         } else {
             // Resident mode: filter by user's memberships (exclude soft-deleted)
             $residentMembershipIds = DB::table('membership_residents')
@@ -91,6 +90,7 @@ class EventController extends Controller
             })
             ->withoutTrashed()  // ✅ NEW: Exclude soft-deleted
             ->with('borrowedItems.inventoryItem')
+            ->orderByDesc('event_start')
             ->get();
         }
 
@@ -184,24 +184,10 @@ class EventController extends Controller
 
             DB::commit();
 
-            ActivityLog::create([
-                'user_code'   => auth()->user()->user_code,
-                'action'      => 'Create',
-                'module'      => 'Events',
-                'description' => "Created event: {$event->name}",
-                'created_at'  => now(),
-                'updated_at'  => now(),
-            ]);
+            $this->createLog('Create', 'Events', "Created event: {$event->name}");
 
             if (!empty($event->notification_message)) {
-                ActivityLog::create([
-                    'user_code'   => auth()->user()->user_code,
-                    'action'      => 'Create',
-                    'module'      => 'Notifications',
-                    'description' => "Sent notification for event: {$event->name}",
-                    'created_at'  => now()->addMilliseconds(500),
-                    'updated_at'  => now()->addMilliseconds(500),
-                ]);
+                $this->createLog('Create', 'Notifications', "Sent notification for event: {$event->name}", now()->addMilliseconds(500));
             }
 
             return response()->json([
@@ -311,24 +297,10 @@ class EventController extends Controller
 
             DB::commit();
 
-            ActivityLog::create([
-                'user_code'   => auth()->user()->user_code,
-                'action'      => 'Update',
-                'module'      => 'Events',
-                'description' => "Updated event: {$event->name}",
-                'created_at'  => now()->addMilliseconds(500),
-                'updated_at'  => now()->addMilliseconds(500),
-            ]);
+            $this->createLog('Update', 'Events', "Updated event: {$event->name}", now()->addMilliseconds(500));
 
             if ($notificationUpdated) {
-                ActivityLog::create([
-                    'user_code'   => auth()->user()->user_code,
-                    'action'      => 'Update',
-                    'module'      => 'Notifications',
-                    'description' => "Updated notification for event: {$event->name}",
-                    'created_at'  => now()->addMilliseconds(500),
-                    'updated_at'  => now()->addMilliseconds(500),
-                ]);
+                $this->createLog('Update', 'Notifications', "Updated notification for event: {$event->name}", now()->addMilliseconds(500));
             }
 
             return response()->json([
@@ -377,14 +349,7 @@ public function destroy($id)
         ]);
 
         // ✅ Step 3: Log the archive action
-        ActivityLog::create([
-            'user_code'   => $user->user_code,
-            'action'      => 'Archive Event',
-            'module'      => 'Events',
-            'description' => "Archived event: {$eventName}",
-            'created_at'  => now(),
-            'updated_at'  => now(),
-        ]);
+        $this->createLog('Archive Event', 'Events', "Archived event: {$eventName}");
 
         DB::commit();
 
@@ -413,14 +378,7 @@ public function destroy($id)
         
         $event->restore();
 
-        ActivityLog::create([
-            'user_code'   => $user->user_code,
-            'action'      => 'Restore Event',
-            'module'      => 'Events',
-            'description' => "Restored event from archive: {$eventName}",
-            'created_at'  => now(),
-            'updated_at'  => now(),
-        ]);
+        $this->createLog('Restore Event', 'Events', "Restored event from archive: {$eventName}");
 
         return response()->json([
             'message' => 'Event restored successfully',
@@ -456,14 +414,7 @@ public function destroy($id)
             // Permanently delete event
             $event->forceDelete();
 
-            ActivityLog::create([
-                'user_code'   => $user->user_code,
-                'action'      => 'Force Delete',
-                'module'      => 'Events',
-                'description' => "Permanently deleted event: {$eventName}",
-                'created_at'  => now(),
-                'updated_at'  => now(),
-            ]);
+            $this->createLog('Force Delete', 'Events', "Permanently deleted event: {$eventName}");
 
             DB::commit();
 
@@ -603,5 +554,116 @@ public function destroy($id)
         }
 
         $event->borrowedItems()->delete();
+    }
+
+    /**
+     * Events that have already ended but still have borrowed items nobody
+     * released. Pairs with the item-level "Overdue Return" flag on the
+     * Inventory grid (see InventoryController::index) -- that one lets
+     * staff notice a single stuck item; this one is the event-level view
+     * for the Dashboard, so staff can release everything a given event
+     * is still holding in one action instead of hunting it down later.
+     */
+    public function overdueBorrows()
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $events = Event::withoutTrashed()
+            ->whereHas('borrowedItems')
+            ->with(['borrowedItems.inventoryItem:id,name'])
+            ->get()
+            ->filter(function ($event) {
+                $endedAt = $event->event_end ?? $event->event_start;
+                return $endedAt && $endedAt->isPast();
+            })
+            ->map(function ($event) {
+                return [
+                    'id' => $event->id,
+                    'name' => $event->name,
+                    'ended_at' => $event->event_end ?? $event->event_start,
+                    'items' => $event->borrowedItems->map(fn ($b) => [
+                        'id' => $b->id,
+                        'name' => $b->inventoryItem->name ?? 'Unknown item',
+                        'quantity' => $b->quantity,
+                    ])->values(),
+                ];
+            })
+            ->values();
+
+        return response()->json($events);
+    }
+
+    /**
+     * One-click release for the Dashboard's overdue-borrows card: returns
+     * every item this event still holds to Inventory, same as archiving
+     * would, but without archiving the event itself -- staff may still
+     * want the event record active (for reports, history, etc.) even
+     * after giving back what it borrowed.
+     */
+    public function returnBorrowedItems($id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $event = Event::withoutTrashed()->findOrFail($id);
+
+        if ($event->borrowedItems()->count() === 0) {
+            return response()->json(['message' => 'This event has no borrowed items to return.'], 422);
+        }
+
+        $this->releaseBorrowedItems($event);
+        $this->createLog('Return Items', 'Inventory', "Returned borrowed items from event: {$event->name}");
+
+        return response()->json(['message' => 'Borrowed items returned to Inventory.']);
+    }
+
+
+    /**
+     * Release a single borrowed item back to Inventory, instead of an
+     * event's entire bundle at once (see returnBorrowedItems() above for
+     * the all-at-once version, still used internally by archive/edit).
+     * Staff may only want to give back some of what an event borrowed --
+     * e.g. the chairs are free again but the sound system is still in use
+     * elsewhere -- so each item on the Returns page releases on its own.
+     */
+    public function releaseBorrowedItem(Request $request, $eventId, $borrowId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $event = Event::withoutTrashed()->findOrFail($eventId);
+        $borrow = $event->borrowedItems()->where('id', $borrowId)->firstOrFail();
+
+        // Staff can give back fewer than the full quantity -- e.g. 1 of
+        // the 3 borrowed blood pressure monitors is free again, the other
+        // 2 are still out. Defaults to the full remaining quantity so the
+        // request is optional, not required, from any other caller.
+        $request->validate([
+            'quantity' => 'nullable|integer|min:1|max:' . $borrow->quantity,
+        ]);
+        $releaseQty = $request->filled('quantity') ? (int) $request->quantity : $borrow->quantity;
+
+        $item = InventoryItem::withTrashed()->find($borrow->inventory_item_id);
+        if ($item) {
+            $item->quantity += $releaseQty;
+            $item->save();
+        }
+
+        $itemName = $item->name ?? 'item';
+
+        if ($releaseQty >= $borrow->quantity) {
+            $borrow->delete();
+        } else {
+            $borrow->quantity -= $releaseQty;
+            $borrow->save();
+        }
+
+        $this->createLog('Return Items', 'Inventory', "Returned {$releaseQty}x {$itemName} from event: {$event->name}");
+
+        return response()->json(['message' => 'Item returned to Inventory.', 'released_quantity' => $releaseQty]);
     }
 }

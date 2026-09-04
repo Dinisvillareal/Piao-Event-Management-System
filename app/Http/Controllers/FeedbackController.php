@@ -8,11 +8,6 @@ use Illuminate\Http\Request;
 
 class FeedbackController extends Controller
 {
-    private function isStaff()
-    {
-        return auth()->user()?->role === 'Staff';
-    }
-
     // UC-16: Submit Post-Event Feedback
     public function store(Request $request)
     {

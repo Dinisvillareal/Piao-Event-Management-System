@@ -9,11 +9,6 @@ use Illuminate\Http\Request;
 
 class EventExpenseController extends Controller
 {
-    private function isStaff()
-    {
-        return auth()->user()?->role === 'Staff';
-    }
-
     // UC-8: Record Event Budget and Expenses
     public function index($eventId)
     {

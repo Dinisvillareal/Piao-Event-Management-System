@@ -8,21 +8,6 @@ use Illuminate\Http\Request;
 
 class CivilStatusController extends Controller
 {
-    private function isStaff()
-    {
-        return auth()->user()?->role === 'Staff';
-    }
-
-    private function createLog($action, $module, $description)
-    {
-        ActivityLog::create([
-            'user_code'   => auth()->user()?->user_code ?? 'SYSTEM',
-            'action'      => $action,
-            'module'      => $module,
-            'description' => $description,
-        ]);
-    }
-
     public function index()
     {
         return response()->json(CivilStatus::orderBy('sort_order')->get());

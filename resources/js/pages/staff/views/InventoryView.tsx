@@ -19,6 +19,10 @@ interface InventoryItem {
   // InventoryItem::borrows() on the backend). >0 means the item can't be
   // deleted yet -- it has to be returned to Inventory first.
   borrowed_quantity: number;
+  // Set when this item is on loan to an event whose date has already
+  // passed and nobody has archived it yet -- the item is effectively
+  // stuck, since nothing returns it to Inventory automatically.
+  overdue_borrow_event: { id: number; name: string; ended_at: string } | null;
 }
 
 const CONDITION_STYLES: Record<Condition, string> = {
@@ -159,13 +163,21 @@ export default function InventoryView() {
     setError(null);
     const wasEditing = !!editing;
     try {
+      let archived = false;
       if (editing) {
-        await api.put(`/inventory/${editing.id}`, form);
+        const res = await api.put(`/inventory/${editing.id}`, form);
+        archived = !!res?.data?.archived;
       } else {
         await api.post("/inventory", form);
       }
       setShowForm(false);
-      setSuccessMessage(wasEditing ? t("itemUpdatedSuccess") : t("itemAddedSuccess"));
+      setSuccessMessage(
+        archived
+          ? t("itemArchivedSuccess").replace("{condition}", form.condition)
+          : wasEditing
+          ? t("itemUpdatedSuccess")
+          : t("itemAddedSuccess")
+      );
       fetchItems();
     } catch (e) {
       setError(apiErrorMessage(e, t("saveItemFailed")));
@@ -245,8 +257,17 @@ export default function InventoryView() {
                   <Package className="h-5 w-5 text-[#005f63]" />
                 </div>
                 <div className="flex flex-wrap justify-end gap-1">
-                  {item.borrowed_quantity > 0 && (
-                    <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700">{t("onLoanBadge")}</span>
+                  {item.overdue_borrow_event ? (
+                    <span
+                      className="px-2 py-1 rounded-full text-[11px] font-semibold bg-red-50 text-red-700"
+                      title={t("overdueBorrowTooltip").replace("{event}", item.overdue_borrow_event.name)}
+                    >
+                      {t("overdueReturnBadge")}
+                    </span>
+                  ) : (
+                    item.borrowed_quantity > 0 && (
+                      <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700">{t("onLoanBadge")}</span>
+                    )
                   )}
                   <span className={`px-2 py-1 rounded-full text-[11px] font-semibold ${CONDITION_STYLES[item.condition]}`}>{t(CONDITION_LABEL_KEYS[item.condition])}</span>
                 </div>
