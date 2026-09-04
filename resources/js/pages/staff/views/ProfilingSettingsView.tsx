@@ -172,7 +172,11 @@ export default function ProfilingSettingsView() {
 
   const submitStatus = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!statusForm.label.trim()) return;
+    setError(null);
+    if (!statusForm.label.trim()) {
+      setError(t("civilStatusLabelRequiredError"));
+      return;
+    }
     setConfirmStatusSave(true);
   };
 

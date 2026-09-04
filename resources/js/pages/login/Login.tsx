@@ -619,12 +619,18 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsLoading(true);
     setError("");
 
     const form = e.currentTarget;
     const username = (form.elements.namedItem("username") as HTMLInputElement).value;
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
+
+    if (!username.trim() || !password.trim()) {
+      setError("Please enter both your username and password.");
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
       const csrfToken = document
@@ -841,7 +847,7 @@ export default function LoginPage() {
               Sign in to your barangay account
             </p>
 
-            <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+            <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-5">
               <div>
                 <label className="text-sm font-semibold text-gray-800">
                   Username

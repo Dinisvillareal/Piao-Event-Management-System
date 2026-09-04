@@ -40,6 +40,17 @@ export default function IntegrationsView() {
 
   const handleConnect = (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
+
+    if (!pageId.trim()) {
+      setError(t("pageIdRequiredError"));
+      return;
+    }
+    if (!accessToken.trim()) {
+      setError(t("accessTokenRequiredError"));
+      return;
+    }
+
     setConfirmConnect(true);
   };
 
@@ -108,7 +119,7 @@ export default function IntegrationsView() {
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleConnect} className="space-y-3">
+                <form onSubmit={handleConnect} noValidate className="space-y-3">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">{t("facebookPageIdLabel")}</label>
                     <input required value={pageId} onChange={(e) => setPageId(e.target.value)} className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm" placeholder="e.g. 123456789012345" />

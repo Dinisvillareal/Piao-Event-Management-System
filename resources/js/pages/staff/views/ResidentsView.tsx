@@ -411,6 +411,7 @@ export default function ResidentsView() {
     if (newResident.needAccount && !newResident.tempPassword.trim())
       err.tempPassword = t("tempPasswordRequired");
     setFormErrors(err);
+    if (Object.keys(err).length > 0) setApiError(Object.values(err)[0]);
     return Object.keys(err).length === 0;
   };
 
@@ -427,6 +428,7 @@ export default function ResidentsView() {
     if (!editingResident.hasAccount && editingResident.needAccount && !editingResident.tempPassword.trim())
       err.tempPassword = t("tempPasswordRequired");
     setFormErrors(err);
+    if (Object.keys(err).length > 0) setApiError(Object.values(err)[0]);
     return Object.keys(err).length === 0;
   };
 
@@ -1221,7 +1223,7 @@ const handleDeleteResident = async () => {
             </div>
 
 
-            <form onSubmit={handleAddResident} className="space-y-4">
+            <form onSubmit={handleAddResident} noValidate className="space-y-4">
               <div className="grid md:grid-cols-3 gap-4">
                 {(["firstName", "middleName", "lastName"] as const).map((field) => (
                   <div key={field}>
@@ -1475,6 +1477,7 @@ const handleDeleteResident = async () => {
 
             <form
               onSubmit={handleUpdateResident}
+              noValidate
               className="space-y-4"
               style={{
                 pointerEvents: editingResident.deleted_at !== null ? "none" : "auto",

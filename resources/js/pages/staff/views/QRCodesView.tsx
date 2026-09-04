@@ -170,7 +170,10 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     if (newMembership.name.length < 3) errors.name = t("membershipNameMinLength");
 
     setAddFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    if (Object.keys(errors).length > 0) {
+      setGenericError(errors.name);
+      return;
+    }
 
     setConfirmAddMembership(true);
   };
@@ -233,7 +236,10 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     if (editingMembership.name.length < 3) errors.name = t("membershipNameMinLength");
 
     setEditFormErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    if (Object.keys(errors).length > 0) {
+      setGenericError(errors.name);
+      return;
+    }
 
     setConfirmEditMembership(true);
   };
@@ -755,7 +761,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               </button>
             </div>
 
-            <form onSubmit={handleAddMembership} className="p-4 sm:p-6 space-y-4">
+            <form onSubmit={handleAddMembership} noValidate className="p-4 sm:p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {t("membershipNameLabel")} <span className="text-red-500">*</span>
@@ -869,7 +875,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               </button>
             </div>
 
-            <form onSubmit={handleEditMembership} className="p-4 sm:p-6 space-y-4">
+            <form onSubmit={handleEditMembership} noValidate className="p-4 sm:p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   {t("membershipNameLabel")} <span className="text-red-500">*</span>
