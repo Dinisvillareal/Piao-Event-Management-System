@@ -117,9 +117,8 @@ class InventoryController extends Controller
         // before the guard kicks in.
         $requestedCondition = $request->input('condition', $item->condition);
         if (in_array($requestedCondition, ['Disposed', 'Lost'], true) && $item->borrows()->exists()) {
-            return response()->json([
-                'message' => '"' . $item->name . '" is currently borrowed for an event and can\'t be marked ' . $requestedCondition . ' until it\'s returned to Inventory.',
-            ], 409);
+            $blockedMessage = "\"{$item->name}\" is currently borrowed for an event and can't be marked {$requestedCondition} until it's returned to Inventory.";
+            return response()->json(['message' => $blockedMessage], 409);
         }
 
         $item->update($request->only(['name', 'quantity', 'condition', 'storage_location', 'notes']));
