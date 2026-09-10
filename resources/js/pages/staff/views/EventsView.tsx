@@ -141,6 +141,15 @@ export function EventsView({
     return today.toISOString().split('T')[0];
   };
 
+  // "HH:MM" for right now in the browser's local time -- used as the
+  // time inputs' floor whenever the selected event date is today, so the
+  // picker itself won't offer an already-passed time (matches the
+  // call_time_start >= now guard the backend now also enforces).
+  const getCurrentTimeString = () => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  };
+
   const getMembershipName = (id: any) => {
     const found = memberships.find((m: any) => String(m.id) === String(id));
     return found ? found.name : null;
@@ -301,6 +310,11 @@ export function EventsView({
     postToFacebook: false,
     borrowedItems: [] as { inventoryItemId: string; quantity: string }[],
   });
+
+  // Whether the currently-selected event date is today, and (if so) the
+  // "HH:MM" floor for the time inputs -- see getCurrentTimeString() above.
+  const isEventDateToday = newEvent.date === getTodayString();
+  const timeInputMin = isEventDateToday ? getCurrentTimeString() : undefined;
 
   // UC-9 tie-in: items borrowed from Inventory for this event. Fetched
   // once (excludes Disposed/Lost condition -- see InventoryController::
@@ -587,10 +601,46 @@ export function EventsView({
       return;
     }
 
-    if (!editingEvent) {
-      const selectedDateTime = new Date(`${newEvent.date}T${newEvent.time}`);
+    if (newEvent.callTimeStart && newEvent.time && newEvent.callTimeStart === newEvent.time) {
+      // Call Time Start must be strictly earlier than the event's own
+      // Start Time -- equal would leave a zero-length sign-in window
+      // (e.g. event starts 7:00, call time can't also be 7:00). Matches
+      // the backend's before:event_start rule (was before_or_equal).
+      setErrorMessage(t("callTimeEqualsStartError"));
+      setShowErrorModal(true);
+      return;
+    }
+
+    {
+      // The earliest moment in the whole event window is Call Time Start
+      // (it's required to be < the event's own Start Time), so checking
+      // it here catches a past Start Time too. Runs for both create and
+      // edit now -- editing an Upcoming event into a past time was never
+      // actually blocked before, only creating one was.
+      //
+      // When editing, only flag this if the earliest time is actually
+      // being CHANGED to a past value -- it's normal for an Upcoming
+      // event's Call Time (sign-in opens) to have already passed while
+      // the event itself hasn't started yet, and that alone must not
+      // block unrelated edits (e.g. fixing the description). Matches the
+      // same "only if changed" rule the backend now enforces.
+      const earliestTimeField = newEvent.callTimeStart || newEvent.time;
+      const selectedDateTime = new Date(`${newEvent.date}T${earliestTimeField}`);
       const now = new Date();
-      if (selectedDateTime < now) {
+
+      let earliestTimeUnchanged = false;
+      if (editingEvent) {
+        const timeOnly = (value?: string) => (value ? new Date(value).toTimeString().slice(0, 5) : "");
+        const originalDate = editingEvent.event_start
+          ? new Date(editingEvent.event_start).toISOString().split("T")[0]
+          : editingEvent.date;
+        const originalEarliest = editingEvent.call_time_start
+          ? timeOnly(editingEvent.call_time_start)
+          : (editingEvent.callStartTime || editingEvent.startTime || "");
+        earliestTimeUnchanged = originalDate === newEvent.date && originalEarliest === earliestTimeField;
+      }
+
+      if (earliestTimeField && !isNaN(selectedDateTime.getTime()) && selectedDateTime < now && !earliestTimeUnchanged) {
         const formattedDate = selectedDateTime.toLocaleDateString("en-US", {
           month: "long", day: "numeric", year: "numeric"
         });
@@ -939,8 +989,8 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("startTimeRequired")}</label><input type="time" required value={newEvent.time} onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("endTimeLabel")}</label><input type="time" required value={newEvent.endTime} onChange={(e) => setNewEvent({ ...newEvent, endTime: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("startTimeRequired")}</label><input type="time" required min={timeInputMin} value={newEvent.time} onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
+                <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("endTimeLabel")}</label><input type="time" required min={timeInputMin} value={newEvent.endTime} onChange={(e) => setNewEvent({ ...newEvent, endTime: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
               </div>
 
               {/* Call time: sign-in/out attendance window, separate from the event's own start/end */}
@@ -949,11 +999,11 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t("callTimeStartLabel")}</label>
-                    <input type="time" required value={newEvent.callTimeStart} onChange={(e) => setNewEvent({ ...newEvent, callTimeStart: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" />
+                    <input type="time" required min={timeInputMin} value={newEvent.callTimeStart} onChange={(e) => setNewEvent({ ...newEvent, callTimeStart: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t("callTimeEndLabel")}</label>
-                    <input type="time" required value={newEvent.callTimeEnd} onChange={(e) => setNewEvent({ ...newEvent, callTimeEnd: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" disabled={!newEvent.endTime} title={!newEvent.endTime ? t("setEndTimeFirstHint") : undefined} />
+                    <input type="time" required min={timeInputMin} value={newEvent.callTimeEnd} onChange={(e) => setNewEvent({ ...newEvent, callTimeEnd: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" disabled={!newEvent.endTime} title={!newEvent.endTime ? t("setEndTimeFirstHint") : undefined} />
                   </div>
                 </div>
                 <p className="text-[11px] text-gray-400">{t("callTimeHint")}</p>

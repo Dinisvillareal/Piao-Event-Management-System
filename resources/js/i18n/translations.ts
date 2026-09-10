@@ -829,6 +829,7 @@ export const translations: Dict = {
   callTimeStartLabel: { en: "Call Time (sign-in opens) *", tl: "Call Time *", ceb: "Call Time *" },
   callTimeEndLabel: { en: "Call Time End (sign-out closes) *", tl: "Call Time End *", ceb: "Call Time End *" },
   callTimeHint: { en: "Required. Sign-in is only allowed between Call Time and Start Time. Sign-out is only allowed between End Time and Call Time End.", tl: "Kinakailangan. Sign-in lang sa pagitan ng Call Time at Start Time. Sign-out lang sa pagitan ng End Time at Call Time End.", ceb: "Gikinahanglan. Ang sign-in gitugotan lang tunga-tunga sa Call Time ug Start Time. Ang sign-out gitugotan lang tunga-tunga sa End Time ug Call Time End." },
+  callTimeEqualsStartError: { en: "Call Time (sign-in opens) can't be the same as Start Time -- it must be earlier, so there's an actual sign-in window before the event starts.", tl: "Ang Call Time ay hindi puwedeng katulad ng Start Time -- dapat mas maaga ito.", ceb: "Ang Call Time dili pwede managsama sa Start Time -- kinahanglan mas sayo kini." },
   setEndTimeFirstHint: { en: "Set End Time first", tl: "Itakda muna ang End Time", ceb: "I-set una ang End Time" },
   eventDateRequiredError: { en: "Please select an event date.", tl: "Pumili ng petsa ng kaganapan.", ceb: "Pagpili og petsa sa kalihokan." },
   // Custom, on-brand replacements for the browser's own native "Please

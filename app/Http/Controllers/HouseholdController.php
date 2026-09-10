@@ -142,12 +142,21 @@ class HouseholdController extends Controller
 
         // Un-link members rather than blocking the delete -- a household
         // being dissolved shouldn't hold its residents hostage.
+        // NOTE: this is a soft delete (Household uses SoftDeletes) and is
+        // now restorable from the staff Archive page (ArchiveController /
+        // type=household) same as other entities. Restoring only brings
+        // the household row back -- it does NOT re-link the members who
+        // were unassigned here, since that unlink is a permanent field
+        // update, not part of the soft-delete. Whoever restores a
+        // household will need to re-add its members manually.
         User::where('household_id', $household->id)->update([
             'household_id'      => null,
             'is_household_head' => false,
         ]);
 
         $code = $household->code;
+        $household->deleted_by = auth()->user()->user_code;
+        $household->save();
         $household->delete();
 
         $this->createLog('Delete', "Deleted household '{$code}'");

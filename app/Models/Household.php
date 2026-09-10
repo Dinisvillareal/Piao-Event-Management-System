@@ -13,6 +13,7 @@ class Household extends Model
         'code',
         'address',
         'contact_number',
+        'deleted_by',
     ];
 
     // =====================

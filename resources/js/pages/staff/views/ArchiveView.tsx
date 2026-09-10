@@ -6,7 +6,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface TrashedItem {
   id: string | number;
-  type: 'event' | 'resident' | 'membership' | 'notification' | 'age_bracket' | 'civil_status' | 'current_status' | 'inventory_item' | 'expense';
+  type: 'event' | 'resident' | 'membership' | 'notification' | 'age_bracket' | 'civil_status' | 'current_status' | 'inventory_item' | 'expense' | 'household';
   name: string;
   deletedAt: string;
   deletedBy: string;
@@ -23,6 +23,7 @@ const TYPE_LABEL_KEYS: Record<TrashedItem["type"], string> = {
   current_status: "currentStatusesTitle",
   inventory_item: "inventory",
   expense: "expenseTypeLabel",
+  household: "households",
 };
 
 export default function ArchiveView() {
@@ -172,6 +173,7 @@ export default function ArchiveView() {
     { value: 'current_status', label: t('currentStatusesTitle') },
     { value: 'event', label: t('events') },
     { value: 'expense', label: t('expenseTypeLabel') },
+    { value: 'household', label: t('households') },
     { value: 'inventory_item', label: t('inventory') },
     { value: 'membership', label: t('memberships') },
     { value: 'notification', label: t('notify') },
@@ -276,6 +278,7 @@ export default function ArchiveView() {
                         item.type === 'civil_status'  ? 'bg-fuchsia-600 text-white' :
                         item.type === 'current_status' ? 'bg-cyan-600 text-white'  :
                         item.type === 'expense'       ? 'bg-rose-600 text-white'   :
+                        item.type === 'household'     ? 'bg-teal-600 text-white'   :
                         'bg-gray-100 text-gray-700'
                       }`}>
                         {t(TYPE_LABEL_KEYS[item.type])}

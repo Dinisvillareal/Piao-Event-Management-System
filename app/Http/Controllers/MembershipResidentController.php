@@ -19,7 +19,21 @@ class MembershipResidentController extends Controller
     }
 
     // =========================
-    // GET ALL USERS + MEMBERSHIPS (INCLUDING SOFT DELETED)
+    // GET ALL ACTIVE USERS + MEMBERSHIPS
+    // NOTE: despite the 'deleted_at' field below, this does NOT include
+    // soft-deleted (archived) users -- User::with(...)->get() applies
+    // Eloquent's default SoftDeletes scope, so 'deleted_at' here will
+    // always come back null. This feeds the staff Scan page's resident
+    // list (Staff.tsx -> ScanView), so an archived resident's QR/manual
+    // ID currently won't match here and the scan is rejected as unknown.
+    // If archived residents should still be scannable (e.g. to show a
+    // "this resident was archived" message instead of "not found"), add
+    // ->withTrashed() and have ScanView/resolveAndSetScan branch on
+    // deleted_at -- don't just enable it blindly, since as written the
+    // frontend has no "archived" check and would silently let a removed
+    // resident be marked present. See show() below for the equivalent
+    // single-user lookup, which deliberately DOES include soft-deleted
+    // users via a raw, unscoped query.
     // =========================
 
 public function index()
@@ -40,7 +54,8 @@ public function index()
                 'role' => $user->role,
                 'has_account' => $user->has_account,
 
-                // ✅ ONLY THIS — real soft delete column from your DB
+                // Always null in practice -- see note above the index()
+                // signature; the query already excludes trashed rows.
                 'deleted_at' => $user->deleted_at,
 
                 'memberships' => $user->memberships,

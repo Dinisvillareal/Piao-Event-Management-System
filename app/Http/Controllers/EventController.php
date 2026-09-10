@@ -16,6 +16,30 @@ use App\Services\FacebookService;
 
 class EventController extends Controller
 {
+    // Mirrors the frontend's Upcoming/Ongoing/Past classification
+    // (EventsView.tsx getEventStatus): an event is "ongoing" once its own
+    // event_start has passed and until event_end (falling back to
+    // call_time_end, then end-of-day on event_start, for legacy rows
+    // missing an end time). The UI already disables Edit/Archive while
+    // Ongoing or Past, but that was frontend-only -- nothing stopped the
+    // same request being sent directly to the API, so this enforces it
+    // server-side too.
+    private function isEventOngoing(Event $event): bool
+    {
+        $now = now();
+        $start = $event->event_start;
+        if (!$start) {
+            return false;
+        }
+
+        $end = $event->event_end ?? $event->call_time_end;
+        if (!$end) {
+            $end = $start->copy()->endOfDay();
+        }
+
+        return $now->gte($start) && $now->lte($end);
+    }
+
     public function index(Request $request)
     {
         $user = Auth::user();
@@ -119,8 +143,11 @@ class EventController extends Controller
             'event_end'            => 'required|date|after:event_start',
             // Call time = when sign-in/out actually opens, separate from
             // the event's own start/end (e.g. call time 6:00, event starts
-            // 7:00 -- sign-in is only open 6:00-7:00).
-            'call_time_start'      => 'required|date|before_or_equal:event_start',
+            // 7:00 -- sign-in is only open 6:00-7:00). Strictly BEFORE
+            // event_start (not before_or_equal) -- a call time equal to
+            // the event's own start time would leave a zero-length sign-in
+            // window, which defeats the point of having one.
+            'call_time_start'      => 'required|date|before:event_start|after_or_equal:now',
             'call_time_end'        => 'required|date|after_or_equal:event_end',
             'membership_ids'       => 'nullable|array',
             'membership_ids.*'     => 'integer|exists:memberships,id',
@@ -211,7 +238,8 @@ class EventController extends Controller
             'location'             => 'nullable|string|max:100',
             'event_start'          => 'required|date',
             'event_end'            => 'required|date|after:event_start',
-            'call_time_start'      => 'required|date|before_or_equal:event_start',
+            // Strictly BEFORE event_start -- see store() above for why.
+            'call_time_start'      => 'required|date|before:event_start',
             'call_time_end'        => 'required|date|after_or_equal:event_end',
             'membership_ids'       => 'nullable|array',
             'membership_ids.*'     => 'integer|exists:memberships,id',
@@ -224,6 +252,35 @@ class EventController extends Controller
 
         // ✅ MODIFIED: Find event excluding soft-deleted
         $event = Event::withoutTrashed()->findOrFail($id);
+
+        // Ongoing/Past events are locked -- same rule the frontend already
+        // shows (disabled Edit button + hint), now enforced here too so it
+        // can't be bypassed by calling the API directly.
+        if ($this->isEventOngoing($event)) {
+            return response()->json([
+                'message' => "\"{$event->name}\" is currently ongoing and can't be edited until it ends.",
+            ], 409);
+        }
+
+        if ($event->event_end && now()->gt($event->event_end)) {
+            return response()->json([
+                'message' => "\"{$event->name}\" has already ended and can't be edited.",
+            ], 409);
+        }
+
+        // Only block a past call_time_start when it's actually being
+        // changed to one -- the existing value is resubmitted on every
+        // save, and it's normal for an Upcoming event's sign-in window to
+        // have already opened (call_time_start passed) while the event
+        // itself hasn't started yet, so that alone must not block
+        // unrelated edits (e.g. fixing the description).
+        $requestedCallStart = \Carbon\Carbon::parse($request->call_time_start);
+        $callStartChanged = !$event->call_time_start || !$requestedCallStart->eq($event->call_time_start);
+        if ($callStartChanged && $requestedCallStart->lt(now())) {
+            return response()->json([
+                'message' => 'Call Time (sign-in opens) can\'t be set to a time in the past.',
+            ], 422);
+        }
 
         // Same double-booking guard as store(), excluding this event
         // itself so re-saving an event without changing its time/venue
@@ -324,6 +381,19 @@ public function destroy($id)
     // ✅ Find only active (non-deleted) events
     $event = Event::withoutTrashed()->findOrFail($id);
     $eventName = $event->name;
+
+    // Ongoing/Past events are locked -- same rule as update() above.
+    if ($this->isEventOngoing($event)) {
+        return response()->json([
+            'message' => "\"{$eventName}\" is currently ongoing and can't be archived until it ends.",
+        ], 409);
+    }
+
+    if ($event->event_end && now()->gt($event->event_end)) {
+        return response()->json([
+            'message' => "\"{$eventName}\" has already ended and can't be archived.",
+        ], 409);
+    }
 
     DB::beginTransaction();
 
