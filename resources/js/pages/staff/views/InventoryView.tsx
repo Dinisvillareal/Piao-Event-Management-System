@@ -1,0 +1,467 @@
+import React, { useEffect, useState } from "react";
+import { Package, Plus, X, MapPin, Trash2, Pencil, XCircle, CheckCircle, AlertTriangle } from "lucide-react";
+import SearchBar from "../../../components/ui/SearchBar";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import api, { apiErrorMessage } from "../../../lib/api";
+import { useLanguage } from "../../../i18n/LanguageContext";
+
+type Condition = "New" | "Good" | "Fair" | "Poor" | "Disposed" | "Lost";
+
+interface InventoryItem {
+  id: number;
+  name: string;
+  quantity: number;
+  condition: Condition;
+  storage_location: string | null;
+  notes: string | null;
+  // How many units are currently lent out to a still-active event (see
+  // InventoryItem::borrows() on the backend). >0 means the item can't be
+  // deleted yet -- it has to be returned to Inventory first.
+  borrowed_quantity: number;
+  // Set when this item is on loan to an event whose date has already
+  // passed and nobody has archived it yet -- the item is effectively
+  // stuck, since nothing returns it to Inventory automatically.
+  overdue_borrow_event: { id: number; name: string; ended_at: string } | null;
+}
+
+const CONDITION_STYLES: Record<Condition, string> = {
+  New: "bg-teal-50 text-teal-800",
+  Good: "bg-green-50 text-green-800",
+  Fair: "bg-amber-50 text-amber-800",
+  Poor: "bg-orange-50 text-orange-800",
+  Disposed: "bg-gray-100 text-gray-600",
+  Lost: "bg-red-50 text-red-700",
+};
+
+const emptyForm = { name: "", quantity: 1, condition: "Good" as Condition, storage_location: "", notes: "" };
+
+const CONDITION_LABEL_KEYS: Record<Condition, string> = {
+  New: "conditionNew",
+  Good: "conditionGood",
+  Fair: "conditionFair",
+  Poor: "conditionPoor",
+  Disposed: "conditionDisposed",
+  Lost: "conditionLost",
+};
+
+/**
+ * UC-9: Manage Barangay Inventory. Presented as a card grid (with a
+ * condition badge + stock count front-and-center) rather than a plain
+ * table — a stock check is closer to "at-a-glance browsing" than to
+ * reading rows of numbers, matching the resident's note to vary the UI per
+ * feature instead of defaulting everything to a table.
+ */
+export default function InventoryView() {
+  const { t } = useLanguage();
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [conditionFilter, setConditionFilter] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editing, setEditing] = useState<InventoryItem | null>(null);
+  // Closing the Add/Edit Item modal (X, Cancel, or the backdrop) with
+  // unsaved changes asks first instead of silently discarding them.
+  const [showFormCancelConfirm, setShowFormCancelConfirm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const fetchItems = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get("/inventory", { params: { search, condition: conditionFilter } });
+      setItems(res.data);
+    } catch (e) {
+      setError(apiErrorMessage(e, t("loadInventoryFailed")));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const t = setTimeout(fetchItems, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, conditionFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, conditionFilter, items.length]);
+
+  const totalPages = Math.max(1, Math.ceil(items.length / itemsPerPage));
+  const paginatedItems = items.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  // Nothing to submit if editing an item and the form still matches its
+  // original values -- keeps a no-op "Update Item" click (and its own
+  // success popup) from firing for a change that never happened.
+  const isFormUnchanged = !!editing && (
+    form.name === editing.name &&
+    Number(form.quantity) === editing.quantity &&
+    form.condition === editing.condition &&
+    form.storage_location === (editing.storage_location ?? "") &&
+    form.notes === (editing.notes ?? "")
+  );
+
+  const hasFormChanges = editing
+    ? !isFormUnchanged
+    : JSON.stringify(form) !== JSON.stringify(emptyForm);
+
+  const handleCloseForm = () => {
+    if (hasFormChanges) setShowFormCancelConfirm(true);
+    else setShowForm(false);
+  };
+
+  const openAdd = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    setError(null);
+    setShowForm(true);
+  };
+
+  const openEdit = (item: InventoryItem) => {
+    setEditing(item);
+    setForm({
+      name: item.name,
+      quantity: item.quantity,
+      condition: item.condition,
+      storage_location: item.storage_location ?? "",
+      notes: item.notes ?? "",
+    });
+    setError(null);
+    setShowForm(true);
+  };
+
+  // Form submit only opens the "are you sure" step -- the actual save
+  // happens in performSave, once the user confirms. The form now carries
+  // noValidate (see below), so this is the ONLY thing standing between a
+  // bad value and the API -- the browser's own "please enter a valid
+  // value" bubble no longer fires, on purpose, in favor of the app's own
+  // error modal below.
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!form.name.trim()) {
+      setError(t("itemNameRequiredError"));
+      return;
+    }
+    if (!Number.isInteger(form.quantity) || form.quantity < 0) {
+      setError(t("invalidQuantityError"));
+      return;
+    }
+
+    setShowConfirm(true);
+  };
+
+  const performSave = async () => {
+    setShowConfirm(false);
+    setError(null);
+    const wasEditing = !!editing;
+    try {
+      let archived = false;
+      if (editing) {
+        const res = await api.put(`/inventory/${editing.id}`, form);
+        archived = !!res?.data?.archived;
+      } else {
+        await api.post("/inventory", form);
+      }
+      setShowForm(false);
+      setSuccessMessage(
+        archived
+          ? t("itemArchivedSuccess").replace("{condition}", form.condition)
+          : wasEditing
+          ? t("itemUpdatedSuccess")
+          : t("itemAddedSuccess")
+      );
+      fetchItems();
+    } catch (e) {
+      setError(apiErrorMessage(e, t("saveItemFailed")));
+      // Revert to the item's real values instead of leaving the
+      // rejected edit sitting in the form.
+      if (editing) {
+        setForm({
+          name: editing.name,
+          quantity: editing.quantity,
+          condition: editing.condition,
+          storage_location: editing.storage_location ?? "",
+          notes: editing.notes ?? "",
+        });
+      }
+    }
+  };
+
+  const handleDelete = async () => {
+    if (deleteId === null) return;
+    try {
+      await api.delete(`/inventory/${deleteId}`);
+      setDeleteId(null);
+      setSuccessMessage(t("itemDeletedSuccess"));
+      fetchItems();
+    } catch (e) {
+      setDeleteId(null);
+      setError(apiErrorMessage(e, t("deleteItemFailed")));
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("barangayInventory")}</h1>
+          <p className="mt-1 text-sm text-[#667777]">{t("inventorySubtitle")}</p>
+        </div>
+        <button onClick={openAdd} className="inline-flex items-center gap-2 self-start sm:self-auto bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm">
+          <Plus className="h-4 w-4" /> {t("addItem")}
+        </button>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex-1">
+          <SearchBar value={search} onChange={setSearch} placeholder={t("searchInventoryPlaceholder")} />
+        </div>
+        <FilterDropdown
+          value={conditionFilter}
+          onChange={setConditionFilter}
+          options={[
+            { value: "", label: t("allConditions") },
+            ...(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as Condition[]).map((c) => ({
+              value: c,
+              label: t(CONDITION_LABEL_KEYS[c]),
+            })),
+          ]}
+          className="h-14 px-4"
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-[#005f63]/20 bg-white p-10 text-center text-gray-500">
+          <Package size={40} className="mx-auto mb-3 text-[#005f63]/40" />
+          <p>{t("noInventoryItems")}</p>
+        </div>
+      ) : (
+        <>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {paginatedItems.map((item) => (
+            <div key={item.id} className="rounded-[24px] border border-[#ddd5ca] bg-white p-5 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#005f63]/10 shrink-0">
+                  <Package className="h-5 w-5 text-[#005f63]" />
+                </div>
+                <div className="flex flex-wrap justify-end gap-1">
+                  {item.overdue_borrow_event ? (
+                    <span
+                      className="px-2 py-1 rounded-full text-[11px] font-semibold bg-red-50 text-red-700"
+                      title={t("overdueBorrowTooltip").replace("{event}", item.overdue_borrow_event.name)}
+                    >
+                      {t("overdueReturnBadge")}
+                    </span>
+                  ) : (
+                    item.borrowed_quantity > 0 && (
+                      <span className="px-2 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700">{t("onLoanBadge")}</span>
+                    )
+                  )}
+                  <span className={`px-2 py-1 rounded-full text-[11px] font-semibold ${CONDITION_STYLES[item.condition]}`}>{t(CONDITION_LABEL_KEYS[item.condition])}</span>
+                </div>
+              </div>
+              <h3 className="mt-3 font-bold text-[#005f63] truncate" title={item.name}>{item.name}</h3>
+              <p className="text-2xl font-black text-gray-800 mt-1">{item.quantity} <span className="text-xs font-medium text-gray-400">{t("inStock")}</span></p>
+              {item.storage_location && (
+                <p className="mt-2 flex items-center gap-1 text-xs text-gray-500 truncate">
+                  <MapPin className="h-3 w-3 shrink-0" /> {item.storage_location}
+                </p>
+              )}
+              {/* Same size/shape for both -- Edit amber, Delete red,
+                  matching the Edit/Delete color pairing used on Residents.
+                  Delete is disabled while any units are out on loan --
+                  deleting an item that an active event still points to
+                  would orphan its borrow record (see InventoryController::destroy). */}
+              <div className="mt-4 flex gap-2">
+                <button onClick={() => openEdit(item)} className="flex-1 rounded-full border border-amber-200 p-2 flex items-center justify-center text-amber-500 hover:bg-amber-50 transition" title={t("editLabel")}>
+                  <Pencil className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => item.borrowed_quantity === 0 && setDeleteId(item.id)}
+                  disabled={item.borrowed_quantity > 0}
+                  className={`flex-1 rounded-full border p-2 flex items-center justify-center transition ${
+                    item.borrowed_quantity > 0
+                      ? "border-gray-200 text-gray-300 cursor-not-allowed"
+                      : "border-red-200 text-red-500 hover:bg-red-50"
+                  }`}
+                  title={item.borrowed_quantity > 0 ? t("itemCurrentlyBorrowedTooltip") : t("removeLabel")}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {totalPages > 1 && (
+          <div className="flex flex-col sm:flex-row gap-3 justify-between items-center mt-6">
+            <p className="text-sm text-gray-600 text-center sm:text-left">
+              {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages} • {items.length} {t("recordsShownLabel")}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+              >
+                ←
+              </button>
+              <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                {currentPage}
+              </span>
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+              >
+                →
+              </button>
+            </div>
+          </div>
+        )}
+        </>
+      )}
+
+      {showForm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={handleCloseForm}>
+          <div className="bg-white rounded-[30px] w-full max-w-lg p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-black text-[#005f63]">{editing ? t("editItem") : t("addInventoryItem")}</h2>
+              <button onClick={handleCloseForm} className="text-gray-500 hover:text-gray-700"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleFormSubmit} noValidate className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("itemNameRequired")}</label>
+                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm" placeholder="Plastic chairs" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("quantityRequired")}</label>
+                  <input type="number" min={0} required value={form.quantity} onChange={(e) => setForm((p) => ({ ...p, quantity: Number(e.target.value) }))} className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("conditionRequired")}</label>
+                  <select value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value as Condition }))} className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm bg-white">
+                    {(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as Condition[]).map((c) => (
+                      <option key={c} value={c}>{t(CONDITION_LABEL_KEYS[c])}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("storageLocationLabel")}</label>
+                <input value={form.storage_location} onChange={(e) => setForm((p) => ({ ...p, storage_location: e.target.value }))} className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm" placeholder={t("storageLocationPlaceholder")} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t("notesLabel")}</label>
+                <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm" rows={2} />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={isFormUnchanged}
+                  title={isFormUnchanged ? t("noChangesToSaveHint") : undefined}
+                  className="flex-1 py-2.5 rounded-full font-bold bg-[#005f63] hover:bg-[#004a4d] text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#005f63]"
+                >
+                  {editing ? t("updateItem") : t("addItem")}
+                </button>
+                <button type="button" onClick={handleCloseForm} className="px-6 py-2.5 rounded-full border border-gray-300 bg-gray-50 text-gray-600">{t("cancelLabel")}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Unsaved-changes guard for the Add/Edit Item modal */}
+      {showFormCancelConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setShowFormCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("stayButton")}</button>
+              <button
+                onClick={() => {
+                  setShowFormCancelConfirm(false);
+                  setShowForm(false);
+                }}
+                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+              >
+                {t("discardCloseButton")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[65] px-4" onClick={() => setError(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
+            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{error}</p>
+            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Add / Update / Delete all land here on success, instead of just
+          silently closing the form/confirm dialog. */}
+      {successMessage && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[65] px-4" onClick={() => setSuccessMessage(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-[#005f63] flex justify-center"><CheckCircle size={40} /></div>
+            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-gray-600 mb-6">{successMessage}</p>
+            <button onClick={() => setSuccessMessage(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
+              {t("okLabel")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {deleteId !== null && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-red-500 flex justify-center"><Trash2 size={36} /></div>
+            <h3 className="text-lg font-bold text-red-600 mb-2">{t("removeItemConfirmTitle")}</h3>
+            <p className="text-sm text-gray-600 mb-6">{t("removeItemConfirmBody")}</p>
+            <div className="flex justify-center gap-3">
+              <button onClick={() => setDeleteId(null)} className="px-5 py-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-100">{t("cancelLabel")}</button>
+              <button onClick={handleDelete} className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700">{t("yesRemove")}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm-before-save step: shown on top of the open form when
+          Add/Update is clicked, so the request only fires once the user
+          confirms -- mirrors the delete-confirm pattern above. */}
+      <ConfirmDialog
+        open={showConfirm}
+        icon={editing ? <Pencil size={32} /> : <Plus size={32} />}
+        title={editing ? t("confirmUpdateItemTitle") : t("confirmAddItemTitle")}
+        body={editing ? t("confirmUpdateItemBody") : t("confirmAddItemBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={editing ? t("yesUpdate") : t("yesAdd")}
+        onCancel={() => setShowConfirm(false)}
+        onConfirm={performSave}
+      />
+    </div>
+  );
+}

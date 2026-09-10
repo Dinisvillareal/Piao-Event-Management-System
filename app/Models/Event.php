@@ -18,15 +18,21 @@ class Event extends Model
         'location',
         'event_start',
         'event_end',
+        'call_time_start',
+        'call_time_end',
         'membership_ids',
         'notification_message',
-        'deleted_by'
+        'deleted_by',
+        'approved_budget',
     ];
 
     protected $casts = [
         'membership_ids' => 'array',
         'event_start' => 'datetime',
         'event_end' => 'datetime',
+        'call_time_start' => 'datetime',
+        'call_time_end' => 'datetime',
+        'approved_budget' => 'decimal:2',
     ];
 
     private $_cachedMemberships = null;
@@ -124,6 +130,47 @@ class Event extends Model
     public function notifications()
     {
         return $this->hasMany(Notification::class);
+    }
+
+    // ===== UC-8: Record Event Budget and Expenses =====
+
+    public function expenses()
+    {
+        return $this->hasMany(EventExpense::class);
+    }
+
+    // ===== Items borrowed from Inventory for this event =====
+
+    public function borrowedItems()
+    {
+        return $this->hasMany(EventInventoryItem::class);
+    }
+
+    public function getTotalExpensesAttribute(): float
+    {
+        return (float) $this->expenses()->sum('amount');
+    }
+
+    public function getIsOverBudgetAttribute(): bool
+    {
+        if ($this->approved_budget === null) {
+            return false;
+        }
+
+        return $this->total_expenses > (float) $this->approved_budget;
+    }
+
+    // ===== UC-16: Submit Post-Event Feedback =====
+
+    public function feedback()
+    {
+        return $this->hasMany(Feedback::class);
+    }
+
+    public function getAverageRatingAttribute(): ?float
+    {
+        $avg = $this->feedback()->avg('rating');
+        return $avg !== null ? round((float) $avg, 1) : null;
     }
     
     public function clearCache()

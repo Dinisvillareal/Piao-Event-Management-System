@@ -35,6 +35,24 @@ class StoreUserRequest extends FormRequest
             'validation_id'    => 'nullable',
             'membership_ids'   => 'nullable|array',
             'membership_ids.*' => 'exists:memberships,id',
+
+            // Adviser recommendation: "Profiling (Filter for Age)"
+            'birth_date'       => 'nullable|date|before_or_equal:today',
+            'address'          => 'nullable|string|max:150',
+            'civil_status_id'  => 'nullable|exists:civil_statuses,id',
+            'current_status_ids'   => 'nullable|array',
+            'current_status_ids.*' => 'integer|exists:current_statuses,id',
+            'gender'           => 'nullable|in:Male,Female',
+
+            // Real Household module -- link this resident to an existing
+            // household record (see HouseholdController) instead of the
+            // old free-text household_code/household_contact_number pair,
+            // which never actually connected to the households table.
+            'household_id'      => 'nullable|integer|exists:households,id',
+            'is_household_head' => 'nullable|boolean',
+
+            // UC-17: Switch Interface Language
+            'preferred_language' => 'nullable|in:en,tl,ceb',
         ];
     }
 }

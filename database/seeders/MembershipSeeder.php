@@ -4,11 +4,20 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use App\Models\Membership;
+use App\Models\AgeBracket;
+use App\Models\CivilStatus;
+use App\Models\CurrentStatus;
 
 class MembershipSeeder extends Seeder
 {
     public function run(): void
     {
+        // Adviser example (Senior Citizen eligibility) extended to Solo
+        // Parent -- these two pre-existing demo memberships get a real
+        // eligibility gate so the feature is visible with seeded data.
+        $seniorBracketId = AgeBracket::where('label', 'Senior Citizen')->value('id');
+        $soloParentStatusId = CurrentStatus::where('label', 'Solo Parent')->value('id');
+
         Membership::create([
             'name' => 'Pantawid Pamilya',
             'description' => 'Conditional cash transfer program for qualified households to support health and education needs of children aged 0-18'
@@ -21,7 +30,8 @@ class MembershipSeeder extends Seeder
 
         Membership::create([
             'name' => 'Senior Citizen Program',
-            'description' => 'Social pension and benefits for Filipino senior citizens aged 60 and above including discounts and monthly stipend'
+            'description' => 'Social pension and benefits for Filipino senior citizens aged 60 and above including discounts and monthly stipend',
+            'eligible_age_bracket_id' => $seniorBracketId,
         ]);
 
         Membership::create([
@@ -31,7 +41,8 @@ class MembershipSeeder extends Seeder
 
         Membership::create([
             'name' => 'Solo Parent Support',
-            'description' => 'Assistance program for solo parents providing parental leave benefits, educational support, and livelihood training'
+            'description' => 'Assistance program for solo parents providing parental leave benefits, educational support, and livelihood training',
+            'eligible_current_status_id' => $soloParentStatusId,
         ]);
 
         Membership::create([

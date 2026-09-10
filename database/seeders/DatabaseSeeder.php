@@ -16,8 +16,22 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Adviser example (Senior Citizen eligibility) extended to Youth /
+        // Solo Parent -- must run first so UserSeeder / MembershipSeeder can
+        // reference real age bracket / civil status / current status ids.
+        $this->call([
+            AgeBracketSeeder::class,
+            CivilStatusSeeder::class,
+            CurrentStatusSeeder::class,
+        ]);
         $this->call([
             UserSeeder::class,
+        ]);
+        // Real Household module -- groups seeded residents into households
+        // (must run after UserSeeder, before anything that reports on SMS
+        // grouping / household membership).
+        $this->call([
+            HouseholdSeeder::class,
         ]);
         // Add MembershipSeeder here
         $this->call([
@@ -32,6 +46,26 @@ class DatabaseSeeder extends Seeder
         $this->call([
             EventAttendanceSeeder::class,
         ]);
-
+        // Realistic, interconnected demo data for the remaining modules --
+        // each references real rows from the seeders above instead of
+        // standing alone.
+        $this->call([
+            InventoryItemSeeder::class,
+        ]);
+        $this->call([
+            EventInventoryItemSeeder::class,
+        ]);
+        $this->call([
+            EventExpenseSeeder::class,
+        ]);
+        $this->call([
+            FeedbackSeeder::class,
+        ]);
+        // Must run last -- it reads back the households/events/inventory
+        // rows every seeder above just created to build a realistic audit
+        // trail referencing them.
+        $this->call([
+            ActivityLogSeeder::class,
+        ]);
     }
 }

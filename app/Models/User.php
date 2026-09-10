@@ -23,7 +23,16 @@ class User extends Authenticatable
         'role',
         'password',
         'has_account',
-        'deleted_by'
+        'deleted_by',
+        'birth_date',
+        'address',
+        'civil_status_id',
+        'gender',
+        'household_code',
+        'is_household_head',
+        'household_contact_number',
+        'household_id',
+        'preferred_language',
     ];
 
     protected $hidden = [
@@ -32,13 +41,19 @@ class User extends Authenticatable
 
     protected $casts = [
         'has_account' => 'boolean',
+        'is_household_head' => 'boolean',
+        'birth_date' => 'date',
     ];
 
     /**
      * Automatically include in JSON responses
      */
     protected $appends = [
-        'validation_id_url'
+        'validation_id_url',
+        'age',
+        'age_group',
+        'civil_status',
+        'current_statuses',
     ];
 
     // =====================
@@ -75,5 +90,93 @@ class User extends Authenticatable
             'user_id',
             'membership_id'
         );
+    }
+
+    public function feedback()
+    {
+        return $this->hasMany(Feedback::class);
+    }
+
+    public function household()
+    {
+        return $this->belongsTo(Household::class);
+    }
+
+    // =====================
+    // ADVISER RECOMMENDATION: age profiling ("Filter for Age")
+    // =====================
+
+    public function getAgeAttribute(): ?int
+    {
+        if (!$this->birth_date) {
+            return null;
+        }
+
+        return $this->birth_date->age;
+    }
+
+    /**
+     * Buckets used across the Residents filter chips and the Reports
+     * age-breakdown chart.
+     */
+    public function getAgeGroupAttribute(): ?string
+    {
+        $age = $this->age;
+
+        if ($age === null) {
+            return null;
+        }
+
+        // Staff-configurable via Settings -> Profiling (Age & Status Categories);
+        // falls back to the original fixed bands if none are configured yet.
+        $bracket = AgeBracket::resolveForAge($age);
+        if ($bracket) {
+            return $bracket->label;
+        }
+
+        if ($age < 13) return 'Child';
+        if ($age < 18) return 'Youth';
+        if ($age < 60) return 'Adult';
+        return 'Senior Citizen';
+    }
+
+    /**
+     * Adviser example (Senior Citizen eligibility) extended to a
+     * Staff-configurable civil status list (Single/Married/Widowed/
+     * Separated -- mutually exclusive marital facts).
+     */
+    public function civilStatus()
+    {
+        return $this->belongsTo(CivilStatus::class);
+    }
+
+    public function getCivilStatusAttribute(): ?string
+    {
+        // Use getRelationValue() (not $this->civilStatus) to avoid Eloquent's
+        // studly-case collision between the "civilStatus" relation and this
+        // "civil_status" accessor, which would otherwise recurse infinitely.
+        return $this->getRelationValue('civilStatus')?->label;
+    }
+
+    /**
+     * Staff-configurable "current status" tags (Solo Parent, PWD,
+     * Indigent, and similar social/economic categories) -- deliberately
+     * separate from civil status, and many-to-many rather than a single
+     * column, since these aren't mutually exclusive: a resident can be,
+     * say, both a Solo Parent and PWD at once.
+     */
+    public function currentStatuses()
+    {
+        return $this->belongsToMany(CurrentStatus::class, 'current_status_user')->orderBy('sort_order');
+    }
+
+    public function getCurrentStatusesAttribute(): array
+    {
+        // Use getRelationValue() (not $this->currentStatuses) to avoid the
+        // same accessor/relation name collision guarded against above.
+        return $this->getRelationValue('currentStatuses')
+            ->map(fn (CurrentStatus $status) => ['id' => $status->id, 'label' => $status->label])
+            ->values()
+            ->all();
     }
 }

@@ -13,30 +13,39 @@ class MembershipResidentController extends Controller
     // AUTH HELPERS
     // =========================
 
-    private function isStaff()
-    {
-        $user = auth()->user();
-        return $user && $user->role === 'Staff';
-    }
-
     private function isOwnProfile($id)
     {
         return auth()->id() == $id;
     }
 
     // =========================
-    // GET ALL USERS + MEMBERSHIPS (INCLUDING SOFT DELETED)
+    // GET ALL ACTIVE USERS + MEMBERSHIPS
+    // NOTE: despite the 'deleted_at' field below, this does NOT include
+    // soft-deleted (archived) users -- User::with(...)->get() applies
+    // Eloquent's default SoftDeletes scope, so 'deleted_at' here will
+    // always come back null. This feeds the staff Scan page's resident
+    // list (Staff.tsx -> ScanView), so an archived resident's QR/manual
+    // ID currently won't match here and the scan is rejected as unknown.
+    // If archived residents should still be scannable (e.g. to show a
+    // "this resident was archived" message instead of "not found"), add
+    // ->withTrashed() and have ScanView/resolveAndSetScan branch on
+    // deleted_at -- don't just enable it blindly, since as written the
+    // frontend has no "archived" check and would silently let a removed
+    // resident be marked present. See show() below for the equivalent
+    // single-user lookup, which deliberately DOES include soft-deleted
+    // users via a raw, unscoped query.
     // =========================
 
 public function index()
 {
-   $users = User::with('memberships')->get();
+   $users = User::with('memberships', 'household', 'currentStatuses')->get();
 
     return response()->json(
         $users->map(function ($user) {
 
             return [
                 'user_id' => $user->id,
+                'id' => $user->id,
                 'user_code' => $user->user_code,
                 'first_name' => $user->first_name,
                 'middle_name' => $user->middle_name,
@@ -45,13 +54,36 @@ public function index()
                 'role' => $user->role,
                 'has_account' => $user->has_account,
 
-                // ✅ ONLY THIS — real soft delete column from your DB
+                // Always null in practice -- see note above the index()
+                // signature; the query already excludes trashed rows.
                 'deleted_at' => $user->deleted_at,
 
                 'memberships' => $user->memberships,
                 'validation_id_url' => $user->validation_id
                     ? asset('storage/' . $user->validation_id)
                     : null,
+
+                // Adviser recommendations: age profiling + household SMS notify
+                'birth_date' => $user->birth_date?->format('Y-m-d'),
+                'age' => $user->age,
+                'age_group' => $user->age_group,
+                'address' => $user->address,
+                'civil_status_id' => $user->civil_status_id,
+                'civil_status' => $user->civil_status,
+                'current_status_ids' => $user->getRelationValue('currentStatuses')->pluck('id'),
+                'current_statuses' => $user->current_statuses,
+                'gender' => $user->gender,
+                // Real Household module -- household_code/household_contact_number
+                // were the old free-text pair that never actually linked to
+                // a real household record; household_id (via the household
+                // relation below) is the real, interrelated source of truth.
+                'is_household_head' => $user->is_household_head,
+                'household_id' => $user->household_id,
+                'household' => $user->household ? [
+                    'id' => $user->household->id,
+                    'code' => $user->household->code,
+                    'address' => $user->household->address,
+                ] : null,
             ];
         })
     );
@@ -245,7 +277,4 @@ public function index()
         ]);
     }
 }
-
-
-
 
