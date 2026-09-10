@@ -311,10 +311,38 @@ export function EventsView({
     borrowedItems: [] as { inventoryItemId: string; quantity: string }[],
   });
 
-  // Whether the currently-selected event date is today, and (if so) the
-  // "HH:MM" floor for the time inputs -- see getCurrentTimeString() above.
+  // Whether the currently-selected event date is today -- used below to
+  // reject an already-passed time the moment it's picked, rather than
+  // only catching it on submit.
   const isEventDateToday = newEvent.date === getTodayString();
-  const timeInputMin = isEventDateToday ? getCurrentTimeString() : undefined;
+
+  // Per-field inline "that time already passed" messages for the four
+  // time inputs. Deliberately NOT using the native `min` attribute for
+  // this (we tried that first) -- on this Electron/Chromium build, an
+  // empty <input type="time"> with `min` set would auto-fill itself from
+  // min the moment it was focused/stepped, but mis-rendered the AM/PM
+  // segment (showed e.g. "08:11 AM" for a min of 20:11/8:11 PM), so the
+  // field silently ended up holding a real PAST value that looked like a
+  // small, easy-to-miss discrepancy rather than an obviously invalid one.
+  // Rejecting the change in JS and never writing the bad value into state
+  // sidesteps that entirely, on any browser.
+  const [timeFieldErrors, setTimeFieldErrors] = useState<{
+    time?: string; endTime?: string; callTimeStart?: string; callTimeEnd?: string;
+  }>({});
+
+  const handleTimeFieldChange = (
+    field: "time" | "endTime" | "callTimeStart" | "callTimeEnd",
+    value: string
+  ) => {
+    // getCurrentTimeString() is re-read on every keystroke/step, not
+    // cached, so this stays correct even if the form's been open a while.
+    if (value && isEventDateToday && value <= getCurrentTimeString()) {
+      setTimeFieldErrors((prev) => ({ ...prev, [field]: t("timeAlreadyPassedError") }));
+      return; // reject -- never write an already-passed time into state
+    }
+    setTimeFieldErrors((prev) => ({ ...prev, [field]: undefined }));
+    setNewEvent({ ...newEvent, [field]: value });
+  };
 
   // UC-9 tie-in: items borrowed from Inventory for this event. Fetched
   // once (excludes Disposed/Lost condition -- see InventoryController::
@@ -718,6 +746,7 @@ export function EventsView({
         title: "", date: "", time: "", endTime: "", callTimeStart: "", callTimeEnd: "", location: "", description: "",
         notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [],
       });
+      setTimeFieldErrors({});
 
       if (onCreateEvent && savedEvent) {
         onCreateEvent(formatDbEvent(savedEvent));
@@ -736,6 +765,7 @@ export function EventsView({
       // in the fields.
       if (editingEvent && originalEventForm) {
         setNewEvent(JSON.parse(originalEventForm));
+        setTimeFieldErrors({});
       }
     } finally {
       setIsSubmitting(false);
@@ -788,6 +818,7 @@ export function EventsView({
     };
     setNewEvent(initialForm);
     setOriginalEventForm(JSON.stringify(initialForm));
+    setTimeFieldErrors({});
   };
 
   // Nothing to submit if editing an event and the form still matches what
@@ -801,6 +832,7 @@ export function EventsView({
       title: "", date: "", time: "", endTime: "", callTimeStart: "", callTimeEnd: "", location: "", description: "",
       notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [],
     });
+    setTimeFieldErrors({});
   };
 
   const confirmDelete = async () => {
@@ -989,8 +1021,16 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("startTimeRequired")}</label><input type="time" required min={timeInputMin} value={newEvent.time} onChange={(e) => setNewEvent({ ...newEvent, time: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
-                <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("endTimeLabel")}</label><input type="time" required min={timeInputMin} value={newEvent.endTime} onChange={(e) => setNewEvent({ ...newEvent, endTime: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("startTimeRequired")}</label>
+                  <input type="time" required value={newEvent.time} onChange={(e) => handleTimeFieldChange("time", e.target.value)} className={`w-full rounded-full border px-4 py-2 text-sm ${timeFieldErrors.time ? "border-red-400" : "border-gray-200"}`} />
+                  {timeFieldErrors.time && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.time}</p>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("endTimeLabel")}</label>
+                  <input type="time" required value={newEvent.endTime} onChange={(e) => handleTimeFieldChange("endTime", e.target.value)} className={`w-full rounded-full border px-4 py-2 text-sm ${timeFieldErrors.endTime ? "border-red-400" : "border-gray-200"}`} />
+                  {timeFieldErrors.endTime && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.endTime}</p>}
+                </div>
               </div>
 
               {/* Call time: sign-in/out attendance window, separate from the event's own start/end */}
@@ -999,11 +1039,13 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t("callTimeStartLabel")}</label>
-                    <input type="time" required min={timeInputMin} value={newEvent.callTimeStart} onChange={(e) => setNewEvent({ ...newEvent, callTimeStart: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" />
+                    <input type="time" required value={newEvent.callTimeStart} onChange={(e) => handleTimeFieldChange("callTimeStart", e.target.value)} className={`w-full rounded-full border px-4 py-2 text-sm ${timeFieldErrors.callTimeStart ? "border-red-400" : "border-gray-200"}`} />
+                    {timeFieldErrors.callTimeStart && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.callTimeStart}</p>}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">{t("callTimeEndLabel")}</label>
-                    <input type="time" required min={timeInputMin} value={newEvent.callTimeEnd} onChange={(e) => setNewEvent({ ...newEvent, callTimeEnd: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" disabled={!newEvent.endTime} title={!newEvent.endTime ? t("setEndTimeFirstHint") : undefined} />
+                    <input type="time" required value={newEvent.callTimeEnd} onChange={(e) => handleTimeFieldChange("callTimeEnd", e.target.value)} className={`w-full rounded-full border px-4 py-2 text-sm ${timeFieldErrors.callTimeEnd ? "border-red-400" : "border-gray-200"}`} disabled={!newEvent.endTime} title={!newEvent.endTime ? t("setEndTimeFirstHint") : undefined} />
+                    {timeFieldErrors.callTimeEnd && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.callTimeEnd}</p>}
                   </div>
                 </div>
                 <p className="text-[11px] text-gray-400">{t("callTimeHint")}</p>
