@@ -154,7 +154,7 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $query = SmsLog::with(['user:id,first_name,last_name,household_code,is_household_head', 'event:id,name'])
+        $query = SmsLog::with(['user:id,first_name,last_name,is_household_head', 'event:id,name'])
             ->latest();
 
         if ($request->filled('event_id')) {

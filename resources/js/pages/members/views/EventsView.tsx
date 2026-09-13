@@ -11,6 +11,7 @@ interface Event {
   id: number;
   title: string;
   date: string;
+  event_end?: string | null;
   location: string;
   description: string;
   membership_ids?: number[];
@@ -56,9 +57,14 @@ export default function EventsView({
   const itemsPerPage = 6;
 
   // ─── Reviews module (Past events only) ───────────────────────────────────
-  // Only an event the resident actually attended -- Complete OR Incomplete,
-  // both mean they signed in -- can be rated. "Missed" (never signed in,
-  // or no attendance record at all) never shows a review affordance; the
+  // A resident can rate an event once they've signed in AND either (a)
+  // they also signed out (status "complete"), or (b) the event's own
+  // end time has already passed -- even if they forgot to sign out.
+  // (b) exists so a resident who genuinely attended the whole event
+  // isn't permanently locked out of feedback just for forgetting to tap
+  // out again; without it, "incomplete" would stay that way forever.
+  // Neither branch fires before the event has actually happened, and
+  // "Missed" (never signed in) never shows a review affordance. The
   // backend enforces the same rule independently on submit.
   const [reviewingEventId, setReviewingEventId] = useState<number | null>(null);
   const [reviewRating, setReviewRating] = useState(0);
@@ -84,7 +90,16 @@ export default function EventsView({
 
   const canReviewEvent = (eventId: number) => {
     const attendance = getAttendanceForEvent(eventId);
-    return !!attendance && (attendance.status === "complete" || attendance.status === "incomplete");
+    if (!attendance) return false;
+    if (attendance.status === "complete") return true;
+    if (attendance.status !== "incomplete") return false;
+
+    // Signed in but not signed out -- still reviewable once the event's
+    // own end time has passed. No event_end configured means we can't
+    // confirm the event has ended, so it stays not-yet-reviewable.
+    const event = allEvents.find((ev) => ev.id === eventId);
+    if (!event?.event_end) return false;
+    return new Date(event.event_end).getTime() <= Date.now();
   };
 
   const startReview = (eventId: number) => {
@@ -399,16 +414,20 @@ export default function EventsView({
                           )}
                         </div>
 
-                        {/* Feedback module -- gated purely on attendance,
-                            not the Upcoming/Past date badge above: a resident
-                            with a Complete or Incomplete attendance record
-                            (i.e. they have a time_in) has necessarily already
-                            attended, regardless of how the event's own date
-                            field compares to "now" (test data / clock skew
-                            can otherwise make an attended event still read as
-                            "Upcoming"). Missed / no attendance record at all
-                            never gets a feedback affordance -- matches the
-                            backend's own whereNotNull('time_in') gate. */}
+                        {/* Feedback module -- gated by canReviewEvent(), not
+                            the Upcoming/Past date badge above: a resident
+                            with a Complete attendance record (signed in AND
+                            signed out) has necessarily already attended and
+                            the event has ended, regardless of how the
+                            event's own date field compares to "now" (test
+                            data / clock skew can otherwise make an attended
+                            event still read as "Upcoming"). An Incomplete
+                            record (signed in, not yet out) still gets the
+                            affordance once the event's own end time has
+                            passed, so forgetting to tap out never
+                            permanently blocks feedback. Missed / no
+                            attendance record at all never does -- matches
+                            the backend's own attendanceIsReviewable() gate. */}
                         {canReviewEvent(e.id) && (() => {
                           const feedback = getFeedbackForEvent(e.id);
                           const isReviewing = reviewingEventId === e.id;

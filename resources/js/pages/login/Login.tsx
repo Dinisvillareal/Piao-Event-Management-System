@@ -689,6 +689,13 @@ export default function LoginPage() {
           setError(data.message || "Invalid username or password");
         } else if (response.status === 419) {
           setError("Session expired. Please refresh the page");
+        } else if (response.status === 429) {
+          const retryAfter = parseInt(response.headers.get("Retry-After") || "", 10);
+          setError(
+            Number.isFinite(retryAfter) && retryAfter > 0
+              ? `Too many login attempts. Please try again in ${retryAfter} second${retryAfter === 1 ? "" : "s"}.`
+              : "Too many login attempts. Please wait a moment and try again."
+          );
         } else {
           setError(data.message || "Login failed");
         }

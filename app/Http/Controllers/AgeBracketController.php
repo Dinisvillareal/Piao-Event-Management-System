@@ -13,6 +13,34 @@ class AgeBracketController extends Controller
         return response()->json(AgeBracket::orderBy('sort_order')->orderBy('min_age')->get());
     }
 
+    /**
+     * Finds an existing bracket whose [min_age, max_age] range overlaps
+     * the given range, so Staff can't accidentally define two brackets
+     * that both claim the same ages (e.g. adding "Teens" 12-18 while
+     * "Youth" 13-17 already exists). A null max_age means "no upper
+     * limit" on either side. $excludeId skips the bracket being edited
+     * so saving it unchanged (or just renaming it) never conflicts with
+     * itself.
+     */
+    private function findOverlappingBracket(int $minAge, ?int $maxAge, ?int $excludeId = null): ?AgeBracket
+    {
+        $incomingMax = $maxAge ?? PHP_INT_MAX;
+
+        $query = AgeBracket::query();
+        if ($excludeId !== null) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        foreach ($query->get() as $bracket) {
+            $existingMax = $bracket->max_age ?? PHP_INT_MAX;
+            if ($minAge <= $existingMax && $bracket->min_age <= $incomingMax) {
+                return $bracket;
+            }
+        }
+
+        return null;
+    }
+
     public function store(Request $request)
     {
         if (!$this->isStaff()) {
@@ -25,6 +53,14 @@ class AgeBracketController extends Controller
             'max_age'    => 'nullable|integer|min:0|max:150|gte:min_age',
             'sort_order' => 'nullable|integer|min:0',
         ]);
+
+        $conflict = $this->findOverlappingBracket($request->min_age, $request->max_age);
+        if ($conflict) {
+            $conflictRange = $conflict->min_age . '-' . ($conflict->max_age ?? '∞');
+            return response()->json([
+                'errors' => ['min_age' => ["This age range overlaps with \"{$conflict->label}\" ({$conflictRange}). Adjust the range so it doesn't overlap an existing bracket."]],
+            ], 422);
+        }
 
         $bracket = AgeBracket::create([
             'label'      => $request->label,
@@ -54,6 +90,14 @@ class AgeBracketController extends Controller
             'sort_order' => 'nullable|integer|min:0',
         ]);
 
+        $conflict = $this->findOverlappingBracket($request->min_age, $request->max_age, $bracket->id);
+        if ($conflict) {
+            $conflictRange = $conflict->min_age . '-' . ($conflict->max_age ?? '∞');
+            return response()->json([
+                'errors' => ['min_age' => ["This age range overlaps with \"{$conflict->label}\" ({$conflictRange}). Adjust the range so it doesn't overlap an existing bracket."]],
+            ], 422);
+        }
+
         $bracket->update([
             'label'      => $request->label,
             'min_age'    => $request->min_age,
@@ -74,6 +118,16 @@ class AgeBracketController extends Controller
         }
 
         $bracket = AgeBracket::findOrFail($id);
+
+        // Guard against silently breaking a membership's eligibility rule
+        // -- mirrors Membership::hasResidentsAssigned() / InventoryController's
+        // own "still in use" checks.
+        if ($bracket->memberships()->exists()) {
+            return response()->json([
+                'message' => "Archive Failed: \"{$bracket->label}\" is currently in use by a membership's eligibility rule.",
+            ], 422);
+        }
+
         $name = $bracket->label;
         // Record who archived it before soft-deleting -- otherwise the
         // Archive page has nothing to show but "SYSTEM".

@@ -24,6 +24,12 @@ class CurrentStatusController extends Controller
             'sort_order' => 'nullable|integer|min:0',
         ]);
 
+        if (CurrentStatus::whereRaw('LOWER(TRIM(label)) = ?', [mb_strtolower(trim($request->label))])->exists()) {
+            return response()->json([
+                'errors' => ['label' => ["\"{$request->label}\" already exists."]],
+            ], 422);
+        }
+
         $status = CurrentStatus::create([
             'label'      => $request->label,
             'sort_order' => $request->sort_order ?? ((int) CurrentStatus::max('sort_order') + 1),
@@ -48,6 +54,12 @@ class CurrentStatusController extends Controller
             'sort_order' => 'nullable|integer|min:0',
         ]);
 
+        if (CurrentStatus::whereRaw('LOWER(TRIM(label)) = ?', [mb_strtolower(trim($request->label))])->where('id', '!=', $status->id)->exists()) {
+            return response()->json([
+                'errors' => ['label' => ["\"{$request->label}\" already exists."]],
+            ], 422);
+        }
+
         $status->update([
             'label'      => $request->label,
             'sort_order' => $request->sort_order ?? $status->sort_order,
@@ -66,6 +78,17 @@ class CurrentStatusController extends Controller
         }
 
         $status = CurrentStatus::findOrFail($id);
+
+        // Guard against silently breaking a resident's recorded current
+        // status or a membership's eligibility rule -- mirrors
+        // Membership::hasResidentsAssigned() / InventoryController's own
+        // "still in use" checks.
+        if ($status->users()->exists() || $status->memberships()->exists()) {
+            return response()->json([
+                'message' => "Archive Failed: \"{$status->label}\" is currently in use.",
+            ], 422);
+        }
+
         $name = $status->label;
         // Record who archived it before soft-deleting -- otherwise the
         // Archive page has nothing to show but "SYSTEM".

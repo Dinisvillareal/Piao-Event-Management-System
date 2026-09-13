@@ -39,6 +39,20 @@ class UserController extends Controller
             && str_contains($e->getMessage(), 'users_one_head_per_household');
     }
 
+    /**
+     * True when $e is the DB rejecting a duplicate active (non-deleted)
+     * full name via the users_unique_active_full_name unique index --
+     * the race-condition case where two requests both pass the PHP-level
+     * "does this name already exist" check above before either commits.
+     * Lets callers turn that into the same friendly validation message
+     * the PHP-level check already returns, instead of a raw SQL error.
+     */
+    private function isDuplicateNameConflict(\Throwable $e): bool
+    {
+        return $e instanceof \Illuminate\Database\QueryException
+            && str_contains($e->getMessage(), 'users_unique_active_full_name');
+    }
+
     private function localUpload($file): string
     {
         $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
@@ -258,6 +272,14 @@ class UserController extends Controller
                 ], 409);
             }
 
+            if ($this->isDuplicateNameConflict($e)) {
+                return response()->json([
+                    'errors' => [
+                        'last_name' => ['A record with this full name already exists.']
+                    ]
+                ], 422);
+            }
+
             return response()->json([
                 'message' => 'Transaction failed',
                 'error' => $e->getMessage(),
@@ -342,10 +364,6 @@ class UserController extends Controller
                 $query->whereNotNull('birth_date')
                     ->whereRaw('TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN ? AND ?', $range);
             }
-        }
-
-        if ($request->filled('household_code')) {
-            $query->where('household_code', $request->household_code);
         }
 
         if ($request->filled('household_id')) {
@@ -547,6 +565,14 @@ class UserController extends Controller
                 ], 409);
             }
 
+            if ($this->isDuplicateNameConflict($e)) {
+                return response()->json([
+                    'errors' => [
+                        'last_name' => ['A record with this full name already exists.']
+                    ]
+                ], 422);
+            }
+
             return response()->json([
                 'message' => 'Update failed',
                 'error' => $e->getMessage(),
@@ -569,6 +595,15 @@ class UserController extends Controller
         try {
 
             $user = User::findOrFail($id);
+
+            // A soft-deleted resident can't stay "head of household" -- it
+            // blocks the household from ever getting a new head (only one
+            // head per household is allowed) and would show a deleted
+            // resident as the active head if the household is viewed
+            // before this record is restored.
+            if ($user->is_household_head) {
+                $user->is_household_head = false;
+            }
 
             // ✅ STORE WHO DELETED IT
             $user->deleted_by = auth()->user()->user_code;
@@ -823,9 +858,7 @@ public function getAllForMemberships()
                     'civil_status_id' => $user->civil_status_id,
                     'current_status_ids' => $user->getRelationValue('currentStatuses')->pluck('id'),
                     'gender' => $user->gender,
-                    'household_code' => $user->household_code,
                     'is_household_head' => $user->is_household_head,
-                    'household_contact_number' => $user->household_contact_number,
                     'household_id' => $user->household_id,
                     'household' => $user->household ? [
                         'id' => $user->household->id,
