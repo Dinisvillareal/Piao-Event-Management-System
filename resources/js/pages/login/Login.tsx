@@ -539,7 +539,7 @@ function PortalSelectionModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
       <div className="bg-white rounded-[28px] w-full max-w-md shadow-2xl overflow-hidden">
-        <div className="h-1.5 w-full bg-gradient-to-r from-teal-500 via-yellow-400 to-orange-500" />
+        <div className="h-1.5 w-full bg-[#33534E]" />
 
         <div className="p-8">
           <div className="text-center mb-6">
@@ -550,8 +550,8 @@ function PortalSelectionModal({
                 className="w-full h-full object-contain"
               />
             </div>
-            <h2 className="text-xl font-black text-teal-800">Welcome back, {userName}!</h2>
-            <p className="text-sm text-gray-500 mt-1">
+            <h2 className="font-display text-xl font-bold text-[#1A1A1A]">Welcome back, {userName}!</h2>
+            <p className="text-sm text-[#6E6A60] mt-1">
               You have both staff and member access. Where would you like to go?
             </p>
           </div>
@@ -559,38 +559,38 @@ function PortalSelectionModal({
           <div className="space-y-3">
             <button
               onClick={onSelectStaff}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-orange-100 bg-orange-50 hover:border-orange-400 hover:bg-orange-100 transition-all duration-200 group text-left"
+              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-[#E6E0D3] bg-white hover:border-sage-600 hover:bg-sage-50 transition-all duration-200 group text-left"
             >
-              <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-orange-600 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+              <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-[#33534E] flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
                 <LayoutDashboard className="w-5 h-5 text-white" />
               </div>
               <div className="flex-1">
-                <p className="font-bold text-orange-800 text-sm">Staff Portal</p>
-                <p className="text-xs text-orange-600 mt-0.5">
+                <p className="font-bold text-[#1A1A1A] text-sm">Staff Portal</p>
+                <p className="text-xs text-[#6E6A60] mt-0.5">
                   Manage residents, events, memberships & more
                 </p>
               </div>
-              <ArrowRight className="w-4 h-4 text-orange-400 group-hover:text-orange-600 group-hover:translate-x-1 transition-all" />
+              <ArrowRight className="w-4 h-4 text-sage-600 group-hover:text-sage-800 group-hover:translate-x-1 transition-all" />
             </button>
 
             <button
               onClick={onSelectMember}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-teal-100 bg-teal-50 hover:border-teal-400 hover:bg-teal-100 transition-all duration-200 group text-left"
+              className="w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-[#E6E0D3] bg-white hover:border-gold-600 hover:bg-gold-50 transition-all duration-200 group text-left"
             >
-              <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-teal-600 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
-                <Users className="w-5 h-5 text-white" />
+              <div className="flex-shrink-0 w-11 h-11 rounded-xl bg-gold-400 flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform">
+                <Users className="w-5 h-5 text-[#1A1A1A]" />
               </div>
               <div className="flex-1">
-                <p className="font-bold text-teal-800 text-sm">Member Dashboard</p>
-                <p className="text-xs text-teal-600 mt-0.5">
+                <p className="font-bold text-[#1A1A1A] text-sm">Member Dashboard</p>
+                <p className="text-xs text-[#6E6A60] mt-0.5">
                   View your memberships, events & attendance
                 </p>
               </div>
-              <ArrowRight className="w-4 h-4 text-teal-400 group-hover:text-teal-600 group-hover:translate-x-1 transition-all" />
+              <ArrowRight className="w-4 h-4 text-gold-600 group-hover:text-gold-700 group-hover:translate-x-1 transition-all" />
             </button>
           </div>
 
-          <p className="text-center text-xs text-gray-400 mt-5">
+          <p className="text-center text-xs text-[#9B9789] mt-5">
             You can switch between portals anytime after logging in.
           </p>
         </div>
@@ -755,7 +755,7 @@ export default function LoginPage() {
   }, []);
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-white text-gray-900">
+    <div className="relative min-h-screen overflow-hidden bg-white text-[#1A1A1A] font-sans">
       {showPortalModal && loggedInUser && (
         <PortalSelectionModal
           userName={loggedInUser.first_name || loggedInUser.user_code}
@@ -800,69 +800,91 @@ export default function LoginPage() {
       )}
 
       {showCopiedToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2 rounded-full bg-teal-900 text-white text-sm font-medium px-5 py-2.5 shadow-xl animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle size={16} className="text-teal-300" /> Number copied to clipboard!
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2 rounded-full bg-sage-900 text-white text-sm font-medium px-5 py-2.5 shadow-xl animate-in fade-in slide-in-from-bottom-2">
+          <CheckCircle size={16} className="text-gold-400" /> Number copied to clipboard!
         </div>
       )}
 
-      <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-orange-300/40 blur-3xl" />
-      <div className="absolute -right-32 top-40 h-96 w-96 rounded-full bg-yellow-300/40 blur-3xl" />
-      <div className="absolute bottom-0 left-1/3 h-96 w-96 rounded-full bg-teal-300/40 blur-3xl" />
+      {/* Split-screen layout: a quiet sage brand panel on the left, the
+          sign-in form on the right. Anyone with an account -- staff or
+          resident -- uses this one form; only staff can create resident
+          accounts, so there's nothing here for a person to choose. */}
+      <div className="grid min-h-screen md:grid-cols-[1.05fr_1fr]">
 
-      <div className="relative mx-auto flex min-h-screen max-w-6xl flex-col px-8 py-12">
-        <nav className="flex items-center gap-3 mb-6">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-transparent overflow-hidden">
-            <img
-              src="/logo-removebg-preview.png"
-              alt="Logo"
-              className="w-full h-full object-contain"
-            />
+        <div className="relative hidden md:flex flex-col justify-between overflow-hidden p-12 text-white bg-gradient-to-br from-[#233A37] via-[#33534E] to-[#456F68]">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.07]"
+            style={{
+              backgroundImage:
+                "linear-gradient(rgba(255,255,255,.6) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.6) 1px, transparent 1px)",
+              backgroundSize: "36px 36px",
+            }}
+          />
+
+          <div className="relative flex items-center gap-3">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/10 border border-white/25 overflow-hidden shrink-0">
+              <img src="/logo-removebg-preview.png" alt="Logo" className="w-full h-full object-contain" />
+            </div>
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-white/65">Republic of the Philippines</p>
+              <p className="text-[15px] font-bold text-white">Barangay Piao</p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs uppercase tracking-widest text-teal-800">
-              Piao Barangay Portal
-            </p>
-            <p className="text-base font-bold text-teal-900">e-Membership System</p>
-          </div>
-        </nav>
 
-        <main className="grid flex-1 items-center gap-12 py-10 md:grid-cols-2">
-          <div className="hidden md:block">
-            <span className="inline-flex items-center gap-2 rounded-full bg-yellow-400 px-3 py-1 text-xs font-semibold text-black">
-              <span className="h-2 w-2 rounded-full bg-orange-500" />
-              Welcome back
-            </span>
-
-            <h1 className="mt-5 text-5xl font-black text-teal-800">
-              Sign in to your{" "}
-              <span className="text-orange-500">barangay</span> account.
+          <div className="relative max-w-md">
+            <h1 className="font-display text-[34px] leading-[1.15] font-bold text-white text-balance">
+              Serve. Connect. Uplift Barangay Piao.
             </h1>
-
-            <p className="mt-5 max-w-md text-gray-700">
-              Manage events, register residents, and track attendance in one
-              secure place built for your community.
-            </p>
-
-            <p className="mt-6 text-xs text-gray-500">
-              Use the correct credentials to access the system
+            <p className="mt-4 text-[14px] leading-relaxed text-white/80">
+              One system for resident profiling, program eligibility, and event attendance —
+              replacing the logbooks at the front desk.
             </p>
           </div>
 
-          <div className="mx-auto w-full max-w-lg rounded-2xl border border-gray-300 bg-white p-10 shadow-lg">
-            <h2 className="text-2xl font-bold text-teal-800">Sign in</h2>
-            <p className="text-sm text-gray-700 mt-1">
-              Sign in to your barangay account
-            </p>
+          <div className="relative flex gap-8">
+            <div>
+              <p className="font-display text-2xl font-bold text-white">1,428</p>
+              <p className="text-[11px] uppercase tracking-wide text-white/60 mt-0.5">Residents Served</p>
+            </div>
+            <div>
+              <p className="font-display text-2xl font-bold text-white">312</p>
+              <p className="text-[11px] uppercase tracking-wide text-white/60 mt-0.5">Households</p>
+            </div>
+            <div>
+              <p className="font-display text-2xl font-bold text-white">10</p>
+              <p className="text-[11px] uppercase tracking-wide text-white/60 mt-0.5">Active Programs</p>
+            </div>
+          </div>
+        </div>
 
-            <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-5">
+        <main className="flex items-center justify-center px-6 py-12 sm:px-10">
+          <div className="w-full max-w-sm">
+
+            {/* Brand lockup shown only on small screens, where the sage
+                panel above is hidden. */}
+            <div className="flex md:hidden items-center gap-3 mb-8">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-sage-50 overflow-hidden shrink-0">
+                <img src="/logo-removebg-preview.png" alt="Logo" className="w-full h-full object-contain" />
+              </div>
               <div>
-                <label className="text-sm font-semibold text-gray-800">
+                <p className="text-[11px] uppercase tracking-widest text-sage-700">Barangay Piao</p>
+                <p className="text-sm font-bold text-[#1A1A1A]">e-Membership System</p>
+              </div>
+            </div>
+
+            <p className="text-[12px] font-bold uppercase tracking-[0.14em] text-sage-700">e-Membership Portal</p>
+            <h2 className="mt-2 font-display text-[26px] font-bold text-[#1A1A1A]">Welcome back</h2>
+            <p className="mt-1.5 text-sm text-[#6E6A60]">Sign in with the account issued to you at the Barangay Hall.</p>
+
+            <form onSubmit={handleSubmit} noValidate className="mt-7 space-y-5">
+              <div>
+                <label className="text-[13px] font-semibold text-[#1A1A1A]">
                   Username
                 </label>
                 <input
                   type="text"
                   name="username"
-                  className="w-full mt-1 rounded-xl border px-3 py-2 text-sm shadow focus:ring-1 focus:border-teal-500 focus:ring-teal-400 placeholder-gray-600"
+                  className="w-full mt-1.5 rounded-xl border-[1.5px] border-[#D8D0BE] px-3.5 py-2.5 text-sm text-[#1A1A1A] placeholder-[#9B9789] transition focus:outline-none focus:border-sage-600 focus:ring-4 focus:ring-sage-100"
                   placeholder="PR-0001"
                   required
                   disabled={isLoading}
@@ -870,11 +892,11 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <div className="flex justify-between text-sm">
-                  <label className="text-sm font-semibold text-gray-800">
+                <div className="flex justify-between items-baseline text-sm">
+                  <label className="text-[13px] font-semibold text-[#1A1A1A]">
                     Password
                   </label>
-                  <span className="text-xs text-orange-500 cursor-pointer hover:underline">
+                  <span className="text-xs font-semibold text-sage-700 cursor-pointer hover:underline">
                     Forgot?
                   </span>
                 </div>
@@ -882,7 +904,7 @@ export default function LoginPage() {
                   <input
                     type="password"
                     name="password"
-                    className="w-full mt-1 rounded-xl border px-3 py-2 text-sm shadow focus:ring-1 focus:border-teal-500 focus:ring-teal-400 placeholder-gray-600"
+                    className="w-full mt-1.5 rounded-xl border-[1.5px] border-[#D8D0BE] px-3.5 py-2.5 text-sm text-[#1A1A1A] placeholder-[#9B9789] transition focus:outline-none focus:border-sage-600 focus:ring-4 focus:ring-sage-100"
                     placeholder="••••••••"
                     required
                     disabled={isLoading}
@@ -896,10 +918,10 @@ export default function LoginPage() {
                   id="keepSignedIn"
                   checked={keepSignedIn}
                   onChange={(e) => setKeepSignedIn(e.target.checked)}
-                  className="rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                  className="rounded border-gray-300 text-sage-600 focus:ring-sage-500"
                   disabled={isLoading}
                 />
-                <label htmlFor="keepSignedIn" className="text-gray-700">
+                <label htmlFor="keepSignedIn" className="text-[13px] text-[#37423F]">
                   Keep me signed in on this device
                 </label>
               </div>
@@ -907,41 +929,48 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-2 rounded-xl font-semibold shadow-xl transition transform text-white flex items-center justify-center gap-2 bg-orange-500 hover:bg-orange-400 disabled:opacity-50"
+                className="w-full py-3 rounded-full font-semibold text-[14px] shadow-sm transition text-white flex items-center justify-center gap-2 bg-[#33534E] hover:bg-[#233A37] disabled:opacity-50"
               >
-                {isLoading ? "Signing in..." : "Sign in"}
-                {!isLoading && <ArrowRight className="h-5 w-5" />}
+                {isLoading ? "Signing in..." : "Sign In"}
+                {!isLoading && <ArrowRight className="h-4 w-4" />}
               </button>
 
-              <div className="relative flex justify-center mt-3" ref={contactRef}>
-                <p className="text-xs text-gray-600">
-                  Need an account?{" "}
+              <div className="relative flex justify-center mt-1" ref={contactRef}>
+                <p className="text-xs text-[#6E6A60]">
+                  Don't have an account?{" "}
                   <span
                     onClick={() => setShowContact(true)}
-                    className="font-semibold cursor-pointer text-teal-700 hover:underline"
+                    className="font-semibold cursor-pointer text-sage-700 hover:underline"
                   >
-                    Contact this number
+                    Contact the Records Office
                   </span>
                 </p>
 
                 {showContact && (
-                  <div className="absolute w-[160px] left-full ml-3 flex items-center gap-2 bg-gray-100 rounded-xl px-4 py-2 text-sm text-gray-800 shadow">
+                  <div className="absolute w-[170px] left-full ml-3 flex items-center gap-2 bg-[#F1ECE1] rounded-xl px-4 py-2 text-sm text-[#1A1A1A] shadow">
                     <span>{contactNumber}</span>
                     <Copy
-                      className="h-4 w-4 cursor-pointer text-gray-600 hover:text-orange-500"
+                      className="h-4 w-4 cursor-pointer text-[#6E6A60] hover:text-sage-700"
                       onClick={copyToClipboard}
                     />
                   </div>
                 )}
               </div>
             </form>
+
+            <div className="mt-8 flex gap-2 text-[11px] leading-relaxed text-[#9B9789]">
+              <span>
+                Resident accounts are created by Barangay staff — only staff and the
+                residents they've registered can sign in here.
+              </span>
+            </div>
           </div>
         </main>
-
-        <footer className="text-center text-xs text-gray-700 mt-8">
-          © 2026 Piao Barangay Portal · Community System
-        </footer>
       </div>
+
+      <footer className="absolute bottom-4 inset-x-0 text-center text-[11px] text-[#9B9789]">
+        © 2026 Barangay Piao e-Membership · Community System
+      </footer>
     </div>
   );
 }

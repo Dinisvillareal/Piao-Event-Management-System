@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { UserPlus, CalendarPlus, ScanLine, Bell, BarChart3, Users, Award, CalendarDays, Undo2 } from "lucide-react";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -34,6 +35,11 @@ export default function DashboardView({
   // EventController::overdueBorrows), so the Dashboard surfaces them
   // directly instead of relying on staff noticing the Inventory badge.
   const [overdueBorrows, setOverdueBorrows] = useState<any[]>([]);
+  // Real approved-vs-spent figures for this quarter's events, from the
+  // same endpoint the Reports > Budget report uses -- no invented
+  // category breakdown, just the actual per-event numbers staff already
+  // record in Budget & Expenses.
+  const [budgetSummary, setBudgetSummary] = useState<{ per_event: any[] } | null>(null);
 
   const getCsrfToken = () => {
     const token = document.cookie
@@ -58,6 +64,28 @@ export default function DashboardView({
       hour12: true,
     });
     return `${datePart} • ${timePart}`;
+  };
+
+  // Short "Sep 20" style date used in the compact upcoming-events list --
+  // the events themselves already show their full date once opened, this
+  // panel is just a glanceable pointer to what's coming up next.
+  const formatShortDate = (dateString?: string) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Current calendar quarter as a date_from/date_to pair for the budget
+  // endpoint, plus a "Q3 2026" label so the panel's subtitle matches
+  // exactly what it's showing instead of an unqualified "this quarter".
+  const getQuarterInfo = () => {
+    const now = new Date();
+    const q = Math.floor(now.getMonth() / 3);
+    const start = new Date(now.getFullYear(), q * 3, 1);
+    const end = new Date(now.getFullYear(), q * 3 + 3, 0);
+    const toISO = (d: Date) => d.toISOString().split('T')[0];
+    return { date_from: toISO(start), date_to: toISO(end), label: `Q${q + 1} ${now.getFullYear()}` };
   };
 
   useEffect(() => {
@@ -110,6 +138,17 @@ export default function DashboardView({
     }
   };
 
+  const fetchBudgetSummary = async () => {
+    try {
+      const { date_from, date_to } = getQuarterInfo();
+      const response = await api.get('/reports/budget-summary', { params: { date_from, date_to } });
+      setBudgetSummary(response.data);
+    } catch (error) {
+      console.error('Error fetching budget summary:', error);
+      setBudgetSummary(null);
+    }
+  };
+
   const fetchAllStats = async () => {
     try {
       const [residentsResponse, membershipsResponse] = await Promise.all([
@@ -149,6 +188,7 @@ export default function DashboardView({
           fetchAllStats(),
           fetchRecentActivities(),
           fetchOverdueBorrows(),
+          fetchBudgetSummary(),
         ]);
       } catch (error) {
         console.error('Error loading dashboard:', error);
@@ -186,64 +226,115 @@ export default function DashboardView({
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
   };
 
+  // Every caption below is either static copy or a real, already-fetched
+  // count -- no invented period-over-period percentages, since the system
+  // doesn't track historical snapshots to compute a real "+4.2%" from.
   const statsCards = [
     {
       value: stats.residents,
       label: "RESIDENTS",
-      gradient: "from-orange-400 to-yellow-300",
       route: "residents",
-      description: "Total registered residents"
+      description: "Total registered residents",
+      icon: Users,
+      gradient: "from-sage-400 to-sage-700"
     },
     {
       value: stats.memberships,
-      label: "MEMBERSHIPS",
-      gradient: "from-[#067a7a] to-[#5fd3d3]",
+      label: "ACTIVE MEMBERSHIPS",
       route: "memberships",
-      description: "Active membership types"
+      description: "Active membership types",
+      icon: Award,
+      gradient: "from-gold-400 to-gold-700"
     },
     {
       value: stats.events,
       label: "EVENTS",
-      gradient: "from-orange-400 to-yellow-300",
       route: "events",
-      description: "Total events (upcoming + past)"
+      description: upcomingEvents.length > 0 ? `${upcomingEvents.length} upcoming this year` : "Upcoming + past this year",
+      icon: CalendarDays,
+      gradient: "from-sage-800 to-[#1C2E2B]"
+    },
+    {
+      value: overdueBorrows.length,
+      label: "OVERDUE RETURNS",
+      route: "returns",
+      description: overdueBorrows.length > 0 ? "Flagged for review" : "All items returned on time",
+      icon: Undo2,
+      gradient: "from-[#8A3D2C] to-[#5C2A1E]"
     }
+  ];
+
+  const quickActions = [
+    { label: "Add Resident", icon: UserPlus, onClick: () => setActive("residents") },
+    { label: "Create Event", icon: CalendarPlus, onClick: () => setActive("events") },
+    { label: "Scan QR", icon: ScanLine, onClick: () => setActive("scan") },
+    { label: "Send Notice", icon: Bell, onClick: () => setActive("notify") },
+    { label: "View Reports", icon: BarChart3, onClick: () => setActive("reports") },
   ];
 
   if (loading) {
     return (
       <div className="flex justify-center items-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sage-600"></div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div className="rounded-[30px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">
-          {t("staffConsole")}
-        </p>
-        <h1 className="mt-2 text-4xl font-black">{t("welcomeBack")}, {memberName}! 👋</h1>
-        <p className="mt-2 text-base text-white/90">
-          {t("staffDashboardSubtitle")}
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-sage-700">{t("staffConsole")}</p>
+          <h1 className="mt-1.5 font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("welcomeBack")}, {memberName}</h1>
+          <p className="mt-1.5 text-sm text-[#6B6558] max-w-md">{t("staffDashboardSubtitle")}</p>
+        </div>
+        <div className="flex flex-wrap gap-2.5">
+          <button
+            onClick={() => setActive("reports")}
+            className="inline-flex items-center gap-2 rounded-full border border-[#E6E0D3] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#5C574A] hover:border-[#DED5C0] hover:text-[#1A1A1A] transition-colors"
+          >
+            View Reports
+          </button>
+          <button
+            onClick={() => setActive("residents")}
+            className="inline-flex items-center gap-2 rounded-full bg-[#1A1A1A] px-4 py-2.5 text-[13px] font-semibold text-white hover:bg-[#2E2E2E] transition-colors"
+          >
+            <UserPlus className="h-4 w-4" /> Add Resident
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* Stat strip -- each card its own gradient so the four numbers are
+          easy to tell apart at a glance; Overdue Returns gets its own
+          rust tone rather than reusing sage, gold or the dark events
+          green. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {statsCards.map((item, idx) => (
           <button
             key={idx}
             onClick={() => setActive(item.route)}
-            className={`group w-full rounded-[30px] bg-gradient-to-r ${item.gradient} p-5 text-left text-white transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_18px_45px_rgba(0,0,0,0.22)]`}
+            className={`group relative overflow-hidden rounded-2xl bg-gradient-to-br ${item.gradient} p-6 text-left text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}
           >
-            <h2 className="text-4xl lg:text-5xl font-black">{item.value}</h2>
-            <p className="mt-2 text-sm font-semibold uppercase tracking-wide">
-              {item.label}
-            </p>
-            <p className="mt-1 text-xs text-white/70 opacity-0 group-hover:opacity-100 transition-opacity">
-              {item.description}
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="font-display text-4xl lg:text-5xl font-extrabold tracking-tight [font-variant-numeric:tabular-nums]">{item.value}</h2>
+              <item.icon className="h-6 w-6 text-white/40 shrink-0" />
+            </div>
+            <p className="mt-3 text-[13px] font-bold uppercase tracking-wide">{item.label}</p>
+            <p className="mt-1 text-xs text-white/75">{item.description}</p>
+          </button>
+        ))}
+      </div>
+
+      {/* Quick actions -- one tap to the page staff reach for most often,
+          all real navigation (no decorative buttons that do nothing). */}
+      <div className="flex flex-wrap gap-2.5">
+        {quickActions.map((action) => (
+          <button
+            key={action.label}
+            onClick={action.onClick}
+            className="inline-flex items-center gap-2 rounded-full border border-[#E6E0D3] bg-white px-4 py-2.5 text-[13px] font-semibold text-[#5C574A] hover:border-[#A2C9BC] hover:bg-sage-50 hover:text-sage-800 transition-colors"
+          >
+            <action.icon className="h-4 w-4" /> {action.label}
           </button>
         ))}
       </div>
@@ -251,65 +342,31 @@ export default function DashboardView({
       {overdueBorrows.length > 0 && (
         <button
           onClick={() => setActive("returns")}
-          className="w-full text-left rounded-[30px] border border-red-200 bg-red-50 p-5 flex items-center justify-between gap-4 flex-wrap hover:bg-red-100/70 transition-colors"
+          className="w-full text-left rounded-2xl border border-[#F0D7CE] bg-[#FBEDE9] p-5 flex items-center justify-between gap-4 flex-wrap hover:bg-[#F6DED5] transition-colors"
         >
           <div>
-            <h2 className="text-lg font-black text-red-700">{t("overdueBorrowsTitle")}</h2>
-            <p className="text-sm text-red-700/80 mt-1">
+            <h2 className="text-lg font-bold text-[#8A3D2C]">{t("overdueBorrowsTitle")}</h2>
+            <p className="text-sm text-[#8A3D2C]/80 mt-1">
               {overdueBorrows.length} {overdueBorrows.length === 1 ? t("eventSingularLabel") : t("eventPluralLabel")} &mdash; {t("overdueBorrowsSubtitle")}
             </p>
           </div>
-          <span className="shrink-0 rounded-full bg-red-600 text-white text-xs font-semibold px-4 py-2.5">
+          <span className="shrink-0 rounded-full bg-[#B5533E] text-white text-xs font-semibold px-4 py-2.5">
             {t("reviewReturnsLabel")}
           </span>
         </button>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
-          <h2 className="text-2xl font-black text-[#005f63]">System QR Code</h2>
-          <p className="text-[15px] mt-1 text-gray-600">
-            Residents scan this code to open the membership portal on their phone.
-          </p>
-
-          <div className="mt-5 flex flex-col sm:flex-row items-start gap-4">
-            <div className="shrink-0 flex justify-center w-full sm:w-auto">
-              <QRCodeSVG
-                id="system-qr-code"
-                value={appUrl}
-                size={160}
-                bgColor="#ffffff"
-                fgColor="#005f63"
-                level="H"
-                includeMargin={true}
-              />
-            </div>
-            <div className="flex-1">
-              <p className="font-medium text-[#005f63]">Barangay e-Membership</p>
-              <p className="text-sm text-gray-600 mt-1">Posted at the Barangay Hall lobby</p>
-              <p className="text-sm text-gray-600 mt-1">
-                Print and post in public places — residents scan to access.
-              </p>
-              <button
-                onClick={downloadQRCode}
-                className="mt-3 bg-orange-500 text-white px-4 py-2 rounded-[30px] text-sm font-medium hover:bg-orange-600 transition"
-              >
-                Download QR Code
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300">
-          <h2 className="text-2xl font-black text-[#005f63]">
+      <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 hover:shadow-md transition-shadow duration-300">
+          <h2 className="font-display text-xl font-bold text-[#1A1A1A]">
             Recent Activity
           </h2>
 
-          <p className="text-[15px] mt-1 text-gray-600">
+          <p className="text-[15px] mt-1 text-[#6E6A60]">
             Latest staff actions in the system.
           </p>
 
-          <div className="mt-5 max-h-[260px] overflow-y-auto pr-2">
+          <div className="mt-5 max-w-xl max-h-[320px] overflow-y-auto pr-2">
             {recentActivities.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 No recent activity to display
@@ -323,12 +380,12 @@ export default function DashboardView({
                   }`}
                 >
                   {i !== recentActivities.length - 1 && (
-                    <span className="absolute left-[8px] top-2 h-full w-[2px] bg-teal-300"></span>
+                    <span className="absolute left-[8px] top-2 h-full w-[2px] bg-sage-200"></span>
                   )}
 
-                  <span className="absolute left-[4px] top-2 w-[10px] h-[10px] rounded-full bg-orange-400 z-10"></span>
+                  <span className="absolute left-[4px] top-2 w-[10px] h-[10px] rounded-full bg-gold-400 z-10"></span>
 
-                  <p className="text-[14px] font-semibold text-[#005f63] leading-tight">
+                  <p className="text-[14px] font-semibold text-[#1A1A1A] leading-tight">
                     {act.action}
                   </p>
 
@@ -346,6 +403,117 @@ export default function DashboardView({
                 </div>
               ))
             )}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 hover:shadow-md transition-shadow duration-300">
+            <h2 className="font-display text-xl font-bold text-[#1A1A1A]">System QR Code</h2>
+            <p className="text-[15px] mt-1 text-[#6E6A60]">
+              Residents scan this code to open the membership portal on their phone.
+            </p>
+
+            <div className="mt-5 flex flex-col sm:flex-row items-start gap-4">
+              <div className="shrink-0 flex justify-center w-full sm:w-auto">
+                <QRCodeSVG
+                  id="system-qr-code"
+                  value={appUrl}
+                  size={140}
+                  bgColor="#ffffff"
+                  fgColor="#33534E"
+                  level="H"
+                  includeMargin={true}
+                />
+              </div>
+              <div className="flex-1">
+                <p className="font-medium text-[#1A1A1A]">Barangay e-Membership</p>
+                <p className="text-sm text-[#6E6A60] mt-1">
+                  Print and post at the Barangay Hall lobby.
+                </p>
+                <button
+                  onClick={downloadQRCode}
+                  className="mt-3 bg-[#1A1A1A] text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-[#2E2E2E] transition"
+                >
+                  Download QR Code
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 hover:shadow-md transition-shadow duration-300">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-display text-xl font-bold text-[#1A1A1A]">Budget Snapshot</h2>
+                <p className="text-[13px] mt-1 text-[#6E6A60]">Approved vs. spent — {getQuarterInfo().label}</p>
+              </div>
+              <button onClick={() => setActive("budget")} className="text-xs font-bold text-sage-700 hover:underline shrink-0">
+                View all
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-3.5">
+              {!budgetSummary || budgetSummary.per_event.length === 0 ? (
+                <p className="text-sm text-[#9B9484] py-2">No approved event budgets this quarter.</p>
+              ) : (
+                (() => {
+                  // Each bar just gets the next color in this fixed
+                  // sequence, by position -- not tied to the percentage,
+                  // so five events all sitting in the high-80s/90s still
+                  // read as five distinct bars instead of one flat color.
+                  const barTones = ["bg-sage-500", "bg-sage-800", "bg-gold-500", "bg-sage-400", "bg-[#B5533E]", "bg-sage-600", "bg-sage-300", "bg-sage-700"];
+                  return budgetSummary.per_event.slice(0, 5).map((ev: any, idx: number) => {
+                  const approved = Number(ev.approved_budget) || 0;
+                  const spent = Number(ev.total_expenses) || 0;
+                  const pct = approved > 0 ? Math.round((spent / approved) * 100) : 0;
+                  const barColor = barTones[idx % barTones.length];
+                  return (
+                    <div key={ev.id}>
+                      <div className="flex justify-between gap-3 text-[13px] mb-1.5">
+                        <span className="font-semibold text-[#1A1A1A] truncate">{ev.name}</span>
+                        <span className="text-[#6B6558] shrink-0">{pct}%</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-[#E6E0D3] overflow-hidden">
+                        <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }}></div>
+                      </div>
+                    </div>
+                  );
+                  });
+                })()
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 hover:shadow-md transition-shadow duration-300">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-xl font-bold text-[#1A1A1A]">Upcoming Events</h2>
+              <button onClick={() => setActive("events")} className="text-xs font-bold text-sage-700 hover:underline">
+                View all
+              </button>
+            </div>
+
+            <div className="mt-4">
+              {upcomingEvents.length === 0 ? (
+                <p className="text-sm text-[#9B9484] py-4">No upcoming events scheduled.</p>
+              ) : (
+                upcomingEvents.slice(0, 4).map((ev, i) => (
+                  <button
+                    key={ev.id ?? i}
+                    onClick={() => setActive("events")}
+                    className={`w-full text-left flex items-center justify-between gap-3 py-3 ${
+                      i !== Math.min(upcomingEvents.length, 4) - 1 ? "border-b border-[#E6E0D3]" : ""
+                    }`}
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-semibold text-[#1A1A1A] truncate">{ev.name ?? ev.title}</p>
+                      <p className="text-[11px] text-[#9B9484] mt-0.5 truncate">{ev.location}</p>
+                    </div>
+                    <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-sage-700 bg-sage-50 rounded-full px-2.5 py-1">
+                      {formatShortDate(ev.event_start ?? ev.date)}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
           </div>
         </div>
       </div>

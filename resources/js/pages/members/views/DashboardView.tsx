@@ -100,12 +100,12 @@ export default function DashboardView({
 
   return (
     <>
-      <div className="rounded-[30px] bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-5 text-white shadow-lg">
-        <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">
+      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-6 border-l-4 border-l-gold-400">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-sage-700">
           {t("memberDashboard")}
         </p>
-        <h1 className="mt-2 text-4xl font-black">{t("welcomeBack")}, {memberName}!</h1>
-        <p className="mt-2 text-base text-white/90">
+        <h1 className="mt-2 font-display text-3xl font-bold text-[#1A1A1A]">{t("welcomeBack")}, {memberName}</h1>
+        <p className="mt-2 text-[15px] text-[#6E6A60]">
           {t("signedInAsResident")}
         </p>
       </div>
@@ -114,21 +114,21 @@ export default function DashboardView({
         <SummaryCard
           value={membershipsCount}
           title={t("verifiedMemberships")}
-          gradient="from-orange-400 to-yellow-300"
+          gradient="from-gold-300 to-gold-600"
           description={t("membershipsDesc")}
           onClick={() => setActive("qr")}
         />
         <SummaryCard
           value={attendedCount}
           title={t("eventsAttended")}
-          gradient="from-[#067a7a] to-[#5fd3d3]"
+          gradient="from-sage-400 to-sage-700"
           description={t("eventsAttendedDesc")}
           onClick={() => setActive("attendance")}
         />
         <SummaryCard
           value={upcomingEvents.length}
           title={t("upcomingEvents")}
-          gradient="from-yellow-300 to-orange-400"
+          gradient="from-[#233A37] to-sage-700"
           description={t("upcomingEventsDesc")}
           onClick={() => setActive("events")}
         />
@@ -136,15 +136,15 @@ export default function DashboardView({
 
       <div className="grid gap-4 lg:grid-cols-2">
         {/* This Week's Notifications Card */}
-        <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300 flex flex-col h-full">
+        <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 hover:shadow-md transition-shadow duration-300 flex flex-col h-full">
           <div className="flex items-center justify-between flex-shrink-0">
             <div>
-              <h2 className="text-2xl font-black text-[#005f63]">{t("thisWeekNotifications")}</h2>
+              <h2 className="font-display text-xl font-bold text-[#1A1A1A]">{t("thisWeekNotifications")}</h2>
               <p className="mt-1 text-gray-600">{t("thisWeekNotificationsDesc")}</p>
             </div>
             <button
               onClick={() => setActive("notify")}
-              className="text-sm text-[#005f63] hover:underline font-medium transition-colors flex-shrink-0"
+              className="text-sm text-sage-700 hover:underline font-semibold transition-colors flex-shrink-0"
             >
               {t("viewAll")}
             </button>
@@ -155,7 +155,7 @@ export default function DashboardView({
             style={{ maxHeight: "220px" }}
           >
             {thisWeekNotifications.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-[#005f63]/20 bg-white p-10 text-center text-gray-500">
+              <div className="rounded-2xl border border-dashed border-sage-200 bg-white p-10 text-center text-gray-500">
                 <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                 </svg>
@@ -171,8 +171,8 @@ export default function DashboardView({
                     key={item.id}
                     onClick={() => setActive("notify")}
                     className={`cursor-pointer relative rounded-2xl sm:rounded-3xl px-5 sm:px-6 py-4 sm:py-5 border-l-4 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.18)] hover:-translate-y-1 ${
-                      !item.read 
-                        ? 'border-l-[#ecd862] bg-[#f8f3ee] hover:bg-[#fef8e8]' 
+                      !item.read
+                        ? 'border-l-gold-400 bg-gold-50 hover:bg-gold-100'
                         : 'border-l-gray-300 bg-white hover:bg-gray-50'
                     } border-y border-r border-gray-200`}
                   >
@@ -192,7 +192,7 @@ export default function DashboardView({
                           <div className="flex-1 mt-1.5 sm:mt-0">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className={`font-semibold text-xs sm:text-sm ${
-                                !item.read ? 'text-[#005f63] font-bold' : 'text-[#005f63]'
+                                !item.read ? 'text-[#1A1A1A] font-bold' : 'text-[#1A1A1A]'
                               }`}>
                                 {title}
                               </span>
@@ -224,15 +224,15 @@ export default function DashboardView({
         </div>
 
         {/* Upcoming Events Card */}
-        <div className="rounded-[30px] border border-[#ddd5ca] bg-white p-5 hover:shadow-2xl transition-shadow duration-300 flex flex-col h-full">
+        <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 hover:shadow-md transition-shadow duration-300 flex flex-col h-full">
           <div className="flex items-center justify-between flex-shrink-0">
             <div>
-              <h2 className="text-2xl font-black text-[#005f63]">{t("upcomingEvents")}</h2>
+              <h2 className="font-display text-xl font-bold text-[#1A1A1A]">{t("upcomingEvents")}</h2>
               <p className="mt-1 text-gray-600">{t("upcomingEventsDesc")}</p>
             </div>
             <button
               onClick={() => setActive("events")}
-              className="text-sm text-[#005f63] hover:underline font-medium transition-colors flex-shrink-0"
+              className="text-sm text-sage-700 hover:underline font-semibold transition-colors flex-shrink-0"
             >
               {t("viewAll")}
             </button>
@@ -243,7 +243,7 @@ export default function DashboardView({
             style={{ maxHeight: "220px" }}
           >
             {latestEvents.length === 0 ? (
-              <div className="rounded-3xl border border-dashed border-[#005f63]/20 bg-white p-10 text-center text-gray-500">
+              <div className="rounded-2xl border border-dashed border-sage-200 bg-white p-10 text-center text-gray-500">
                 <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
@@ -255,9 +255,9 @@ export default function DashboardView({
                 <div
                   key={e.id}
                   onClick={() => setActive("events")}
-                  className="cursor-pointer rounded-3xl border-l-4 border-[#f8e67d] bg-white p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
+                  className="cursor-pointer rounded-xl border-l-4 border-gold-400 bg-white p-4 transition-all duration-200 hover:shadow-md hover:-translate-y-[1px]"
                 >
-                  <h3 className="text-base font-bold text-[#005f63] line-clamp-1">{e.title}</h3>
+                  <h3 className="text-base font-bold text-[#1A1A1A] line-clamp-1">{e.title}</h3>
                   <p className="mt-1 text-xs text-gray-500">{e.date} · {e.location}</p>
                   <p className="mt-2 text-sm text-gray-700 line-clamp-2">{e.description}</p>
                 </div>

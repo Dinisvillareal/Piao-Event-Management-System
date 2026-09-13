@@ -9,16 +9,20 @@ interface SummaryCardProps {
 }
 
 export default function SummaryCard({ value, title, gradient, description, onClick }: SummaryCardProps) {
+  // Piao design system: stat tiles read as calm, bordered paper cards --
+  // the caller's "gradient" becomes a thin 3px accent stripe instead of a
+  // full-bleed color fill, so the dashboard isn't a wall of color.
   return (
     <button
       onClick={onClick}
-      className={`group w-full rounded-[30px] bg-gradient-to-r ${gradient} p-5 text-left text-white transition-all duration-300 hover:scale-[1.02] hover:shadow-[0_18px_45px_rgba(0,0,0,0.22)]`}
+      className="group relative w-full overflow-hidden rounded-2xl border border-[#E6E0D3] bg-white p-5 text-left text-[#1A1A1A] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-[#A2C9BC]"
     >
-      <h2 className="text-5xl font-black">{value}</h2>
-      <p className="mt-2 text-sm font-semibold uppercase tracking-wide">
+      <span className={`absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${gradient}`} aria-hidden="true" />
+      <h2 className="text-4xl font-display font-extrabold tracking-tight">{value}</h2>
+      <p className="mt-2 text-[13px] font-semibold uppercase tracking-wide text-sage-700">
         {title}
       </p>
-      <p className="mt-1 text-xs text-white/70 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+      <p className="mt-1 text-xs text-[#6E6A60] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
         {description}
       </p>
     </button>

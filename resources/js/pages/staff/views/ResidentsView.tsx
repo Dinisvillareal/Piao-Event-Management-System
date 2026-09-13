@@ -1,9 +1,20 @@
-import React, { useState, useMemo, useEffect } from "react";
-import { Filter, XCircle, Archive, CheckCircle, RotateCcw, AlertTriangle, Plus, Pencil } from "lucide-react";
-import SearchBar from "../../../components/ui/SearchBar";
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import { QRCodeCanvas } from "qrcode.react";
+import {
+  Search,
+  XCircle,
+  X as XIcon,
+  Archive,
+  CheckCircle,
+  AlertTriangle,
+  Plus,
+  Pencil,
+  ChevronRight,
+  UserPlus,
+  QrCode,
+} from "lucide-react";
 import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
-import FilterDropdown from "../../../components/ui/FilterDropdown";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -34,6 +45,19 @@ interface HouseholdOption {
   id: number;
   code: string;
   address: string | null;
+}
+
+// Shape returned by GET /users/{id}/attendances (EventAttendanceController::getMemberHistory)
+interface AttendanceRecord {
+  id: number;
+  eventId: number;
+  eventTitle: string;
+  eventDate: string;
+  location: string;
+  timeIn: string | null;
+  timeOut: string | null;
+  status: string;
+  isEventDeleted: boolean;
 }
 
 interface ResidentRow {
@@ -71,8 +95,6 @@ type AddForm = {
   role: string;
   hasMemberships: boolean;
   selectedMemberships: number[];
-  needAccount: boolean;
-  tempPassword: string;
   birthDate: string;
   address: string;
   civilStatusId: number | null;
@@ -95,8 +117,6 @@ type EditForm = {
   hasMemberships: boolean;
   selectedMemberships: number[];
   deleted_at: string | null;
-  needAccount: boolean;
-  tempPassword: string;
   birthDate: string;
   address: string;
   civilStatusId: number | null;
@@ -126,6 +146,13 @@ const formatContactNumber = (v: string) => {
 
 const displayContact = (num: string) => formatContactNumber(num);
 
+const formatDateShort = (value: string | null | undefined) => {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+};
+
 const safeParseJson = async (res: Response): Promise<any> => {
   const text = await res.text();
   try {
@@ -135,17 +162,23 @@ const safeParseJson = async (res: Response): Promise<any> => {
   }
 };
 
+// Same sage/gold/terracotta family, and the same rotate-by-position
+// assignment, as the Budget Snapshot bars on the Dashboard (barTones in
+// DashboardView.tsx) -- kept in sync so a membership badge and a budget
+// bar in the same slot always read as the same color.
 const BADGE_COLORS = [
-  "bg-teal-50 text-teal-800",
-  "bg-orange-50 text-orange-800",
-  "bg-blue-50 text-blue-800",
-  "bg-purple-50 text-purple-800",
-  "bg-amber-50 text-amber-800",
-  "bg-emerald-50 text-emerald-800",
+  "bg-sage-50 text-sage-700",
+  "bg-sage-100 text-sage-900",
+  "bg-gold-50 text-gold-700",
+  "bg-sage-50 text-sage-600",
+  "bg-[#F5E6E1] text-[#8A3D2C]",
+  "bg-sage-100 text-sage-800",
+  "bg-sage-50 text-sage-600",
+  "bg-sage-100 text-sage-700",
 ];
 
-const getMembershipBadgeStyle = (name: string) =>
-  BADGE_COLORS[name.length % BADGE_COLORS.length];
+const getMembershipBadgeStyle = (idx: number) =>
+  BADGE_COLORS[idx % BADGE_COLORS.length];
 
 const highlightText = (text: string | null | undefined, query: string) => {
   const safe = text ?? "";
@@ -174,8 +207,6 @@ const emptyAdd = (): AddForm => ({
   role: "",
   hasMemberships: false,
   selectedMemberships: [],
-  needAccount: false,
-  tempPassword: "",
   birthDate: "",
   address: "",
   civilStatusId: null,
@@ -203,17 +234,26 @@ export default function ResidentsView() {
   const [apiErrorTitle, setApiErrorTitle] = useState<string>("");
 
   const [residentSearch, setResidentSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [accountFilter, setAccountFilter] = useState("all");
-  const [ageGroupFilter, setAgeGroupFilter] = useState("all"); // Adviser: Profiling / Filter for Age
+  // Simple membership-status filter, matching the pill row on the
+  // Residents list (all active residents / has at least one membership /
+  // has none yet). Role, account and age-bracket filtering used to live
+  // here as separate dropdowns; those are still reachable via search
+  // (which already matches on role) and the dedicated Age & Status
+  // Categories / Archive pages.
+  const [membershipFilter, setMembershipFilter] = useState<"all" | "members" | "not-members">("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 20;
+  // High enough that every real barangay resident list renders on one
+  // page -- the table itself scrolls, so there's no real ceiling here.
+  const itemsPerPage = 5000;
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [viewRecord, setViewRecord] = useState<string | null>(null);
+  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [showQrPanel, setShowQrPanel] = useState(false);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const [editRecord, setEditRecord] = useState<string | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<string | null>(null);
-  const [restoreRecord, setRestoreRecord] = useState<number | null>(null);
   const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
   const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
   const [showAddSuccess, setShowAddSuccess] = useState(false);
@@ -414,6 +454,49 @@ export default function ResidentsView() {
     fetchResidents();
   }, []);
 
+  // ─── Fetch real attendance history for whichever resident's profile
+  // panel is currently open (GET /users/{id}/attendances) ────────────────
+  useEffect(() => {
+    setShowQrPanel(false);
+    if (!viewRecord) {
+      setAttendanceHistory([]);
+      return;
+    }
+    const r = residentsData.find((x) => x.id === viewRecord);
+    if (!r) return;
+    setAttendanceLoading(true);
+    fetch(`/users/${r.real_id}/attendances`, { headers: { Accept: "application/json" } })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data: AttendanceRecord[]) => setAttendanceHistory(Array.isArray(data) ? data : []))
+      .catch((e) => {
+        console.error("attendance history load:", e);
+        setAttendanceHistory([]);
+      })
+      .finally(() => setAttendanceLoading(false));
+  }, [viewRecord]);
+
+  // ─── Small derived helpers for the redesigned list + profile panel ─────
+  const initialsFor = (first: string, last: string) => {
+    const s = `${(first?.[0] ?? "").toUpperCase()}${(last?.[0] ?? "").toUpperCase()}`;
+    return s || "?";
+  };
+
+  // Real-time household size -- counted straight from the already-loaded
+  // resident list (active residents sharing the same household id),
+  // rather than a separate/derived count that could drift out of sync.
+  const householdSizeFor = (householdId: number | undefined | null) => {
+    if (!householdId) return 0;
+    return residentsData.filter((x) => x.household?.id === householdId && x.deleted_at === null).length;
+  };
+
+  const membershipListFor = (r: ResidentRow) =>
+    r.memberships ? r.memberships.split(", ").map((m) => m.trim()).filter(Boolean) : [];
+
+  const isActiveMember = (r: ResidentRow) => membershipListFor(r).length > 0;
+
   // ─── Photo handlers ───────────────────────────────────────────────────────
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>, isEdit = false) => {
     const file = e.target.files?.[0];
@@ -481,8 +564,6 @@ export default function ResidentsView() {
     if (!raw) err.contactNumber = t("contactNumberRequired");
     else if (!raw.startsWith("09")) err.contactNumber = t("contactNumberMustStart09");
     else if (raw.length !== 11) err.contactNumber = t("mustBe11Digits");
-    if (newResident.needAccount && !newResident.tempPassword.trim())
-      err.tempPassword = t("tempPasswordRequired");
     setFormErrors(err);
     if (Object.keys(err).length > 0) setApiError(Object.values(err)[0]);
     return Object.keys(err).length === 0;
@@ -498,8 +579,6 @@ export default function ResidentsView() {
     if (!raw) err.contactNumber = t("contactNumberRequired");
     else if (!raw.startsWith("09")) err.contactNumber = t("contactNumberMustStart09");
     else if (raw.length !== 11) err.contactNumber = t("mustBe11Digits");
-    if (!editingResident.hasAccount && editingResident.needAccount && !editingResident.tempPassword.trim())
-      err.tempPassword = t("tempPasswordRequired");
     setFormErrors(err);
     if (Object.keys(err).length > 0) setApiError(Object.values(err)[0]);
     return Object.keys(err).length === 0;
@@ -544,10 +623,10 @@ export default function ResidentsView() {
     fd.append("last_name", newResident.lastName);
     fd.append("contact_number", newResident.contactNumber.replace(/\D/g, ""));
     fd.append("role", newResident.role);
-    fd.append("has_account", newResident.needAccount ? "1" : "0");
-    if (newResident.needAccount && newResident.tempPassword.trim()) {
-      fd.append("password", newResident.tempPassword);
-    }
+    // Registering a resident here never creates a portal login -- account
+    // access is granted separately, not as a side effect of adding a
+    // resident record. Omitting has_account leaves it false server-side
+    // (see UserController::store).
     if (addPhotoFile) fd.append("validation_id", addPhotoFile);
     if (newResident.hasMemberships && newResident.selectedMemberships.length > 0)
       newResident.selectedMemberships.forEach((id) => fd.append("membership_ids[]", String(id)));
@@ -634,8 +713,6 @@ export default function ResidentsView() {
       hasMemberships: memIds.length > 0,
       selectedMemberships: memIds,
       deleted_at: r.deleted_at,
-      needAccount: false,
-      tempPassword: "",
       birthDate: r.birthDate ?? "",
       address: r.address ?? "",
       civilStatusId: r.civilStatusId ?? null,
@@ -693,16 +770,12 @@ export default function ResidentsView() {
     fd.append("contact_number", editingResident.contactNumber.replace(/\D/g, ""));
     fd.append("role", editingResident.role);
 
-    if (editingResident.hasAccount) {
-      fd.append("has_account", "1");
-      if (editingResident.password.trim()) {
-        fd.append("password", editingResident.password);
-      }
-    } else if (editingResident.needAccount) {
-      fd.append("has_account", "1");
-      fd.append("password", editingResident.tempPassword);
-    } else {
-      fd.append("has_account", "0");
+    // This page only manages an account that already exists (a password
+    // reset) -- it never grants a new one, so has_account simply carries
+    // the resident's current state through unchanged.
+    fd.append("has_account", editingResident.hasAccount ? "1" : "0");
+    if (editingResident.hasAccount && editingResident.password.trim()) {
+      fd.append("password", editingResident.password);
     }
 
     if (editPhotoFile) fd.append("validation_id", editPhotoFile);
@@ -812,20 +885,9 @@ const handleDeleteResident = async () => {
   }
 };
 
-  // ─── RESTORE ──────────────────────────────────────────────────────────────
-  const handleRestoreResident = async () => {
-    if (!restoreRecord) return;
-    try {
-      await fetch(`/users/${restoreRecord}/restore`, {
-        method: "POST",
-        headers: { Accept: "application/json", "X-CSRF-TOKEN": csrfToken() },
-      });
-      setRestoreRecord(null);
-      fetchResidents();
-    } catch (e) {
-      console.error("Restore error:", e);
-    }
-  };
+  // Restoring an archived resident is handled on the Archive page, which
+  // already covers every soft-deletable record type -- this page only
+  // ever shows active residents, so it doesn't need its own restore flow.
 
   // ─── Cancel helpers ───────────────────────────────────────────────────────
   const handleOpenAddForm = () => {
@@ -859,23 +921,12 @@ const handleDeleteResident = async () => {
 
   // ─── Filter + Pagination ──────────────────────────────────────────────────
   const filteredResidents = useMemo(() => {
-    let r = residentsData;
+    // Archived/trashed residents live on the Archive page now -- this
+    // list only ever shows active records.
+    let r = residentsData.filter((x) => x.deleted_at === null);
 
-    if (statusFilter === "residents") r = r.filter((x) => x.role === "Resident" && x.deleted_at === null);
-    else if (statusFilter === "staff") r = r.filter((x) => x.role === "Staff" && x.deleted_at === null);
-    else if (statusFilter === "trashed") r = r.filter((x) => x.deleted_at !== null);
-    else r = r.filter((x) => x.deleted_at === null);
-
-    if (accountFilter === "with-account") r = r.filter((x) => x.hasAccount);
-    else if (accountFilter === "no-account") r = r.filter((x) => !x.hasAccount);
-
-    // ageGroupFilter now holds an actual bracket label (see the
-    // ageBrackets fetch above) instead of a fixed "child"/"youth"/etc.
-    // key, so this always matches whatever getAgeGroupAttribute() on the
-    // backend currently resolves to, custom brackets included.
-    if (ageGroupFilter !== "all") {
-      r = r.filter((x) => x.ageGroup === ageGroupFilter);
-    }
+    if (membershipFilter === "members") r = r.filter((x) => isActiveMember(x));
+    else if (membershipFilter === "not-members") r = r.filter((x) => !isActiveMember(x));
 
     if (residentSearch.trim()) {
       const q = residentSearch.toLowerCase();
@@ -885,7 +936,7 @@ const handleDeleteResident = async () => {
       );
     }
     return r;
-  }, [residentsData, statusFilter, accountFilter, ageGroupFilter, residentSearch]);
+  }, [residentsData, membershipFilter, residentSearch]);
 
   const totalPages = useMemo(() => Math.ceil(filteredResidents.length / itemsPerPage), [filteredResidents]);
 
@@ -896,7 +947,7 @@ const handleDeleteResident = async () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [residentSearch, statusFilter, accountFilter, ageGroupFilter]);
+  }, [residentSearch, membershipFilter]);
 
   // ─── Sub-components ───────────────────────────────────────────────────────
   // Current Status is many-to-many (a resident can be, say, both a Solo
@@ -929,18 +980,18 @@ const handleDeleteResident = async () => {
 
     return (
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">{t("currentStatusLabel")}</label>
+        <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("currentStatusLabel")}</label>
         {currentStatuses.length === 0 ? (
-          <p className="text-xs text-gray-400 italic">{t("noCurrentStatusesAvailable")}</p>
+          <p className="text-xs text-[#9B9484] italic">{t("noCurrentStatusesAvailable")}</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-2xl border border-gray-200 px-4 py-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-2xl border border-[#E6E0D3] px-4 py-3">
             {currentStatuses.map((cs) => (
               <label key={cs.id} className="flex items-center gap-2 text-sm cursor-pointer">
                 <input
                   type="checkbox"
                   checked={selected.includes(cs.id)}
                   onChange={() => toggle(cs.id)}
-                  className="w-4 h-4 text-[#005f63]"
+                  className="w-4 h-4 text-sage-800"
                 />
                 <span>{cs.label}</span>
               </label>
@@ -966,14 +1017,14 @@ const handleDeleteResident = async () => {
                 setEditingResident((p) => (p ? { ...p, hasMemberships: e.target.checked } : p));
               else setNewResident((p) => ({ ...p, hasMemberships: e.target.checked }));
             }}
-            className="w-4 h-4 text-[#005f63]"
+            className="w-4 h-4 text-sage-800"
           />
-          <span className="font-medium text-gray-700">{t("hasMembershipsLabel")}</span>
+          <span className="font-medium text-[#3D3928]">{t("hasMembershipsLabel")}</span>
         </label>
 
         {hasMem &&
           (availableMemberships.length === 0 ? (
-            <p className="pl-6 text-xs text-gray-400 italic">{t("noMembershipsAvailable")}</p>
+            <p className="pl-6 text-xs text-[#9B9484] italic">{t("noMembershipsAvailable")}</p>
           ) : (
             <div className="pl-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
               {availableMemberships.map((mem) => (
@@ -983,7 +1034,7 @@ const handleDeleteResident = async () => {
                     value={mem.id}
                     checked={selMems.includes(mem.id)}
                     onChange={() => toggleMembership(mem.id, isEdit)}
-                    className="w-4 h-4 text-[#005f63]"
+                    className="w-4 h-4 text-sage-800"
                   />
                   <span>{mem.name}</span>
                 </label>
@@ -998,14 +1049,14 @@ const handleDeleteResident = async () => {
     const preview = isEdit ? editPhotoPreview : addPhotoPreview;
     return (
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          {t("idPhotoFieldLabel")} <span className="text-gray-400 font-normal">({t("optionalLabel")})</span>
+        <label className="block text-sm font-medium text-[#3D3928] mb-1">
+          {t("idPhotoFieldLabel")} <span className="text-[#9B9484] font-normal">({t("optionalLabel")})</span>
         </label>
         <input
           type="file"
           accept="image/*"
           onChange={(e) => handlePhotoChange(e, isEdit)}
-          className={`w-full text-sm text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-[#005f63]/10 file:text-[#005f63] ${
+          className={`w-full text-sm text-[#9B9484] file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-sage-800/10 file:text-sage-800 ${
             formErrors.photo ? "border border-gray-900 rounded-lg p-1" : ""
           }`}
         />
@@ -1018,7 +1069,7 @@ const handleDeleteResident = async () => {
             <button
               type="button"
               onClick={() => handleRemovePhoto(isEdit)}
-              className="absolute -top-2 -right-2 bg-gray-200/70 text-gray-500 rounded-full w-6 h-6 flex items-center justify-center text-xs font-semibold border border-gray-300 hover:bg-gray-300/80 transition"
+              className="absolute -top-2 -right-2 bg-[#F1EEE5] text-[#9B9484] rounded-full w-6 h-6 flex items-center justify-center text-xs font-semibold border border-[#E6E0D3] hover:bg-[#E6E0D3] transition"
             >
               ✕
             </button>
@@ -1029,396 +1080,455 @@ const handleDeleteResident = async () => {
   };
 
   // ─── JSX ──────────────────────────────────────────────────────────────────
+  const activeResidents = residentsData.filter((x) => x.deleted_at === null);
+  const membersCount = activeResidents.filter((x) => isActiveMember(x)).length;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="sticky top-0 z-20 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm overflow-x-auto">
-        <div className="w-full min-w-0">
-          <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("residentsMasterList")}</h1>
-          <p className="text-sm text-[#667777] mt-1">
-            {t("residentsSubtitle")}
-          </p>
-          <div className="mt-4 flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4 w-full">
-            <div className="flex-1 min-w-[220px]">
-              <SearchBar
-                value={residentSearch}
-                onChange={setResidentSearch}
-                placeholder={t("searchByIdNameContactPlaceholder")}
-              />
-            </div>
-            <FilterDropdown
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={[
-                { value: "all", label: t("allRecordsOption") },
-                { value: "residents", label: t("roleResidentOption") },
-                { value: "staff", label: t("roleStaffOption") },
-              ]}
-              className="h-14 pl-10 pr-8"
-              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
-            />
-            <FilterDropdown
-              value={accountFilter}
-              onChange={setAccountFilter}
-              options={[
-                { value: "all", label: t("allAccountsOption") },
-                { value: "with-account", label: t("hasAccountOption") },
-                { value: "no-account", label: t("noAccountOption") },
-              ]}
-              className="h-14 pl-10 pr-8"
-              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
-            />
-            {/* Adviser recommendation: "Profiling (Filter for Age)" */}
-            <FilterDropdown
-              value={ageGroupFilter}
-              onChange={setAgeGroupFilter}
-              options={[
-                { value: "all", label: t("ageGroupAllOption") },
-                ...ageBrackets.map((b) => ({
-                  value: b.label,
-                  label: `${b.label} (${b.min_age}${b.max_age !== null ? `-${b.max_age}` : "+"})`,
-                })),
-              ]}
-              className="h-14 pl-10 pr-8"
-              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("residentsMasterList")}</h1>
+          <p className="text-sm text-[#6E6A60] mt-1 max-w-xl">{t("residentsSubtitle")}</p>
+        </div>
+        <button
+          onClick={handleOpenAddForm}
+          className="inline-flex items-center gap-2 rounded-full bg-[#1A1A1A] hover:bg-[#2E2E2E] text-white px-5 py-2.5 text-sm font-semibold shadow-sm transition-colors shrink-0"
+        >
+          <UserPlus className="h-4 w-4" />
+          Register resident
+        </button>
+      </div>
+
+      {/* Search + membership filter pills */}
+      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9B9484]" />
+            <input
+              type="text"
+              value={residentSearch}
+              onChange={(e) => setResidentSearch(e.target.value)}
+              placeholder={t("searchByIdNameContactPlaceholder")}
+              className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#9B9484] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
             />
           </div>
-          <p className="mt-2 text-xs text-gray-500">
-            {filteredResidents.length} {t("ofPagesLabel")} {residentsData.length} {t("recordsMatchShowing")} {itemsPerPage} {t("perPageLabel")}
-          </p>
+          <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
+            {[
+              { key: "all" as const, label: `${t("allRecordsOption")} (${activeResidents.length})` },
+              { key: "members" as const, label: `Members (${membersCount})` },
+              { key: "not-members" as const, label: "Not yet members" },
+            ].map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setMembershipFilter(opt.key)}
+                className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
+                  membershipFilter === opt.key ? "bg-sage-800 text-white" : "bg-[#F8F6F0] text-[#5C574A] hover:bg-sage-50"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Table */}
-      <div className="pl-1">
-        <div className="sticky top-[140px] z-10 flex items-center justify-between mb-3 bg-[#fcfcf9] py-2">
-          {totalPages > 1 && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-              >
-                ←
-              </button>
-              <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
-                {currentPage}
-              </span>
-              <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-              >
-                →
-              </button>
-            </div>
-          )}
-          <button
-            onClick={handleOpenAddForm}
-            className="bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2.5 rounded-full font-medium transition shadow-sm ml-auto"
-          >
-            {t("addNewRecordButton")}
-          </button>
+      <div className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-2.5 border-b border-[#E6E0D3] bg-[#1A1A1A]">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-white">{t("residentsMasterList")}</p>
+          <p className="text-xs text-white/60">{filteredResidents.length} records</p>
         </div>
-
-        <div className="relative rounded-[20px] bg-white shadow-lg overflow-hidden">
-          <div className="h-1 w-full bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300 p-1 absolute top-0 left-0 right-0" />
-          <div className="p-5 pt-6 max-h-[65vh] overflow-auto">
-            <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: "1400px" }}>
-              <colgroup>
-                <col style={{ width: "110px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "120px" }} />
-                <col style={{ width: "120px" }} />
-                <col style={{ width: "140px" }} />
-                <col style={{ width: "260px" }} />
-                <col style={{ width: "90px" }} />
-                <col style={{ width: "100px" }} />
-                <col style={{ width: "110px" }} />
-                <col style={{ width: "100px" }} />
-              </colgroup>
-              <thead>
-                <tr className="border-b border-[#eee8e0]">
-                  {[
-                    { key: "ID", labelKey: "idColumn" },
-                    { key: "Last Name", labelKey: "lastNameColumn" },
-                    { key: "First Name", labelKey: "firstNameColumn" },
-                    { key: "Middle Name", labelKey: "middleNameColumn" },
-                    { key: "Contact Number", labelKey: "contactNumberColumn" },
-                    { key: "Memberships", labelKey: "membershipsColumn" },
-                    { key: "Age", labelKey: "ageColumn" },
-                    { key: "Role", labelKey: "roleColumn" },
-                    { key: "Has Account?", labelKey: "hasAccountColumn" },
-                    { key: "Actions", labelKey: "actionsColumn" },
-                  ].map(
-                    (h) => (
-                      <th
-                        key={h.key}
-                        className={`py-7 px-2 font-bold text-[#005f63] whitespace-nowrap bg-[#f8f6f2] ${h.key === "Actions" ? "text-right" : "text-left"}`}
-                        style={{ position: "sticky", top: 0, zIndex: 10, boxShadow: "0 2px 0 0 #eee8e0" }}
-                      >
-                        {t(h.labelKey)}
-                      </th>
-                    )
-                  )}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[760px]">
+            <thead>
+              <tr className="border-b border-[#E6E0D3]">
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#9B9484]">Resident</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#9B9484]">Age</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#9B9484]">Contact</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#9B9484]">Household</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#9B9484]">Membership</th>
+                <th className="py-3 px-4 w-10" />
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-[#9B9484] italic">{t("loading")}</td>
                 </tr>
-              </thead>
-              <tbody className="bg-white">
-                {loading ? (
-                  <tr>
-                    <td colSpan={10} className="py-6 text-center text-gray-500 italic">{t("loading")}</td>
-                  </tr>
-                ) : paginatedResidents.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="py-6 text-center text-gray-500 italic">{t("noRecordsMatchFilter")}</td>
-                  </tr>
-                ) : (
-                  paginatedResidents.map((r) => {
-                    const allMems = r.memberships ? r.memberships.split(", ").map((m) => m.trim()).filter(Boolean) : [];
-                    const visible = allMems.slice(0, 2);
-                    const extra = allMems.length - 2;
-                    return (
-                      <tr
-                        key={r.id}
-                        className={`border-b border-[#eee8e0] transition-all duration-200 hover:shadow-md hover:rounded-lg ${
-                          r.deleted_at !== null ? "bg-gray-200 text-gray-500 line-through opacity-70" : "hover:bg-teal-50/100"
-                        }`}
-                      >
-                        <td className="py-3 px-2 font-mono truncate">{highlightText(r.id, residentSearch)}</td>
-                        <td className="py-3 px-2 font-medium truncate">{highlightText(r.lastName, residentSearch)}</td>
-                        <td className="py-3 px-2 truncate">{highlightText(r.firstName, residentSearch)}</td>
-                        <td className="py-3 px-2 truncate">{highlightText(r.middleName, residentSearch)}</td>
-                        <td className="py-3 px-2 truncate">{highlightText(r.contactNumber, residentSearch)}</td>
-                        <td className="py-3 px-2">
-                          <div className="flex flex-wrap gap-1.5 items-center">
-                            {visible.map((m, i) => (
-                              <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>
-                                {highlightText(m, residentSearch)}
-                              </span>
-                            ))}
-                            {extra > 0 && (
-                              <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">+{extra} {t("moreLabel")}</span>
-                            )}
-                            {allMems.length === 0 && <span className="text-gray-400 text-xs">{t("noneLabel")}</span>}
+              ) : paginatedResidents.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-[#9B9484] italic">{t("noRecordsMatchFilter")}</td>
+                </tr>
+              ) : (
+                paginatedResidents.map((r) => {
+                  const size = householdSizeFor(r.household?.id);
+                  const active = isActiveMember(r);
+                  return (
+                    <tr
+                      key={r.id}
+                      onClick={() => setViewRecord(r.id)}
+                      className="border-b border-[#F1EEE5] last:border-0 cursor-pointer hover:bg-sage-50/60 transition-colors"
+                    >
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-9 w-9 shrink-0 rounded-full bg-sage-50 border border-sage-200 flex items-center justify-center text-xs font-bold text-sage-800">
+                            {initialsFor(r.firstName, r.lastName)}
                           </div>
-                        </td>
-                        <td className="py-3 px-2">
-                          {r.ageGroup ? (
-                            <span
-                              className="px-2 py-1 rounded-full text-xs font-medium bg-teal-50 text-teal-800"
-                              title={r.isHouseholdHead ? t("householdHeadTitle") : ""}
-                            >
-                              {r.age}{r.isHouseholdHead && <span className="ml-1">🏠</span>}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">—</span>
-                          )}
-                        </td>
-                        <td className="py-3 px-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                            r.role === "Staff" ? "bg-orange-100 text-orange-800"
-                            : r.role === "Resident" ? "bg-teal-50 text-teal-800"
-                            : "bg-gray-100 text-gray-800"
-                          }`}>
-                            {highlightText(r.role, residentSearch)}
-                            {r.passwordChangedByUser && <span className="ml-1 text-yellow-600 text-[10px] font-bold">🔒</span>}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2">
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            r.hasAccount ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
-                          }`}>
-                            {r.hasAccount ? `✅ ${t("yesLabel")}` : `❌ ${t("noLabel")}`}
-                          </span>
-                        </td>
-                        <td className="py-3 px-2 text-right">
-                          <div className="inline-flex gap-1">
-                            <button onClick={() => setViewRecord(r.id)} className="p-2 rounded-full hover:bg-teal-50 transition" title={t("viewTitleBtn")}>
-                              <svg width="16" height="16" fill="none" stroke="#006666" strokeWidth={2} viewBox="0 0 24 24">
-                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                <circle cx="12" cy="12" r="3" />
-                              </svg>
-                            </button>
-                            {r.deleted_at === null ? (
-                              <>
-                                <button onClick={() => setEditRecord(r.id)} className="p-2 rounded-full hover:bg-orange-50 transition" title={t("editTitle")}>
-                                  <svg width="16" height="16" fill="none" stroke="#f59e0b" strokeWidth={2} viewBox="0 0 24 24">
-                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                                  </svg>
-                                </button>
-                                <button onClick={() => setDeleteRecord(r.id)} className="p-2 rounded-full hover:bg-red-50 transition" title={t("deleteTitle")}>
-                                  <Archive className="h-4 w-4 text-red-500" />
-                                </button>
-                              </>
-                            ) : (
-                              <button
-                                onClick={() => setRestoreRecord(r.real_id)}
-                                className="p-2 rounded-full text-teal-600 hover:bg-teal-50 hover:text-teal-700 transition-colors duration-200"
-                                title={t("restoreRecordTitle")}
-                              >
-                                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
-                                  <polyline points="23 4 23 10 17 10" />
-                                  <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-                                </svg>
-                              </button>
-                            )}
+                          <div className="min-w-0">
+                            <p className="font-semibold text-[#1A1A1A] truncate">{highlightText(`${r.firstName} ${r.lastName}`, residentSearch)}</p>
+                            <p className="text-xs text-[#9B9484] font-mono">{r.id}</p>
                           </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-[#5C574A]">{r.age !== null ? r.age : "—"}</td>
+                      <td className="py-3 px-4 text-[#5C574A]">{highlightText(r.contactNumber, residentSearch)}</td>
+                      <td className="py-3 px-4 text-[#5C574A]">{size > 0 ? `${size} pax` : "—"}</td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                            active ? "bg-sage-50 text-sage-800" : "bg-[#F1EEE5] text-[#8A8474]"
+                          }`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-sage-600" : "bg-[#B8B2A2]"}`} />
+                          {active ? "Active member" : "Not a member"}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <ChevronRight className="h-4 w-4 text-[#B8B2A2] inline-block" />
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
         </div>
+        {totalPages > 1 && (
+          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#E6E0D3]">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="h-8 w-8 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-50 transition"
+            >
+              ←
+            </button>
+            <span className="h-8 w-8 rounded-full bg-sage-800 text-white flex items-center justify-center text-sm font-semibold">
+              {currentPage}
+            </span>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="h-8 w-8 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-50 transition"
+            >
+              →
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* ─── View Modal ───────────────────────────────────────────────────────── */}
+      {/* ─── Resident profile slide-over ──────────────────────────────────────── */}
       {viewRecord && (() => {
-        const r = residentsData.find((x) => x.id === viewRecord)!;
-        const allMems = r.memberships ? r.memberships.split(", ").map((m) => m.trim()).filter(Boolean) : [];
+        const r = residentsData.find((x) => x.id === viewRecord);
+        if (!r) return null;
+        const allMems = membershipListFor(r);
+        const active = isActiveMember(r);
+        const size = householdSizeFor(r.household?.id);
+        // Encodes the same shape the QR Scanner already reads back out
+        // (see ScanView.handleQRCodeScan: data.user_id / user_code / name).
+        const qrPayload = JSON.stringify({
+          user_id: r.real_id,
+          user_code: r.id,
+          name: `${r.firstName} ${r.lastName}`,
+        });
+
+        const infoRows: [string, React.ReactNode][] = [
+          ["Contact number", r.contactNumber || "—"],
+          ["Birthdate", formatDateShort(r.birthDate)],
+          ["Purok", r.address || "—"],
+        ];
+        if (r.age !== null) infoRows.push(["Age", `${r.age}${r.ageGroup ? ` · ${r.ageGroup}` : ""}`]);
+        if (r.gender) infoRows.push(["Gender", r.gender === "Male" ? t("maleOption") : t("femaleOption")]);
+        if (r.civilStatus) infoRows.push(["Civil status", r.civilStatus]);
+        infoRows.push(["Household size", size > 0 ? `${size} member${size === 1 ? "" : "s"}` : "—"]);
+        infoRows.push(["Role", r.role]);
+
         return (
-          <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-            <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-2xl font-black text-[#005f63]">{t("recordDetailsTitle")}</h2>
-                <button onClick={() => setViewRecord(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+          <>
+            <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setViewRecord(null)} />
+            <div className="fixed inset-y-0 right-0 z-50 w-full max-w-xl bg-white shadow-2xl flex flex-col">
+              <div className="flex items-center justify-between px-6 py-5 border-b border-[#E6E0D3] shrink-0">
+                <h2 className="font-display text-lg font-bold text-[#1A1A1A]">Resident profile</h2>
+                <button onClick={() => setViewRecord(null)} className="text-[#9B9484] hover:text-[#1A1A1A]">
+                  <XIcon size={20} />
+                </button>
               </div>
-              <div className="text-sm">
+
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
                 {r.deleted_at !== null && (
-                  <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ {t("recordDeletedWarning")}</div>
+                  <div className="p-2.5 rounded-lg bg-red-50 text-red-700 text-xs font-medium">⚠ {t("recordDeletedWarning")}</div>
                 )}
-                <div className="flex flex-col-reverse sm:flex-row gap-6">
-                  <div className="flex-1 space-y-2">
-                    <p><strong className="text-[#005f63]">{t("idFieldLabel")}</strong> {r.id}</p>
-                    <p><strong className="text-[#005f63]">{t("fullNameFieldLabel")}</strong> {r.lastName}, {r.firstName} {r.middleName}</p>
-                    <p><strong className="text-[#005f63]">{t("contactFieldLabel")}</strong> {r.contactNumber}</p>
-                    <p>
-                      <strong className="text-[#005f63]">{t("roleFieldLabel")}</strong> {r.role}{" "}
-                      {r.passwordChangedByUser && <span className="text-yellow-600 font-bold">{t("lockedLabel")}</span>}
-                    </p>
-                    <p><strong className="text-[#005f63]">{t("hasAccountFieldLabel")}</strong> {r.hasAccount ? t("yesLabel") : t("noLabel")}</p>
-                    {r.age !== null && (
-                      <p><strong className="text-[#005f63]">{t("ageFieldLabel")}</strong> {r.age} ({r.ageGroup})</p>
-                    )}
-                    {r.gender && (
-                      <p><strong className="text-[#005f63]">{t("genderLabel")}</strong> {r.gender === "Male" ? t("maleOption") : t("femaleOption")}</p>
-                    )}
-                    {r.address && (
-                      <p><strong className="text-[#005f63]">{t("addressFieldLabelColon")}</strong> {r.address}</p>
-                    )}
-                    {r.household && (
-                      <p>
-                        <strong className="text-[#005f63]">{t("householdFieldLabel")}</strong>{" "}
-                        {r.household.code}
-                        {r.household.address ? ` · ${r.household.address}` : ""}{" "}
-                        {r.isHouseholdHead && <span className="ml-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-800">🏠 {t("headBadgeLabel")}</span>}
-                      </p>
+
+                <div className="flex items-center gap-3">
+                  <div className="h-14 w-14 rounded-full bg-sage-50 border border-sage-200 flex items-center justify-center text-lg font-bold text-sage-800 overflow-hidden shrink-0">
+                    {r.photo ? (
+                      <img src={r.photo} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      initialsFor(r.firstName, r.lastName)
                     )}
                   </div>
-                  <div className="w-full max-w-[160px] mx-auto sm:mx-0 sm:shrink-0">
-                    <div className="w-full rounded-lg overflow-hidden border border-gray-200 bg-gray-50" style={{ minHeight: 180 }}>
-                      {r.photo ? (
-                        <img src={r.photo} alt="ID Photo" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs text-center p-2">{t("noPhotoUploaded")}</div>
-                      )}
-                    </div>
+                  <div className="min-w-0">
+                    <p className="font-display text-lg font-bold text-[#1A1A1A] truncate">
+                      {r.firstName} {r.middleName} {r.lastName}
+                    </p>
+                    <p className="text-xs text-[#9B9484] font-mono">{r.id}</p>
                   </div>
                 </div>
-                <div className="mt-6">
-                  <strong className="text-[#005f63] block mb-2">{t("membershipsFieldLabel")}</strong>
-                  <div className="flex flex-wrap gap-1.5">
-                    {allMems.length > 0 ? (
-                      allMems.map((m, i) => (
-                        <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(m)}`}>{m}</span>
-                      ))
-                    ) : (
-                      <span className="text-gray-500">{t("noneLabel")}</span>
-                    )}
-                  </div>
+
+                <div className="space-y-3 text-sm">
+                  {infoRows.map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between gap-3">
+                      <span className="text-[#9B9484]">{label}</span>
+                      <span className="font-medium text-[#1A1A1A] text-right">{value}</span>
+                    </div>
+                  ))}
+                  {r.household && (
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[#9B9484]">Household</span>
+                      <span className="font-medium text-[#1A1A1A] text-right">
+                        {r.household.code}
+                        {r.isHouseholdHead && (
+                          <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-50 text-gold-700 align-middle">
+                            {t("headBadgeLabel") || "Head"}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+                  {r.currentStatuses.length > 0 && (
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-[#9B9484] shrink-0">Status</span>
+                      <span className="flex flex-wrap justify-end gap-1">
+                        {r.currentStatuses.map((cs) => (
+                          <span key={cs.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-sage-50 text-sage-800">
+                            {cs.label}
+                          </span>
+                        ))}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-4 border-t border-[#E6E0D3]">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#9B9484] mb-2">Membership</p>
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                      active ? "bg-sage-50 text-sage-800" : "bg-[#F1EEE5] text-[#8A8474]"
+                    }`}
+                  >
+                    <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-sage-600" : "bg-[#B8B2A2]"}`} />
+                    {active ? "Active member" : "Not a member"}
+                  </span>
+                  {allMems.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {allMems.map((m, i) => (
+                        <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(i)}`}>
+                          {m}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowQrPanel(true)}
+                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#E6E0D3] px-4 py-2 text-xs font-semibold text-[#1A1A1A] hover:bg-sage-50 transition-colors"
+                  >
+                    <QrCode className="h-3.5 w-3.5" /> View QR code
+                  </button>
+                </div>
+
+                <div className="pt-4 border-t border-[#E6E0D3]">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#9B9484] mb-2">Attendance history</p>
+                  {attendanceLoading ? (
+                    <p className="text-sm text-[#9B9484] italic">{t("loading")}</p>
+                  ) : attendanceHistory.length === 0 ? (
+                    <p className="text-sm text-[#9B9484] italic">No attendance recorded yet.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                      {attendanceHistory.slice(0, 8).map((a) => (
+                        <div key={a.id} className="flex items-center justify-between gap-3 text-sm">
+                          <div className="min-w-0">
+                            <p className="font-medium text-[#1A1A1A] truncate">{a.isEventDeleted ? "(deleted event)" : a.eventTitle}</p>
+                            {a.eventDate && <p className="text-xs text-[#9B9484]">{formatDateShort(a.eventDate)}</p>}
+                          </div>
+                          <span
+                            className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                              a.status === "Complete" ? "bg-sage-50 text-sage-800" : "bg-gold-50 text-gold-700"
+                            }`}
+                          >
+                            {a.status}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 px-6 py-4 border-t border-[#E6E0D3] shrink-0">
+                {r.deleted_at === null && (
+                  <button
+                    onClick={() => setDeleteRecord(r.id)}
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8A3D2C] hover:underline"
+                  >
+                    <Archive className="h-3.5 w-3.5" /> Archive
+                  </button>
+                )}
+                <div className="flex items-center gap-2 ml-auto">
+                  {r.deleted_at === null && (
+                    <button
+                      onClick={() => {
+                        setEditRecord(r.id);
+                        setViewRecord(null);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E0D3] px-4 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-sage-50 transition-colors"
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Edit record
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setViewRecord(null)}
+                    className="rounded-full bg-sage-800 hover:bg-sage-900 text-white px-5 py-2 text-sm font-semibold transition-colors"
+                  >
+                    Done
+                  </button>
                 </div>
               </div>
             </div>
-          </div>
+
+            {showQrPanel && (
+              <div
+                className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center px-4"
+                onClick={() => setShowQrPanel(false)}
+              >
+                <div className="bg-white rounded-2xl p-6 shadow-2xl text-center max-w-xs w-full" onClick={(e) => e.stopPropagation()}>
+                  <p className="font-display text-base font-bold text-[#1A1A1A] mb-1">
+                    {r.firstName} {r.lastName}
+                  </p>
+                  <p className="text-xs text-[#9B9484] mb-4 font-mono">{r.id}</p>
+                  <div className="flex justify-center mb-4">
+                    <QRCodeCanvas ref={qrCanvasRef} value={qrPayload} size={180} bgColor="#ffffff" fgColor="#1A1A1A" />
+                  </div>
+                  <p className="text-xs text-[#9B9484] mb-4">Scan this at the QR Scanner to sign this resident in or out.</p>
+                  <div className="flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => {
+                        const canvas = qrCanvasRef.current;
+                        if (!canvas) return;
+                        const link = document.createElement("a");
+                        link.href = canvas.toDataURL("image/png");
+                        link.download = `${r.id}-qr.png`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      className="rounded-full border border-[#E6E0D3] px-5 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-sage-50 transition-colors"
+                    >
+                      Download
+                    </button>
+                    <button
+                      onClick={() => setShowQrPanel(false)}
+                      className="rounded-full bg-sage-800 hover:bg-sage-900 text-white px-5 py-2 text-sm font-semibold transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         );
       })()}
 
       {/* ─── Add Modal ────────────────────────────────────────────────────────── */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-black text-[#005f63]">{t("addNewRecordTitle")}</h2>
-              <button onClick={handleCancelAdd} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+          <div className="bg-white rounded-3xl w-full max-w-4xl p-8 shadow-xl border border-[#E6E0D3] max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-2xl font-black text-[#1A1A1A]">{t("addNewRecordTitle")}</h2>
+              <button onClick={handleCancelAdd} className="text-[#9B9484] hover:text-[#1A1A1A]"><XCircle size={20} /></button>
             </div>
+            <p className="text-sm text-[#9B9484] mb-5">Fill in the resident's basic information, profile, and household details.</p>
 
+            <form onSubmit={handleAddResident} noValidate className="space-y-5">
+              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Basic Information</p>
+                <div className="grid md:grid-cols-3 gap-4">
+                  {(["firstName", "middleName", "lastName"] as const).map((field) => (
+                    <div key={field}>
+                      <label className="block text-sm font-medium text-[#3D3928] mb-1">
+                        {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
+                      </label>
+                      <input
+                        type="text"
+                        required={field !== "middleName"}
+                        value={newResident[field]}
+                        onChange={(e) => setNewResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))}
+                        className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
+                          formErrors[field] ? "border-red-500" : "border-[#E6E0D3]"
+                        }`}
+                      />
+                      {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+                    </div>
+                  ))}
+                </div>
 
-            <form onSubmit={handleAddResident} noValidate className="space-y-4">
-              <div className="grid md:grid-cols-3 gap-4">
-                {(["firstName", "middleName", "lastName"] as const).map((field) => (
-                  <div key={field}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
-                    </label>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("roleRequiredLabel")}</label>
+                    <select
+                      required
+                      value={newResident.role}
+                      onChange={(e) => setNewResident((p) => ({ ...p, role: e.target.value }))}
+                      className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
+                        !newResident.role ? "text-[#9B9484]" : "text-gray-900"
+                      } ${formErrors.role ? "border-red-500" : "border-[#E6E0D3]"}`}
+                    >
+                      <option value="" style={{ display: "none" }} className="text-[#9B9484]">{t("chooseARoleOption")}</option>
+                      <option value="Resident" className="text-gray-900">{t("residentOption")}</option>
+                      <option value="Staff" className="text-gray-900">{t("staffOption")}</option>
+                    </select>
+                    {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("contactNumberRequiredLabel")}</label>
                     <input
                       type="text"
-                      required={field !== "middleName"}
-                      value={newResident[field]}
-                      onChange={(e) => setNewResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors[field] ? "border-red-500" : "border-gray-200"
+                      required
+                      value={newResident.contactNumber}
+                      onChange={(e) => setNewResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))}
+                      className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
+                        formErrors.contactNumber ? "border-red-500" : "border-[#E6E0D3]"
                       }`}
+                      placeholder="09XX-XXX-XXXX"
+                      maxLength={13}
                     />
-                    {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+                    {newResident.contactNumber.length > 0 && !newResident.contactNumber.startsWith("09") && (
+                      <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
+                    )}
+                    {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
                   </div>
-                ))}
-              </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t("roleRequiredLabel")}</label>
-                <select
-                  required
-                  value={newResident.role}
-                  onChange={(e) => setNewResident((p) => ({ ...p, role: e.target.value }))}
-                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                    !newResident.role ? "text-gray-400" : "text-gray-900"
-                  } ${formErrors.role ? "border-red-500" : "border-gray-200"}`}
-                >
-                  <option value="" style={{ display: "none" }} className="text-gray-400">{t("chooseARoleOption")}</option>
-                  <option value="Resident" className="text-gray-900">{t("residentOption")}</option>
-                  <option value="Staff" className="text-gray-900">{t("staffOption")}</option>
-                </select>
-                {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t("contactNumberRequiredLabel")}</label>
-                <input
-                  type="text"
-                  required
-                  value={newResident.contactNumber}
-                  onChange={(e) => setNewResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))}
-                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                    formErrors.contactNumber ? "border-red-500" : "border-gray-200"
-                  }`}
-                  placeholder="09XX-XXX-XXXX"
-                  maxLength={13}
-                />
-                {newResident.contactNumber.length > 0 && !newResident.contactNumber.startsWith("09") && (
-                  <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
-                )}
-                {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+                <PhotoField isEdit={false} />
               </div>
 
               {/* Adviser recommendations: age profiling + household SMS notify */}
-              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">{t("profileHouseholdLabel")}</p>
+              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("profileHouseholdLabel")}</p>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("birthDateLabel")}</label>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("birthDateLabel")}</label>
                     <DatePicker
                       value={newResident.birthDate}
                       max={new Date().toISOString().split("T")[0]}
@@ -1427,21 +1537,21 @@ const handleDeleteResident = async () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("addressPurokLabel")}</label>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("addressPurokLabel")}</label>
                     <input
                       type="text"
                       value={newResident.address}
                       onChange={(e) => setNewResident((p) => ({ ...p, address: e.target.value }))}
                       placeholder={t("purokPlaceholder")}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("civilStatusLabel")}</label>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("civilStatusLabel")}</label>
                     <select
                       value={newResident.civilStatusId ?? ""}
                       onChange={(e) => setNewResident((p) => ({ ...p, civilStatusId: e.target.value ? Number(e.target.value) : null }))}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
                     >
                       <option value="">{t("anyOptionLabel")}</option>
                       {civilStatuses.map((cs) => (
@@ -1450,11 +1560,11 @@ const handleDeleteResident = async () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("genderLabel")}</label>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("genderLabel")}</label>
                     <select
                       value={newResident.gender}
                       onChange={(e) => setNewResident((p) => ({ ...p, gender: e.target.value }))}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
                     >
                       <option value="">{t("anyOptionLabel")}</option>
                       <option value="Male">{t("maleOption")}</option>
@@ -1464,7 +1574,7 @@ const handleDeleteResident = async () => {
                 </div>
                 <CurrentStatusCheckboxes isEdit={false} />
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdCodeLabel")}</label>
+                  <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("householdCodeLabel")}</label>
                   <SearchableSelect
                     options={householdOptions.map((h) => ({
                       value: String(h.id),
@@ -1475,16 +1585,16 @@ const handleDeleteResident = async () => {
                     placeholder={t("householdCodePlaceholder")}
                     noResultsLabel={t("householdLinkNoResults")}
                   />
-                  <p className="mt-1 text-xs text-gray-400">{t("manageHouseholdHint")}</p>
+                  <p className="mt-1 text-xs text-[#9B9484]">{t("manageHouseholdHint")}</p>
                   {newResident.householdId && (() => {
                     const picked = householdOptions.find((h) => h.id === newResident.householdId);
                     return (
-                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-teal-50 text-[#005f63] text-xs font-medium px-3 py-1">
+                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-sage-50 text-sage-800 text-xs font-medium px-3 py-1">
                         🏠 {picked?.code ?? `#${newResident.householdId}`}
                         <button
                           type="button"
                           onClick={() => setNewResident((p) => ({ ...p, householdId: null, isHouseholdHead: false }))}
-                          className="ml-1 text-[#005f63]/60 hover:text-[#005f63]"
+                          className="ml-1 text-sage-700/70 hover:text-sage-800"
                         >
                           ×
                         </button>
@@ -1498,10 +1608,10 @@ const handleDeleteResident = async () => {
                     checked={newResident.isHouseholdHead}
                     disabled={!newResident.householdId || !!addFormExistingHead}
                     onChange={(e) => setNewResident((p) => ({ ...p, isHouseholdHead: e.target.checked }))}
-                    className="w-4 h-4 text-[#005f63] disabled:opacity-40"
+                    className="w-4 h-4 text-sage-800 disabled:opacity-40"
                   />
-                  <span className={`font-medium ${newResident.householdId && !addFormExistingHead ? "text-gray-700" : "text-gray-400"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
-                  <span className="text-gray-400">
+                  <span className={`font-medium ${newResident.householdId && !addFormExistingHead ? "text-[#3D3928]" : "text-[#9B9484]"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
+                  <span className="text-[#9B9484]">
                     {!newResident.householdId
                       ? t("householdHeadDisabledHint")
                       : addFormExistingHead
@@ -1516,22 +1626,21 @@ const handleDeleteResident = async () => {
                 )}
               </div>
 
-              <PhotoField isEdit={false} />
-
-              <div className="border-t border-b py-3 space-y-3">
+              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Membership</p>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={newResident.hasMemberships}
                     onChange={(e) => setNewResident((p) => ({ ...p, hasMemberships: e.target.checked }))}
-                    className="w-4 h-4 text-[#005f63]"
+                    className="w-4 h-4 text-sage-800"
                   />
-                  <span className="font-medium text-gray-700">{t("hasMembershipsLabel")}</span>
+                  <span className="font-medium text-[#3D3928]">{t("hasMembershipsLabel")}</span>
                 </label>
 
                 {newResident.hasMemberships &&
                   (availableMemberships.length === 0 ? (
-                    <p className="pl-6 text-xs text-gray-400 italic">{t("noMembershipsAvailable")}</p>
+                    <p className="pl-6 text-xs text-[#9B9484] italic">{t("noMembershipsAvailable")}</p>
                   ) : (
                     <div className="pl-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {availableMemberships.map((mem) => (
@@ -1541,7 +1650,7 @@ const handleDeleteResident = async () => {
                             value={mem.id}
                             checked={newResident.selectedMemberships.includes(mem.id)}
                             onChange={() => toggleMembership(mem.id, false)}
-                            className="w-4 h-4 text-[#005f63]"
+                            className="w-4 h-4 text-sage-800"
                           />
                           <span>{mem.name}</span>
                         </label>
@@ -1551,52 +1660,17 @@ const handleDeleteResident = async () => {
                 {formErrors.membership_ids && (
                   <p className="pl-6 text-red-500 text-xs">{formErrors.membership_ids}</p>
                 )}
-
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newResident.needAccount}
-                    onChange={(e) =>
-                      setNewResident((p) => ({
-                        ...p,
-                        needAccount: e.target.checked,
-                        tempPassword: e.target.checked ? p.tempPassword : "",
-                      }))
-                    }
-                    className="w-4 h-4 text-[#005f63]"
-                  />
-                  <span className="font-medium text-gray-700">{t("needAccountLabel")}</span>
-                </label>
-
-                {newResident.needAccount && (
-                  <div className="pl-6 space-y-1">
-                    <label className="block text-sm font-medium text-gray-700">
-                      {t("setTempPasswordLabel")} <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="password"
-                      value={newResident.tempPassword}
-                      onChange={(e) => setNewResident((p) => ({ ...p, tempPassword: e.target.value }))}
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors.tempPassword ? "border-red-500" : "border-gray-200"
-                      }`}
-                      placeholder={t("tempPasswordPlaceholder")}
-                    />
-                    {formErrors.tempPassword && <p className="text-red-500 text-xs mt-1">{formErrors.tempPassword}</p>}
-                    <p className="text-xs text-gray-400 mt-1">{t("residentCanLoginNote")}</p>
-                  </div>
-                )}
               </div>
 
               <div className="flex justify-between gap-3 pt-2">
-                <button type="button" onClick={handleCancelAdd} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
+                <button type="button" onClick={handleCancelAdd} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#3D3928] hover:bg-sage-50 transition">
                   {t("cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={!hasAddChanges}
                   className={`px-5 py-2.5 rounded-full transition ${
-                    hasAddChanges ? "bg-[#005f63] text-white hover:bg-[#004d4f]" : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    hasAddChanges ? "bg-sage-800 text-white hover:bg-sage-900" : "bg-[#F1EEE5] text-[#B8B2A2] cursor-not-allowed"
                   }`}
                 >
                   {t("saveRecordButton")}
@@ -1610,11 +1684,12 @@ const handleDeleteResident = async () => {
       {/* ─── Edit Modal ───────────────────────────────────────────────────────── */}
       {editRecord && editingResident && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-2xl font-black text-[#005f63]">{t("editRecordTitle")}</h2>
-              <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button>
+          <div className="bg-white rounded-3xl w-full max-w-4xl p-8 shadow-xl border border-[#E6E0D3] max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-2xl font-black text-[#1A1A1A]">{t("editRecordTitle")}</h2>
+              <button onClick={handleCancelEdit} className="text-[#9B9484] hover:text-[#1A1A1A]"><XCircle size={20} /></button>
             </div>
+            <p className="text-sm text-[#9B9484] mb-5">Update this resident's basic information, profile, and household details.</p>
 
             {editingResident.deleted_at !== null && (
               <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ {t("recordDeletedEditingDisabled")}</div>
@@ -1623,77 +1698,84 @@ const handleDeleteResident = async () => {
             <form
               onSubmit={handleUpdateResident}
               noValidate
-              className="space-y-4"
+              className="space-y-5"
               style={{
                 pointerEvents: editingResident.deleted_at !== null ? "none" : "auto",
                 opacity: editingResident.deleted_at !== null ? 0.6 : 1,
               }}
             >
-              <div className="grid md:grid-cols-3 gap-4">
-                {(["firstName", "middleName", "lastName"] as const).map((field) => (
-                  <div key={field}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
-                    </label>
+              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Basic Information</p>
+                <div className="grid md:grid-cols-3 gap-4">
+                  {(["firstName", "middleName", "lastName"] as const).map((field) => (
+                    <div key={field}>
+                      <label className="block text-sm font-medium text-[#3D3928] mb-1">
+                        {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
+                      </label>
+                      <input
+                        type="text"
+                        required={field !== "middleName"}
+                        value={editingResident[field]}
+                        onChange={(e) =>
+                          setEditingResident((p) => p ? { ...p, [field]: capitalizeName(e.target.value) } : p)
+                        }
+                        className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
+                          formErrors[field] ? "border-red-500" : "border-[#E6E0D3]"
+                        }`}
+                      />
+                      {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("roleRequiredLabel")}</label>
+                    <select
+                      required
+                      value={editingResident.role}
+                      onChange={(e) => setEditingResident((p) => p ? { ...p, role: e.target.value } : p)}
+                      className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
+                        formErrors.role ? "border-red-500" : "border-[#E6E0D3]"
+                      }`}
+                    >
+                      <option value="Resident">{t("residentOption")}</option>
+                      <option value="Staff">{t("staffOption")}</option>
+                    </select>
+                    {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("contactNumberRequiredLabel")}</label>
                     <input
                       type="text"
-                      required={field !== "middleName"}
-                      value={editingResident[field]}
+                      required
+                      value={editingResident.contactNumber}
                       onChange={(e) =>
-                        setEditingResident((p) => p ? { ...p, [field]: capitalizeName(e.target.value) } : p)
+                        setEditingResident((p) => p ? { ...p, contactNumber: formatContactNumber(e.target.value) } : p)
                       }
-                      className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                        formErrors[field] ? "border-red-500" : "border-gray-200"
+                      className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
+                        formErrors.contactNumber ? "border-red-500" : "border-[#E6E0D3]"
                       }`}
+                      placeholder="09XX-XXX-XXXX"
+                      maxLength={13}
                     />
-                    {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+                    {editingResident.contactNumber.length > 0 && !editingResident.contactNumber.startsWith("09") && (
+                      <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
+                    )}
+                    {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
                   </div>
-                ))}
-              </div>
+                </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t("roleRequiredLabel")}</label>
-                <select
-                  required
-                  value={editingResident.role}
-                  onChange={(e) => setEditingResident((p) => p ? { ...p, role: e.target.value } : p)}
-                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                    formErrors.role ? "border-red-500" : "border-gray-200"
-                  }`}
-                >
-                  <option value="Resident">{t("residentOption")}</option>
-                  <option value="Staff">{t("staffOption")}</option>
-                </select>
-                {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t("contactNumberRequiredLabel")}</label>
-                <input
-                  type="text"
-                  required
-                  value={editingResident.contactNumber}
-                  onChange={(e) =>
-                    setEditingResident((p) => p ? { ...p, contactNumber: formatContactNumber(e.target.value) } : p)
-                  }
-                  className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                    formErrors.contactNumber ? "border-red-500" : "border-gray-200"
-                  }`}
-                  placeholder="09XX-XXX-XXXX"
-                  maxLength={13}
-                />
-                {editingResident.contactNumber.length > 0 && !editingResident.contactNumber.startsWith("09") && (
-                  <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
-                )}
-                {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+                <PhotoField isEdit={true} />
               </div>
 
               {/* Adviser recommendations: age profiling + household SMS notify */}
-              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">{t("profileHouseholdLabel")}</p>
+              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("profileHouseholdLabel")}</p>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("birthDateLabel")}</label>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("birthDateLabel")}</label>
                     <DatePicker
                       value={editingResident.birthDate}
                       max={new Date().toISOString().split("T")[0]}
@@ -1702,21 +1784,21 @@ const handleDeleteResident = async () => {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("addressPurokLabel")}</label>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("addressPurokLabel")}</label>
                     <input
                       type="text"
                       value={editingResident.address}
                       onChange={(e) => setEditingResident((p) => p ? { ...p, address: e.target.value } : p)}
                       placeholder={t("purokPlaceholder")}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("civilStatusLabel")}</label>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("civilStatusLabel")}</label>
                     <select
                       value={editingResident.civilStatusId ?? ""}
                       onChange={(e) => setEditingResident((p) => p ? { ...p, civilStatusId: e.target.value ? Number(e.target.value) : null } : p)}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
                     >
                       <option value="">{t("anyOptionLabel")}</option>
                       {civilStatuses.map((cs) => (
@@ -1725,11 +1807,11 @@ const handleDeleteResident = async () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{t("genderLabel")}</label>
+                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("genderLabel")}</label>
                     <select
                       value={editingResident.gender}
                       onChange={(e) => setEditingResident((p) => p ? { ...p, gender: e.target.value } : p)}
-                      className="w-full rounded-full border border-gray-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
                     >
                       <option value="">{t("anyOptionLabel")}</option>
                       <option value="Male">{t("maleOption")}</option>
@@ -1739,7 +1821,7 @@ const handleDeleteResident = async () => {
                 </div>
                 <CurrentStatusCheckboxes isEdit={true} />
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("householdCodeLabel")}</label>
+                  <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("householdCodeLabel")}</label>
                   <SearchableSelect
                     options={householdOptions.map((h) => ({
                       value: String(h.id),
@@ -1750,16 +1832,16 @@ const handleDeleteResident = async () => {
                     placeholder={t("householdCodePlaceholder")}
                     noResultsLabel={t("householdLinkNoResults")}
                   />
-                  <p className="mt-1 text-xs text-gray-400">{t("manageHouseholdHint")}</p>
+                  <p className="mt-1 text-xs text-[#9B9484]">{t("manageHouseholdHint")}</p>
                   {editingResident.householdId && (() => {
                     const picked = householdOptions.find((h) => h.id === editingResident.householdId);
                     return (
-                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-teal-50 text-[#005f63] text-xs font-medium px-3 py-1">
+                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-sage-50 text-sage-800 text-xs font-medium px-3 py-1">
                         🏠 {picked?.code ?? `#${editingResident.householdId}`}
                         <button
                           type="button"
                           onClick={() => setEditingResident((p) => p ? { ...p, householdId: null, isHouseholdHead: false } : p)}
-                          className="ml-1 text-[#005f63]/60 hover:text-[#005f63]"
+                          className="ml-1 text-sage-700/70 hover:text-sage-800"
                         >
                           ×
                         </button>
@@ -1773,10 +1855,10 @@ const handleDeleteResident = async () => {
                     checked={editingResident.isHouseholdHead}
                     disabled={!editingResident.householdId || !!editFormExistingHead}
                     onChange={(e) => setEditingResident((p) => p ? { ...p, isHouseholdHead: e.target.checked } : p)}
-                    className="w-4 h-4 text-[#005f63] disabled:opacity-40"
+                    className="w-4 h-4 text-sage-800 disabled:opacity-40"
                   />
-                  <span className={`font-medium ${editingResident.householdId && !editFormExistingHead ? "text-gray-700" : "text-gray-400"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
-                  <span className="text-gray-400">
+                  <span className={`font-medium ${editingResident.householdId && !editFormExistingHead ? "text-[#3D3928]" : "text-[#9B9484]"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
+                  <span className="text-[#9B9484]">
                     {!editingResident.householdId
                       ? t("householdHeadDisabledHint")
                       : editFormExistingHead
@@ -1791,22 +1873,21 @@ const handleDeleteResident = async () => {
                 )}
               </div>
 
-              <PhotoField isEdit={true} />
-
-              <div className="border-t border-b py-3 space-y-3">
+              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Membership</p>
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={editingResident.hasMemberships}
                     onChange={(e) => setEditingResident((p) => (p ? { ...p, hasMemberships: e.target.checked } : p))}
-                    className="w-4 h-4 text-[#005f63]"
+                    className="w-4 h-4 text-sage-800"
                   />
-                  <span className="font-medium text-gray-700">{t("hasMembershipsLabel")}</span>
+                  <span className="font-medium text-[#3D3928]">{t("hasMembershipsLabel")}</span>
                 </label>
 
                 {editingResident.hasMemberships &&
                   (availableMemberships.length === 0 ? (
-                    <p className="pl-6 text-xs text-gray-400 italic">{t("noMembershipsAvailable")}</p>
+                    <p className="pl-6 text-xs text-[#9B9484] italic">{t("noMembershipsAvailable")}</p>
                   ) : (
                     <div className="pl-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {availableMemberships.map((mem) => (
@@ -1816,7 +1897,7 @@ const handleDeleteResident = async () => {
                             value={mem.id}
                             checked={editingResident.selectedMemberships.includes(mem.id)}
                             onChange={() => toggleMembership(mem.id, true)}
-                            className="w-4 h-4 text-[#005f63]"
+                            className="w-4 h-4 text-sage-800"
                           />
                           <span>{mem.name}</span>
                         </label>
@@ -1826,33 +1907,33 @@ const handleDeleteResident = async () => {
                 {formErrors.membership_ids && (
                   <p className="pl-6 text-red-500 text-xs">{formErrors.membership_ids}</p>
                 )}
+              </div>
 
+              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Account Access</p>
                 {editingResident.hasAccount ? (
                   <div className="space-y-3">
-                    <label className="flex items-center gap-2 cursor-not-allowed opacity-70">
-                      <input type="checkbox" checked={true} disabled className="w-4 h-4 text-[#005f63]" />
-                      <span className="font-medium text-gray-700">{t("hasAccountCheckboxLabel")}</span>
-                    </label>
-                    <div className="pl-6 space-y-3">
+                    <p className="text-sm font-medium text-[#3D3928]">{t("hasAccountCheckboxLabel")}</p>
+                    <div className="grid sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{t("usernameLabel")}</label>
+                        <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("usernameLabel")}</label>
                         <input
                           type="text"
                           value={`PR-${String(editingResident.real_id).padStart(4, "0")}`}
                           disabled
-                          className="w-full rounded-full border px-4 py-2.5 bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed"
+                          className="w-full rounded-full border px-4 py-2.5 bg-[#F1EEE5] text-[#9B9484] border-[#E6E0D3] cursor-not-allowed"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <label className="block text-sm font-medium text-[#3D3928] mb-1">
                           {t("passwordLabel")}{" "}
-                          <span className="text-gray-400 text-xs font-normal">{t("passwordResetNote")}</span>
+                          <span className="text-[#9B9484] text-xs font-normal">{t("passwordResetNote")}</span>
                         </label>
                         <input
                           type="password"
                           value={editingResident.password}
                           onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
-                          className="w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 border-gray-200"
+                          className="w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 border-[#E6E0D3]"
                           placeholder={t("resetPasswordPlaceholder")}
                         />
                         {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
@@ -1860,44 +1941,16 @@ const handleDeleteResident = async () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={editingResident.needAccount}
-                        onChange={(e) =>
-                          setEditingResident((p) =>
-                            p ? { ...p, needAccount: e.target.checked, tempPassword: e.target.checked ? p.tempPassword : "" } : p
-                          )
-                        }
-                        className="w-4 h-4 text-[#005f63]"
-                      />
-                      <span className="font-medium text-gray-700">{t("needAccountLabel")}</span>
-                    </label>
-                    {editingResident.needAccount && (
-                      <div className="pl-6 space-y-1">
-                        <label className="block text-sm font-medium text-gray-700">
-                          {t("setTempPasswordLabel")} <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="password"
-                          value={editingResident.tempPassword}
-                          onChange={(e) => setEditingResident((p) => p ? { ...p, tempPassword: e.target.value } : p)}
-                          className={`w-full rounded-full border px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 ${
-                            formErrors.tempPassword ? "border-red-500" : "border-gray-200"
-                          }`}
-                          placeholder={t("tempPasswordPlaceholder")}
-                        />
-                        {formErrors.tempPassword && <p className="text-red-500 text-xs mt-1">{formErrors.tempPassword}</p>}
-                        <p className="text-xs text-gray-400 mt-1">{t("residentCanLoginNote")}</p>
-                      </div>
-                    )}
-                  </div>
+                  // No login account exists for this resident -- and this
+                  // page never creates one. Account access, when needed,
+                  // is granted through a separate flow, not as part of
+                  // editing a resident's profile.
+                  <p className="text-sm text-[#9B9484] italic">This resident does not have a portal account.</p>
                 )}
               </div>
 
               <div className="flex justify-between gap-3 pt-2">
-                <button type="button" onClick={handleCancelEdit} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
+                <button type="button" onClick={handleCancelEdit} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#3D3928] hover:bg-sage-50 transition">
                   {t("cancel")}
                 </button>
                 <button
@@ -1905,8 +1958,8 @@ const handleDeleteResident = async () => {
                   disabled={!hasEditChanges || editingResident.deleted_at !== null}
                   className={`px-5 py-2.5 rounded-full transition ${
                     hasEditChanges && editingResident.deleted_at === null
-                      ? "bg-[#005f63] text-white hover:bg-[#004d4f]"
-                      : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                      ? "bg-sage-800 text-white hover:bg-sage-900"
+                      : "bg-[#F1EEE5] text-[#B8B2A2] cursor-not-allowed"
                   }`}
                 >
                   {t("updateRecordButton")}
@@ -1961,7 +2014,7 @@ const handleDeleteResident = async () => {
             <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-5">{t("moveToTrashConfirm")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("cancel")}</button>
+              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#3D3928] hover:bg-sage-50 transition">{t("cancel")}</button>
               <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">{t("yesDeleteButton")}</button>
             </div>
           </div>
@@ -1974,10 +2027,10 @@ const handleDeleteResident = async () => {
           onClick={() => setShowDeleteSuccess(false)}
         >
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-[#005f63] flex justify-center">
+            <div className="mb-3 text-sage-700 flex justify-center">
               <CheckCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
+            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">{t("successTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{t("residentDeletedSuccess")}</p>
           </div>
         </div>
@@ -1989,14 +2042,14 @@ const handleDeleteResident = async () => {
           onClick={() => setShowUpdateSuccess(false)}
         >
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-[#005f63] flex justify-center">
+            <div className="mb-3 text-sage-700 flex justify-center">
               <CheckCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
+            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">{t("successTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{t("recordUpdatedSuccess")}</p>
             <button
               onClick={() => setShowUpdateSuccess(false)}
-              className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+              className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
             >
               {t("okLabel")}
             </button>
@@ -2013,11 +2066,11 @@ const handleDeleteResident = async () => {
             className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center"
             onClick={(e) => e.stopPropagation()}
             >
-            <div className="mb-3 text-[#005f63] flex justify-center">
+            <div className="mb-3 text-sage-700 flex justify-center">
                 <CheckCircle size={48} />
             </div>
 
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">
+            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">
                 {t("successTitle")}
             </h3>
 
@@ -2027,7 +2080,7 @@ const handleDeleteResident = async () => {
 
             <button
                 onClick={() => setShowAddSuccess(false)}
-                className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+                className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
             >
                 {t("okLabel")}
             </button>
@@ -2042,11 +2095,11 @@ const handleDeleteResident = async () => {
             <div
             className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center"
             >
-            <div className="mb-3 text-[#005f63] flex justify-center">
+            <div className="mb-3 text-sage-700 flex justify-center">
                 <CheckCircle size={48} />
             </div>
 
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">
+            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">
                 {t("roleUpdatedTitle")}
             </h3>
 
@@ -2059,7 +2112,7 @@ const handleDeleteResident = async () => {
                 setShowRoleChangedModal(false);
                 window.location.href = "/login";
                 }}
-                className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+                className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
             >
                 {t("okLabel")}
             </button>
@@ -2067,20 +2120,7 @@ const handleDeleteResident = async () => {
         </div>
         )}
 
-      {/* ─── Restore Confirm Modal ────────────────────────────────────────────── */}
-      {restoreRecord && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-3 text-teal-600 flex justify-center"><RotateCcw size={40} /></div>
-            <h3 className="text-xl font-bold text-teal-600 mb-3">{t("restoreRecordTitle")}</h3>
-            <p className="text-gray-600 mb-5">{t("restoreConfirmMessage")}</p>
-            <div className="flex justify-center gap-4">
-              <button onClick={() => setRestoreRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("cancel")}</button>
-              <button onClick={handleRestoreResident} className="px-5 py-2.5 rounded-full bg-teal-600 text-white hover:bg-teal-700 transition">{t("yesRestoreButton")}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Restoring an archived resident happens on the Archive page. */}
 
       {/* ─── Cancel Unsaved Changes Confirm Modal ─────────────────────────────── */}
       {showCancelConfirm && (
@@ -2090,7 +2130,7 @@ const handleDeleteResident = async () => {
             <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("stayButton")}</button>
+              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#3D3928] hover:bg-sage-50 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   setShowCancelConfirm(null);
