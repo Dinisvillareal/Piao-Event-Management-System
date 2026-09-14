@@ -10,8 +10,11 @@ import {
   Plus,
   Pencil,
   ChevronRight,
+  ChevronDown,
   UserPlus,
   QrCode,
+  ArrowLeft,
+  Trash2,
 } from "lucide-react";
 import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
@@ -226,6 +229,13 @@ export default function ResidentsView() {
   const [residentsData, setResidentsData] = useState<ResidentRow[]>([]);
   const [availableMemberships, setAvailableMemberships] = useState<Membership[]>([]);
   const [householdOptions, setHouseholdOptions] = useState<HouseholdOption[]>([]);
+
+  // ─── Quick "add new household" panel (opened from either resident form) ──
+  const [showAddHousehold, setShowAddHousehold] = useState<false | { isEdit: boolean }>(false);
+  const [newHouseholdAddress, setNewHouseholdAddress] = useState("");
+  const [newHouseholdContact, setNewHouseholdContact] = useState("");
+  const [addHouseholdSaving, setAddHouseholdSaving] = useState(false);
+  const [addHouseholdError, setAddHouseholdError] = useState("");
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   // Popped up (instead of buried in an inline banner) for every save
@@ -270,6 +280,12 @@ export default function ResidentsView() {
   const [editPhotoFile, setEditPhotoFile] = useState<File | null>(null);
   const [editPhotoPreview, setEditPhotoPreview] = useState("");
   const [editPhotoChanged, setEditPhotoChanged] = useState(false);
+
+  // Photo "Preview" popup -- shared by the Add and Edit ID Photo fields
+  // (only one of those forms is ever open at a time), styled like the
+  // system's other receipt/attachment viewers rather than opening the
+  // image in a bare new tab.
+  const [photoPreviewModal, setPhotoPreviewModal] = useState<{ url: string; label: string; name: string; size: number | null } | null>(null);
 
   const currentUserId = useMemo<number | null>(() => {
     const sessionUser = sessionStorage.getItem("user");
@@ -389,6 +405,51 @@ export default function ResidentsView() {
       .then((d: HouseholdOption[]) => setHouseholdOptions(Array.isArray(d) ? d : []))
       .catch((e) => console.error("households load:", e));
   }, []);
+
+  // Creates the household through the same /households endpoint the
+  // Households page itself uses, so a household added here shows up there
+  // automatically -- no separate "sync" step needed.
+  const submitNewHousehold = async () => {
+    if (!showAddHousehold) return;
+    setAddHouseholdSaving(true);
+    setAddHouseholdError("");
+    try {
+      const res = await fetch("/households", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-TOKEN": csrfToken(),
+        },
+        body: JSON.stringify({
+          address: newHouseholdAddress.trim() || null,
+          contact_number: newHouseholdContact.trim() || null,
+        }),
+      });
+      const body = await safeParseJson(res);
+      if (!res.ok) {
+        setAddHouseholdError(body?.message || "Failed to create household.");
+        return;
+      }
+      const created: HouseholdOption = { id: body.id, code: body.code, address: body.address };
+      setHouseholdOptions((prev) => [...prev, created].sort((a, b) => a.code.localeCompare(b.code)));
+
+      const { isEdit } = showAddHousehold;
+      if (isEdit) {
+        setEditingResident((p) => (p ? { ...p, householdId: created.id, isHouseholdHead: false } : p));
+      } else {
+        setNewResident((p) => ({ ...p, householdId: created.id, isHouseholdHead: false }));
+      }
+
+      setShowAddHousehold(false);
+      setNewHouseholdAddress("");
+      setNewHouseholdContact("");
+    } catch (e: any) {
+      setAddHouseholdError(e?.message || "Failed to create household.");
+    } finally {
+      setAddHouseholdSaving(false);
+    }
+  };
 
   // ─── Fetch residents ──────────────────────────────────────────────────────
   const fetchResidents = async () => {
@@ -535,6 +596,8 @@ export default function ResidentsView() {
   };
 
   // ─── Membership toggle ────────────────────────────────────────────────────
+  // Selecting/deselecting a membership chip immediately updates hasMemberships
+  // too, so the two stay in sync without a separate checkbox step.
   const toggleMembership = (id: number, isEdit = false) => {
     if (isEdit) {
       setEditingResident((p) => {
@@ -542,14 +605,14 @@ export default function ResidentsView() {
         const sel = p.selectedMemberships.includes(id)
           ? p.selectedMemberships.filter((x) => x !== id)
           : [...p.selectedMemberships, id];
-        return { ...p, selectedMemberships: sel };
+        return { ...p, selectedMemberships: sel, hasMemberships: sel.length > 0 };
       });
     } else {
       setNewResident((p) => {
         const sel = p.selectedMemberships.includes(id)
           ? p.selectedMemberships.filter((x) => x !== id)
           : [...p.selectedMemberships, id];
-        return { ...p, selectedMemberships: sel };
+        return { ...p, selectedMemberships: sel, hasMemberships: sel.length > 0 };
       });
     }
   };
@@ -980,9 +1043,9 @@ const handleDeleteResident = async () => {
 
     return (
       <div>
-        <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("currentStatusLabel")}</label>
+        <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("currentStatusLabel")}</label>
         {currentStatuses.length === 0 ? (
-          <p className="text-xs text-[#9B9484] italic">{t("noCurrentStatusesAvailable")}</p>
+          <p className="text-xs text-[#6B7280] italic">{t("noCurrentStatusesAvailable")}</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-2xl border border-[#E6E0D3] px-4 py-3">
             {currentStatuses.map((cs) => (
@@ -1002,78 +1065,179 @@ const handleDeleteResident = async () => {
     );
   };
 
-  const MembershipCheckboxes = ({ isEdit }: { isEdit: boolean }) => {
-    const hasMem = isEdit ? editingResident?.hasMemberships ?? false : newResident.hasMemberships;
+  const MembershipPicker = ({ isEdit }: { isEdit: boolean }) => {
+    const [membershipSearch, setMembershipSearch] = useState("");
     const selMems = isEdit ? editingResident?.selectedMemberships ?? [] : newResident.selectedMemberships;
+    const count = selMems.length;
+
+    const selectedMemberships = availableMemberships.filter((m) => selMems.includes(m.id));
+    const query = membershipSearch.trim().toLowerCase();
+    const filteredAvailable = availableMemberships.filter(
+      (m) => !selMems.includes(m.id) && m.name.toLowerCase().includes(query)
+    );
 
     return (
-      <div className="border-t border-b py-3 space-y-3">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={hasMem}
-            onChange={(e) => {
-              if (isEdit)
-                setEditingResident((p) => (p ? { ...p, hasMemberships: e.target.checked } : p));
-              else setNewResident((p) => ({ ...p, hasMemberships: e.target.checked }));
-            }}
-            className="w-4 h-4 text-sage-800"
-          />
-          <span className="font-medium text-[#3D3928]">{t("hasMembershipsLabel")}</span>
-        </label>
+      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Membership</p>
+          <span
+            className={`inline-flex items-center rounded-full text-[11px] font-semibold px-2.5 py-1 transition-colors ${
+              count > 0 ? "bg-sage-50 text-sage-800" : "bg-[#F1EEE5] text-[#6B7280]"
+            }`}
+          >
+            {count > 0 ? `${count} selected` : "None selected"}
+          </span>
+        </div>
+        <p className="text-xs text-[#6B7280]">Search and tap a program to enroll this resident in real time.</p>
 
-        {hasMem &&
-          (availableMemberships.length === 0 ? (
-            <p className="pl-6 text-xs text-[#9B9484] italic">{t("noMembershipsAvailable")}</p>
-          ) : (
-            <div className="pl-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {availableMemberships.map((mem) => (
-                <label key={mem.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    value={mem.id}
-                    checked={selMems.includes(mem.id)}
-                    onChange={() => toggleMembership(mem.id, isEdit)}
-                    className="w-4 h-4 text-sage-800"
-                  />
-                  <span>{mem.name}</span>
-                </label>
-              ))}
-            </div>
-          ))}
+        {count > 0 && (
+          <div className="flex flex-wrap gap-2 pb-1">
+            {selectedMemberships.map((mem) => (
+              <span
+                key={mem.id}
+                className="inline-flex items-center gap-1.5 rounded-full bg-sage-800 text-white pl-3.5 pr-2 py-1.5 text-sm font-medium shadow-sm"
+              >
+                {mem.name}
+                <button
+                  type="button"
+                  onClick={() => toggleMembership(mem.id, isEdit)}
+                  aria-label={`Remove ${mem.name}`}
+                  className="rounded-full p-0.5 hover:bg-white/20 transition-colors"
+                >
+                  <XIcon className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        {availableMemberships.length > 0 && (
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+            <input
+              type="text"
+              value={membershipSearch}
+              onChange={(e) => setMembershipSearch(e.target.value)}
+              placeholder="Search membership programs..."
+              className="h-10 w-full rounded-full border border-sage-200 bg-white pl-10 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+            />
+          </div>
+        )}
+
+        {availableMemberships.length === 0 ? (
+          <p className="text-xs text-[#6B7280] italic">{t("noMembershipsAvailable")}</p>
+        ) : filteredAvailable.length === 0 ? (
+          <p className="text-xs text-[#6B7280] italic">
+            {query ? "No matching programs." : "All programs have been added."}
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {filteredAvailable.map((mem) => (
+              <button
+                key={mem.id}
+                type="button"
+                onClick={() => toggleMembership(mem.id, isEdit)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-sage-200 bg-white px-3.5 py-1.5 text-sm font-medium text-[#1A1A1A] hover:bg-sage-50 hover:border-sage-300 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5 text-sage-700" />
+                {mem.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {formErrors.membership_ids && (
+          <p className="text-red-500 text-xs">{formErrors.membership_ids}</p>
+        )}
       </div>
     );
   };
 
   const PhotoField = ({ isEdit }: { isEdit: boolean }) => {
     const preview = isEdit ? editPhotoPreview : addPhotoPreview;
+    const file = isEdit ? editPhotoFile : addPhotoFile;
+    const inputId = isEdit ? "edit-photo-file-input" : "add-photo-file-input";
+    // A resident being edited may already have a saved photo (preview set
+    // from the server) with no freshly-picked File yet -- fall back to a
+    // generic label instead of claiming "No file chosen" in that case.
+    const displayName = file ? file.name : preview ? "Current photo" : "No file chosen";
     return (
-      <div>
-        <label className="block text-sm font-medium text-[#3D3928] mb-1">
-          {t("idPhotoFieldLabel")} <span className="text-[#9B9484] font-normal">({t("optionalLabel")})</span>
-        </label>
+      <div
+        className={`rounded-2xl border p-4 sm:p-5 transition-colors ${
+          preview ? "border-sage-400" : formErrors.photo ? "border-red-400" : "border-[#E6E0D3]"
+        }`}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-bold uppercase tracking-wide text-[#1A1A1A]">
+              {t("idPhotoFieldLabel")}{" "}
+              <span className="text-[#6B7280] font-medium normal-case">({t("optionalLabel")})</span>
+            </p>
+            <p className="mt-1 text-xs text-[#6B7280] italic">A clear, recent photo used for the resident's ID.</p>
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            {preview && (
+              <img src={preview} alt="Preview" className="h-12 w-12 rounded-full object-cover border border-sage-200 shrink-0" />
+            )}
+            <div className="w-full sm:w-64">
+              <div
+                className={`flex items-center justify-between gap-2 rounded-full border px-4 py-2 text-sm bg-white ${
+                  preview ? "border-sage-400 text-sage-800" : "border-sage-200 text-[#6B7280]"
+                }`}
+              >
+                <span className="truncate">{displayName}</span>
+                {preview && <CheckCircle className="h-4 w-4 text-sage-600 shrink-0" />}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <input
+          id={inputId}
           type="file"
           accept="image/*"
           onChange={(e) => handlePhotoChange(e, isEdit)}
-          className={`w-full text-sm text-[#9B9484] file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:bg-sage-800/10 file:text-sage-800 ${
-            formErrors.photo ? "border border-gray-900 rounded-lg p-1" : ""
-          }`}
+          className="hidden"
         />
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label
+            htmlFor={inputId}
+            className="cursor-pointer inline-flex items-center rounded-full border border-[#E6E0D3] px-4 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-sage-50 transition"
+          >
+            {preview ? "Replace" : "Choose File"}
+          </label>
+          {preview && (
+            <>
+              <button
+                type="button"
+                onClick={() =>
+                  setPhotoPreviewModal({
+                    url: preview,
+                    label: t("idPhotoFieldLabel"),
+                    name: displayName,
+                    size: file ? file.size : null,
+                  })
+                }
+                className="inline-flex items-center rounded-full border border-[#E6E0D3] px-4 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-sage-50 transition"
+              >
+                Preview
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRemovePhoto(isEdit)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Delete
+              </button>
+            </>
+          )}
+          <span className="text-[11px] text-[#6B7280] sm:ml-auto">JPG, PNG, GIF, or WEBP</span>
+        </div>
+
         {formErrors.photo && (
-          <p className="text-gray-900 text-xs mt-1 font-medium">⚠ {formErrors.photo}</p>
-        )}
-        {preview && (
-          <div className="relative inline-block mt-2">
-            <img src={preview} alt="Preview" className="h-20 rounded border" />
-            <button
-              type="button"
-              onClick={() => handleRemovePhoto(isEdit)}
-              className="absolute -top-2 -right-2 bg-[#F1EEE5] text-[#9B9484] rounded-full w-6 h-6 flex items-center justify-center text-xs font-semibold border border-[#E6E0D3] hover:bg-[#E6E0D3] transition"
-            >
-              ✕
-            </button>
-          </div>
+          <p className="text-red-600 text-xs mt-2 font-medium">⚠ {formErrors.photo}</p>
         )}
       </div>
     );
@@ -1104,13 +1268,13 @@ const handleDeleteResident = async () => {
       <div className="rounded-2xl border border-[#E6E0D3] bg-white p-3">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#9B9484]" />
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
             <input
               type="text"
               value={residentSearch}
               onChange={(e) => setResidentSearch(e.target.value)}
               placeholder={t("searchByIdNameContactPlaceholder")}
-              className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#9B9484] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+              className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
             />
           </div>
           <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
@@ -1143,22 +1307,22 @@ const handleDeleteResident = async () => {
           <table className="w-full text-sm min-w-[760px]">
             <thead>
               <tr className="border-b border-[#E6E0D3]">
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#9B9484]">Resident</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#9B9484]">Age</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#9B9484]">Contact</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#9B9484]">Household</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#9B9484]">Membership</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">Resident</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">Age</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">Contact</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">Household</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">Membership</th>
                 <th className="py-3 px-4 w-10" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-[#9B9484] italic">{t("loading")}</td>
+                  <td colSpan={6} className="py-8 text-center text-[#6B7280] italic">{t("loading")}</td>
                 </tr>
               ) : paginatedResidents.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-[#9B9484] italic">{t("noRecordsMatchFilter")}</td>
+                  <td colSpan={6} className="py-8 text-center text-[#6B7280] italic">{t("noRecordsMatchFilter")}</td>
                 </tr>
               ) : (
                 paginatedResidents.map((r) => {
@@ -1177,7 +1341,7 @@ const handleDeleteResident = async () => {
                           </div>
                           <div className="min-w-0">
                             <p className="font-semibold text-[#1A1A1A] truncate">{highlightText(`${r.firstName} ${r.lastName}`, residentSearch)}</p>
-                            <p className="text-xs text-[#9B9484] font-mono">{r.id}</p>
+                            <p className="text-xs text-[#6B7280] font-mono">{r.id}</p>
                           </div>
                         </div>
                       </td>
@@ -1255,82 +1419,111 @@ const handleDeleteResident = async () => {
 
         return (
           <>
+            {/* Back to a right-anchored slide-over drawer (dimmed backdrop,
+                fixed narrower width, slides in from the right edge) rather
+                than the full content-area take-over used for Add/Edit --
+                but keeps that redesign's section styling (underlined ink
+                headers, caption-over-value fields) inside it. Same data,
+                same handlers -- styling only. */}
+            <style>{`
+              @keyframes residentProfileSlideIn {
+                from { transform: translateX(100%); }
+                to { transform: translateX(0); }
+              }
+              .resident-profile-slide-in { animation: residentProfileSlideIn 280ms ease-out; }
+            `}</style>
             <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setViewRecord(null)} />
-            <div className="fixed inset-y-0 right-0 z-50 w-full max-w-xl bg-white shadow-2xl flex flex-col">
-              <div className="flex items-center justify-between px-6 py-5 border-b border-[#E6E0D3] shrink-0">
-                <h2 className="font-display text-lg font-bold text-[#1A1A1A]">Resident profile</h2>
-                <button onClick={() => setViewRecord(null)} className="text-[#9B9484] hover:text-[#1A1A1A]">
+            <div className="resident-profile-slide-in fixed inset-y-0 right-0 z-50 w-full max-w-xl bg-white shadow-2xl flex flex-col overflow-hidden">
+              <img
+                src="/logo-removebg-preview.png"
+                alt=""
+                aria-hidden="true"
+                className="pointer-events-none select-none absolute z-0 bottom-[-3rem] right-[-3rem] h-72 w-72 object-contain opacity-[0.06]"
+              />
+
+              <div className="relative z-10 flex items-center justify-between px-6 py-5 border-b border-[#E6E0D3] shrink-0 bg-white">
+                <h2 className="font-display text-lg font-bold text-[#1A1A1A]">Residents Profile</h2>
+                <button onClick={() => setViewRecord(null)} className="text-[#6B7280] hover:text-[#1A1A1A]">
                   <XIcon size={20} />
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+              <div className="relative z-10 flex-1 overflow-y-auto px-6 py-6">
                 {r.deleted_at !== null && (
-                  <div className="p-2.5 rounded-lg bg-red-50 text-red-700 text-xs font-medium">⚠ {t("recordDeletedWarning")}</div>
+                  <div className="mb-6 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-2.5 text-sm text-center">
+                    ⚠ {t("recordDeletedWarning")}
+                  </div>
                 )}
 
-                <div className="flex items-center gap-3">
-                  <div className="h-14 w-14 rounded-full bg-sage-50 border border-sage-200 flex items-center justify-center text-lg font-bold text-sage-800 overflow-hidden shrink-0">
+                <div className="flex items-center gap-4">
+                  <div className="h-16 w-16 rounded-full bg-sage-50 border border-sage-200 flex items-center justify-center text-lg font-bold text-sage-800 overflow-hidden shrink-0">
                     {r.photo ? (
                       <img src={r.photo} alt="" className="h-full w-full object-cover" />
                     ) : (
                       initialsFor(r.firstName, r.lastName)
                     )}
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-display text-lg font-bold text-[#1A1A1A] truncate">
+                  <div className="min-w-0 flex-1">
+                    <h1 className="font-display text-xl font-extrabold text-[#1A1A1A] truncate">
                       {r.firstName} {r.middleName} {r.lastName}
-                    </p>
-                    <p className="text-xs text-[#9B9484] font-mono">{r.id}</p>
+                    </h1>
+                    <p className="text-xs text-[#6B7280] font-mono mt-0.5">{r.id}</p>
                   </div>
-                </div>
-
-                <div className="space-y-3 text-sm">
-                  {infoRows.map(([label, value]) => (
-                    <div key={label} className="flex items-center justify-between gap-3">
-                      <span className="text-[#9B9484]">{label}</span>
-                      <span className="font-medium text-[#1A1A1A] text-right">{value}</span>
-                    </div>
-                  ))}
-                  {r.household && (
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-[#9B9484]">Household</span>
-                      <span className="font-medium text-[#1A1A1A] text-right">
-                        {r.household.code}
-                        {r.isHouseholdHead && (
-                          <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-50 text-gold-700 align-middle">
-                            {t("headBadgeLabel") || "Head"}
-                          </span>
-                        )}
-                      </span>
-                    </div>
-                  )}
-                  {r.currentStatuses.length > 0 && (
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="text-[#9B9484] shrink-0">Status</span>
-                      <span className="flex flex-wrap justify-end gap-1">
-                        {r.currentStatuses.map((cs) => (
-                          <span key={cs.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-sage-50 text-sage-800">
-                            {cs.label}
-                          </span>
-                        ))}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-4 border-t border-[#E6E0D3]">
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#9B9484] mb-2">Membership</p>
                   <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${
                       active ? "bg-sage-50 text-sage-800" : "bg-[#F1EEE5] text-[#8A8474]"
                     }`}
                   >
                     <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-sage-600" : "bg-[#B8B2A2]"}`} />
-                    {active ? "Active member" : "Not a member"}
+                    {active ? "Active" : "Not a member"}
                   </span>
+                </div>
+
+                <section className="mt-8">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                    Personal Information
+                  </h2>
+                  <div className="grid grid-cols-1 gap-y-4">
+                    {infoRows.map(([label, value]) => (
+                      <div key={label} className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">{label}</span>
+                        <span className="text-sm font-medium text-[#1A1A1A] text-right">{value}</span>
+                      </div>
+                    ))}
+                    {r.household && (
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Household</span>
+                        <span className="text-sm font-medium text-[#1A1A1A] text-right">
+                          {r.household.code}
+                          {r.isHouseholdHead && (
+                            <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-50 text-gold-700 align-middle">
+                              {t("headBadgeLabel") || "Head"}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    {r.currentStatuses.length > 0 && (
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] shrink-0">Status</span>
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          {r.currentStatuses.map((cs) => (
+                            <span key={cs.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-sage-50 text-sage-800">
+                              {cs.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="mt-8">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                    Membership
+                  </h2>
                   {allMems.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-1.5">
                       {allMems.map((m, i) => (
                         <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(i)}`}>
                           {m}
@@ -1340,25 +1533,27 @@ const handleDeleteResident = async () => {
                   )}
                   <button
                     onClick={() => setShowQrPanel(true)}
-                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#E6E0D3] px-4 py-2 text-xs font-semibold text-[#1A1A1A] hover:bg-sage-50 transition-colors"
+                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#8A3D2C]/30 px-4 py-2 text-xs font-semibold text-[#5C2A1E] hover:bg-[#8A3D2C]/10 transition-colors"
                   >
                     <QrCode className="h-3.5 w-3.5" /> View QR code
                   </button>
-                </div>
+                </section>
 
-                <div className="pt-4 border-t border-[#E6E0D3]">
-                  <p className="text-[11px] font-bold uppercase tracking-wide text-[#9B9484] mb-2">Attendance history</p>
+                <section className="mt-8">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                    Attendance History
+                  </h2>
                   {attendanceLoading ? (
-                    <p className="text-sm text-[#9B9484] italic">{t("loading")}</p>
+                    <p className="text-sm text-[#6B7280] italic">{t("loading")}</p>
                   ) : attendanceHistory.length === 0 ? (
-                    <p className="text-sm text-[#9B9484] italic">No attendance recorded yet.</p>
+                    <p className="text-sm text-[#6B7280] italic">No attendance recorded yet.</p>
                   ) : (
-                    <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                    <div className="space-y-2">
                       {attendanceHistory.slice(0, 8).map((a) => (
-                        <div key={a.id} className="flex items-center justify-between gap-3 text-sm">
+                        <div key={a.id} className="flex items-center justify-between gap-3 text-sm rounded-xl border border-[#E6E0D3] px-4 py-2.5">
                           <div className="min-w-0">
                             <p className="font-medium text-[#1A1A1A] truncate">{a.isEventDeleted ? "(deleted event)" : a.eventTitle}</p>
-                            {a.eventDate && <p className="text-xs text-[#9B9484]">{formatDateShort(a.eventDate)}</p>}
+                            {a.eventDate && <p className="text-xs text-[#6B7280]">{formatDateShort(a.eventDate)}</p>}
                           </div>
                           <span
                             className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium ${
@@ -1371,19 +1566,30 @@ const handleDeleteResident = async () => {
                       ))}
                     </div>
                   )}
-                </div>
+                </section>
               </div>
 
-              <div className="flex items-center gap-3 px-6 py-4 border-t border-[#E6E0D3] shrink-0">
+              <div className="relative z-10 flex items-center gap-3 px-6 py-4 border-t border-[#E6E0D3] shrink-0 bg-white">
                 {r.deleted_at === null && (
                   <button
                     onClick={() => setDeleteRecord(r.id)}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#8A3D2C] hover:underline"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#5C2A1E] hover:underline"
                   >
                     <Archive className="h-3.5 w-3.5" /> Archive
                   </button>
                 )}
                 <div className="flex items-center gap-2 ml-auto">
+                  {r.deleted_at === null && !r.hasAccount && (
+                    <button
+                      onClick={() => {
+                        setEditRecord(r.id);
+                        setViewRecord(null);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-sage-200 px-4 py-2 text-sm font-semibold text-sage-800 hover:bg-sage-50 transition-colors"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" /> Add account
+                    </button>
+                  )}
                   {r.deleted_at === null && (
                     <button
                       onClick={() => {
@@ -1397,7 +1603,7 @@ const handleDeleteResident = async () => {
                   )}
                   <button
                     onClick={() => setViewRecord(null)}
-                    className="rounded-full bg-sage-800 hover:bg-sage-900 text-white px-5 py-2 text-sm font-semibold transition-colors"
+                    className="rounded-full bg-[#1A1A1A] hover:bg-black text-white px-5 py-2 text-sm font-semibold transition-colors"
                   >
                     Done
                   </button>
@@ -1414,11 +1620,11 @@ const handleDeleteResident = async () => {
                   <p className="font-display text-base font-bold text-[#1A1A1A] mb-1">
                     {r.firstName} {r.lastName}
                   </p>
-                  <p className="text-xs text-[#9B9484] mb-4 font-mono">{r.id}</p>
+                  <p className="text-xs text-[#6B7280] mb-4 font-mono">{r.id}</p>
                   <div className="flex justify-center mb-4">
                     <QRCodeCanvas ref={qrCanvasRef} value={qrPayload} size={180} bgColor="#ffffff" fgColor="#1A1A1A" />
                   </div>
-                  <p className="text-xs text-[#9B9484] mb-4">Scan this at the QR Scanner to sign this resident in or out.</p>
+                  <p className="text-xs text-[#6B7280] mb-4">Scan this at the QR Scanner to sign this resident in or out.</p>
                   <div className="flex items-center justify-center gap-2">
                     <button
                       onClick={() => {
@@ -1449,228 +1655,231 @@ const handleDeleteResident = async () => {
         );
       })()}
 
-      {/* ─── Add Modal ────────────────────────────────────────────────────────── */}
+      {/* ─── Add Page ─────────────────────────────────────────────────────────────
+          Full-page take-over instead of a small centered dialog -- plain white
+          background with a faded app logo watermarked at the bottom right, and
+          bold underlined section headers in ink (#1A1A1A) rather than the usual
+          sage caption pills, per the "register resident" layout redesign. Same
+          fields, same handlers -- styling only. */}
       {showAddForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-3xl w-full max-w-4xl p-8 shadow-xl border border-[#E6E0D3] max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-2xl font-black text-[#1A1A1A]">{t("addNewRecordTitle")}</h2>
-              <button onClick={handleCancelAdd} className="text-[#9B9484] hover:text-[#1A1A1A]"><XCircle size={20} /></button>
-            </div>
-            <p className="text-sm text-[#9B9484] mb-5">Fill in the resident's basic information, profile, and household details.</p>
+        <div className="fixed top-[73px] bottom-0 left-0 right-0 md:left-[280px] z-30 bg-white overflow-y-auto">
+          <img
+            src="/logo-removebg-preview.png"
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-[0.06]"
+          />
 
-            <form onSubmit={handleAddResident} noValidate className="space-y-5">
-              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Basic Information</p>
-                <div className="grid md:grid-cols-3 gap-4">
-                  {(["firstName", "middleName", "lastName"] as const).map((field) => (
-                    <div key={field}>
-                      <label className="block text-sm font-medium text-[#3D3928] mb-1">
-                        {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
-                      </label>
+          <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
+            <button
+              type="button"
+              onClick={handleCancelAdd}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-[#1A1A1A] hover:opacity-70 transition mb-8"
+            >
+              <ArrowLeft className="h-4 w-4" /> {t("cancel")}
+            </button>
+
+            <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-[#1A1A1A] text-center tracking-tight">
+              {t("addNewRecordTitle")}
+            </h1>
+            <p className="mt-2 text-sm text-[#6B7280] text-center max-w-md mx-auto">
+              Fill in the resident's basic information, profile, and household details.
+            </p>
+
+            <form onSubmit={handleAddResident} noValidate className="mt-10 space-y-10">
+              <section>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                  Basic Information
+                </h2>
+                <div className="space-y-4">
+                  <div className="grid md:grid-cols-3 gap-4">
+                    {(["firstName", "middleName", "lastName"] as const).map((field) => (
+                      <div key={field}>
+                        <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
+                          {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
+                        </label>
+                        <input
+                          type="text"
+                          required={field !== "middleName"}
+                          value={newResident[field]}
+                          onChange={(e) => setNewResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))}
+                          className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
+                            formErrors[field] ? "border-red-500" : "border-sage-200"
+                          }`}
+                        />
+                        {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("roleRequiredLabel")}</label>
+                      <div className="relative">
+                        <select
+                          required
+                          value={newResident.role}
+                          onChange={(e) => setNewResident((p) => ({ ...p, role: e.target.value }))}
+                          className={`w-full appearance-none rounded-full border px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
+                            !newResident.role ? "text-[#6B7280]" : "text-gray-900"
+                          } ${formErrors.role ? "border-red-500" : "border-sage-200"}`}
+                        >
+                          <option value="" style={{ display: "none" }} className="text-[#6B7280]">{t("chooseARoleOption")}</option>
+                          <option value="Resident" className="text-gray-900">{t("residentOption")}</option>
+                          <option value="Staff" className="text-gray-900">{t("staffOption")}</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      </div>
+                      {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("contactNumberRequiredLabel")}</label>
                       <input
                         type="text"
-                        required={field !== "middleName"}
-                        value={newResident[field]}
-                        onChange={(e) => setNewResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))}
-                        className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
-                          formErrors[field] ? "border-red-500" : "border-[#E6E0D3]"
+                        required
+                        value={newResident.contactNumber}
+                        onChange={(e) => setNewResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))}
+                        className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
+                          formErrors.contactNumber ? "border-red-500" : "border-sage-200"
                         }`}
+                        placeholder="09XX-XXX-XXXX"
+                        maxLength={13}
                       />
-                      {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+                      {newResident.contactNumber.length > 0 && !newResident.contactNumber.startsWith("09") && (
+                        <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
+                      )}
+                      {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
                     </div>
-                  ))}
-                </div>
-
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("roleRequiredLabel")}</label>
-                    <select
-                      required
-                      value={newResident.role}
-                      onChange={(e) => setNewResident((p) => ({ ...p, role: e.target.value }))}
-                      className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
-                        !newResident.role ? "text-[#9B9484]" : "text-gray-900"
-                      } ${formErrors.role ? "border-red-500" : "border-[#E6E0D3]"}`}
-                    >
-                      <option value="" style={{ display: "none" }} className="text-[#9B9484]">{t("chooseARoleOption")}</option>
-                      <option value="Resident" className="text-gray-900">{t("residentOption")}</option>
-                      <option value="Staff" className="text-gray-900">{t("staffOption")}</option>
-                    </select>
-                    {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("contactNumberRequiredLabel")}</label>
-                    <input
-                      type="text"
-                      required
-                      value={newResident.contactNumber}
-                      onChange={(e) => setNewResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))}
-                      className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
-                        formErrors.contactNumber ? "border-red-500" : "border-[#E6E0D3]"
-                      }`}
-                      placeholder="09XX-XXX-XXXX"
-                      maxLength={13}
-                    />
-                    {newResident.contactNumber.length > 0 && !newResident.contactNumber.startsWith("09") && (
-                      <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
-                    )}
-                    {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
-                  </div>
+                  <PhotoField isEdit={false} />
                 </div>
-
-                <PhotoField isEdit={false} />
-              </div>
+              </section>
 
               {/* Adviser recommendations: age profiling + household SMS notify */}
-              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("profileHouseholdLabel")}</p>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("birthDateLabel")}</label>
-                    <DatePicker
-                      value={newResident.birthDate}
-                      max={new Date().toISOString().split("T")[0]}
-                      onChange={(iso) => setNewResident((p) => ({ ...p, birthDate: iso }))}
-                      className="px-4 py-2.5"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("addressPurokLabel")}</label>
-                    <input
-                      type="text"
-                      value={newResident.address}
-                      onChange={(e) => setNewResident((p) => ({ ...p, address: e.target.value }))}
-                      placeholder={t("purokPlaceholder")}
-                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("civilStatusLabel")}</label>
-                    <select
-                      value={newResident.civilStatusId ?? ""}
-                      onChange={(e) => setNewResident((p) => ({ ...p, civilStatusId: e.target.value ? Number(e.target.value) : null }))}
-                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
-                    >
-                      <option value="">{t("anyOptionLabel")}</option>
-                      {civilStatuses.map((cs) => (
-                        <option key={cs.id} value={cs.id}>{cs.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("genderLabel")}</label>
-                    <select
-                      value={newResident.gender}
-                      onChange={(e) => setNewResident((p) => ({ ...p, gender: e.target.value }))}
-                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
-                    >
-                      <option value="">{t("anyOptionLabel")}</option>
-                      <option value="Male">{t("maleOption")}</option>
-                      <option value="Female">{t("femaleOption")}</option>
-                    </select>
-                  </div>
-                </div>
-                <CurrentStatusCheckboxes isEdit={false} />
-                <div>
-                  <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("householdCodeLabel")}</label>
-                  <SearchableSelect
-                    options={householdOptions.map((h) => ({
-                      value: String(h.id),
-                      label: h.code,
-                      hint: h.address ? `(${h.address})` : undefined,
-                    }))}
-                    onSelect={(value) => setNewResident((p) => ({ ...p, householdId: Number(value), isHouseholdHead: false }))}
-                    placeholder={t("householdCodePlaceholder")}
-                    noResultsLabel={t("householdLinkNoResults")}
-                  />
-                  <p className="mt-1 text-xs text-[#9B9484]">{t("manageHouseholdHint")}</p>
-                  {newResident.householdId && (() => {
-                    const picked = householdOptions.find((h) => h.id === newResident.householdId);
-                    return (
-                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-sage-50 text-sage-800 text-xs font-medium px-3 py-1">
-                        🏠 {picked?.code ?? `#${newResident.householdId}`}
-                        <button
-                          type="button"
-                          onClick={() => setNewResident((p) => ({ ...p, householdId: null, isHouseholdHead: false }))}
-                          className="ml-1 text-sage-700/70 hover:text-sage-800"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    );
-                  })()}
-                </div>
-                <label className={`flex items-center gap-2 text-sm ${newResident.householdId && !addFormExistingHead ? "cursor-pointer" : "cursor-not-allowed"}`}>
-                  <input
-                    type="checkbox"
-                    checked={newResident.isHouseholdHead}
-                    disabled={!newResident.householdId || !!addFormExistingHead}
-                    onChange={(e) => setNewResident((p) => ({ ...p, isHouseholdHead: e.target.checked }))}
-                    className="w-4 h-4 text-sage-800 disabled:opacity-40"
-                  />
-                  <span className={`font-medium ${newResident.householdId && !addFormExistingHead ? "text-[#3D3928]" : "text-[#9B9484]"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
-                  <span className="text-[#9B9484]">
-                    {!newResident.householdId
-                      ? t("householdHeadDisabledHint")
-                      : addFormExistingHead
-                      ? t("householdHeadTakenHint")
-                      : t("receivesEventSmsNote")}
-                  </span>
-                </label>
-                {addFormExistingHead && (
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5">
-                    ⚠️ {t("currentHeadLabel")}: <span className="font-medium">{[addFormExistingHead.firstName, addFormExistingHead.lastName].filter(Boolean).join(" ")}</span> · {t("uncheckHeadFirstNote")}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Membership</p>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={newResident.hasMemberships}
-                    onChange={(e) => setNewResident((p) => ({ ...p, hasMemberships: e.target.checked }))}
-                    className="w-4 h-4 text-sage-800"
-                  />
-                  <span className="font-medium text-[#3D3928]">{t("hasMembershipsLabel")}</span>
-                </label>
-
-                {newResident.hasMemberships &&
-                  (availableMemberships.length === 0 ? (
-                    <p className="pl-6 text-xs text-[#9B9484] italic">{t("noMembershipsAvailable")}</p>
-                  ) : (
-                    <div className="pl-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {availableMemberships.map((mem) => (
-                        <label key={mem.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input
-                            type="checkbox"
-                            value={mem.id}
-                            checked={newResident.selectedMemberships.includes(mem.id)}
-                            onChange={() => toggleMembership(mem.id, false)}
-                            className="w-4 h-4 text-sage-800"
-                          />
-                          <span>{mem.name}</span>
-                        </label>
-                      ))}
+              <section>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                  {t("profileHouseholdLabel")}
+                </h2>
+                <div className="space-y-4">
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("birthDateLabel")}</label>
+                      <DatePicker
+                        value={newResident.birthDate}
+                        max={new Date().toISOString().split("T")[0]}
+                        onChange={(iso) => setNewResident((p) => ({ ...p, birthDate: iso }))}
+                        className="px-4 py-2.5"
+                      />
                     </div>
-                  ))}
-                {formErrors.membership_ids && (
-                  <p className="pl-6 text-red-500 text-xs">{formErrors.membership_ids}</p>
-                )}
-              </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("addressPurokLabel")}</label>
+                      <input
+                        type="text"
+                        value={newResident.address}
+                        onChange={(e) => setNewResident((p) => ({ ...p, address: e.target.value }))}
+                        placeholder={t("purokPlaceholder")}
+                        className="w-full rounded-full border border-sage-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("civilStatusLabel")}</label>
+                      <div className="relative">
+                        <select
+                          value={newResident.civilStatusId ?? ""}
+                          onChange={(e) => setNewResident((p) => ({ ...p, civilStatusId: e.target.value ? Number(e.target.value) : null }))}
+                          className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                        >
+                          <option value="">{t("anyOptionLabel")}</option>
+                          {civilStatuses.map((cs) => (
+                            <option key={cs.id} value={cs.id}>{cs.label}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("genderLabel")}</label>
+                      <div className="relative">
+                        <select
+                          value={newResident.gender}
+                          onChange={(e) => setNewResident((p) => ({ ...p, gender: e.target.value }))}
+                          className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                        >
+                          <option value="">{t("anyOptionLabel")}</option>
+                          <option value="Male">{t("maleOption")}</option>
+                          <option value="Female">{t("femaleOption")}</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      </div>
+                    </div>
+                  </div>
+                  <CurrentStatusCheckboxes isEdit={false} />
+                  <div>
+                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("householdCodeLabel")}</label>
+                    <SearchableSelect
+                      options={householdOptions.map((h) => ({
+                        value: String(h.id),
+                        label: h.code,
+                        hint: h.address ? `(${h.address})` : undefined,
+                      }))}
+                      onSelect={(value) => setNewResident((p) => ({ ...p, householdId: Number(value), isHouseholdHead: false }))}
+                      placeholder={t("householdCodePlaceholder")}
+                      noResultsLabel={t("householdLinkNoResults")}
+                      footerLabel="Add new household"
+                      onFooterClick={() => setShowAddHousehold({ isEdit: false })}
+                    />
+                    <p className="mt-1 text-xs text-[#6B7280]">{t("manageHouseholdHint")}</p>
+                    {newResident.householdId && (() => {
+                      const picked = householdOptions.find((h) => h.id === newResident.householdId);
+                      return (
+                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-sage-50 text-sage-800 text-xs font-medium px-3 py-1">
+                          🏠 {picked?.code ?? `#${newResident.householdId}`}
+                          <button
+                            type="button"
+                            onClick={() => setNewResident((p) => ({ ...p, householdId: null, isHouseholdHead: false }))}
+                            className="ml-1 text-sage-700/70 hover:text-sage-800"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <label className={`flex items-center gap-2 text-sm ${newResident.householdId && !addFormExistingHead ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                    <input
+                      type="checkbox"
+                      checked={newResident.isHouseholdHead}
+                      disabled={!newResident.householdId || !!addFormExistingHead}
+                      onChange={(e) => setNewResident((p) => ({ ...p, isHouseholdHead: e.target.checked }))}
+                      className="w-4 h-4 text-[#1A1A1A] disabled:opacity-40"
+                    />
+                    <span className={`font-medium ${newResident.householdId && !addFormExistingHead ? "text-[#1A1A1A]" : "text-[#6B7280]"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
+                    <span className="text-[#6B7280]">
+                      {!newResident.householdId
+                        ? t("householdHeadDisabledHint")
+                        : addFormExistingHead
+                        ? t("householdHeadTakenHint")
+                        : t("receivesEventSmsNote")}
+                    </span>
+                  </label>
+                  {addFormExistingHead && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5">
+                      ⚠️ {t("currentHeadLabel")}: <span className="font-medium">{[addFormExistingHead.firstName, addFormExistingHead.lastName].filter(Boolean).join(" ")}</span> · {t("uncheckHeadFirstNote")}
+                    </p>
+                  )}
+                </div>
+              </section>
 
-              <div className="flex justify-between gap-3 pt-2">
-                <button type="button" onClick={handleCancelAdd} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#3D3928] hover:bg-sage-50 transition">
-                  {t("cancel")}
-                </button>
+              <MembershipPicker isEdit={false} />
+
+              <div className="pt-2 pb-4">
                 <button
                   type="submit"
                   disabled={!hasAddChanges}
-                  className={`px-5 py-2.5 rounded-full transition ${
-                    hasAddChanges ? "bg-sage-800 text-white hover:bg-sage-900" : "bg-[#F1EEE5] text-[#B8B2A2] cursor-not-allowed"
+                  className={`w-full py-4 rounded-xl font-bold uppercase tracking-wide text-sm transition ${
+                    hasAddChanges ? "bg-[#1A1A1A] text-white hover:bg-black" : "bg-[#F1EEE5] text-[#B8B2A2] cursor-not-allowed"
                   }`}
                 >
                   {t("saveRecordButton")}
@@ -1681,284 +1890,307 @@ const handleDeleteResident = async () => {
         </div>
       )}
 
-      {/* ─── Edit Modal ───────────────────────────────────────────────────────── */}
+      {/* ─── Edit Page ────────────────────────────────────────────────────────────
+          Same full-page take-over as the Add page above -- plain white
+          background, faded logo watermark, ink (#1A1A1A) underlined section
+          headers -- for a consistent Add/Edit experience. Same fields, same
+          handlers -- styling only. */}
       {editRecord && editingResident && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-3xl w-full max-w-4xl p-8 shadow-xl border border-[#E6E0D3] max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-2xl font-black text-[#1A1A1A]">{t("editRecordTitle")}</h2>
-              <button onClick={handleCancelEdit} className="text-[#9B9484] hover:text-[#1A1A1A]"><XCircle size={20} /></button>
-            </div>
-            <p className="text-sm text-[#9B9484] mb-5">Update this resident's basic information, profile, and household details.</p>
+        <div className="fixed top-[73px] bottom-0 left-0 right-0 md:left-[280px] z-30 bg-white overflow-y-auto">
+          <img
+            src="/logo-removebg-preview.png"
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-[0.06]"
+          />
+
+          <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
+            <button
+              type="button"
+              onClick={handleCancelEdit}
+              className="inline-flex items-center gap-2 text-sm font-semibold text-[#1A1A1A] hover:opacity-70 transition mb-8"
+            >
+              <ArrowLeft className="h-4 w-4" /> {t("cancel")}
+            </button>
+
+            <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-[#1A1A1A] text-center tracking-tight">
+              {t("editRecordTitle")}
+            </h1>
+            <p className="mt-2 text-sm text-[#6B7280] text-center max-w-md mx-auto">
+              Update this resident's basic information, profile, and household details.
+            </p>
 
             {editingResident.deleted_at !== null && (
-              <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">⚠️ {t("recordDeletedEditingDisabled")}</div>
+              <div className="mt-6 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-2.5 text-sm text-center">
+                ⚠️ {t("recordDeletedEditingDisabled")}
+              </div>
             )}
 
             <form
               onSubmit={handleUpdateResident}
               noValidate
-              className="space-y-5"
+              className="mt-10 space-y-10"
               style={{
                 pointerEvents: editingResident.deleted_at !== null ? "none" : "auto",
                 opacity: editingResident.deleted_at !== null ? 0.6 : 1,
               }}
             >
-              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Basic Information</p>
-                <div className="grid md:grid-cols-3 gap-4">
-                  {(["firstName", "middleName", "lastName"] as const).map((field) => (
-                    <div key={field}>
-                      <label className="block text-sm font-medium text-[#3D3928] mb-1">
-                        {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
-                      </label>
-                      <input
-                        type="text"
-                        required={field !== "middleName"}
-                        value={editingResident[field]}
-                        onChange={(e) =>
-                          setEditingResident((p) => p ? { ...p, [field]: capitalizeName(e.target.value) } : p)
-                        }
-                        className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
-                          formErrors[field] ? "border-red-500" : "border-[#E6E0D3]"
-                        }`}
-                      />
-                      {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("roleRequiredLabel")}</label>
-                    <select
-                      required
-                      value={editingResident.role}
-                      onChange={(e) => setEditingResident((p) => p ? { ...p, role: e.target.value } : p)}
-                      className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
-                        formErrors.role ? "border-red-500" : "border-[#E6E0D3]"
-                      }`}
-                    >
-                      <option value="Resident">{t("residentOption")}</option>
-                      <option value="Staff">{t("staffOption")}</option>
-                    </select>
-                    {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("contactNumberRequiredLabel")}</label>
-                    <input
-                      type="text"
-                      required
-                      value={editingResident.contactNumber}
-                      onChange={(e) =>
-                        setEditingResident((p) => p ? { ...p, contactNumber: formatContactNumber(e.target.value) } : p)
-                      }
-                      className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
-                        formErrors.contactNumber ? "border-red-500" : "border-[#E6E0D3]"
-                      }`}
-                      placeholder="09XX-XXX-XXXX"
-                      maxLength={13}
-                    />
-                    {editingResident.contactNumber.length > 0 && !editingResident.contactNumber.startsWith("09") && (
-                      <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
-                    )}
-                    {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
-                  </div>
-                </div>
-
-                <PhotoField isEdit={true} />
-              </div>
-
-              {/* Adviser recommendations: age profiling + household SMS notify */}
-              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("profileHouseholdLabel")}</p>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("birthDateLabel")}</label>
-                    <DatePicker
-                      value={editingResident.birthDate}
-                      max={new Date().toISOString().split("T")[0]}
-                      onChange={(iso) => setEditingResident((p) => p ? { ...p, birthDate: iso } : p)}
-                      className="px-4 py-2.5"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("addressPurokLabel")}</label>
-                    <input
-                      type="text"
-                      value={editingResident.address}
-                      onChange={(e) => setEditingResident((p) => p ? { ...p, address: e.target.value } : p)}
-                      placeholder={t("purokPlaceholder")}
-                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("civilStatusLabel")}</label>
-                    <select
-                      value={editingResident.civilStatusId ?? ""}
-                      onChange={(e) => setEditingResident((p) => p ? { ...p, civilStatusId: e.target.value ? Number(e.target.value) : null } : p)}
-                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
-                    >
-                      <option value="">{t("anyOptionLabel")}</option>
-                      {civilStatuses.map((cs) => (
-                        <option key={cs.id} value={cs.id}>{cs.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("genderLabel")}</label>
-                    <select
-                      value={editingResident.gender}
-                      onChange={(e) => setEditingResident((p) => p ? { ...p, gender: e.target.value } : p)}
-                      className="w-full rounded-full border border-[#E6E0D3] px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
-                    >
-                      <option value="">{t("anyOptionLabel")}</option>
-                      <option value="Male">{t("maleOption")}</option>
-                      <option value="Female">{t("femaleOption")}</option>
-                    </select>
-                  </div>
-                </div>
-                <CurrentStatusCheckboxes isEdit={true} />
-                <div>
-                  <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("householdCodeLabel")}</label>
-                  <SearchableSelect
-                    options={householdOptions.map((h) => ({
-                      value: String(h.id),
-                      label: h.code,
-                      hint: h.address ? `(${h.address})` : undefined,
-                    }))}
-                    onSelect={(value) => setEditingResident((p) => p ? { ...p, householdId: Number(value), isHouseholdHead: false } : p)}
-                    placeholder={t("householdCodePlaceholder")}
-                    noResultsLabel={t("householdLinkNoResults")}
-                  />
-                  <p className="mt-1 text-xs text-[#9B9484]">{t("manageHouseholdHint")}</p>
-                  {editingResident.householdId && (() => {
-                    const picked = householdOptions.find((h) => h.id === editingResident.householdId);
-                    return (
-                      <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-sage-50 text-sage-800 text-xs font-medium px-3 py-1">
-                        🏠 {picked?.code ?? `#${editingResident.householdId}`}
-                        <button
-                          type="button"
-                          onClick={() => setEditingResident((p) => p ? { ...p, householdId: null, isHouseholdHead: false } : p)}
-                          className="ml-1 text-sage-700/70 hover:text-sage-800"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    );
-                  })()}
-                </div>
-                <label className={`flex items-center gap-2 text-sm ${editingResident.householdId && !editFormExistingHead ? "cursor-pointer" : "cursor-not-allowed"}`}>
-                  <input
-                    type="checkbox"
-                    checked={editingResident.isHouseholdHead}
-                    disabled={!editingResident.householdId || !!editFormExistingHead}
-                    onChange={(e) => setEditingResident((p) => p ? { ...p, isHouseholdHead: e.target.checked } : p)}
-                    className="w-4 h-4 text-sage-800 disabled:opacity-40"
-                  />
-                  <span className={`font-medium ${editingResident.householdId && !editFormExistingHead ? "text-[#3D3928]" : "text-[#9B9484]"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
-                  <span className="text-[#9B9484]">
-                    {!editingResident.householdId
-                      ? t("householdHeadDisabledHint")
-                      : editFormExistingHead
-                      ? t("householdHeadTakenHint")
-                      : t("receivesEventSmsNote")}
-                  </span>
-                </label>
-                {editFormExistingHead && (
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5">
-                    ⚠️ {t("currentHeadLabel")}: <span className="font-medium">{[editFormExistingHead.firstName, editFormExistingHead.lastName].filter(Boolean).join(" ")}</span> · {t("uncheckHeadFirstNote")}
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Membership</p>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editingResident.hasMemberships}
-                    onChange={(e) => setEditingResident((p) => (p ? { ...p, hasMemberships: e.target.checked } : p))}
-                    className="w-4 h-4 text-sage-800"
-                  />
-                  <span className="font-medium text-[#3D3928]">{t("hasMembershipsLabel")}</span>
-                </label>
-
-                {editingResident.hasMemberships &&
-                  (availableMemberships.length === 0 ? (
-                    <p className="pl-6 text-xs text-[#9B9484] italic">{t("noMembershipsAvailable")}</p>
-                  ) : (
-                    <div className="pl-6 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {availableMemberships.map((mem) => (
-                        <label key={mem.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                          <input
-                            type="checkbox"
-                            value={mem.id}
-                            checked={editingResident.selectedMemberships.includes(mem.id)}
-                            onChange={() => toggleMembership(mem.id, true)}
-                            className="w-4 h-4 text-sage-800"
-                          />
-                          <span>{mem.name}</span>
+              <section>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                  Basic Information
+                </h2>
+                <div className="space-y-4">
+                  <div className="grid md:grid-cols-3 gap-4">
+                    {(["firstName", "middleName", "lastName"] as const).map((field) => (
+                      <div key={field}>
+                        <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
+                          {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
                         </label>
-                      ))}
-                    </div>
-                  ))}
-                {formErrors.membership_ids && (
-                  <p className="pl-6 text-red-500 text-xs">{formErrors.membership_ids}</p>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF8F3] p-5 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Account Access</p>
-                {editingResident.hasAccount ? (
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium text-[#3D3928]">{t("hasAccountCheckboxLabel")}</p>
-                    <div className="grid sm:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-[#3D3928] mb-1">{t("usernameLabel")}</label>
                         <input
                           type="text"
-                          value={`PR-${String(editingResident.real_id).padStart(4, "0")}`}
-                          disabled
-                          className="w-full rounded-full border px-4 py-2.5 bg-[#F1EEE5] text-[#9B9484] border-[#E6E0D3] cursor-not-allowed"
+                          required={field !== "middleName"}
+                          value={editingResident[field]}
+                          onChange={(e) =>
+                            setEditingResident((p) => p ? { ...p, [field]: capitalizeName(e.target.value) } : p)
+                          }
+                          className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
+                            formErrors[field] ? "border-red-500" : "border-sage-200"
+                          }`}
                         />
+                        {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
                       </div>
+                    ))}
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("roleRequiredLabel")}</label>
+                      <div className="relative">
+                        <select
+                          required
+                          value={editingResident.role}
+                          onChange={(e) => setEditingResident((p) => p ? { ...p, role: e.target.value } : p)}
+                          className={`w-full appearance-none rounded-full border px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
+                            formErrors.role ? "border-red-500" : "border-sage-200"
+                          }`}
+                        >
+                          <option value="Resident">{t("residentOption")}</option>
+                          <option value="Staff">{t("staffOption")}</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      </div>
+                      {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("contactNumberRequiredLabel")}</label>
+                      <input
+                        type="text"
+                        required
+                        value={editingResident.contactNumber}
+                        onChange={(e) =>
+                          setEditingResident((p) => p ? { ...p, contactNumber: formatContactNumber(e.target.value) } : p)
+                        }
+                        className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
+                          formErrors.contactNumber ? "border-red-500" : "border-sage-200"
+                        }`}
+                        placeholder="09XX-XXX-XXXX"
+                        maxLength={13}
+                      />
+                      {editingResident.contactNumber.length > 0 && !editingResident.contactNumber.startsWith("09") && (
+                        <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
+                      )}
+                      {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+                    </div>
+                  </div>
+
+                  <PhotoField isEdit={true} />
+                </div>
+              </section>
+
+              {/* Adviser recommendations: age profiling + household SMS notify */}
+              <section>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                  {t("profileHouseholdLabel")}
+                </h2>
+                <div className="space-y-4">
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("birthDateLabel")}</label>
+                      <DatePicker
+                        value={editingResident.birthDate}
+                        max={new Date().toISOString().split("T")[0]}
+                        onChange={(iso) => setEditingResident((p) => p ? { ...p, birthDate: iso } : p)}
+                        className="px-4 py-2.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("addressPurokLabel")}</label>
+                      <input
+                        type="text"
+                        value={editingResident.address}
+                        onChange={(e) => setEditingResident((p) => p ? { ...p, address: e.target.value } : p)}
+                        placeholder={t("purokPlaceholder")}
+                        className="w-full rounded-full border border-sage-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("civilStatusLabel")}</label>
+                      <div className="relative">
+                        <select
+                          value={editingResident.civilStatusId ?? ""}
+                          onChange={(e) => setEditingResident((p) => p ? { ...p, civilStatusId: e.target.value ? Number(e.target.value) : null } : p)}
+                          className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                        >
+                          <option value="">{t("anyOptionLabel")}</option>
+                          {civilStatuses.map((cs) => (
+                            <option key={cs.id} value={cs.id}>{cs.label}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("genderLabel")}</label>
+                      <div className="relative">
+                        <select
+                          value={editingResident.gender}
+                          onChange={(e) => setEditingResident((p) => p ? { ...p, gender: e.target.value } : p)}
+                          className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                        >
+                          <option value="">{t("anyOptionLabel")}</option>
+                          <option value="Male">{t("maleOption")}</option>
+                          <option value="Female">{t("femaleOption")}</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      </div>
+                    </div>
+                  </div>
+                  <CurrentStatusCheckboxes isEdit={true} />
+                  <div>
+                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("householdCodeLabel")}</label>
+                    <SearchableSelect
+                      options={householdOptions.map((h) => ({
+                        value: String(h.id),
+                        label: h.code,
+                        hint: h.address ? `(${h.address})` : undefined,
+                      }))}
+                      onSelect={(value) => setEditingResident((p) => p ? { ...p, householdId: Number(value), isHouseholdHead: false } : p)}
+                      placeholder={t("householdCodePlaceholder")}
+                      noResultsLabel={t("householdLinkNoResults")}
+                      footerLabel="Add new household"
+                      onFooterClick={() => setShowAddHousehold({ isEdit: true })}
+                    />
+                    <p className="mt-1 text-xs text-[#6B7280]">{t("manageHouseholdHint")}</p>
+                    {editingResident.householdId && (() => {
+                      const picked = householdOptions.find((h) => h.id === editingResident.householdId);
+                      return (
+                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-sage-50 text-sage-800 text-xs font-medium px-3 py-1">
+                          🏠 {picked?.code ?? `#${editingResident.householdId}`}
+                          <button
+                            type="button"
+                            onClick={() => setEditingResident((p) => p ? { ...p, householdId: null, isHouseholdHead: false } : p)}
+                            className="ml-1 text-sage-700/70 hover:text-sage-800"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <label className={`flex items-center gap-2 text-sm ${editingResident.householdId && !editFormExistingHead ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                    <input
+                      type="checkbox"
+                      checked={editingResident.isHouseholdHead}
+                      disabled={!editingResident.householdId || !!editFormExistingHead}
+                      onChange={(e) => setEditingResident((p) => p ? { ...p, isHouseholdHead: e.target.checked } : p)}
+                      className="w-4 h-4 text-[#1A1A1A] disabled:opacity-40"
+                    />
+                    <span className={`font-medium ${editingResident.householdId && !editFormExistingHead ? "text-[#1A1A1A]" : "text-[#6B7280]"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
+                    <span className="text-[#6B7280]">
+                      {!editingResident.householdId
+                        ? t("householdHeadDisabledHint")
+                        : editFormExistingHead
+                        ? t("householdHeadTakenHint")
+                        : t("receivesEventSmsNote")}
+                    </span>
+                  </label>
+                  {editFormExistingHead && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5">
+                      ⚠️ {t("currentHeadLabel")}: <span className="font-medium">{[editFormExistingHead.firstName, editFormExistingHead.lastName].filter(Boolean).join(" ")}</span> · {t("uncheckHeadFirstNote")}
+                    </p>
+                  )}
+                </div>
+              </section>
+
+              <MembershipPicker isEdit={true} />
+
+              <section>
+                <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                  Account Access
+                </h2>
+                <div className="space-y-3">
+                  {editingResident.hasAccount ? (
+                    <div className="space-y-3">
+                      <p className="text-sm font-medium text-[#1A1A1A]">{t("hasAccountCheckboxLabel")}</p>
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("usernameLabel")}</label>
+                          <input
+                            type="text"
+                            value={`PR-${String(editingResident.real_id).padStart(4, "0")}`}
+                            disabled
+                            className="w-full rounded-full border px-4 py-2.5 bg-[#F1EEE5] text-[#6B7280] border-sage-200 cursor-not-allowed"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
+                            {t("passwordLabel")}{" "}
+                            <span className="text-[#6B7280] text-xs font-normal">{t("passwordResetNote")}</span>
+                          </label>
+                          <input
+                            type="password"
+                            value={editingResident.password}
+                            onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
+                            className="w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 border-sage-200"
+                            placeholder={t("resetPasswordPlaceholder")}
+                          />
+                          {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm text-[#6B7280] italic">This resident does not have a portal account yet.</p>
                       <div>
-                        <label className="block text-sm font-medium text-[#3D3928] mb-1">
+                        <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
                           {t("passwordLabel")}{" "}
-                          <span className="text-[#9B9484] text-xs font-normal">{t("passwordResetNote")}</span>
+                          <span className="text-[#6B7280] text-xs font-normal">(set to create their account)</span>
                         </label>
                         <input
                           type="password"
                           value={editingResident.password}
                           onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
-                          className="w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 border-[#E6E0D3]"
-                          placeholder={t("resetPasswordPlaceholder")}
+                          className="w-full sm:w-1/2 rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 border-sage-200"
+                          placeholder="Set an initial password"
                         />
                         {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
+                        <p className="mt-1 text-xs text-[#6B7280]">
+                          Username will be {`PR-${String(editingResident.real_id).padStart(4, "0")}`}. Saving with a password creates the account.
+                        </p>
                       </div>
                     </div>
-                  </div>
-                ) : (
-                  // No login account exists for this resident -- and this
-                  // page never creates one. Account access, when needed,
-                  // is granted through a separate flow, not as part of
-                  // editing a resident's profile.
-                  <p className="text-sm text-[#9B9484] italic">This resident does not have a portal account.</p>
-                )}
-              </div>
+                  )}
+                </div>
+              </section>
 
-              <div className="flex justify-between gap-3 pt-2">
-                <button type="button" onClick={handleCancelEdit} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#3D3928] hover:bg-sage-50 transition">
-                  {t("cancel")}
-                </button>
+              <div className="pt-2 pb-4">
                 <button
                   type="submit"
                   disabled={!hasEditChanges || editingResident.deleted_at !== null}
-                  className={`px-5 py-2.5 rounded-full transition ${
+                  className={`w-full py-4 rounded-xl font-bold uppercase tracking-wide text-sm transition ${
                     hasEditChanges && editingResident.deleted_at === null
-                      ? "bg-sage-800 text-white hover:bg-sage-900"
+                      ? "bg-[#1A1A1A] text-white hover:bg-black"
                       : "bg-[#F1EEE5] text-[#B8B2A2] cursor-not-allowed"
                   }`}
                 >
@@ -1966,6 +2198,31 @@ const handleDeleteResident = async () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ID Photo preview popup ───────────────────────────────────────────── */}
+      {photoPreviewModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80] px-4" onClick={() => setPhotoPreviewModal(null)}>
+          <div className="bg-white rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-[#E6E0D3] flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
+                <span className="inline-flex items-center rounded-full bg-sage-50 text-sage-800 text-[11px] font-bold uppercase tracking-wide px-3 py-1 shrink-0">
+                  {photoPreviewModal.label}
+                </span>
+                <span className="text-sm font-medium text-[#1A1A1A] truncate">{photoPreviewModal.name}</span>
+                {photoPreviewModal.size !== null && (
+                  <span className="text-xs text-[#6B7280] shrink-0">· {(photoPreviewModal.size / (1024 * 1024)).toFixed(2)} MB</span>
+                )}
+              </div>
+              <button onClick={() => setPhotoPreviewModal(null)} className="text-[#6B7280] hover:text-[#1A1A1A] p-1 shrink-0">
+                <XIcon className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-[#FAF9F5] flex items-center justify-center p-6">
+              <img src={photoPreviewModal.url} alt={photoPreviewModal.name} className="max-w-full max-h-[65vh] rounded-xl shadow-sm" />
+            </div>
           </div>
         </div>
       )}
@@ -2007,6 +2264,79 @@ const handleDeleteResident = async () => {
       />
 
       {/* ─── Delete Confirm Modal ─────────────────────────────────────────────── */}
+      {showAddHousehold && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4"
+          onClick={() => !addHouseholdSaving && setShowAddHousehold(false)}
+        >
+          <div
+            className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-lg font-bold text-[#1A1A1A]">Add new household</h3>
+              <button
+                onClick={() => !addHouseholdSaving && setShowAddHousehold(false)}
+                className="text-[#6B7280] hover:text-[#1A1A1A]"
+              >
+                <XIcon size={20} />
+              </button>
+            </div>
+            <p className="text-sm text-[#6B7280] mb-5">
+              A household code is generated automatically. It'll appear on the Households page right away and be linked to this resident.
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
+                  Address / Purok <span className="text-[#6B7280] font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={newHouseholdAddress}
+                  onChange={(e) => setNewHouseholdAddress(e.target.value)}
+                  placeholder="Purok 1, Barangay Piao"
+                  className="w-full rounded-full border border-sage-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
+                  Contact number <span className="text-[#6B7280] font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={newHouseholdContact}
+                  onChange={(e) => setNewHouseholdContact(formatContactNumber(e.target.value))}
+                  placeholder="09XX-XXX-XXXX"
+                  maxLength={13}
+                  className="w-full rounded-full border border-sage-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                />
+              </div>
+              {addHouseholdError && <p className="text-red-500 text-xs">{addHouseholdError}</p>}
+            </div>
+
+            <div className="flex justify-end gap-3 pt-5">
+              <button
+                type="button"
+                onClick={() => setShowAddHousehold(false)}
+                disabled={addHouseholdSaving}
+                className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitNewHousehold}
+                disabled={addHouseholdSaving}
+                className="px-5 py-2.5 rounded-full bg-sage-800 hover:bg-sage-900 text-white font-semibold transition disabled:opacity-50"
+              >
+                {addHouseholdSaving ? "Creating…" : "Create household"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {deleteRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
@@ -2014,7 +2344,7 @@ const handleDeleteResident = async () => {
             <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-5">{t("moveToTrashConfirm")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#3D3928] hover:bg-sage-50 transition">{t("cancel")}</button>
+              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("cancel")}</button>
               <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">{t("yesDeleteButton")}</button>
             </div>
           </div>
@@ -2130,7 +2460,7 @@ const handleDeleteResident = async () => {
             <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#3D3928] hover:bg-sage-50 transition">{t("stayButton")}</button>
+              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   setShowCancelConfirm(null);

@@ -1,11 +1,14 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Filter, Eye, XCircle, LogIn, LogOut, ChevronLeft, ChevronRight, Archive, CheckCircle, AlertCircle, Package, Trash2, Star, Plus, Pencil } from "lucide-react";
-import SearchBar from "../../../components/ui/SearchBar";
+import {
+  Filter, XCircle, X, LogIn, LogOut, ChevronLeft, Archive, CheckCircle, AlertCircle, AlertTriangle,
+  Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown, Paperclip,
+  FileText, Download, Megaphone, ClipboardList, Users,
+} from "lucide-react";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import DatePicker from "../../../components/ui/DatePicker";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
-import api from "../../../lib/api";
+import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface MyEvent {
@@ -39,6 +42,22 @@ interface BorrowableInventoryItem {
   storage_location?: string | null;
 }
 
+interface EventExpense {
+  id: number;
+  item: string;
+  amount: string | number;
+  notes: string | null;
+  created_at: string;
+  receipt_url: string | null;
+}
+
+interface EventExpenseSummary {
+  approved_budget: number | null;
+  total_expenses: number;
+  is_over_budget: boolean;
+  expenses: EventExpense[];
+}
+
 interface EventsViewProps {
   allEvents: MyEvent[];
   onDeleteEvent: (id: number | string) => Promise<void>;
@@ -48,9 +67,6 @@ interface EventsViewProps {
   memberships?: any[];
   attendanceRecords?: any[];
 }
-
-const THIS_WEEK_KEY = "📅 This Week";
-const UNKNOWN_DATE_KEY = "__UNKNOWN_DATE__";
 
 export function EventsView({
   allEvents,
@@ -63,6 +79,20 @@ export function EventsView({
 }: EventsViewProps) {
   const { t } = useLanguage();
   const eventStatusLabel = (label: string) => (label === "Upcoming" ? t("upcomingBadge") : label === "Ongoing" ? t("ongoingBadge") : t("pastBadge"));
+  // The card/detail-view chip reads "Completed" for a finished event instead
+  // of "Past" -- "Past" stays as-is everywhere else (filter dropdown option,
+  // etc.) since that wording is still correct there.
+  const eventStatusChipLabel = (label: string) => (label === "Past" ? t("completedBadge") : eventStatusLabel(label));
+  const statusPillClasses = (label: string) => {
+    if (label === "Upcoming") return "bg-sage-50 text-sage-700";
+    if (label === "Ongoing") return "bg-gold-50 text-gold-700";
+    return "bg-[#E6E0D3]/70 text-[#6B7280]";
+  };
+  const statusDotClasses = (label: string) => {
+    if (label === "Upcoming") return "bg-sage-600";
+    if (label === "Ongoing") return "bg-gold-600";
+    return "bg-[#8A8474]";
+  };
   const attendanceStatusLabel = (label: string) => {
     if (label === "Complete") return t("statusComplete");
     if (label === "Incomplete") return t("statusIncomplete");
@@ -72,6 +102,9 @@ export function EventsView({
   const [eventFilter, setEventFilter] = useState("all");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [viewEv, setViewEv] = useState<MyEvent | null>(null);
+  // Which of the 4 tabs (Overview / Attendance / Budget / Feedback) is
+  // showing in the full-page event detail view.
+  const [detailTab, setDetailTab] = useState<"overview" | "attendance" | "budget" | "feedback">("overview");
   // UC-16 (staff side): the ratings/comments residents left for this
   // event -- fetched from /feedback/event/{id} (backend already existed,
   // it just wasn't wired into any staff screen yet).
@@ -80,11 +113,23 @@ export function EventsView({
   const [feedbackCurrentPage, setFeedbackCurrentPage] = useState(1);
   const feedbackItemsPerPage = 5;
 
+  // UC-8 (staff side, folded into the event detail view's Budget tab): the
+  // approved-budget-vs-expenses summary for whichever event is open, reusing
+  // the same /events/{id}/expenses endpoints the standalone Budget page uses.
+  const [budgetSummary, setBudgetSummary] = useState<EventExpenseSummary | null>(null);
+  const [budgetLoading, setBudgetLoading] = useState(false);
+
   useEffect(() => {
     if (!viewEv) {
       setEventFeedback([]);
+      setBudgetSummary(null);
       return;
     }
+    setDetailTab("overview");
+    setAttendanceCurrentPage(1);
+    setAttendanceSearch("");
+    setAttendanceStatusFilter("all");
+
     let cancelled = false;
     setFeedbackLoading(true);
     setFeedbackCurrentPage(1);
@@ -92,19 +137,25 @@ export function EventsView({
       .then((res) => { if (!cancelled) setEventFeedback(res.data ?? []); })
       .catch(() => { if (!cancelled) setEventFeedback([]); })
       .finally(() => { if (!cancelled) setFeedbackLoading(false); });
+
+    loadBudgetSummary(viewEv.id);
+
     return () => { cancelled = true; };
-  }, [viewEv]);
+  }, [viewEv]); // eslint-disable-line react-hooks/exhaustive-deps
   const feedbackTotalPages = Math.max(1, Math.ceil(eventFeedback.length / feedbackItemsPerPage));
   const paginatedFeedback = useMemo(() => {
     const start = (feedbackCurrentPage - 1) * feedbackItemsPerPage;
     return eventFeedback.slice(start, start + feedbackItemsPerPage);
   }, [eventFeedback, feedbackCurrentPage]);
-  const [showAttendance, setShowAttendance] = useState<MyEvent | null>(null);
+  const averageRating = eventFeedback.length > 0 ? eventFeedback.reduce((sum, f) => sum + f.rating, 0) / eventFeedback.length : 0;
+
   const [eventToDelete, setEventToDelete] = useState<number | string | null>(null);
   const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(null);
   const [editingEvent, setEditingEvent] = useState<MyEvent | null>(null);
   const [originalEventForm, setOriginalEventForm] = useState<string>("");
-  const [formOpen, setFormOpen] = useState(true);
+  // Whether the Add/Edit Event modal is open (renamed in spirit from the old
+  // "formOpen" toggle for the persistent side panel this replaced).
+  const [formOpen, setFormOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -161,6 +212,15 @@ export function EventsView({
       return e.membershipIds.map((id) => getMembershipName(id)).filter(Boolean) as string[];
     }
     return [];
+  };
+
+  // "All residents" when the event is open to everyone, otherwise the
+  // actual membership group name(s) (e.g. "Pantawid Pamilya", "Walang
+  // Gutom") joined together -- the same two states shown on the card
+  // footer and in the Overview tab's Coverage stat.
+  const getCoverageLabel = (e: MyEvent): string => {
+    const names = getMembershipNames(e);
+    return names.length === 0 ? t("allResidentsCoverageLabel") : names.join(", ");
   };
 
   const formatDbEvent = (dbEvent: any): MyEvent => {
@@ -288,6 +348,44 @@ export function EventsView({
     fetchAttendance();
   }, [localEvents]);
 
+  // Real-time-ish refresh: this app has no websocket/push layer, so a
+  // second staff member adding/editing/attending an event elsewhere is
+  // picked up here via light polling plus a refetch whenever this tab
+  // regains focus or becomes visible again, matching the same pattern used
+  // on the Memberships page. Paused while the Add/Edit modal or a delete
+  // confirmation is open so a background refresh never yanks state out from
+  // under an in-progress edit.
+  const anyModalOpen = formOpen || eventToDelete !== null;
+  const anyModalOpenRef = useRef(anyModalOpen);
+  anyModalOpenRef.current = anyModalOpen;
+
+  useEffect(() => {
+    const poll = setInterval(() => {
+      if (anyModalOpenRef.current) return;
+      refreshEventsFromAPI();
+    }, 20000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && !anyModalOpenRef.current) {
+        refreshEventsFromAPI();
+      }
+    };
+    const handleFocus = () => {
+      if (!anyModalOpenRef.current) {
+        refreshEventsFromAPI();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
+
   const getXsrfToken = () => {
     const token = document.cookie
       .split("; ")
@@ -310,6 +408,11 @@ export function EventsView({
     postToFacebook: false,
     borrowedItems: [] as { inventoryItemId: string; quantity: string }[],
   });
+
+  const blankEventForm = {
+    title: "", date: "", time: "", endTime: "", callTimeStart: "", callTimeEnd: "", location: "", description: "",
+    notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [] as { inventoryItemId: string; quantity: string }[],
+  };
 
   // Whether the currently-selected event date is today -- used below to
   // reject an already-passed time the moment it's picked, rather than
@@ -453,9 +556,9 @@ export function EventsView({
 
   const getEventStatus = (event: MyEvent): { label: "Upcoming" | "Ongoing" | "Past"; color: string } => {
     const now = new Date();
-    const upcoming = { label: "Upcoming" as const, color: "bg-teal-100 text-teal-800" };
-    const ongoing = { label: "Ongoing" as const, color: "bg-amber-100 text-amber-800" };
-    const past = { label: "Past" as const, color: "bg-amber-50 text-amber-700" };
+    const upcoming = { label: "Upcoming" as const, color: "bg-sage-50 text-sage-700" };
+    const ongoing = { label: "Ongoing" as const, color: "bg-gold-50 text-gold-700" };
+    const past = { label: "Past" as const, color: "bg-[#E6E0D3]/70 text-[#6B7280]" };
 
     const start = parseEventDateTime(event.event_start) ?? parseEventDateTime(event.date) ?? parseEventDateTime(event.startDate);
     if (!start) return upcoming;
@@ -474,6 +577,8 @@ export function EventsView({
     if (now > end) return past;
     return ongoing;
   };
+
+  const isEventLocked = (label: "Upcoming" | "Ongoing" | "Past") => label === "Past" || label === "Ongoing";
 
   const getFilterStatus = (event: MyEvent, filter: string): boolean => {
     const status = getEventStatus(event);
@@ -562,58 +667,6 @@ export function EventsView({
   useEffect(() => {
     setCurrentPage(1);
   }, [eventSearch, eventFilter, selectedDate]);
-
-  const groupedEvents = useMemo(() => {
-    const groups: Record<string, MyEvent[]> = {};
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const weekStart = getStartOfWeek(today);
-    const weekEnd = getEndOfWeek(today);
-
-    paginatedEvents.forEach((e) => {
-      let dateString = e.date || e.event_start || e.startDate || "";
-      if (dateString.includes(" ")) {
-        dateString = dateString.split(" ")[0];
-      }
-      if (dateString.includes("T")) {
-        dateString = dateString.split("T")[0];
-      }
-
-      const eventDate = new Date(dateString);
-      eventDate.setHours(0, 0, 0, 0);
-      const dateOnly = dateString;
-
-      let sectionKey: string;
-
-      if (!isNaN(eventDate.getTime()) && eventDate >= weekStart && eventDate <= weekEnd) {
-        sectionKey = "📅 This Week";
-      } else if (!isNaN(eventDate.getTime()) && eventDate.getTime() !== 0) {
-        sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
-          weekday: "long", year: "numeric", month: "long", day: "numeric",
-        });
-      } else {
-        sectionKey = UNKNOWN_DATE_KEY;
-      }
-
-      if (!groups[sectionKey]) groups[sectionKey] = [];
-      groups[sectionKey].push(e);
-    });
-
-    const sortedGroups = Object.entries(groups).sort(([keyA], [keyB]) => {
-      if (keyA === THIS_WEEK_KEY) return -1;
-      if (keyB === THIS_WEEK_KEY) return 1;
-      if (keyA === UNKNOWN_DATE_KEY) return 1;
-      if (keyB === UNKNOWN_DATE_KEY) return -1;
-      const dateA = new Date(keyA);
-      const dateB = new Date(keyB);
-      if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
-        return dateB.getTime() - dateA.getTime();
-      }
-      return 0;
-    });
-
-    return Object.fromEntries(sortedGroups);
-  }, [paginatedEvents]);
 
   // Runs the field-level checks that used to live at the top of the old
   // handleSaveEvent, then -- if they pass -- opens the confirm step
@@ -738,21 +791,23 @@ export function EventsView({
         });
       }
 
-      if (editingEvent) {
-        setEditingEvent(null);
-      }
-
-      setNewEvent({
-        title: "", date: "", time: "", endTime: "", callTimeStart: "", callTimeEnd: "", location: "", description: "",
-        notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [],
-      });
+      const wasEditing = !!editingEvent;
+      setEditingEvent(null);
+      setFormOpen(false);
+      setNewEvent(blankEventForm);
       setTimeFieldErrors({});
 
       if (onCreateEvent && savedEvent) {
         onCreateEvent(formatDbEvent(savedEvent));
       }
 
-      setSuccessMessage(editingEvent ? t("eventUpdatedSuccess") : t("eventCreatedSuccess"));
+      // If this save was made from inside the detail view, keep it open on
+      // the freshly-saved copy instead of dumping the user back to the grid.
+      if (viewEv && savedEvent?.id && String(savedEvent.id) === String(viewEv.id)) {
+        setViewEv(formatDbEvent(savedEvent));
+      }
+
+      setSuccessMessage(wasEditing ? t("eventUpdatedSuccess") : t("eventCreatedSuccess"));
       setShowSuccessModal(true);
 
     } catch (error: any) {
@@ -772,8 +827,17 @@ export function EventsView({
     }
   };
 
-  const startEditEvent = (event: MyEvent) => {
+  const openAddEventModal = () => {
     if (editingEvent || isSubmitting) return;
+    setNewEvent(blankEventForm);
+    setTimeFieldErrors({});
+    setFormOpen(true);
+  };
+
+  const startEditEvent = (event: MyEvent) => {
+    if (isSubmitting) return;
+    const status = getEventStatus(event);
+    if (isEventLocked(status.label)) return;
     let eventDate = "";
     let eventTime = "";
 
@@ -825,13 +889,11 @@ export function EventsView({
   // was loaded (title, schedule, borrowed items, everything).
   const isEventFormUnchanged = !!editingEvent && JSON.stringify(newEvent) === originalEventForm;
 
-  const cancelEdit = () => {
+  const closeEventModal = () => {
     if (isSubmitting) return;
+    setFormOpen(false);
     setEditingEvent(null);
-    setNewEvent({
-      title: "", date: "", time: "", endTime: "", callTimeStart: "", callTimeEnd: "", location: "", description: "",
-      notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [],
-    });
+    setNewEvent(blankEventForm);
     setTimeFieldErrors({});
   };
 
@@ -842,6 +904,9 @@ export function EventsView({
       await onDeleteEvent(id);
       setLocalEvents(prev => prev.filter(e => e.id !== id));
       setEventToDelete(null);
+      // If the deleted event was the one open in the detail view, go back
+      // to the grid instead of leaving a dead event on screen.
+      if (viewEv && String(viewEv.id) === String(id)) setViewEv(null);
       setSuccessMessage(t("eventDeletedSuccess"));
       setShowSuccessModal(true);
     } catch (error: any) {
@@ -862,32 +927,32 @@ export function EventsView({
     });
   };
 
-const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[]) => {
-  const recordsForEvent = liveAttendances[eventId] || attendanceRecords.filter((a: any) => a.eventId === eventId);
+  const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[]) => {
+    const recordsForEvent = liveAttendances[eventId] || attendanceRecords.filter((a: any) => a.eventId === eventId);
 
-  const combinedList = recordsForEvent.map((record: any) => ({
-    eventId: eventId, // ✅ keep this for existing records
-    residentId: record.residentId,
-    residentName: record.residentName,
-    timeIn: record.timeIn || "",
-    timeOut: record.timeOut || ""
-  }));
+    const combinedList = recordsForEvent.map((record: any) => ({
+      eventId: eventId,
+      residentId: record.residentId,
+      residentName: record.residentName,
+      timeIn: record.timeIn || "",
+      timeOut: record.timeOut || ""
+    }));
 
-  eligibleMembers.forEach((member: any) => {
-    if (!combinedList.some(item => item.residentId === member.id)) {
-      const memberName = member.name || (member.first_name ? `${member.first_name} ${member.last_name}` : `Resident #${member.id}`);
-      combinedList.push({
-        eventId: eventId, // ✅ ADDED THIS — fixes the error
-        residentId: member.id,
-        residentName: memberName,
-        timeIn: "",
-        timeOut: ""
-      });
-    }
-  });
+    eligibleMembers.forEach((member: any) => {
+      if (!combinedList.some(item => item.residentId === member.id)) {
+        const memberName = member.name || (member.first_name ? `${member.first_name} ${member.last_name}` : `Resident #${member.id}`);
+        combinedList.push({
+          eventId: eventId,
+          residentId: member.id,
+          residentName: memberName,
+          timeIn: "",
+          timeOut: ""
+        });
+      }
+    });
 
-  return combinedList;
-};
+    return combinedList;
+  };
   const getAttendanceStatus = (record: any) => {
     if (record.timeIn && record.timeOut) return { label: "Complete" };
     if (record.timeIn || record.timeOut) return { label: "Incomplete" };
@@ -903,312 +968,1048 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
     });
   };
 
+  // Attendance tab data -- keyed off the event currently open in the detail
+  // view (`viewEv`) instead of a separate modal's own state, now that the
+  // attendance table lives inside the Attendance tab rather than its own
+  // popup.
   const paginatedAttendance = useMemo(() => {
-    if (!showAttendance) return [];
-    const eligibleMembers = getMembersForEvent(showAttendance);
-    const fullList = getFullAttendanceList(showAttendance.id, eligibleMembers);
+    if (!viewEv) return [];
+    const eligibleMembers = getMembersForEvent(viewEv);
+    const fullList = getFullAttendanceList(viewEv.id, eligibleMembers);
     const filtered = getFilteredAttendance(fullList);
     const startIndex = (attendanceCurrentPage - 1) * attendanceItemsPerPage;
     return filtered.slice(startIndex, startIndex + attendanceItemsPerPage);
-  }, [showAttendance, attendanceSearch, attendanceStatusFilter, attendanceCurrentPage]);
+  }, [viewEv, attendanceSearch, attendanceStatusFilter, attendanceCurrentPage, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const attendanceTotalPages = useMemo(() => {
-    if (!showAttendance) return 0;
-    const eligibleMembers = getMembersForEvent(showAttendance);
-    const fullList = getFullAttendanceList(showAttendance.id, eligibleMembers);
+    if (!viewEv) return 0;
+    const eligibleMembers = getMembersForEvent(viewEv);
+    const fullList = getFullAttendanceList(viewEv.id, eligibleMembers);
     const filtered = getFilteredAttendance(fullList);
     return Math.ceil(filtered.length / attendanceItemsPerPage);
-  }, [showAttendance, attendanceSearch, attendanceStatusFilter]);
+  }, [viewEv, attendanceSearch, attendanceStatusFilter, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!showAttendance) setAttendanceCurrentPage(1);
-  }, [showAttendance]);
+  const fullAttendanceCountForTab = useMemo(() => {
+    if (!viewEv) return 0;
+    return getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).length;
+  }, [viewEv, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- Budget tab (UC-8, reusing the same per-event expense endpoints the
+  // standalone Budget page uses) ----------------------------------------
+  const loadBudgetSummary = async (eventId: string | number) => {
+    setBudgetLoading(true);
+    try {
+      const res = await api.get(`/events/${eventId}/expenses`);
+      setBudgetSummary(res.data);
+    } catch (e) {
+      setErrorMessage(apiErrorMessage(e, t("loadBudgetFailed")));
+      setShowErrorModal(true);
+    } finally {
+      setBudgetLoading(false);
+    }
+  };
+
+  const [expenseForm, setExpenseForm] = useState({ item: "", amount: "", notes: "" });
+  const expenseReceiptInputRef = useRef<HTMLInputElement>(null);
+  const [expenseReceiptFile, setExpenseReceiptFile] = useState<File | null>(null);
+  const [showAddExpenseConfirm, setShowAddExpenseConfirm] = useState(false);
+  const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<{ id: number; item: string } | null>(null);
+  const [deletingExpense, setDeletingExpense] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<{ id: number; item: string } | null>(null);
+  const [editExpenseForm, setEditExpenseForm] = useState({ item: "", amount: "", notes: "" });
+  const [originalEditExpenseForm, setOriginalEditExpenseForm] = useState({ item: "", amount: "", notes: "" });
+  const [existingEditReceiptUrl, setExistingEditReceiptUrl] = useState<string | null>(null);
+  const [editExpenseReceiptFile, setEditExpenseReceiptFile] = useState<File | null>(null);
+  const editExpenseReceiptInputRef = useRef<HTMLInputElement>(null);
+  const [showEditExpenseConfirm, setShowEditExpenseConfirm] = useState(false);
+  const [savingExpenseEdit, setSavingExpenseEdit] = useState(false);
+  const [showEditExpenseCancelConfirm, setShowEditExpenseCancelConfirm] = useState(false);
+  const [viewingReceipt, setViewingReceipt] = useState<{ url: string; item: string } | null>(null);
+
+  const receiptExt = (url: string) => {
+    const clean = url.split("?")[0].split("#")[0];
+    const dot = clean.lastIndexOf(".");
+    return dot === -1 ? "" : clean.slice(dot + 1).toLowerCase();
+  };
+  const isImageReceipt = (ext: string) => ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+  const isPdfReceipt = (ext: string) => ext === "pdf";
+
+  const handleAddExpense = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!viewEv) return;
+    setErrorMessage("");
+
+    if (!expenseForm.item.trim()) {
+      setErrorMessage(t("itemNameRequiredError"));
+      setShowErrorModal(true);
+      return;
+    }
+    const amountValue = Number(expenseForm.amount);
+    if (expenseForm.amount.trim() === "" || !Number.isFinite(amountValue) || amountValue < 0) {
+      setErrorMessage(t("invalidAmountError"));
+      setShowErrorModal(true);
+      return;
+    }
+    if (!expenseReceiptFile) {
+      setErrorMessage(t("receiptRequiredError"));
+      setShowErrorModal(true);
+      return;
+    }
+
+    setShowAddExpenseConfirm(true);
+  };
+
+  const performAddExpense = async () => {
+    setShowAddExpenseConfirm(false);
+    if (!viewEv || !expenseReceiptFile) return;
+    try {
+      const fd = new FormData();
+      fd.append("item", expenseForm.item);
+      fd.append("amount", expenseForm.amount);
+      if (expenseForm.notes) fd.append("notes", expenseForm.notes);
+      fd.append("receipt", expenseReceiptFile);
+
+      const result = await api.post(`/events/${viewEv.id}/expenses`, fd);
+      setExpenseForm({ item: "", amount: "", notes: "" });
+      setExpenseReceiptFile(null);
+      if (expenseReceiptInputRef.current) expenseReceiptInputRef.current.value = "";
+      loadBudgetSummary(viewEv.id);
+      if (result?.data?.is_over_budget) {
+        setSuccessMessage(
+          t("expenseOverBudgetWarning").replace("{total}", Number(result.data.total_expenses).toLocaleString())
+        );
+      } else {
+        setSuccessMessage(t("expenseAddedWithReceiptSuccess"));
+      }
+      setShowSuccessModal(true);
+    } catch (e) {
+      setErrorMessage(apiErrorMessage(e, t("recordExpenseFailed")));
+      setShowErrorModal(true);
+    }
+  };
+
+  const openEditExpense = (exp: EventExpense) => {
+    const initial = { item: exp.item, amount: String(exp.amount), notes: exp.notes ?? "" };
+    setEditingExpense({ id: exp.id, item: exp.item });
+    setEditExpenseForm(initial);
+    setOriginalEditExpenseForm(initial);
+    setExistingEditReceiptUrl(exp.receipt_url);
+    setEditExpenseReceiptFile(null);
+    if (editExpenseReceiptInputRef.current) editExpenseReceiptInputRef.current.value = "";
+  };
+
+  const isEditExpenseUnchanged =
+    editExpenseForm.item === originalEditExpenseForm.item &&
+    editExpenseForm.amount === originalEditExpenseForm.amount &&
+    editExpenseForm.notes === originalEditExpenseForm.notes &&
+    !editExpenseReceiptFile;
+
+  const handleCloseEditExpense = () => {
+    if (!isEditExpenseUnchanged) setShowEditExpenseCancelConfirm(true);
+    else setEditingExpense(null);
+  };
+
+  const handleUpdateExpense = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingExpense || !viewEv) return;
+    setErrorMessage("");
+
+    if (!editExpenseForm.item.trim()) {
+      setErrorMessage(t("itemNameRequiredError"));
+      setShowErrorModal(true);
+      return;
+    }
+    const amountValue = Number(editExpenseForm.amount);
+    if (editExpenseForm.amount.trim() === "" || !Number.isFinite(amountValue) || amountValue < 0) {
+      setErrorMessage(t("invalidAmountError"));
+      setShowErrorModal(true);
+      return;
+    }
+
+    setShowEditExpenseConfirm(true);
+  };
+
+  const performUpdateExpense = async () => {
+    setShowEditExpenseConfirm(false);
+    if (!editingExpense || !viewEv) return;
+    setSavingExpenseEdit(true);
+    try {
+      const fd = new FormData();
+      fd.append("_method", "PUT");
+      fd.append("item", editExpenseForm.item);
+      fd.append("amount", editExpenseForm.amount);
+      if (editExpenseForm.notes) fd.append("notes", editExpenseForm.notes);
+      if (editExpenseReceiptFile) fd.append("receipt", editExpenseReceiptFile);
+
+      await api.post(`/events/${viewEv.id}/expenses/${editingExpense.id}`, fd);
+      setEditingExpense(null);
+      loadBudgetSummary(viewEv.id);
+      setSuccessMessage(t("expenseUpdatedSuccess"));
+      setShowSuccessModal(true);
+    } catch (e) {
+      setErrorMessage(apiErrorMessage(e, t("updateExpenseFailed")));
+      setShowErrorModal(true);
+      setEditExpenseForm(originalEditExpenseForm);
+    } finally {
+      setSavingExpenseEdit(false);
+    }
+  };
+
+  const confirmDeleteExpense = async () => {
+    if (!deleteExpenseTarget || !viewEv) return;
+    setDeletingExpense(true);
+    try {
+      await api.delete(`/events/${viewEv.id}/expenses/${deleteExpenseTarget.id}`);
+      setDeleteExpenseTarget(null);
+      loadBudgetSummary(viewEv.id);
+      setSuccessMessage(t("expenseDeletedSuccess"));
+      setShowSuccessModal(true);
+    } catch (e) {
+      setErrorMessage(apiErrorMessage(e, t("deleteExpenseFailed")));
+      setShowErrorModal(true);
+      setDeleteExpenseTarget(null);
+    } finally {
+      setDeletingExpense(false);
+    }
+  };
+
+  const spentPct = budgetSummary?.approved_budget
+    ? Math.min(100, (budgetSummary.total_expenses / Number(budgetSummary.approved_budget)) * 100)
+    : 0;
 
   return (
     <div className="space-y-6">
-      <div className="sticky top-0 z-20 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
-        <div className="w-full">
-          <div>
-            <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("eventsAndAttendance")}</h1>
-            <p className="mt-1 text-sm text-[#667777]">{t("staffEventsSubtitle")}</p>
-          </div>
+      {viewEv ? (
+        (() => {
+          const status = getEventStatus(viewEv);
+          const locked = isEventLocked(status.label);
+          const coverageNames = getMembershipNames(viewEv);
+          const coverageDisplay = coverageNames.length === 0 ? t("allResidentsCoverageLabel") : coverageNames.join(", ");
+          const signedInCount = getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length;
 
-          <div className="mt-4 flex flex-wrap items-center gap-4 w-full">
-            <div className="flex-1 min-w-[250px]">
-              <SearchBar
-                value={eventSearch}
-                onChange={setEventSearch}
-                placeholder={t("searchEventsPlaceholder")}
-              />
-            </div>
+          const tabs: { key: typeof detailTab; label: string; count?: number }[] = [
+            { key: "overview", label: t("overviewTabLabel") },
+            { key: "attendance", label: t("attendanceTabLabel"), count: fullAttendanceCountForTab },
+            { key: "budget", label: t("budgetTabLabel") },
+            { key: "feedback", label: t("feedbackTabLabel"), count: eventFeedback.length },
+          ];
 
-            <div className="flex flex-wrap gap-3">
-              <FilterDropdown
-                value={eventFilter}
-                onChange={setEventFilter}
-                options={[
-                  { value: "all", label: t("allEvents") },
-                  { value: "upcoming", label: t("upcomingEvents") },
-                  { value: "ongoing", label: t("ongoingEvents") },
-                  { value: "past", label: t("pastEvents") },
-                ]}
-                className="h-14 pl-10 pr-9"
-                icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
-              />
+          return (
+            <div className="space-y-6">
+              <button
+                onClick={() => setViewEv(null)}
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-sage-700 hover:text-sage-900 transition"
+              >
+                <ChevronLeft className="h-4 w-4" /> {t("backToEventsLabel")}
+              </button>
 
-              <div className="h-14">
-                <DatePicker
-                  value={selectedDate}
-                  onChange={setSelectedDate}
-                  className="h-14 pl-4 pr-4 py-3.5"
-                />
-              </div>
-            </div>
-          </div>
-
-          <p className="mt-2 text-xs text-gray-500">
-            {filteredEvents.length} of {localEvents.length} {t("eventsMatchCount")}
-          </p>
-
-          {totalPages > 1 && (
-            <div className="flex justify-end mt-4">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                >
-                  ←
-                </button>
-
-                <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
-                  {currentPage}
-                </span>
-
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                >
-                  →
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="relative flex flex-col lg:flex-row gap-6 items-start px-1 w-full h-auto lg:h-[calc(100vh-180px)]">
-        <button onClick={() => setFormOpen(!formOpen)} className={`absolute top-2 z-50 bg-[#359ca0] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#2a7d82] ${formOpen ? "right-2 lg:right-auto lg:left-[calc(50%-18px)]" : "left-0"}`}>
-          {formOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-        </button>
-
-        <div className={`transition-all duration-300 overflow-hidden shrink-0 ${formOpen ? "w-full lg:w-1/2 opacity-100" : "w-0 opacity-0"}`}>
-          <div className="bg-white rounded-3xl border-gray-200 p-5 shadow-md h-full overflow-hidden flex flex-col">
-            <h2 className="text-xl font-bold text-[#005f63] mb-4">{editingEvent ? t("editEventTitle") : t("createNewEvent")}</h2>
-            <form onSubmit={handleSaveEvent} noValidate className="space-y-4 flex-1 overflow-y-auto pr-1">
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("eventTitleRequired")}</label><input type="text" required value={newEvent.title} placeholder={t("eventTitlePlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t("dateRequired")}</label>
-                <DatePicker
-                  value={newEvent.date}
-                  onChange={(iso) => setNewEvent({ ...newEvent, date: iso })}
-                  className="px-4 py-2"
-                  min={getTodayString()}
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("startTimeRequired")}</label>
-                  <input type="time" required value={newEvent.time} onChange={(e) => handleTimeFieldChange("time", e.target.value)} className={`w-full rounded-full border px-4 py-2 text-sm ${timeFieldErrors.time ? "border-red-400" : "border-gray-200"}`} />
-                  {timeFieldErrors.time && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.time}</p>}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{t("endTimeLabel")}</label>
-                  <input type="time" required value={newEvent.endTime} onChange={(e) => handleTimeFieldChange("endTime", e.target.value)} className={`w-full rounded-full border px-4 py-2 text-sm ${timeFieldErrors.endTime ? "border-red-400" : "border-gray-200"}`} />
-                  {timeFieldErrors.endTime && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.endTime}</p>}
-                </div>
-              </div>
-
-              {/* Call time: sign-in/out attendance window, separate from the event's own start/end */}
-              <div className="rounded-2xl border border-dashed border-[#005f63]/25 p-3 space-y-2">
-                <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">{t("callTimeSectionTitle")}</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">{t("callTimeStartLabel")}</label>
-                    <input type="time" required value={newEvent.callTimeStart} onChange={(e) => handleTimeFieldChange("callTimeStart", e.target.value)} className={`w-full rounded-full border px-4 py-2 text-sm ${timeFieldErrors.callTimeStart ? "border-red-400" : "border-gray-200"}`} />
-                    {timeFieldErrors.callTimeStart && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.callTimeStart}</p>}
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A] break-words">{viewEv.title}</h1>
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${statusPillClasses(status.label)}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(status.label)}`} />
+                      {eventStatusChipLabel(status.label)}
+                    </span>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">{t("callTimeEndLabel")}</label>
-                    <input type="time" required value={newEvent.callTimeEnd} onChange={(e) => handleTimeFieldChange("callTimeEnd", e.target.value)} className={`w-full rounded-full border px-4 py-2 text-sm ${timeFieldErrors.callTimeEnd ? "border-red-400" : "border-gray-200"}`} disabled={!newEvent.endTime} title={!newEvent.endTime ? t("setEndTimeFirstHint") : undefined} />
-                    {timeFieldErrors.callTimeEnd && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.callTimeEnd}</p>}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#6B7280]">
+                    <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-[#8A3D2C] shrink-0" /> {viewEv.location}</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Clock className="h-4 w-4 text-gold-700 shrink-0" />
+                      {(viewEv.startDate || viewEv.date)} · {formatTime12Hour(viewEv.startTime)}
+                    </span>
                   </div>
                 </div>
-                <p className="text-[11px] text-gray-400">{t("callTimeHint")}</p>
-              </div>
-
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("locationRequired")}</label><input type="text" required value={newEvent.location} placeholder={t("locationPlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm" /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("descriptionLabel")}</label><textarea value={newEvent.description} placeholder={t("descriptionPlaceholderEvent")} onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} className="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm" rows={3} /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("messageLabel")}</label><textarea value={newEvent.notificationMessage} placeholder={t("messagePlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, notificationMessage: e.target.value })} className="w-full rounded-xl border border-gray-200 px-4 py-2 text-sm" rows={2} /></div>
-              <div><label className="block text-sm font-medium text-gray-700 mb-1">{t("targetMembersRequired")}</label><select value={newEvent.targetMembership} onChange={(e) => setNewEvent({ ...newEvent, targetMembership: e.target.value })} className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm bg-white"><option value="all">{t("allResidentsOption")}</option>{memberships.map((m: any) => (<option key={m.id} value={String(m.id)}>{m.name}</option>))}</select></div>
-
-              {/* UC-8: Record Event Budget and Expenses */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{t("approvedBudgetOptional")}</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={newEvent.approvedBudget}
-                  onChange={(e) => setNewEvent({ ...newEvent, approvedBudget: e.target.value })}
-                  placeholder={t("approvedBudgetPlaceholder")}
-                  className="w-full rounded-full border border-gray-200 px-4 py-2 text-sm"
-                />
-                <p className="mt-1 text-[11px] text-gray-400">{t("trackExpensesHint")}</p>
-              </div>
-
-              {/* Items borrowed from Inventory for this event -- excludes
-                  Disposed/Lost stock (see InventoryController::borrowable()),
-                  and deducts the chosen quantity from Inventory on save. */}
-              <div className="rounded-2xl border border-dashed border-[#005f63]/25 p-3 space-y-3">
-                <div className="flex items-center gap-1.5">
-                  <Package className="h-3.5 w-3.5 text-[#005f63]/70" />
-                  <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">{t("borrowedItemsSectionTitle")}</p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => startEditEvent(viewEv)}
+                    disabled={isSubmitting || locked}
+                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E0D3] bg-white px-4 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-sage-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> {t("editTitle")}
+                  </button>
+                  <button
+                    onClick={() => setEventToDelete(viewEv.id)}
+                    disabled={locked}
+                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E0D3] bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Archive className="h-3.5 w-3.5" /> {t("deleteTitle")}
+                  </button>
                 </div>
-
-                {newEvent.borrowedItems.length > 0 && (
-                  <div className="space-y-2">
-                    {newEvent.borrowedItems.map((row) => {
-                      const max = Math.max(0, availableStockFor(row.inventoryItemId));
-                      return (
-                        <div key={row.inventoryItemId} className="flex items-center gap-2 rounded-xl bg-white border border-gray-200 px-3 py-2">
-                          <span className="flex-1 text-sm text-gray-700 truncate">{getBorrowItemName(row.inventoryItemId)}</span>
-                          <input
-                            type="number"
-                            min={1}
-                            max={max}
-                            value={row.quantity}
-                            onChange={(e) => {
-                              const raw = e.target.value;
-                              const clamped = raw === "" ? "" : String(Math.max(1, Math.min(max || 1, Math.round(Number(raw)) || 1)));
-                              updateBorrowQuantity(row.inventoryItemId, clamped);
-                            }}
-                            className="w-16 rounded-full border border-gray-200 px-2 py-1 text-sm text-center"
-                          />
-                          <span className="text-[11px] text-gray-400 shrink-0">/ {max} {t("availableStockShortLabel")}</span>
-                          <button
-                            type="button"
-                            onClick={() => removeBorrowRow(row.inventoryItemId)}
-                            className="text-gray-400 hover:text-red-500 transition shrink-0"
-                            title={t("removeLabel")}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {!borrowableItemsLoading && borrowableItems.filter((it) => it.quantity > 0).length === 0 ? (
-                  <p className="text-xs text-gray-400 italic">{t("noBorrowableItemsLabel")}</p>
-                ) : (
-                  <SearchableSelect
-                    onSelect={addBorrowRow}
-                    disabled={borrowableItemsLoading}
-                    placeholder={borrowableItemsLoading ? t("loadingLabel") : t("addBorrowedItemPlaceholder")}
-                    noResultsLabel={t("noMatchingBorrowItemsLabel")}
-                    options={borrowableItems
-                      // Out-of-stock items can't actually be borrowed --
-                      // don't list them just to have staff pick one and
-                      // hit the quantity-exceeds-stock error.
-                      .filter((it) => it.quantity > 0)
-                      .filter((it) => !newEvent.borrowedItems.some((r) => r.inventoryItemId === String(it.id)))
-                      .map((it) => ({
-                        value: String(it.id),
-                        label: it.name,
-                        hint: `(${it.quantity} ${t("availableStockShortLabel")})`,
-                      }))}
-                  />
-                )}
-                <p className="text-[11px] text-gray-400">{t("borrowedItemsHint")}</p>
               </div>
 
-              {/* Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)" */}
-              {!editingEvent && (
-                <label className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input
-                    type="checkbox"
-                    checked={newEvent.postToFacebook}
-                    onChange={(e) => setNewEvent({ ...newEvent, postToFacebook: e.target.checked })}
-                    className="w-4 h-4 text-[#005f63]"
-                  />
-                  <span className="font-medium text-gray-700">{t("alsoPostToFacebook")}</span>
-                </label>
+              <div className="border-b border-[#E6E0D3] flex gap-6 overflow-x-auto">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setDetailTab(tab.key)}
+                    className={`pb-3 px-1 text-sm font-semibold border-b-2 whitespace-nowrap transition ${
+                      detailTab === tab.key ? "border-sage-700 text-sage-800" : "border-transparent text-[#6B7280] hover:text-[#1A1A1A]"
+                    }`}
+                  >
+                    {tab.label}{tab.count !== undefined ? ` (${tab.count})` : ""}
+                  </button>
+                ))}
+              </div>
+
+              {detailTab === "overview" && (
+                <div className="space-y-5">
+                  <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5">
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-sage-700/80 mb-2">{t("descriptionLabel")}</h3>
+                    <p className="text-sm text-[#1A1A1A] leading-relaxed whitespace-pre-wrap">{viewEv.description || t("noDescription")}</p>
+                    {viewEv.notificationMessage && (
+                      <div className="mt-4 pt-4 border-t border-[#E6E0D3]">
+                        <h4 className="text-xs font-bold uppercase tracking-wide text-sage-700/80 mb-1.5">{t("notificationPreview")}</h4>
+                        <p className="text-sm text-sage-800 bg-sage-50 rounded-xl p-3">{viewEv.notificationMessage}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Solid-colored to match the Dashboard's Residents / Active
+                      Memberships / Overdue Returns stat cards -- same three
+                      colors, just flat instead of the Dashboard's gradient. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="rounded-2xl bg-sage-700 p-4 text-center">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-white/70">{t("coverageStatLabel")}</p>
+                      <p className="mt-1.5 text-sm font-bold text-white break-words">{coverageDisplay}</p>
+                    </div>
+                    <div className="rounded-2xl bg-gold-700 p-4 text-center">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-white/70">{t("approvedBudgetStatLabel")}</p>
+                      <p className="mt-1.5 text-sm font-bold text-white">
+                        {viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined ? `₱${Number(viewEv.approvedBudget).toLocaleString()}` : "—"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl bg-[#5C2A1E] p-4 text-center">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-white/70">{t("attendeesStatLabel")}</p>
+                      <p className="mt-1.5 text-sm font-bold text-white">{signedInCount}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      disabled
+                      title={t("featureComingSoonHint")}
+                      className="inline-flex items-center gap-2 rounded-full border border-[#E6E0D3] bg-[#FAF9F5] text-[#6B7280] px-4 py-2.5 text-sm font-semibold opacity-70 cursor-not-allowed"
+                    >
+                      <Megaphone className="h-4 w-4" /> {t("broadcastSmsButton")}
+                    </button>
+                    <button
+                      type="button"
+                      disabled
+                      title={t("featureComingSoonHint")}
+                      className="inline-flex items-center gap-2 rounded-full bg-[#1A1A1A] text-white px-4 py-2.5 text-sm font-semibold opacity-70 cursor-not-allowed"
+                    >
+                      <ClipboardList className="h-4 w-4" /> {t("generateReportButton")}
+                    </button>
+                  </div>
+                </div>
               )}
 
-              <div className="pt-2 flex gap-2"><button type="submit" disabled={isSubmitting || isEventFormUnchanged} title={isEventFormUnchanged ? t("noChangesToSaveHint") : undefined} className="flex-1 py-2.5 rounded-full font-bold bg-[#359ca0] hover:bg-[#2a7d82] text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[#359ca0]">{isSubmitting ? t("savingLabel") : (editingEvent ? t("updateEvent") : t("postEvent"))}</button>{editingEvent && <button type="button" onClick={cancelEdit} disabled={isSubmitting} className="px-6 py-2.5 rounded-full border border-gray-300 bg-gray-50 text-gray-600">{t("cancelLabel")}</button>}</div>
+              {detailTab === "attendance" && (
+                <div className="space-y-4">
+                  {/* Same search bar card/input pattern as the Residents,
+                      Households, Memberships and main Events search --
+                      the status filter sits alongside it, unchanged. */}
+                  <div className="rounded-2xl border border-[#E6E0D3] bg-white p-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <div className="relative flex-1 min-w-[220px]">
+                        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                        <input
+                          type="text"
+                          value={attendanceSearch}
+                          onChange={(e) => setAttendanceSearch(e.target.value)}
+                          placeholder={t("searchResidentNamePlaceholder")}
+                          className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                        />
+                      </div>
+                      <div className="shrink-0">
+                        <FilterDropdown
+                          value={attendanceStatusFilter}
+                          onChange={setAttendanceStatusFilter}
+                          options={[
+                            { value: "all", label: t("allStatus") },
+                            { value: "complete", label: t("statusComplete") },
+                            { value: "incomplete", label: t("statusIncomplete") },
+                            { value: "missed", label: t("statusMissed") },
+                          ]}
+                          className="h-11 pl-9 pr-8"
+                          icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sage-700/70 pointer-events-none" />}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[#E6E0D3] w-full overflow-x-auto">
+                    <table className="w-full text-sm min-w-[560px]">
+                      <thead className="bg-[#1A1A1A] sticky top-0 z-10">
+                        <tr>
+                          <th className="text-left p-4 font-bold text-white w-[30%]">{t("residentNameColumn")}</th>
+                          <th className="text-left p-4 font-bold text-white w-[25%]">{t("timeInColumn")}</th>
+                          <th className="text-left p-4 font-bold text-white w-[25%]">{t("timeOutColumn")}</th>
+                          <th className="text-left p-4 font-bold text-white w-[15%]">{t("statusColumn")}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedAttendance.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="p-6 text-center text-[#6B7280] italic">
+                              {t("noMatchingRecords")}
+                            </td>
+                          </tr>
+                        ) : (
+                          paginatedAttendance.map((record: any, i: number) => {
+                            const recStatus = getAttendanceStatus(record);
+                            let statusColor = "text-[#6B7280] bg-[#F3F1EA]";
+                            if (recStatus.label === "Complete") statusColor = "text-sage-800 bg-sage-50";
+                            if (recStatus.label === "Incomplete") statusColor = "text-gold-700 bg-gold-50";
+                            if (recStatus.label === "Missed") statusColor = "text-red-700 bg-red-100";
+
+                            return (
+                              <tr key={i} className="border-t border-[#E6E0D3] hover:bg-[#FAF9F5] transition-colors">
+                                <td className="p-4 text-[#1A1A1A]">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
+                                <td className="p-4 text-[#1A1A1A]">
+                                  {record.timeIn ? (
+                                    <span className="flex items-center gap-2">
+                                      <LogIn className="h-4 w-4 text-sage-700" />
+                                      {formatTime12Hour(record.timeIn)}
+                                    </span>
+                                  ) : "—"}
+                                </td>
+                                <td className="p-4 text-[#1A1A1A]">
+                                  {record.timeOut ? (
+                                    <span className="flex items-center gap-2">
+                                      <LogOut className="h-4 w-4 text-red-600" />
+                                      {formatTime12Hour(record.timeOut)}
+                                    </span>
+                                  ) : "—"}
+                                </td>
+                                <td className="p-4">
+                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor}`}>
+                                    {attendanceStatusLabel(recStatus.label)}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {attendanceTotalPages > 1 && (
+                    <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
+                      <p className="text-sm text-[#6B7280] text-center sm:text-left">
+                        {t("pageOfLabel")} {attendanceCurrentPage} {t("ofPagesLabel")} {attendanceTotalPages} • {paginatedAttendance.length} {t("recordsShownLabel")}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setAttendanceCurrentPage(p => Math.max(1, p - 1))}
+                          disabled={attendanceCurrentPage === 1}
+                          className="h-8 w-8 rounded-full border border-sage-200 bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+                        >
+                          ←
+                        </button>
+                        <span className="h-8 w-8 rounded-full bg-sage-800 text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                          {attendanceCurrentPage}
+                        </span>
+                        <button
+                          onClick={() => setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1))}
+                          disabled={attendanceCurrentPage === attendanceTotalPages}
+                          className="h-8 w-8 rounded-full border border-sage-200 bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+                        >
+                          →
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {detailTab === "budget" && (
+                <div className="space-y-4">
+                  {budgetLoading || !budgetSummary ? (
+                    <div className="flex justify-center items-center h-40">
+                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sage-700" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-4">
+                        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                          <span className="text-sm font-semibold text-[#1A1A1A]">
+                            ₱{budgetSummary.total_expenses.toLocaleString()} {t("spentOf")}
+                            {budgetSummary.approved_budget !== null && ` ${t("ofLabel")} ₱${Number(budgetSummary.approved_budget).toLocaleString()}`}
+                          </span>
+                          {budgetSummary.is_over_budget && (
+                            <span className="flex items-center gap-1 text-xs font-bold text-red-600">
+                              <AlertTriangle className="h-3.5 w-3.5" /> {t("overBudget")}
+                            </span>
+                          )}
+                        </div>
+                        {budgetSummary.approved_budget !== null ? (
+                          <div className="h-2.5 rounded-full bg-[#EDE9DD] overflow-hidden">
+                            <div
+                              className={`h-full transition-all ${budgetSummary.is_over_budget ? "bg-red-500" : "bg-sage-600"}`}
+                              style={{ width: `${spentPct}%` }}
+                            />
+                          </div>
+                        ) : (
+                          <p className="text-xs text-[#6B7280] italic">{t("noApprovedBudgetYet")}</p>
+                        )}
+                      </div>
+
+                      <form onSubmit={handleAddExpense} noValidate className="grid sm:grid-cols-[1fr_140px_auto_auto] gap-2">
+                        <input
+                          required
+                          value={expenseForm.item}
+                          onChange={(e) => setExpenseForm((p) => ({ ...p, item: e.target.value }))}
+                          placeholder={t("itemExpenseDescPlaceholder")}
+                          className="rounded-full border border-sage-200 px-4 py-2 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                        />
+                        <input
+                          required
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={expenseForm.amount}
+                          onChange={(e) => setExpenseForm((p) => ({ ...p, amount: e.target.value }))}
+                          placeholder={t("amountPlaceholder")}
+                          className="rounded-full border border-sage-200 px-4 py-2 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                        />
+                        <input
+                          ref={expenseReceiptInputRef}
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => setExpenseReceiptFile(e.target.files?.[0] ?? null)}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => expenseReceiptInputRef.current?.click()}
+                          title={expenseReceiptFile ? expenseReceiptFile.name : t("attachReceiptRequiredLabel")}
+                          className={`inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                            expenseReceiptFile ? "border-sage-700 text-sage-800 bg-sage-50" : "border-gold-300 text-gold-700 hover:bg-gold-50"
+                          }`}
+                        >
+                          <Paperclip className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="submit"
+                          className="inline-flex items-center justify-center gap-1 rounded-full bg-sage-800 hover:bg-sage-900 text-white px-4 py-2 text-sm font-semibold transition"
+                        >
+                          <Plus className="h-4 w-4" /> {t("addLabel")}
+                        </button>
+                      </form>
+                      {expenseReceiptFile ? (
+                        <p className="-mt-1 text-xs text-[#6B7280] flex items-center gap-1">
+                          <FileText className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{expenseReceiptFile.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setExpenseReceiptFile(null);
+                              if (expenseReceiptInputRef.current) expenseReceiptInputRef.current.value = "";
+                            }}
+                            className="text-[#6B7280] hover:text-red-500 shrink-0"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </p>
+                      ) : (
+                        <p className="-mt-1 text-xs text-gold-700">{t("receiptRequiredHint")}</p>
+                      )}
+
+                      <div className="max-h-[40vh] overflow-y-auto space-y-2">
+                        {budgetSummary.expenses.length === 0 ? (
+                          <p className="text-sm text-[#6B7280] italic py-6 text-center">{t("noExpensesRecorded")}</p>
+                        ) : (
+                          budgetSummary.expenses.map((exp) => (
+                            <div key={exp.id} className="flex items-center justify-between rounded-xl bg-[#FAF9F5] px-4 py-2.5 group">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <p className="text-sm font-medium text-[#1A1A1A] truncate">{exp.item}</p>
+                                  {exp.receipt_url && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setViewingReceipt({ url: exp.receipt_url as string, item: exp.item })}
+                                      title={t("viewReceiptLabel")}
+                                      className="text-[#6B7280] hover:text-sage-800 transition shrink-0"
+                                    >
+                                      <Paperclip className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                                {exp.notes && <p className="text-xs text-[#6B7280] truncate">{exp.notes}</p>}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0 ml-3">
+                                <span className="text-sm font-bold text-sage-800">₱{Number(exp.amount).toLocaleString()}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => openEditExpense(exp)}
+                                  title={t("editLabel")}
+                                  className="p-1.5 rounded-full text-[#C9C2AF] hover:text-sage-800 hover:bg-sage-50 transition opacity-0 group-hover:opacity-100"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteExpenseTarget({ id: exp.id, item: exp.item })}
+                                  title={t("deleteTitle")}
+                                  className="p-1.5 rounded-full text-[#C9C2AF] hover:text-red-500 hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {detailTab === "feedback" && (
+                <div className="space-y-5">
+                  <div className="rounded-2xl border border-[#E6E0D3] bg-white p-6 text-center">
+                    <p className="text-4xl font-black text-[#1A1A1A]">{averageRating > 0 ? averageRating.toFixed(1) : "—"}</p>
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">{t("averageRatingLabel")}</p>
+                    <div className="mt-2.5 flex justify-center gap-1">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <Star key={n} className={`h-5 w-5 ${n <= Math.round(averageRating) ? "text-amber-400 fill-amber-400" : "text-gray-200"}`} />
+                      ))}
+                    </div>
+                    <p className="mt-1.5 text-xs text-[#6B7280]">{eventFeedback.length} {t("ratingsCountLabel")}</p>
+                  </div>
+
+                  {feedbackLoading ? (
+                    <p className="text-sm text-[#6B7280] italic text-center py-6">{t("loadingLabel")}</p>
+                  ) : eventFeedback.length === 0 ? (
+                    <p className="text-sm text-[#6B7280] italic bg-[#FAF9F5] rounded-2xl p-6 text-center">{t("noFeedbackYetLabel")}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {paginatedFeedback.map((f) => {
+                        const name = f.user ? `${f.user.first_name} ${f.user.last_name}` : t("unknownItemLabel");
+                        const initials = f.user ? `${f.user.first_name?.charAt(0) ?? ""}${f.user.last_name?.charAt(0) ?? ""}` : "?";
+                        return (
+                          <div key={f.id} className="rounded-2xl border border-[#E6E0D3] bg-white p-4 flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-sage-500 to-sage-700 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                              {initials}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="text-sm font-semibold text-[#1A1A1A] truncate">{name}</span>
+                                <span className="flex items-center gap-0.5 shrink-0">
+                                  {[1, 2, 3, 4, 5].map((n) => (
+                                    <Star key={n} className={`h-3.5 w-3.5 ${n <= f.rating ? "text-amber-400 fill-amber-400" : "text-gray-200"}`} />
+                                  ))}
+                                </span>
+                              </div>
+                              {f.comment && <p className="mt-1 text-sm text-[#6B7280]">{f.comment}</p>}
+                            </div>
+                          </div>
+                        );
+                      })}
+
+                      {feedbackTotalPages > 1 && (
+                        <div className="flex items-center justify-between pt-2">
+                          <p className="text-xs text-[#6B7280]">
+                            {t("pageOfLabel")} {feedbackCurrentPage} {t("ofPagesLabel")} {feedbackTotalPages} • {eventFeedback.length} {t("recordsShownLabel")}
+                          </p>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => setFeedbackCurrentPage(p => Math.max(1, p - 1))}
+                              disabled={feedbackCurrentPage === 1}
+                              className="h-7 w-7 rounded-full border border-sage-200 bg-white text-sage-800 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+                            >
+                              ←
+                            </button>
+                            <span className="h-7 w-7 rounded-full bg-sage-800 text-white shadow-sm flex items-center justify-center text-xs font-semibold">
+                              {feedbackCurrentPage}
+                            </span>
+                            <button
+                              onClick={() => setFeedbackCurrentPage(p => Math.min(feedbackTotalPages, p + 1))}
+                              disabled={feedbackCurrentPage === feedbackTotalPages}
+                              className="h-7 w-7 rounded-full border border-sage-200 bg-white text-sage-800 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+                            >
+                              →
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()
+      ) : (
+        <>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("events")}</h1>
+              <p className="mt-1.5 text-sm text-[#6B7280] max-w-xl">{t("eventsPageSubtitle")}</p>
+            </div>
+            <button
+              type="button"
+              onClick={openAddEventModal}
+              className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1A1A1A] hover:bg-[#2E2E2E] text-white px-5 py-2.5 text-sm font-semibold shadow-sm transition-colors shrink-0"
+            >
+              <Plus className="h-4 w-4" /> {t("postEvent")}
+            </button>
+          </div>
+
+          {/* Search bar matches the Residents/Households/Memberships pattern
+              exactly (same card, icon, input sizing/colors) -- the event
+              status filter and date filter sit alongside it in the same
+              card, resized to match, instead of being removed. */}
+          <div className="rounded-2xl border border-[#E6E0D3] bg-white p-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                <input
+                  type="text"
+                  value={eventSearch}
+                  onChange={(e) => setEventSearch(e.target.value)}
+                  placeholder={t("searchEventsPlaceholder")}
+                  className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                />
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <FilterDropdown
+                  value={eventFilter}
+                  onChange={setEventFilter}
+                  options={[
+                    { value: "all", label: t("allEvents") },
+                    { value: "upcoming", label: t("upcomingEvents") },
+                    { value: "ongoing", label: t("ongoingEvents") },
+                    { value: "past", label: t("pastEvents") },
+                  ]}
+                  className="h-11 pl-9 pr-8"
+                  icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sage-700/70 pointer-events-none" />}
+                />
+                <div className="h-11">
+                  <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-[#6B7280]">
+            {filteredEvents.length} {t("eventsMatchCount")}
+          </p>
+
+          {paginatedEvents.length === 0 ? (
+            <div className="rounded-2xl border border-[#E6E0D3] bg-white p-10 text-center text-sm text-[#6B7280]">
+              {t("noEventsMatchStaff")}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+                {paginatedEvents.map((e) => {
+                  const status = getEventStatus(e);
+                  const locked = isEventLocked(status.label);
+                  const eligibleMembers = getMembersForEvent(e);
+                  const attendanceList = getFullAttendanceList(e.id, eligibleMembers);
+                  const signedIn = attendanceList.filter((a: any) => a.timeIn).length;
+
+                  return (
+                    <div
+                      key={e.id}
+                      onClick={() => setViewEv(e)}
+                      className="cursor-pointer rounded-2xl border border-[#E6E0D3] bg-white p-5 hover:shadow-md transition-shadow duration-300 flex flex-col"
+                    >
+                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sage-50 text-sage-700 shrink-0">
+                          <Calendar className="h-5 w-5" />
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            onClick={(ev) => { ev.stopPropagation(); startEditEvent(e); }}
+                            disabled={isSubmitting || locked}
+                            title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
+                            className="p-1.5 rounded-full text-[#6B7280] hover:bg-sage-50 hover:text-sage-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={(ev) => { ev.stopPropagation(); setEventToDelete(e.id); }}
+                            disabled={locked}
+                            title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
+                            className="p-1.5 rounded-full text-[#6B7280] hover:bg-red-50 hover:text-red-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            <Archive className="h-3.5 w-3.5" />
+                          </button>
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${statusPillClasses(status.label)}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(status.label)}`} />
+                            {eventStatusChipLabel(status.label)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <h2 className="mt-4 text-base font-bold text-[#1A1A1A] break-words">
+                        {highlightText(e.title, eventSearch)}
+                      </h2>
+                      <p className="mt-1.5 text-sm text-[#6B7280] flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-[#8A3D2C] shrink-0" />
+                        <span className="truncate">{highlightText(e.location, eventSearch)}</span>
+                      </p>
+                      <p className="mt-1 text-sm text-[#6B7280] flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-gold-700 shrink-0" />
+                        <span className="truncate">
+                          {(e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || "")} · {formatTime12Hour(e.startTime)}
+                        </span>
+                      </p>
+                      <p className="mt-2 text-sm text-[#6B7280] break-words line-clamp-2">
+                        {highlightText(e.description || t("noDescription"), eventSearch)}
+                      </p>
+
+                      <div className="mt-4 pt-4 border-t border-[#E6E0D3] flex items-center justify-between gap-2 text-xs text-[#6B7280]">
+                        <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {signedIn} {t("attendeesCountLabel")}</span>
+                        <span className="font-medium truncate" title={getCoverageLabel(e)}>{getCoverageLabel(e)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex justify-center gap-2 pt-2">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p)}
+                      className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-sage-800 text-white" : "bg-white border border-sage-200 text-[#6B7280] hover:bg-sage-50"}`}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Add / Edit Event Modal -- sized and sectioned to match the Add New
+          Record (Residents) and New Membership Group modals exactly. */}
+      {formOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={(ev) => { if (ev.target === ev.currentTarget) closeEventModal(); }}>
+          <div className="bg-white rounded-3xl w-full max-w-5xl p-6 sm:p-8 shadow-xl border border-[#E6E0D3] max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="text-xl font-bold text-[#1A1A1A]">{editingEvent ? t("editEventTitle") : t("createNewEvent")}</h2>
+              <button onClick={closeEventModal} className="text-[#6B7280] hover:text-[#1A1A1A]"><XCircle size={20} /></button>
+            </div>
+            <p className="text-sm text-[#6B7280] mb-5">{editingEvent ? t("editEventModalSubtitle") : t("newEventModalSubtitle")}</p>
+
+            <form onSubmit={handleSaveEvent} noValidate className="space-y-5">
+              <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 space-y-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("eventDetailsLabel")}</p>
+
+                <div>
+                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("eventTitleRequired")}</label>
+                  <input
+                    type="text"
+                    required
+                    value={newEvent.title}
+                    placeholder={t("eventTitlePlaceholder")}
+                    onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                    className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("dateRequired")}</label>
+                  <DatePicker
+                    value={newEvent.date}
+                    onChange={(iso) => setNewEvent({ ...newEvent, date: iso })}
+                    className="px-4 py-2.5"
+                    min={getTodayString()}
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("startTimeRequired")}</label>
+                    <input type="time" required value={newEvent.time} onChange={(e) => handleTimeFieldChange("time", e.target.value)} className={`w-full rounded-full border px-4 py-2.5 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${timeFieldErrors.time ? "border-red-400" : "border-sage-200"}`} />
+                    {timeFieldErrors.time && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.time}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("endTimeLabel")}</label>
+                    <input type="time" required value={newEvent.endTime} onChange={(e) => handleTimeFieldChange("endTime", e.target.value)} className={`w-full rounded-full border px-4 py-2.5 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${timeFieldErrors.endTime ? "border-red-400" : "border-sage-200"}`} />
+                    {timeFieldErrors.endTime && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.endTime}</p>}
+                  </div>
+                </div>
+
+                {/* Call time: sign-in/out attendance window, separate from the event's own start/end */}
+                <div className="rounded-2xl border border-dashed border-sage-300 p-3 space-y-2">
+                  <p className="text-xs font-bold uppercase tracking-wide text-sage-700/70">{t("callTimeSectionTitle")}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-[#6B7280] mb-1">{t("callTimeStartLabel")}</label>
+                      <input type="time" required value={newEvent.callTimeStart} onChange={(e) => handleTimeFieldChange("callTimeStart", e.target.value)} className={`w-full rounded-full border px-4 py-2.5 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${timeFieldErrors.callTimeStart ? "border-red-400" : "border-sage-200"}`} />
+                      {timeFieldErrors.callTimeStart && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.callTimeStart}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-[#6B7280] mb-1">{t("callTimeEndLabel")}</label>
+                      <input type="time" required value={newEvent.callTimeEnd} onChange={(e) => handleTimeFieldChange("callTimeEnd", e.target.value)} className={`w-full rounded-full border px-4 py-2.5 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${timeFieldErrors.callTimeEnd ? "border-red-400" : "border-sage-200"}`} disabled={!newEvent.endTime} title={!newEvent.endTime ? t("setEndTimeFirstHint") : undefined} />
+                      {timeFieldErrors.callTimeEnd && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.callTimeEnd}</p>}
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-[#6B7280]">{t("callTimeHint")}</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("locationRequired")}</label>
+                  <input type="text" required value={newEvent.location} placeholder={t("locationPlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })} className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30" />
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 space-y-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("notificationBudgetLabel")}</p>
+
+                <div>
+                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("descriptionLabel")}</label>
+                  <textarea value={newEvent.description} placeholder={t("descriptionPlaceholderEvent")} onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} className="w-full rounded-3xl border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 resize-none" rows={3} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("messageLabel")}</label>
+                  <textarea value={newEvent.notificationMessage} placeholder={t("messagePlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, notificationMessage: e.target.value })} className="w-full rounded-3xl border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("targetMembersRequired")}</label>
+                  <div className="relative">
+                    <select
+                      value={newEvent.targetMembership}
+                      onChange={(e) => setNewEvent({ ...newEvent, targetMembership: e.target.value })}
+                      className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                    >
+                      <option value="all">{t("allResidentsOption")}</option>
+                      {memberships.map((m: any) => (<option key={m.id} value={String(m.id)}>{m.name}</option>))}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                  </div>
+                </div>
+
+                {/* UC-8: Record Event Budget and Expenses */}
+                <div>
+                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("approvedBudgetOptional")}</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={newEvent.approvedBudget}
+                    onChange={(e) => setNewEvent({ ...newEvent, approvedBudget: e.target.value })}
+                    placeholder={t("approvedBudgetPlaceholder")}
+                    className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                  />
+                  <p className="mt-1 text-[11px] text-[#6B7280]">{t("trackExpensesHint")}</p>
+                </div>
+
+                {/* Items borrowed from Inventory for this event -- excludes
+                    Disposed/Lost stock (see InventoryController::borrowable()),
+                    and deducts the chosen quantity from Inventory on save. */}
+                <div className="rounded-2xl border border-dashed border-sage-300 p-3 space-y-3">
+                  <div className="flex items-center gap-1.5">
+                    <Package className="h-3.5 w-3.5 text-sage-700/70" />
+                    <p className="text-xs font-bold uppercase tracking-wide text-sage-700/70">{t("borrowedItemsSectionTitle")}</p>
+                  </div>
+
+                  {newEvent.borrowedItems.length > 0 && (
+                    <div className="space-y-2">
+                      {newEvent.borrowedItems.map((row) => {
+                        const max = Math.max(0, availableStockFor(row.inventoryItemId));
+                        return (
+                          <div key={row.inventoryItemId} className="flex items-center gap-2 rounded-xl bg-white border border-sage-200 px-3 py-2">
+                            <span className="flex-1 text-sm text-[#1A1A1A] truncate">{getBorrowItemName(row.inventoryItemId)}</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={max}
+                              value={row.quantity}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const clamped = raw === "" ? "" : String(Math.max(1, Math.min(max || 1, Math.round(Number(raw)) || 1)));
+                                updateBorrowQuantity(row.inventoryItemId, clamped);
+                              }}
+                              className="w-16 rounded-full border border-sage-200 px-2 py-1 text-sm text-center font-sans"
+                            />
+                            <span className="text-[11px] text-[#6B7280] shrink-0">/ {max} {t("availableStockShortLabel")}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeBorrowRow(row.inventoryItemId)}
+                              className="text-[#6B7280] hover:text-red-500 transition shrink-0"
+                              title={t("removeLabel")}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {!borrowableItemsLoading && borrowableItems.filter((it) => it.quantity > 0).length === 0 ? (
+                    <p className="text-xs text-[#6B7280] italic">{t("noBorrowableItemsLabel")}</p>
+                  ) : (
+                    <SearchableSelect
+                      onSelect={addBorrowRow}
+                      disabled={borrowableItemsLoading}
+                      placeholder={borrowableItemsLoading ? t("loadingLabel") : t("addBorrowedItemPlaceholder")}
+                      noResultsLabel={t("noMatchingBorrowItemsLabel")}
+                      options={borrowableItems
+                        .filter((it) => it.quantity > 0)
+                        .filter((it) => !newEvent.borrowedItems.some((r) => r.inventoryItemId === String(it.id)))
+                        .map((it) => ({
+                          value: String(it.id),
+                          label: it.name,
+                          hint: `(${it.quantity} ${t("availableStockShortLabel")})`,
+                        }))}
+                    />
+                  )}
+                  <p className="text-[11px] text-[#6B7280]">{t("borrowedItemsHint")}</p>
+                </div>
+
+                {/* Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)" */}
+                {!editingEvent && (
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={newEvent.postToFacebook}
+                      onChange={(e) => setNewEvent({ ...newEvent, postToFacebook: e.target.checked })}
+                      className="w-4 h-4 text-sage-700"
+                    />
+                    <span className="font-medium text-[#1A1A1A]">{t("alsoPostToFacebook")}</span>
+                  </label>
+                )}
+              </div>
+
+              <div className="flex justify-between gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeEventModal}
+                  disabled={isSubmitting}
+                  className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition disabled:opacity-50"
+                >
+                  {t("cancelLabel")}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmitting || isEventFormUnchanged}
+                  title={isEventFormUnchanged ? t("noChangesToSaveHint") : undefined}
+                  className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                >
+                  {isSubmitting ? t("savingLabel") : (editingEvent ? t("updateEvent") : t("postEvent"))}
+                </button>
+              </div>
             </form>
           </div>
         </div>
-
-        <div className={`overflow-y-auto pr-2 transition-all duration-300 ${formOpen ? "hidden lg:block lg:w-1/2 h-full" : "w-full pl-6 h-auto lg:h-full"}`}>
-          {filteredEvents.length === 0 ? (
-            <div className="text-center py-12"><p className="text-gray-500 italic">{t("noEventsMatchStaff")}</p></div>
-          ) : (
-            <div className="space-y-8">
-              {Object.entries(groupedEvents).map(([dateLabel, eventsInGroup]) => (
-                <div key={dateLabel}>
-                  <h3 className="mb-4 border-b border-gray-200 pb-2 text-lg font-bold text-[#005f63]">{dateLabel === THIS_WEEK_KEY ? t("thisWeekLabel") : dateLabel === UNKNOWN_DATE_KEY ? t("unknownDateLabel") : dateLabel}</h3>
-                  <div className="grid gap-5 md:grid-cols-1">
-                    {eventsInGroup.map((e) => {
-                      const eligibleMembers = getMembersForEvent(e);
-                      const attendanceList = getFullAttendanceList(e.id, eligibleMembers);
-                      const signedIn = attendanceList.filter((a: any) => a.timeIn).length;
-                      const signedOut = attendanceList.filter((a: any) => a.timeOut).length;
-                      const status = getEventStatus(e);
-                      const eventMembershipNames = getMembershipNames(e);
-                      const displayMembershipLabel = eventMembershipNames.length > 0 ? eventMembershipNames.join(", ") : t("openEventLabel");
-                      return (
-                        <div key={e.id} className="relative rounded-2xl border-l-4 border-[#f8e67d] bg-white p-5 shadow-[0_5px_6px_rgba(0,0,0,0.10)]">
-                          <div className="absolute top-4 right-4 flex items-center gap-2">
-                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${status.color}`}>{eventStatusLabel(status.label)}</span>
-                            {/* Editing/archiving stops making sense once an
-                                event is Ongoing (it's actively happening --
-                                changing it now would be confusing) or Past
-                                (already finished), same idea as a closed
-                                budget line. */}
-                            {(() => {
-                              const isLocked = status.label === "Past" || status.label === "Ongoing";
-                              const lockedHint = status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint");
-                              return (
-                                <>
-                                  <button onClick={() => startEditEvent(e)} disabled={isSubmitting || !!editingEvent || isLocked} className="rounded-full p-2 text-orange-500 hover:bg-orange-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent" title={isLocked ? lockedHint : t("editTitle")}><svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg></button>
-                                  <button onClick={() => setViewEv(e)} className="rounded-full p-2 text-[#005f63] hover:bg-[#005f63]/10" title={t("viewDetailsTitle")}><Eye className="h-[18px] w-[18px]" /></button>
-                                  <button onClick={() => setEventToDelete(e.id)} disabled={isLocked} className="p-2 rounded-full hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent" title={isLocked ? lockedHint : t("deleteTitle")}><Archive className="h-4 w-4 text-red-500" /></button>
-                                </>
-                              );
-                            })()}
-                          </div>
-                          <h2 className="pr-32 text-base font-bold text-[#005f63]">{highlightText(e.title, eventSearch)}</h2>
-                          <p className="mt-1 text-sm text-gray-500">{e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || ""} · {formatTime12Hour(e.startTime)}</p>
-                          <p className="mt-1 text-sm text-gray-500">{highlightText(e.location, eventSearch)}</p>
-                          <p className="mt-2 text-[14px] text-gray-700">{highlightText(e.description, eventSearch)}</p>
-                          <div className="mt-3 pt-2 border-t border-gray-200 text-xs text-gray-500"><span className="inline-block w-2 h-2 rounded-full bg-[#4eb4b8] mr-1"></span>{signedIn} {t("signedInLabel")} | <span className="inline-block w-2 h-2 rounded-full bg-red-400 mr-1"></span>{signedOut} {t("signedOutLabel")}<span className="ml-2 font-medium">• {displayMembershipLabel}</span></div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
       <ConfirmDialog
         open={showSaveConfirm}
@@ -1221,14 +2022,17 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
         onConfirm={performSaveEvent}
       />
 
-      {/* ✅ CUSTOM DELETE MODAL — NO BROWSER DEFAULT */}
+      {/* Delete Event Confirm Modal */}
       {eventToDelete !== null && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-4 text-red-500 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-red-500 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-lg font-bold text-red-600 mb-2">{t("confirmDeletionTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{t("confirmDeletionBody")}</p>
-            <div className="flex justify-center gap-3"><button onClick={cancelDelete} className="px-5 py-2 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-100">{t("cancelLabel")}</button><button onClick={confirmDelete} className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700">{t("yesDelete")}</button></div>
+            <p className="text-[15px] text-[#6B7280] mb-6">{t("confirmDeletionBody")}</p>
+            <div className="flex justify-center gap-3">
+              <button onClick={cancelDelete} className="px-5 py-2 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("cancelLabel")}</button>
+              <button onClick={confirmDelete} className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition">{t("yesDelete")}</button>
+            </div>
           </div>
         </div>
       )}
@@ -1236,14 +2040,14 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
       {showSuccessModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setShowSuccessModal(false)}>
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-[#005f63] flex justify-center">
+            <div className="mb-3 text-sage-800 flex justify-center">
               <CheckCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{successMessage}</p>
+            <h3 className="text-xl font-bold text-sage-800 mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-[#6B7280] mb-6">{successMessage}</p>
             <button
               onClick={() => setShowSuccessModal(false)}
-              className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition"
+              className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
             >
               {t("okLabel")}
             </button>
@@ -1257,8 +2061,8 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
             <div className="mb-3 flex justify-center text-red-500">
               <XCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-red-600 mb-2">{t("saveEventFailed")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{errorMessage}</p>
+            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
+            <p className="text-[15px] text-[#6B7280] mb-6">{errorMessage}</p>
             <button
               onClick={() => setShowErrorModal(false)}
               className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
@@ -1278,7 +2082,7 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
               <AlertCircle size={48} />
             </div>
             <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{deleteErrorMessage}</p>
+            <p className="text-[15px] text-[#6B7280] mb-6">{deleteErrorMessage}</p>
             <button
               onClick={() => setDeleteErrorMessage(null)}
               className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
@@ -1289,190 +2093,191 @@ const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[])
         </div>
       )}
 
-      {viewEv && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4"><div><h2 className="text-2xl font-black text-[#005f63]">{viewEv.title}</h2><p className="text-sm text-gray-600 mt-1">{viewEv.startDate || viewEv.date} · {formatTime12Hour(viewEv.startTime)}</p><p className="text-sm text-gray-600">{viewEv.location}</p></div><button onClick={() => setViewEv(null)} className="text-gray-500 hover:text-gray-700"><XCircle size={20} /></button></div>
-            <div className="space-y-4"><div className={`px-3 py-2 rounded-full inline-block text-sm font-semibold ${getEventStatus(viewEv).color}`}>{eventStatusLabel(getEventStatus(viewEv).label)}</div><div><h4 className="font-semibold text-gray-700 mb-1">{t("descriptionLabel")}</h4><p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-xl">{viewEv.description || "—"}</p></div>{viewEv.notificationMessage && (<div><h4 className="font-semibold text-gray-700 mb-1">{t("notificationPreview")}</h4><p className="text-sm text-teal-700 bg-teal-50 p-3 rounded-xl">{viewEv.notificationMessage}</p></div>)}{viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined && (<p className="text-sm text-gray-600">{t("approvedBudgetColon")} <strong className="text-[#005f63]">₱{Number(viewEv.approvedBudget).toLocaleString()}</strong></p>)}<div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center"><div className="bg-teal-50 rounded-xl p-3"><p className="text-xs text-teal-600 font-medium">{t("targetMembersLabel")}</p><p className="font-bold text-teal-800 text-sm">{(() => { const n = getMembershipNames(viewEv); return n.length > 0 ? n.join(", ") : t("openEventLabel"); })()}</p></div><div className="bg-green-50 rounded-xl p-3"><p className="text-xs text-green-600 font-medium">{t("signedInLabel")}</p><p className="font-bold text-green-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length}</p></div>
-            <div className="bg-orange-50 rounded-xl p-3"><p className="text-xs text-orange-600 font-medium">{t("signedOutLabel")}</p><p className="font-bold text-orange-800">{getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeOut).length}</p></div></div><button onClick={() => setShowAttendance(viewEv)} className="w-full bg-[#f3b94e] hover:bg-[#ff9736] text-white py-2.5 rounded-full font-medium">{t("viewAttendanceList")}</button>
-            {/* UC-16: residents' post-event ratings/comments -- previously
-                collected but never shown anywhere in the staff portal. */}
-            <div>
-              <h4 className="font-semibold text-gray-700 mb-2 flex items-center gap-1.5"><Star className="h-4 w-4 text-amber-400" /> {t("residentFeedbackLabel")}</h4>
-              {feedbackLoading ? (
-                <p className="text-xs text-gray-400 italic">{t("loadingLabel")}</p>
-              ) : eventFeedback.length === 0 ? (
-                <p className="text-xs text-gray-400 italic bg-gray-50 rounded-xl p-3">{t("noFeedbackYetLabel")}</p>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    {paginatedFeedback.map((f) => (
-                      <div key={f.id} className="rounded-xl bg-gray-50 border border-gray-100 p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-semibold text-gray-700 truncate">{f.user ? `${f.user.first_name} ${f.user.last_name}` : t("unknownItemLabel")}</span>
-                          <span className="flex items-center gap-0.5 shrink-0">
-                            {[1, 2, 3, 4, 5].map((n) => (
-                              <Star key={n} className={`h-3.5 w-3.5 ${n <= f.rating ? "text-amber-400 fill-amber-400" : "text-gray-200"}`} />
-                            ))}
-                          </span>
-                        </div>
-                        {f.comment && <p className="mt-1 text-xs text-gray-600">{f.comment}</p>}
-                      </div>
-                    ))}
-                  </div>
-                  {feedbackTotalPages > 1 && (
-                    <div className="flex items-center justify-between mt-3">
-                      <p className="text-xs text-gray-500">
-                        {t("pageOfLabel")} {feedbackCurrentPage} {t("ofPagesLabel")} {feedbackTotalPages} • {eventFeedback.length} {t("recordsShownLabel")}
-                      </p>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => setFeedbackCurrentPage(p => Math.max(1, p - 1))}
-                          disabled={feedbackCurrentPage === 1}
-                          className="h-7 w-7 rounded-full border border-gray-300 bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                        >
-                          ←
-                        </button>
-                        <span className="h-7 w-7 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-xs font-semibold">
-                          {feedbackCurrentPage}
-                        </span>
-                        <button
-                          onClick={() => setFeedbackCurrentPage(p => Math.min(feedbackTotalPages, p + 1))}
-                          disabled={feedbackCurrentPage === feedbackTotalPages}
-                          className="h-7 w-7 rounded-full border border-gray-300 bg-white text-[#005f63] text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                        >
-                          →
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
+      {/* ---- Budget tab modals (Add/Edit Expense confirms, Edit Expense form,
+          receipt viewer, delete-expense confirm) -- ported from the standalone
+          Budget page's per-event expense flow, recolored to match. ---- */}
+      <ConfirmDialog
+        open={showAddExpenseConfirm}
+        icon={<Plus size={32} />}
+        title={t("confirmAddExpenseTitle")}
+        body={t("confirmAddExpenseBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesAdd")}
+        onCancel={() => setShowAddExpenseConfirm(false)}
+        onConfirm={performAddExpense}
+      />
+
+      <ConfirmDialog
+        open={showEditExpenseConfirm}
+        icon={<Pencil size={32} />}
+        title={t("confirmUpdateExpenseTitle")}
+        body={t("confirmUpdateExpenseBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesUpdate")}
+        onCancel={() => setShowEditExpenseConfirm(false)}
+        onConfirm={performUpdateExpense}
+      />
+
+      {editingExpense && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4" onClick={() => !savingExpenseEdit && handleCloseEditExpense()}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-[#1A1A1A]">{t("editExpenseTitle")}</h2>
+              <button onClick={handleCloseEditExpense} className="text-[#6B7280] hover:text-[#1A1A1A]"><X size={20} /></button>
             </div>
-          </div>
+            <form onSubmit={handleUpdateExpense} noValidate className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("itemExpenseDescPlaceholder")}</label>
+                <input required value={editExpenseForm.item} onChange={(e) => setEditExpenseForm((p) => ({ ...p, item: e.target.value }))} className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("amountPlaceholder")}</label>
+                <input required type="number" min={0} step="0.01" value={editExpenseForm.amount} onChange={(e) => setEditExpenseForm((p) => ({ ...p, amount: e.target.value }))} className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("notesLabel")}</label>
+                <textarea value={editExpenseForm.notes} onChange={(e) => setEditExpenseForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-2xl border border-sage-200 px-4 py-2.5 text-sm font-sans resize-none" rows={2} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("receiptLabel")}</label>
+                {editExpenseReceiptFile ? (
+                  <div className="flex items-center gap-2 text-sm text-[#6B7280]">
+                    <FileText className="h-4 w-4 text-sage-800 shrink-0" />
+                    <span className="truncate">{editExpenseReceiptFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditExpenseReceiptFile(null);
+                        if (editExpenseReceiptInputRef.current) editExpenseReceiptInputRef.current.value = "";
+                      }}
+                      className="text-[#6B7280] hover:text-red-500 shrink-0"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : existingEditReceiptUrl ? (
+                  <div className="flex items-center gap-3 text-sm">
+                    <button
+                      type="button"
+                      onClick={() => setViewingReceipt({ url: existingEditReceiptUrl, item: editExpenseForm.item })}
+                      className="text-sage-800 hover:underline flex items-center gap-1"
+                    >
+                      <Paperclip className="h-3.5 w-3.5" /> {t("viewReceiptLabel")}
+                    </button>
+                    <button type="button" onClick={() => editExpenseReceiptInputRef.current?.click()} className="text-xs text-[#6B7280] hover:underline">
+                      {t("replaceReceiptLabel")}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => editExpenseReceiptInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-sage-200 px-4 py-2 text-sm text-[#6B7280] hover:bg-sage-50 transition"
+                  >
+                    <Paperclip className="h-4 w-4" /> {t("attachReceiptLabel")}
+                  </button>
+                )}
+                <input
+                  ref={editExpenseReceiptInputRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => setEditExpenseReceiptFile(e.target.files?.[0] ?? null)}
+                  className="hidden"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="submit" disabled={savingExpenseEdit || isEditExpenseUnchanged} title={isEditExpenseUnchanged ? t("noChangesToSaveHint") : undefined} className="flex-1 py-2.5 rounded-full font-bold bg-sage-800 hover:bg-sage-900 text-white disabled:opacity-60 disabled:cursor-not-allowed">{savingExpenseEdit ? t("savingLabel") : t("saveChanges")}</button>
+                <button type="button" onClick={handleCloseEditExpense} disabled={savingExpenseEdit} className="px-6 py-2.5 rounded-full border border-[#E6E0D3] bg-[#FAF9F5] text-[#1A1A1A] disabled:opacity-60">{t("cancelLabel")}</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
-      {showAttendance && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
-          <div className="bg-white w-[95%] max-w-6xl h-[80vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
-            <div className="bg-white z-20 flex items-center justify-between p-6 border-b border-gray-200 rounded-t-3xl shrink-0">
-              <div>
-                <h2 className="text-2xl font-black text-[#005f63]">{t("attendanceDashPrefix")} {showAttendance.title}</h2>
-                <p className="text-sm text-gray-600 mt-1">{showAttendance.date}</p>
+      {showEditExpenseCancelConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[80] px-4" onClick={() => setShowEditExpenseCancelConfirm(false)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-[#6B7280] mb-5">{t("unsavedChangesMessage")}</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setShowEditExpenseCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("stayButton")}</button>
+              <button
+                onClick={() => {
+                  setShowEditExpenseCancelConfirm(false);
+                  setEditingExpense(null);
+                }}
+                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+              >
+                {t("discardCloseButton")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewingReceipt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80] px-4" onClick={() => setViewingReceipt(null)}>
+          <div className="bg-white rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-[#E6E0D3] flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="inline-flex items-center justify-center h-9 w-9 rounded-full bg-sage-50 text-sage-800 shrink-0">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-[#1A1A1A] truncate">{viewingReceipt.item}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-[#6B7280] font-semibold">
+                    {receiptExt(viewingReceipt.url) || t("fileLabel")}
+                  </p>
+                </div>
               </div>
-              <button onClick={() => setShowAttendance(null)} className="text-gray-500 hover:text-gray-700">
-                <XCircle size={24} />
+              <button onClick={() => setViewingReceipt(null)} className="text-[#6B7280] hover:text-[#1A1A1A] p-1 shrink-0">
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="bg-white z-20 pb-4 mb-4 border-b border-gray-100 px-6 pt-2 flex flex-wrap gap-4 items-center shrink-0">
-              <div className="flex-1 min-w-[250px]">
-                <SearchBar
-                  value={attendanceSearch}
-                  onChange={setAttendanceSearch}
-                  placeholder={t("searchResidentNamePlaceholder")}
+            <div className="flex-1 overflow-auto bg-[#FAF9F5] flex items-center justify-center p-4">
+              {isImageReceipt(receiptExt(viewingReceipt.url)) ? (
+                <img src={viewingReceipt.url} alt={viewingReceipt.item} className="max-w-full max-h-[65vh] rounded-xl shadow-sm" />
+              ) : isPdfReceipt(receiptExt(viewingReceipt.url)) ? (
+                <iframe
+                  src={viewingReceipt.url}
+                  title={viewingReceipt.item}
+                  className="w-full h-[65vh] rounded-xl border border-[#E6E0D3] bg-white"
                 />
-              </div>
-              <FilterDropdown
-                value={attendanceStatusFilter}
-                onChange={setAttendanceStatusFilter}
-                options={[
-                  { value: "all", label: t("allStatus") },
-                  { value: "complete", label: t("statusComplete") },
-                  { value: "incomplete", label: t("statusIncomplete") },
-                  { value: "missed", label: t("statusMissed") },
-                ]}
-                className="h-12 pl-10 pr-8"
-                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
-              />
-            </div>
-
-            <div className="flex-1 px-6 pb-6 overflow-y-auto">
-              <div className="rounded-xl border border-[#ddd5ca] w-full overflow-x-auto">
-                <table className="w-full text-sm min-w-[560px]">
-                  <thead className="bg-[#f8f6f2] sticky top-0 z-10">
-                    <tr>
-                      <th className="text-left p-4 font-medium text-[#005f63] w-[30%]">{t("residentNameColumn")}</th>
-                      <th className="text-left p-4 font-medium text-[#005f63] w-[25%]">{t("timeInColumn")}</th>
-                      <th className="text-left p-4 font-medium text-[#005f63] w-[25%]">{t("timeOutColumn")}</th>
-                      <th className="text-left p-4 font-medium text-[#005f63] w-[15%]">{t("statusColumn")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedAttendance.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="p-6 text-center text-gray-500 italic">
-                          {t("noMatchingRecords")}
-                        </td>
-                      </tr>
-                    ) : (
-                                            paginatedAttendance.map((record: any, i: number) => {
-                        const status = getAttendanceStatus(record);
-                        let statusColor = "text-gray-600 bg-gray-100";
-                        if (status.label === "Complete") statusColor = "text-green-700 bg-green-100";
-                        if (status.label === "Incomplete") statusColor = "text-yellow-700 bg-yellow-100";
-                        if (status.label === "Missed") statusColor = "text-red-700 bg-red-100";
-
-                        return (
-                          <tr key={i} className="border-t border-[#ddd5ca] hover:bg-[#fcfaf6] transition-colors">
-                            <td className="p-4 text-gray-800">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
-                            <td className="p-4 text-gray-700">
-                              {record.timeIn ? (
-                                <span className="flex items-center gap-2">
-                                  <LogIn className="h-4 w-4 text-green-600" />
-                                  {formatTime12Hour(record.timeIn)}
-                                </span>
-                              ) : "—"}
-                            </td>
-                            <td className="p-4 text-gray-700">
-                              {record.timeOut ? (
-                                <span className="flex items-center gap-2">
-                                  <LogOut className="h-4 w-4 text-red-600" />
-                                  {formatTime12Hour(record.timeOut)}
-                                </span>
-                              ) : "—"}
-                            </td>
-                            <td className="p-4">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor}`}>
-                                {attendanceStatusLabel(status.label)}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {attendanceTotalPages > 1 && (
-                <div className="flex flex-col sm:flex-row gap-3 justify-between items-center mt-6">
-                  <p className="text-sm text-gray-600 text-center sm:text-left">
-                    {t("pageOfLabel")} {attendanceCurrentPage} {t("ofPagesLabel")} {attendanceTotalPages} • {paginatedAttendance.length} {t("recordsShownLabel")}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setAttendanceCurrentPage(p => Math.max(1, p - 1))}
-                      disabled={attendanceCurrentPage === 1}
-                      className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                    >
-                      ←
-                    </button>
-                    <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
-                      {attendanceCurrentPage}
-                    </span>
-                    <button
-                      onClick={() => setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1))}
-                      disabled={attendanceCurrentPage === attendanceTotalPages}
-                      className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
-                    >
-                      →
-                    </button>
-                  </div>
+              ) : (
+                <div className="text-center py-10">
+                  <FileText className="h-10 w-10 mx-auto text-[#C9C2AF] mb-3" />
+                  <p className="text-sm text-[#6B7280]">{t("previewNotAvailableLabel")}</p>
                 </div>
               )}
+            </div>
+
+            <div className="px-5 py-4 border-t border-[#E6E0D3] flex justify-end gap-2">
+              <a
+                href={viewingReceipt.url}
+                download
+                className="inline-flex items-center gap-1.5 rounded-full bg-sage-800 hover:bg-sage-900 text-white text-sm font-semibold px-5 py-2.5 transition"
+              >
+                <Download className="h-4 w-4" /> {t("downloadLabel")}
+              </a>
+              <button onClick={() => setViewingReceipt(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] text-sm hover:bg-sage-50 transition">
+                {t("closeLabel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteExpenseTarget && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[80] px-4" onClick={() => !deletingExpense && setDeleteExpenseTarget(null)}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 text-red-500 flex justify-center"><Trash2 size={36} /></div>
+            <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
+            <p className="text-[15px] text-[#6B7280] mb-5">{t("deleteExpenseConfirm")} "{deleteExpenseTarget.item}"?</p>
+            <div className="flex justify-center gap-4">
+              <button onClick={() => setDeleteExpenseTarget(null)} disabled={deletingExpense} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition disabled:opacity-60">{t("cancelLabel")}</button>
+              <button onClick={confirmDeleteExpense} disabled={deletingExpense} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
             </div>
           </div>
         </div>

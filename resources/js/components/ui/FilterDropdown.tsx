@@ -119,16 +119,16 @@ export default function FilterDropdown({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`flex items-center gap-2 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 ${className}`}
+        className={`flex items-center gap-2 rounded-full border border-[#E6E0D3] bg-white text-sm focus:border-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-700/20 ${className}`}
       >
         {/* Chevron lives inside the button's own flex row (not absolutely
             positioned over the label) so it always reserves its own space
             next to the text via `gap-2` -- a caller that forgets extra
             right-padding for a long label ("All Conditions") can no longer
             end up with the chevron drawn on top of the tail of the text. */}
-        <span className="text-gray-800 truncate flex-1">{selectedLabel}</span>
+        <span className="text-[#1A1A1A] truncate flex-1">{selectedLabel}</span>
         <ChevronDown
-          className={`h-4 w-4 shrink-0 text-[#005f63]/70 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-4 w-4 shrink-0 text-[#6B7280] transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
       {icon}
@@ -139,7 +139,7 @@ export default function FilterDropdown({
             ref={panelRef}
             role="listbox"
             style={{ position: "fixed", top: panelPos.top, left: panelPos.left, width: panelWidthPx }}
-            className="z-[9999] rounded-[20px] border border-[#ddd5ca] bg-white shadow-xl overflow-hidden py-1.5"
+            className="z-[9999] rounded-2xl border border-[#E6E0D3] bg-white shadow-xl overflow-hidden py-1.5"
           >
             <div className="max-h-[280px] overflow-y-auto">
               {options.map((opt) => (
@@ -154,8 +154,8 @@ export default function FilterDropdown({
                   }}
                   className={`w-full text-left px-4 py-2.5 text-sm truncate transition ${
                     value === opt.value
-                      ? "bg-teal-50 text-[#005f63] font-semibold"
-                      : "text-gray-700 hover:bg-gray-50"
+                      ? "bg-sage-50 text-sage-800 font-semibold"
+                      : "text-[#1A1A1A] hover:bg-sage-50/60"
                   }`}
                 >
                   {opt.label}

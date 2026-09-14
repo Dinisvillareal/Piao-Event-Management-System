@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, CheckCircle, AlertCircle, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
-import SearchBar from "../../../components/ui/SearchBar";
+import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, CheckCircle, AlertCircle, AlertTriangle, ChevronDown, Search } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -261,43 +260,54 @@ export default function HouseholdsView() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("householdsTitle")}</h1>
-          <p className="mt-1 text-sm text-[#667777]">{t("householdsSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("householdsTitle")}</h1>
+          <p className="mt-1.5 text-sm text-[#6B7280] max-w-xl">{t("householdsSubtitle")}</p>
         </div>
         <button
           type="button"
           onClick={() => setShowAddForm((v) => !v)}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-3 text-sm font-semibold shadow-sm transition shrink-0"
+          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1A1A1A] hover:bg-black text-white px-5 py-3 text-sm font-semibold shadow-sm transition shrink-0"
         >
           <Plus className="h-4 w-4" /> {t("addHouseholdLabel")}
         </button>
       </div>
 
-      <SearchBar value={search} onChange={setSearch} placeholder={t("searchHouseholdsPlaceholder")} />
+      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("searchHouseholdsPlaceholder")}
+            className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+          />
+        </div>
+      </div>
 
       {showAddForm && (
-        <form onSubmit={submitAdd} className="rounded-[24px] border border-dashed border-[#005f63]/30 bg-white p-5 space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">{t("addHouseholdLabel")}</p>
+        <form onSubmit={submitAdd} className="rounded-2xl border border-dashed border-sage-300 bg-white p-5 space-y-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("addHouseholdLabel")}</p>
           <div className="grid sm:grid-cols-2 gap-3">
             <input
               value={addForm.address}
               onChange={(e) => setAddForm((p) => ({ ...p, address: e.target.value }))}
               placeholder={t("householdAddressPlaceholder")}
-              className="rounded-full border border-gray-200 px-4 py-2.5 text-sm"
+              className="rounded-full border border-sage-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
             />
             <input
               value={addForm.contact_number}
               onChange={(e) => setAddForm((p) => ({ ...p, contact_number: e.target.value }))}
               placeholder={t("householdContactPlaceholder")}
-              className="rounded-full border border-gray-200 px-4 py-2.5 text-sm"
+              className="rounded-full border border-sage-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
             />
           </div>
-          <p className="text-xs text-gray-400">{t("householdCodeAutoNote")}</p>
+          <p className="text-xs text-[#6B7280]">{t("householdCodeAutoNote")}</p>
           <div className="flex gap-2 justify-end">
-            <button type="button" onClick={() => setShowAddForm(false)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 text-sm hover:bg-gray-50 transition">
+            <button type="button" onClick={() => setShowAddForm(false)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] text-sm hover:bg-sage-50 transition">
               {t("cancelLabel")}
             </button>
-            <button type="submit" disabled={saving} className="px-5 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white text-sm font-medium disabled:opacity-60 transition">
+            <button type="submit" disabled={saving} className="px-5 py-2.5 rounded-full bg-sage-800 hover:bg-sage-900 text-white text-sm font-medium disabled:opacity-60 transition">
               {t("saveLabel")}
             </button>
           </div>
@@ -306,10 +316,10 @@ export default function HouseholdsView() {
 
       {loading ? (
         <div className="flex justify-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sage-700" />
         </div>
       ) : households.length === 0 ? (
-        <div className="rounded-[24px] border border-[#ddd5ca] bg-white p-10 text-center text-sm text-gray-500">
+        <div className="rounded-2xl border border-[#E6E0D3] bg-white p-10 text-center text-sm text-[#6B7280]">
           {t("noHouseholdsFound")}
         </div>
       ) : (
@@ -318,69 +328,69 @@ export default function HouseholdsView() {
             const expanded = expandedId === h.id;
             const head = h.members?.find((m) => m.is_household_head);
             return (
-              <div key={h.id} className="rounded-[24px] border border-[#ddd5ca] bg-white overflow-hidden">
-                <div className="p-5 flex flex-wrap items-center gap-4">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-teal-50 shrink-0">
-                    <Home className="h-5 w-5 text-[#005f63]" />
+              <div key={h.id} className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden transition-shadow hover:shadow-md">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setExpandedId(expanded ? null : h.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setExpandedId(expanded ? null : h.id);
+                    }
+                  }}
+                  className="p-5 flex flex-wrap items-center gap-4 cursor-pointer"
+                >
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sage-50 shrink-0">
+                    <Home className="h-5 w-5 text-sage-800" />
                   </div>
                   <div className="min-w-[140px]">
-                    <p className="text-sm font-bold text-gray-800">{h.code}</p>
-                    <p className="text-xs text-gray-500">{h.address || t("noAddressOnFile")}</p>
+                    <p className="text-sm font-bold text-[#1A1A1A]">{h.code}</p>
+                    <p className="text-xs text-[#6B7280]">{h.address || t("noAddressOnFile")}</p>
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-600 bg-gray-100 rounded-full px-3 py-1">
+                  <div className="flex items-center gap-1.5 text-xs text-white bg-sage-800 rounded-full px-3 py-1">
                     <Users className="h-3.5 w-3.5" /> {h.members_count} {t("membersLabel")}
                   </div>
                   {head ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-[#005f63] bg-teal-50 rounded-full px-3 py-1">
-                      <Star className="h-3.5 w-3.5 fill-[#005f63]" /> {fullName(head)}
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-[#5C2A1E] bg-[#8A3D2C]/10 rounded-full px-3 py-1">
+                      <Star className="h-3.5 w-3.5 fill-[#5C2A1E]" /> {fullName(head)}
                     </span>
                   ) : h.members_count > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 rounded-full px-3 py-1">
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-[#5C2A1E] bg-[#8A3D2C]/10 rounded-full px-3 py-1">
                       <AlertCircle className="h-3.5 w-3.5" /> {t("noHeadAssigned")}
                     </span>
                   ) : null}
                   {h.contact_number && (
-                    <span className="text-xs text-gray-500">{h.contact_number}</span>
+                    <span className="text-xs text-[#6B7280]">{h.contact_number}</span>
                   )}
 
                   <div className="ml-auto flex items-center gap-1">
-                    <button type="button" onClick={() => openEdit(h)} className="p-2 rounded-full hover:bg-orange-50 text-orange-600" title={t("editLabel")}>
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button type="button" onClick={() => setDeleteRecord(h)} className="p-2 rounded-full hover:bg-red-50 text-red-500" title={t("deleteTitle")}>
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setExpandedId(expanded ? null : h.id)}
-                      className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
-                      title={t("viewMembersLabel")}
-                    >
-                      {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </button>
+                    <ChevronDown
+                      className={`h-4 w-4 text-[#6B7280] transition-transform ${expanded ? "rotate-180" : ""}`}
+                    />
                   </div>
                 </div>
 
                 {expanded && (
-                  <div className="border-t border-gray-100 bg-gray-50/60 px-5 py-4 space-y-3">
+                  <div className="border-t border-[#E6E0D3] bg-sage-50/40 px-5 py-4 space-y-3">
                     {h.members.length === 0 ? (
-                      <p className="text-xs text-gray-500">{t("noMembersYet")}</p>
+                      <p className="text-xs text-[#6B7280]">{t("noMembersYet")}</p>
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {h.members.map((m) => (
-                          <div key={m.id} className="flex items-center gap-2 rounded-full bg-white border border-gray-200 pl-3 pr-1.5 py-1.5 text-xs">
-                            <span className="font-medium text-gray-800">{fullName(m)}</span>
+                          <div key={m.id} className="flex items-center gap-2 rounded-full bg-white border border-sage-200 pl-3 pr-1.5 py-1.5 text-xs">
+                            <span className="font-medium text-[#1A1A1A]">{fullName(m)}</span>
                             {m.role === "Staff" && (
                               <span className="rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
                             )}
-                            <span className="text-gray-400">{m.user_code}</span>
+                            <span className="text-[#6B7280]">{m.user_code}</span>
                             <button
                               type="button"
                               onClick={() => setHead(h.id, m.id)}
                               title={m.is_household_head ? t("headOfHouseholdTitle") : t("setAsHeadLabel")}
-                              className={`p-1 rounded-full ${m.is_household_head ? "text-[#005f63]" : "text-gray-300 hover:text-amber-500"}`}
+                              className={`p-1 rounded-full ${m.is_household_head ? "text-[#5C2A1E]" : "text-gray-300 hover:text-[#8A3D2C]"}`}
                             >
-                              <Star className={`h-3.5 w-3.5 ${m.is_household_head ? "fill-[#005f63]" : ""}`} />
+                              <Star className={`h-3.5 w-3.5 ${m.is_household_head ? "fill-[#5C2A1E]" : ""}`} />
                             </button>
                             <button
                               type="button"
@@ -396,24 +406,24 @@ export default function HouseholdsView() {
                     )}
 
                     {pickerFor === h.id ? (
-                      <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-3 space-y-2">
+                      <div className="rounded-2xl border border-dashed border-sage-300 bg-white p-3 space-y-2">
                         <input
                           autoFocus
                           value={memberSearch}
                           onChange={(e) => setMemberSearch(e.target.value)}
                           placeholder={t("searchResidentPlaceholder")}
-                          className="w-full rounded-full border border-gray-200 px-4 py-2 text-xs"
+                          className="w-full rounded-full border border-sage-200 px-4 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
                         />
                         <div className="max-h-40 overflow-y-auto space-y-1">
                           {filteredUnassigned.length === 0 ? (
-                            <p className="text-xs text-gray-400 px-2 py-1">{t("noUnassignedResidents")}</p>
+                            <p className="text-xs text-[#6B7280] px-2 py-1">{t("noUnassignedResidents")}</p>
                           ) : (
                             filteredUnassigned.map((m) => (
                               <button
                                 key={m.id}
                                 type="button"
                                 onClick={() => addMember(h.id, m.id)}
-                                className="w-full text-left text-xs px-3 py-2 rounded-full hover:bg-teal-50 flex items-center justify-between gap-2"
+                                className="w-full text-left text-xs px-3 py-2 rounded-full hover:bg-sage-50 flex items-center justify-between gap-2"
                               >
                                 <span className="flex items-center gap-1.5">
                                   {fullName(m)}
@@ -421,23 +431,43 @@ export default function HouseholdsView() {
                                     <span className="rounded-full bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
                                   )}
                                 </span>
-                                <span className="text-gray-400">{m.user_code}</span>
+                                <span className="text-[#6B7280]">{m.user_code}</span>
                               </button>
                             ))
                           )}
                         </div>
-                        <button type="button" onClick={() => { setPickerFor(null); setMemberSearch(""); }} className="text-xs text-gray-500 hover:text-gray-700 px-2">
+                        <button type="button" onClick={() => { setPickerFor(null); setMemberSearch(""); }} className="text-xs text-[#6B7280] hover:text-[#1A1A1A] px-2">
                           {t("cancelLabel")}
                         </button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => setPickerFor(h.id)}
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-[#005f63] hover:text-[#004a4d]"
-                      >
-                        <UserPlus className="h-3.5 w-3.5" /> {t("addMemberLabel")}
-                      </button>
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setPickerFor(h.id)}
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-sage-800 hover:text-sage-900"
+                        >
+                          <UserPlus className="h-3.5 w-3.5" /> {t("addMemberLabel")}
+                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openEdit(h); }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-sage-200 bg-white px-3 py-1.5 text-xs font-semibold text-sage-800 hover:bg-sage-50 transition-colors"
+                            title={t("editLabel")}
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> {t("editLabel")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setDeleteRecord(h); }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 transition-colors"
+                            title={t("deleteTitle")}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> {t("deleteTitle")}
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
@@ -451,7 +481,7 @@ export default function HouseholdsView() {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`h-9 w-9 rounded-full text-sm ${p === page ? "bg-[#005f63] text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                  className={`h-9 w-9 rounded-full text-sm ${p === page ? "bg-sage-800 text-white" : "bg-white border border-sage-200 text-[#6B7280] hover:bg-sage-50"}`}
                 >
                   {p}
                 </button>
@@ -469,28 +499,28 @@ export default function HouseholdsView() {
             onClick={(e) => e.stopPropagation()}
             className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl space-y-4"
           >
-            <h3 className="text-xl font-bold text-[#005f63]">{t("editHouseholdLabel")} -- {editRecord.code}</h3>
+            <h3 className="text-xl font-bold text-sage-800">{t("editHouseholdLabel")} -- {editRecord.code}</h3>
             <input
               value={editForm.address}
               onChange={(e) => setEditForm((p) => ({ ...p, address: e.target.value }))}
               placeholder={t("householdAddressPlaceholder")}
-              className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm"
+              className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
             />
             <input
               value={editForm.contact_number}
               onChange={(e) => setEditForm((p) => ({ ...p, contact_number: e.target.value }))}
               placeholder={t("householdContactPlaceholder")}
-              className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm"
+              className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
             />
             <div className="flex justify-center gap-4 pt-2">
-              <button type="button" onClick={handleCloseEdit} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
+              <button type="button" onClick={handleCloseEdit} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">
                 {t("cancelLabel")}
               </button>
               <button
                 type="submit"
                 disabled={saving || isEditFormUnchanged}
                 title={isEditFormUnchanged ? t("noChangesToSaveHint") : undefined}
-                className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#005f63]"
+                className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-sage-800"
               >
                 {t("saveChanges")}
               </button>
@@ -505,9 +535,9 @@ export default function HouseholdsView() {
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
-            <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
+            <p className="text-[#6B7280] mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("stayButton")}</button>
+              <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   setShowEditCancelConfirm(false);
@@ -551,9 +581,9 @@ export default function HouseholdsView() {
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
             <div className="mb-4 text-red-500 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-5">{t("deleteHouseholdConfirm")}</p>
+            <p className="text-[15px] text-[#6B7280] mb-5">{t("deleteHouseholdConfirm")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("cancel")}</button>
+              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("cancel")}</button>
               <button onClick={confirmDelete} disabled={saving} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
             </div>
           </div>
@@ -564,10 +594,10 @@ export default function HouseholdsView() {
       {successMessage && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setSuccessMessage(null)}>
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-[#005f63] flex justify-center"><CheckCircle size={48} /></div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{successMessage}</p>
-            <button onClick={() => setSuccessMessage(null)} className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition">
+            <div className="mb-3 text-sage-800 flex justify-center"><CheckCircle size={48} /></div>
+            <h3 className="text-xl font-bold text-sage-800 mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-[#6B7280] mb-6">{successMessage}</p>
+            <button onClick={() => setSuccessMessage(null)} className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition">
               {t("okLabel")}
             </button>
           </div>
@@ -580,7 +610,7 @@ export default function HouseholdsView() {
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-red-500 flex justify-center"><AlertCircle size={48} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{errorMessage}</p>
+            <p className="text-[15px] text-[#6B7280] mb-6">{errorMessage}</p>
             <button onClick={() => setErrorMessage(null)} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">
               {t("okLabel")}
             </button>

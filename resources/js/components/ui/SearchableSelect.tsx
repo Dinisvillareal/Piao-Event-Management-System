@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, ChevronDown } from "lucide-react";
+import { Search, ChevronDown, Plus } from "lucide-react";
 
 export interface SearchableSelectOption {
   value: string;
@@ -15,6 +15,9 @@ interface SearchableSelectProps {
   noResultsLabel: string;
   disabled?: boolean;
   className?: string;
+  /** Optional sticky row pinned to the bottom of the dropdown, e.g. "+ Add new household". */
+  footerLabel?: string;
+  onFooterClick?: () => void;
 }
 
 // A type-to-filter combobox for long option lists (inventory items, etc.)
@@ -30,6 +33,8 @@ export default function SearchableSelect({
   noResultsLabel,
   disabled = false,
   className = "",
+  footerLabel,
+  onFooterClick,
 }: SearchableSelectProps) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -134,6 +139,20 @@ export default function SearchableSelect({
                 {opt.hint && <span className="ml-1.5 text-xs text-gray-400">{opt.hint}</span>}
               </button>
             ))
+          )}
+          {onFooterClick && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                setIsOpen(false);
+                inputRef.current?.blur();
+                onFooterClick();
+              }}
+              className="mt-1 flex w-full items-center gap-1.5 border-t border-gray-100 px-4 py-2.5 text-left text-sm font-semibold text-[#005f63] hover:bg-teal-50"
+            >
+              <Plus className="h-3.5 w-3.5" /> {footerLabel ?? "Add new"}
+            </button>
           )}
         </div>
       )}
