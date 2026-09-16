@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Camera, CameraOff, CheckCircle, XCircle, LogIn, LogOut, IdCard, ScanLine, Search, ChevronDown } from "lucide-react";
 import { Scanner } from '@yudiel/react-qr-scanner';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, Button, Input, Label, Badge } from "../../../components/ui/Core";
 import api from "../../../lib/api";
 import { queueAttendance } from "../../../lib/offlineQueue";
 import { useOnlineStatus } from "../../../hooks/useOnlineStatus";
@@ -487,81 +486,81 @@ export default function ScanView({ events, residents, memberships }: any) {
 
   return (
     <div className="space-y-6">
-      <div className="sticky top-0 z-10 bg-[#fcfcf9] pt-2 pb-4 px-1 shadow-b-sm rounded-[10px]">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("scan")}</h1>
-          <p className="text-sm text-[#667777] mt-1">{t("scanSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("scan")}</h1>
+          <p className="mt-1.5 text-sm text-[#6B7280] max-w-xl">{t("scanSubtitle")}</p>
         </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
-        <Card className="overflow-hidden border-[#ddd5ca] rounded-[30px] shadow-sm hover:shadow-md transition-shadow">
-          <CardHeader className="border-b border-[#ddd5ca] bg-white rounded-t-[30px]">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-[#005f63] font-black text-[15px]">
-                  {checkInMethod === "camera" ? t("cameraScannerLabel") : t("manualPhysicalIdLookupLabel")}
-                </CardTitle>
-                <CardDescription className="text-[#667777] mt-1">
-                  {checkInMethod === "camera" ? t("oneQrPerResident") : t("typeResidentIdOrName")}
-                </CardDescription>
-              </div>
-              {checkInMethod === "camera" && (
-                <Button
-                  onClick={() => setIsCameraOn(!isCameraOn)}
-                  disabled={!isDeadlineActive}
-                  className={`rounded-full w-10 h-10 p-0 flex items-center justify-center transition-all ${
-                    !isDeadlineActive ? "bg-gray-300 cursor-not-allowed opacity-50" :
-                    isCameraOn ? "bg-red-500 hover:bg-red-600" : "bg-[#005f63] hover:bg-[#217676]"
-                  }`}
-                >
-                  {isCameraOn ? <CameraOff size={18} /> : <Camera size={18} />}
-                </Button>
-              )}
+        <div className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-[#E6E0D3] p-5">
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-[#1A1A1A]">
+                {checkInMethod === "camera" ? t("cameraScannerLabel") : t("manualPhysicalIdLookupLabel")}
+              </h2>
+              <p className="mt-0.5 text-sm text-[#6B7280]">
+                {checkInMethod === "camera" ? t("oneQrPerResident") : t("typeResidentIdOrName")}
+              </p>
             </div>
-          </CardHeader>
+            {checkInMethod === "camera" && (
+              <button
+                type="button"
+                onClick={() => setIsCameraOn(!isCameraOn)}
+                disabled={!isDeadlineActive}
+                className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors ${
+                  !isDeadlineActive
+                    ? "bg-[#E6E0D3]/70 text-[#6B7280] cursor-not-allowed"
+                    : isCameraOn
+                    ? "bg-red-500 text-white hover:bg-red-600"
+                    : "bg-sage-700 text-white hover:bg-sage-800"
+                }`}
+              >
+                {isCameraOn ? <CameraOff className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
+              </button>
+            )}
+          </div>
 
-          <CardContent className="space-y-4 p-5 rounded-b-[30px]">
-            <div className="mb-6 space-y-4 rounded-[20px] bg-gray-50 p-5 border border-gray-100 shadow-inner">
+          <div className="p-5 space-y-5">
+            <div className="space-y-4 rounded-2xl border border-[#E6E0D3] bg-[#FAF9F5] p-5">
               <div ref={eventDropdownRef} className="relative">
-                <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">{t("selectEventStep1")}</Label>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("selectEventStep1")}</label>
                 <button
                   type="button"
                   onClick={() => setEventDropdownOpen((v) => !v)}
-                  className="w-full flex items-center justify-between gap-2 rounded-[20px] border px-4 py-2.5 text-left text-sm transition bg-white border-gray-200 hover:border-[#005f63]/40"
+                  className="flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-[#E6E0D3] bg-white px-4 text-left text-sm transition hover:border-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-700/20"
                 >
-                  <span className={ev ? "text-gray-800 font-medium truncate" : "text-gray-400"}>
+                  <span className={ev ? "truncate font-medium text-[#1A1A1A]" : "text-[#6B7280]"}>
                     {ev ? ev.title : t("selectEventStep1")}
                   </span>
-                  <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${eventDropdownOpen ? "rotate-180" : ""}`} />
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-[#6B7280] transition-transform ${eventDropdownOpen ? "rotate-180" : ""}`} />
                 </button>
 
                 {eventDropdownOpen && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 rounded-[20px] border border-[#ddd5ca] bg-white shadow-xl overflow-hidden">
-                    {/* Divided like the Settings page's cards -- a thin
-                        gradient bar + its own header row -- so the live
-                        "as of" time reads as its own section, separate
-                        from the search box and the list below it. */}
-                    <div className="h-1 bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300" />
-                    <div className="px-4 py-2 flex items-center justify-between bg-teal-50/60 border-b border-gray-100">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-[#005f63]/70">{t("currentDateTimeLabel")}</span>
-                      <span className="text-xs font-bold text-[#005f63]">{currentDateTimeLabel}</span>
+                  <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 rounded-2xl border border-[#E6E0D3] bg-white shadow-xl overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-[#E6E0D3] bg-sage-50 px-4 py-2">
+                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-sage-700/80">
+                        <span className="h-1.5 w-1.5 rounded-full bg-sage-600 animate-pulse" />
+                        {t("currentDateTimeLabel")}
+                      </span>
+                      <span className="text-xs font-bold text-sage-800">{currentDateTimeLabel}</span>
                     </div>
-                    <div className="p-2 border-b border-gray-100">
+                    <div className="border-b border-[#E6E0D3] p-2">
                       <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#6B7280]" />
                         <input
                           autoFocus
                           value={eventSearchQuery}
                           onChange={(e) => setEventSearchQuery(e.target.value)}
                           placeholder={t("scannerSearchEventPlaceholder")}
-                          className="w-full rounded-full border border-gray-200 pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#005f63]/30"
+                          className="h-9 w-full rounded-xl border border-[#E6E0D3] bg-white pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
                         />
                       </div>
                     </div>
                     <div className="max-h-[240px] overflow-y-auto">
                       {filteredEventOptions.length === 0 ? (
-                        <p className="px-4 py-6 text-center text-xs text-gray-400 italic">
+                        <p className="px-4 py-6 text-center text-xs italic text-[#6B7280]">
                           {upcomingEvents.length === 0 ? t("noUpcomingEventsLabel") : t("noEventsMatchSearch")}
                         </p>
                       ) : (
@@ -576,13 +575,13 @@ export default function ScanView({ events, residents, memberships }: any) {
                             }}
                             className={`w-full text-left px-4 py-2.5 text-sm transition ${
                               String(e.id) === String(eventId)
-                                ? "bg-teal-50 text-[#005f63] font-semibold"
-                                : "text-gray-700 hover:bg-gray-50"
+                                ? "bg-sage-50 text-sage-800 font-semibold"
+                                : "text-[#1A1A1A] hover:bg-sage-50/60"
                             }`}
                           >
                             <span className="block truncate">{e.title}</span>
                             {formatEventOptionDateTime(e.event_start) && (
-                              <span className="block text-[11px] font-normal text-gray-400 mt-0.5">
+                              <span className="block text-[11px] font-normal text-[#6B7280] mt-0.5">
                                 {formatEventOptionDateTime(e.event_start)}
                               </span>
                             )}
@@ -595,77 +594,75 @@ export default function ScanView({ events, residents, memberships }: any) {
               </div>
 
               <div>
-                <Label className="text-sm font-medium text-[#005f63] font-bold mb-2 block">{t("checkinMethodStep2")}</Label>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("checkinMethodStep2")}</label>
                 <div className="flex gap-2">
-                  <Button
+                  <button
                     type="button"
                     onClick={() => { setCheckInMethod("camera"); setManualQuery(""); }}
-                    className={`flex-1 !rounded-[20px] transition-colors flex items-center justify-center gap-1.5 ${
-                      checkInMethod === "camera" ? "!bg-[#005f63] !text-white shadow-md" : "!bg-[#f3f4f6] !text-gray-500"
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      checkInMethod === "camera" ? "bg-sage-700 text-white shadow-sm" : "border border-[#E6E0D3] bg-white text-[#6B7280] hover:bg-sage-50"
                     }`}
                   >
-                    <ScanLine size={16} /> {t("cameraScanLabel")}
-                  </Button>
-                  <Button
+                    <ScanLine className="h-4 w-4" /> {t("cameraScanLabel")}
+                  </button>
+                  <button
                     type="button"
                     onClick={() => { setCheckInMethod("manual"); setIsCameraOn(false); }}
-                    className={`flex-1 !rounded-[20px] transition-colors flex items-center justify-center gap-1.5 ${
-                      checkInMethod === "manual" ? "!bg-[#005f63] !text-white shadow-md" : "!bg-[#f3f4f6] !text-gray-500"
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                      checkInMethod === "manual" ? "bg-sage-700 text-white shadow-sm" : "border border-[#E6E0D3] bg-white text-[#6B7280] hover:bg-sage-50"
                     }`}
                   >
-                    <IdCard size={16} /> {t("manualPhysicalIdLabel")}
-                  </Button>
+                    <IdCard className="h-4 w-4" /> {t("manualPhysicalIdLabel")}
+                  </button>
                 </div>
-                <p className="mt-1.5 text-[11px] text-gray-400">{t("adviserTwoInOneNote")}</p>
+                <p className="mt-1.5 text-[11px] text-[#6B7280]">{t("adviserTwoInOneNote")}</p>
               </div>
 
               <div>
-                <Label className="text-sm font-medium text-[#005f63] font-bold mb-2 block">{t("scanModeStep3")}</Label>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("scanModeStep3")}</label>
                 <div className="flex gap-2">
-                  <Button
+                  <button
                     onClick={() => setScanMode("in")}
                     disabled={scanMode === "out"}
-                    className={`flex-1 !rounded-[20px] transition-colors ${
+                    className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
                       scanMode === "in"
-                        ? "!bg-[#4b9fa1] !text-white shadow-md hover:!bg-[#367c7c]"
-                        : "!bg-[#f3f4f6] !text-gray-400 border-none shadow-none opacity-50 cursor-not-allowed"
+                        ? "bg-sage-700 text-white shadow-sm hover:bg-sage-800"
+                        : "border border-[#E6E0D3] bg-white text-[#B8B2A2] cursor-not-allowed opacity-60"
                     }`}
-                    style={{ borderRadius: '20px !important' }}
                   >
-                    → {t("signInWord")}
-                  </Button>
-                  <Button
+                    {t("signInWord")}
+                  </button>
+                  <button
                     onClick={() => setScanMode("out")}
                     disabled={scanMode === "in"}
-                    className={`flex-1 !rounded-[20px] transition-colors ${
+                    className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
                       scanMode === "out"
-                        ? "!bg-orange-500 !text-white shadow-md hover:!bg-orange-600"
-                        : "!bg-[#f3f4f6] !text-gray-400 border-none shadow-none opacity-50 cursor-not-allowed"
+                        ? "bg-gold-700 text-white shadow-sm hover:brightness-95"
+                        : "border border-[#E6E0D3] bg-white text-[#B8B2A2] cursor-not-allowed opacity-60"
                     }`}
-                    style={{ borderRadius: '20px !important' }}
                   >
-                    ← {t("signOutWord")}
-                  </Button>
+                    {t("signOutWord")}
+                  </button>
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-gray-200 mt-4">
-                <Label className="text-sm font-medium text-[#005f63] font-bold mb-1 block">
+              <div className="pt-4 border-t border-[#E6E0D3]">
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">
                   {scanMode === "in" ? t("signInClosingTimeLabel") : t("signOutClosingTimeLabel")}
-                </Label>
+                </label>
                 {/* Read-only -- this window comes from the event's own Start
                     Time / Call Time fields (set on the Events screen), not
                     typed in here each session. */}
-                <div className="rounded-[20px] border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm text-gray-700">
+                <div className="rounded-xl border border-[#E6E0D3] bg-white px-4 py-2.5 text-sm text-[#1A1A1A]">
                   {closingTime ? `${t("closesAtLabel")} ${formatEventOptionDateTime(closingTime) || closingTime}` : t("noClosingTimeSet")}
                 </div>
               </div>
             </div>
 
             {checkInMethod === "camera" ? (
-              <div className="relative overflow-hidden rounded-[30px] border-2 border-dashed border-gray-300 bg-black min-h-[400px]">
+              <div className="relative overflow-hidden rounded-2xl border border-[#E6E0D3] bg-black min-h-[380px]">
                 {isCameraOn ? (
-                  <div className="h-full w-full absolute inset-0">
+                  <div className="absolute inset-0 h-full w-full">
                     <Scanner
                       onScan={(result) => {
                         if (result && result.length > 0) {
@@ -681,79 +678,101 @@ export default function ScanView({ events, residents, memberships }: any) {
                       components={{ finder: true }}
                       styles={{ container: { width: '100%', height: '100%' }, video: { objectFit: 'cover' } }}
                     />
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center w-[90%] max-w-[300px] z-10">
-                      <div className="rounded-full bg-black/70 px-5 py-2 text-sm font-bold text-white backdrop-blur shadow-lg animate-pulse mb-2">
+                    <div className="absolute top-4 left-4 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white backdrop-blur">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" /> {t("cameraScanLabel")}
+                    </div>
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      <div className="relative h-56 w-56">
+                        <span className="absolute left-0 top-0 h-8 w-8 rounded-tl-xl border-l-4 border-t-4 border-sage-300" />
+                        <span className="absolute right-0 top-0 h-8 w-8 rounded-tr-xl border-r-4 border-t-4 border-sage-300" />
+                        <span className="absolute left-0 bottom-0 h-8 w-8 rounded-bl-xl border-l-4 border-b-4 border-sage-300" />
+                        <span className="absolute right-0 bottom-0 h-8 w-8 rounded-br-xl border-r-4 border-b-4 border-sage-300" />
+                      </div>
+                    </div>
+                    <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex w-[90%] max-w-[300px] flex-col items-center gap-1.5 z-10">
+                      <div className="rounded-full bg-black/70 px-4 py-1.5 text-xs font-semibold text-white backdrop-blur">
                         {t("scanningForQr")}
                       </div>
-                      <div className="rounded-[15px] bg-black/50 px-4 py-2 text-xs text-center text-gray-200 backdrop-blur">
-                        <span className="font-bold text-white">{t("blurryLabel")}</span> {t("movePhoneCloserNote")}
+                      <div className="rounded-xl bg-black/50 px-4 py-1.5 text-center text-[11px] text-white/80 backdrop-blur">
+                        <span className="font-semibold text-white">{t("blurryLabel")}</span> {t("movePhoneCloserNote")}
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full w-full absolute inset-0 bg-gray-100 text-gray-400">
-                    <Camera size={40} className="mb-2 opacity-60" />
+                  <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-2 text-white/50">
+                    <Camera className="h-9 w-9" />
                     <p className="text-sm">{t("cameraOffClickToStart")}</p>
                   </div>
                 )}
               </div>
             ) : (
               // Adviser recommendation: "2 in 1 — Text/physical QR ID" manual lookup
-              <div className="relative rounded-[30px] border-2 border-dashed border-gray-200 bg-gray-50 min-h-[400px] p-6">
-                <div className="flex items-center gap-2 text-[#005f63] font-bold mb-3">
-                  <IdCard size={20} /> {t("manualPhysicalIdCheckin")}
+              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF9F5] min-h-[380px] p-5">
+                <div className="flex items-center gap-2 font-bold text-sage-800 mb-3">
+                  <IdCard className="h-5 w-5" /> {t("manualPhysicalIdCheckin")}
                 </div>
-                <Input
-                  autoFocus
-                  value={manualQuery}
-                  onChange={(e: any) => setManualQuery(e.target.value)}
-                  placeholder={t("typeResidentIdPlaceholder")}
-                  className="!rounded-[20px] bg-white"
-                />
-                <div className="mt-3 space-y-2 max-h-[280px] overflow-y-auto">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                  <input
+                    autoFocus
+                    value={manualQuery}
+                    onChange={(e: any) => setManualQuery(e.target.value)}
+                    placeholder={t("typeResidentIdPlaceholder")}
+                    className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                  />
+                </div>
+                <div className="mt-3 space-y-2 max-h-[270px] overflow-y-auto">
                   {manualQuery.trim() && manualResults.length === 0 && (
-                    <p className="text-sm text-gray-400 italic text-center py-6">{t("noMatchingResidentFound")}</p>
+                    <p className="text-sm text-[#6B7280] italic text-center py-6">{t("noMatchingResidentFound")}</p>
                   )}
                   {manualResults.map((r: any) => (
                     <button
                       key={r.id ?? r.user_id ?? r.real_id}
                       onClick={() => handleManualSelect(r)}
-                      className="w-full flex items-center justify-between rounded-2xl bg-white border border-gray-200 px-4 py-3 text-left hover:border-[#005f63]/40 hover:shadow-sm transition"
+                      className="w-full flex items-center justify-between rounded-xl bg-white border border-[#E6E0D3] px-4 py-3 text-left hover:border-sage-400 hover:shadow-sm transition"
                     >
                       <div>
-                        <p className="font-semibold text-gray-800 text-sm">{r.first_name} {r.last_name}</p>
-                        <p className="text-xs text-gray-500">{r.user_code}</p>
+                        <p className="font-semibold text-[#1A1A1A] text-sm">{r.first_name} {r.last_name}</p>
+                        <p className="text-xs text-[#6B7280]">{r.user_code}</p>
                       </div>
-                      <span className="text-xs font-bold text-[#005f63]">{t("selectArrowLabel")} →</span>
+                      <span className="text-xs font-bold text-sage-700">{t("selectArrowLabel")}</span>
                     </button>
                   ))}
                   {!manualQuery.trim() && (
-                    <p className="text-sm text-gray-400 italic text-center py-10">{t("startTypingToFindResident")}</p>
+                    <p className="text-sm text-[#6B7280] italic text-center py-10">{t("startTypingToFindResident")}</p>
                   )}
                 </div>
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         <div className="space-y-4">
-          <Card className="border-[#ddd5ca] rounded-[30px] shadow-sm">
-            <CardHeader className="border-b border-[#ddd5ca] bg-white rounded-t-[30px]">
-              <CardTitle className="font-black text-[#005f63]">{t("scanResultTitle")}</CardTitle>
-            </CardHeader>
-            <CardContent className="rounded-b-[30px] p-5">
+          <div className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden">
+            <div className="border-b border-[#E6E0D3] p-5">
+              <h2 className="text-base font-bold text-[#1A1A1A]">{t("scanResultTitle")}</h2>
+            </div>
+            <div className="p-5">
               {!scan ? (
-                <div className="rounded-[30px] border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                <div className="rounded-2xl border border-dashed border-[#E6E0D3] bg-[#FAF9F5] p-8 text-center text-sm text-[#6B7280]">
                   {t("noScanPerformedYet")}
                 </div>
               ) : (
-                <div className={`rounded-[30px] border p-5 transition-colors ${scan.hasAccess ? scanMode === "in" ? "border-teal-500/50 bg-teal-50" : "border-orange-500/50 bg-orange-50" : "border-red-500/40 bg-red-50"}`}>
+                <div
+                  className={`rounded-2xl border p-5 transition-colors ${
+                    scan.hasAccess
+                      ? scanMode === "in"
+                        ? "border-sage-300 bg-sage-50"
+                        : "border-gold-300 bg-gold-50"
+                      : "border-red-200 bg-red-50"
+                  }`}
+                >
                   <div className="flex items-start gap-4">
-                    <div className="w-[85px] h-[85px] shrink-0 rounded-[18px] overflow-hidden border-[3px] border-white shadow-sm bg-gray-200">
+                    <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-white shadow-sm bg-[#E6E0D3]">
                       {scan.photo ? (
                         <img src={scan.photo} alt={scan.residentName} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 bg-gray-100 p-2">
+                        <div className="w-full h-full flex flex-col items-center justify-center text-[#8A8474] bg-[#F1EEE5] p-2">
                           <span className="text-[10px] font-bold uppercase text-center leading-tight">{t("noPhotoShort")}</span>
                         </div>
                       )}
@@ -762,24 +781,24 @@ export default function ScanView({ events, residents, memberships }: any) {
                     <div className="flex-1 pt-1">
                       <div className="flex items-start gap-2">
                         {scan.hasAccess
-                          ? (scanMode === "in" ? <CheckCircle className="text-teal-600 shrink-0 mt-0.5" size={20} /> : <CheckCircle className="text-orange-600 shrink-0 mt-0.5" size={20} />)
-                          : <XCircle className="text-red-600 shrink-0 mt-0.5" size={20} />
+                          ? (scanMode === "in" ? <CheckCircle className="text-sage-700 shrink-0 mt-0.5 h-5 w-5" /> : <CheckCircle className="text-gold-700 shrink-0 mt-0.5 h-5 w-5" />)
+                          : <XCircle className="text-red-600 shrink-0 mt-0.5 h-5 w-5" />
                         }
                         <div className="flex flex-col items-start text-left">
-                          <p className={`text-xl font-black leading-none ${scan.hasAccess ? scanMode === "in" ? "text-teal-800" : "text-orange-800" : "text-red-600"}`}>
+                          <p className={`text-xl font-bold leading-tight ${scan.hasAccess ? scanMode === "in" ? "text-sage-800" : "text-gold-800" : "text-red-600"}`}>
                             {scan.hasAccess ? scan.residentName : t("deniedAttendanceLabel")}
                           </p>
                           {scan.hasAccess && (
                             <>
-                              <p className="text-sm font-bold text-gray-700 mt-1.5 tracking-wide">
+                              <p className="text-sm font-bold text-[#1A1A1A] mt-1.5 tracking-wide">
                                 {scan.userCode.replace("-", " - ")}
                               </p>
-                              <p className="text-[11px] font-black text-gray-400 uppercase tracking-wider mt-0.5">
+                              <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider mt-0.5">
                                 {scan.role}
                               </p>
                             </>
                           )}
-                          <p className="mt-2 text-sm font-medium text-gray-800">
+                          <p className="mt-2 text-sm font-medium text-[#1A1A1A]">
                             {scan.reason}
                           </p>
                         </div>
@@ -790,76 +809,83 @@ export default function ScanView({ events, residents, memberships }: any) {
                   {scan.hasAccess && (
                     <>
                       {windowNotYetOpen ? (
-                        <div className="mt-4 p-3 bg-blue-100 border border-blue-300 text-blue-800 rounded-[20px] text-center font-bold text-sm shadow-sm">
-                          🕐 {scanMode === "in" ? t("signInOpensAtBanner") : t("signOutOpensAtBanner")} {formatEventOptionDateTime(windowNotYetOpen) || windowNotYetOpen}
+                        <div className="mt-4 p-3 rounded-xl border border-gold-300 bg-gold-50 text-center text-sm font-bold text-gold-800">
+                          {scanMode === "in" ? t("signInOpensAtBanner") : t("signOutOpensAtBanner")} {formatEventOptionDateTime(windowNotYetOpen) || windowNotYetOpen}
                         </div>
                       ) : isPastClosingTime() ? (
-                        <div className="mt-4 p-3 bg-red-100 border border-red-300 text-red-800 rounded-[20px] text-center font-bold text-sm shadow-sm">
-                          ⚠️ {scanMode === "in" ? t("deadlinePassedPrefix") : t("signOutDeadlinePassedPrefix")} ({formatEventOptionDateTime(closingTime) || closingTime}) {scanMode === "in" ? t("signInClosedSuffix") : t("signOutClosedSuffix")}
+                        <div className="mt-4 p-3 rounded-xl border border-red-200 bg-red-50 text-center text-sm font-bold text-red-700">
+                          {scanMode === "in" ? t("deadlinePassedPrefix") : t("signOutDeadlinePassedPrefix")} ({formatEventOptionDateTime(closingTime) || closingTime}) {scanMode === "in" ? t("signInClosedSuffix") : t("signOutClosedSuffix")}
                         </div>
                       ) : (
-                        <Button
+                        <button
                           onClick={confirmAttendance}
-                          className={`mt-4 w-full py-3 text-md font-bold text-white !rounded-[25px] transition-colors shadow-md ${scanMode === "in" ? "bg-[#4b9fa1] hover:bg-[#367c7c]" : "bg-orange-500 hover:bg-[#ff954e]"}`}
-                          style={{ borderRadius: '25px !important' }}
+                          className={`mt-4 w-full py-3 text-sm font-bold text-white rounded-full transition-colors shadow-sm ${
+                            scanMode === "in" ? "bg-sage-700 hover:bg-sage-800" : "bg-gold-700 hover:brightness-95"
+                          }`}
                         >
                           {t("confirmButtonPrefix")} {scanMode === "in" ? t("signInWord") : t("signOutWord")}
-                        </Button>
+                        </button>
                       )}
                     </>
                   )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card className="border-[#ddd5ca] rounded-[30px] shadow-sm">
-            <CardHeader className="border-b border-[#ddd5ca] bg-white sticky top-0 z-10 rounded-t-[30px]">
-              <CardTitle className="font-black text-[#005f63]">{t("attendanceRosterTitle")}</CardTitle>
-              <CardDescription className="text-[#667777] mt-1">{attendance[eventId]?.length ?? 0} {t("recordsForThisEvent")}</CardDescription>
-            </CardHeader>
-            <CardContent className="max-h-[400px] overflow-y-auto smooth-scroll rounded-b-[30px] p-5">
+          <div className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden">
+            <div className="border-b border-[#E6E0D3] bg-white p-5">
+              <h2 className="text-base font-bold text-[#1A1A1A]">{t("attendanceRosterTitle")}</h2>
+              <p className="mt-0.5 text-sm text-[#6B7280]">{attendance[eventId]?.length ?? 0} {t("recordsForThisEvent")}</p>
+            </div>
+            <div className="max-h-[400px] overflow-y-auto p-5">
               {!(attendance[eventId] ?? []).length ? (
-                <p className="rounded-[30px] border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">{t("noAttendeesYet")}</p>
+                <p className="rounded-2xl border border-dashed border-[#E6E0D3] bg-[#FAF9F5] p-6 text-center text-sm text-[#6B7280]">{t("noAttendeesYet")}</p>
               ) : (
                 <div className="space-y-3">
                   {attendance[eventId]!.map((rec, i) => (
-                    <div key={rec.residentId} className={`p-4 rounded-[20px] border flex items-center justify-between transition-colors ${rec.status === "complete" ? "bg-gray-30 border-gray-300" : "bg-gray-50 border-gray-200"}`}>
+                    <div key={rec.residentId} className="p-4 rounded-xl border border-[#E6E0D3] bg-[#FAF9F5] flex items-center justify-between transition-colors">
                       <div>
-                        <p className="font-semibold text-[#085053]">{i + 1}. {rec.residentName}</p>
-                        <div className="flex gap-4 mt-1 text-xs text-gray-600 font-medium">
-                          <span className="flex items-center gap-1 text-teal-700"><LogIn size={14} /> {rec.timeIn || "—"}</span>
-                          <span className="flex items-center gap-1 text-orange-700"><LogOut size={14} /> {rec.timeOut || "—"}</span>
+                        <p className="font-semibold text-[#1A1A1A]">{i + 1}. {rec.residentName}</p>
+                        <div className="flex gap-4 mt-1 text-xs text-[#6B7280] font-medium">
+                          <span className="flex items-center gap-1 text-sage-700"><LogIn className="h-3.5 w-3.5" /> {rec.timeIn || "—"}</span>
+                          <span className="flex items-center gap-1 text-gold-700"><LogOut className="h-3.5 w-3.5" /> {rec.timeOut || "—"}</span>
                         </div>
                       </div>
-                      <Badge className={`rounded-full px-3 py-1 text-xs font-black tracking-wider ${rec.status === "complete" ? "bg-teal-300 text-teal-700" : "bg-yellow-100 text-yellow-900 shadow-sm"}`}>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${rec.status === "complete" ? "bg-sage-50 text-sage-800" : "bg-gold-50 text-gold-700"}`}>
                         {rec.status === "complete" ? t("completedLabel") : t("statusIncomplete")}
-                      </Badge>
+                      </span>
                     </div>
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
 
       {modalConfig.isOpen && (
-        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm transition-all duration-200">
-          <div className="bg-white rounded-[24px] w-full max-w-[340px] p-6 py-8 flex flex-col items-center text-center shadow-2xl scale-100 animate-in zoom-in-95 duration-200">
-            {modalConfig.type === 'success' && <CheckCircle className="text-[#005f63] mb-4" size={56} strokeWidth={2} />}
+        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-[30px] w-full max-w-[340px] p-6 py-8 flex flex-col items-center text-center shadow-2xl animate-in zoom-in-95 duration-200">
+            {modalConfig.type === 'success' && <CheckCircle className="text-sage-800 mb-4" size={56} strokeWidth={2} />}
             {modalConfig.type === 'error' && <XCircle className="text-red-500 mb-4" size={56} strokeWidth={2} />}
-            {modalConfig.type === 'info' && <CheckCircle className="text-[#005f63] mb-4" size={56} strokeWidth={2} />}
-            {modalConfig.type === 'timeout-in' && <CheckCircle className="text-orange-500 mb-4" size={56} strokeWidth={2} />}
-            {modalConfig.type === 'timeout-out' && <CheckCircle className="text-[#005f63] mb-4" size={56} strokeWidth={2} />}
+            {modalConfig.type === 'info' && <CheckCircle className="text-sage-800 mb-4" size={56} strokeWidth={2} />}
+            {modalConfig.type === 'timeout-in' && <CheckCircle className="text-gold-700 mb-4" size={56} strokeWidth={2} />}
+            {modalConfig.type === 'timeout-out' && <CheckCircle className="text-sage-800 mb-4" size={56} strokeWidth={2} />}
 
-            <h3 className={`text-xl font-bold mb-2 ${modalConfig.type === 'error' ? 'text-red-600' : modalConfig.type === 'timeout-in' ? 'text-orange-600' : 'text-[#005f63]'}`}>
+            <h3 className={`text-xl font-bold mb-2 ${modalConfig.type === 'error' ? 'text-red-600' : modalConfig.type === 'timeout-in' ? 'text-gold-700' : 'text-sage-800'}`}>
               {modalConfig.title}
             </h3>
-            <p className="text-sm text-gray-600 mb-6 px-2">{modalConfig.message}</p>
+            <p className="text-[15px] text-[#6B7280] mb-6 px-2">{modalConfig.message}</p>
             <button
               onClick={closeModal}
-              className={`text-white px-10 py-2.5 rounded-full font-bold tracking-wide transition-colors ${modalConfig.type === 'timeout-in' ? 'bg-orange-500 hover:bg-orange-600' : 'bg-[#005f63] hover:bg-[#004a4d]'}`}
+              className={`text-white px-10 py-2.5 rounded-full font-semibold tracking-wide transition-colors ${
+                modalConfig.type === 'error'
+                  ? 'bg-red-600 hover:bg-red-700'
+                  : modalConfig.type === 'timeout-in'
+                  ? 'bg-gold-700 hover:brightness-95'
+                  : 'bg-sage-800 hover:bg-sage-900'
+              }`}
             >
               {t("okLabel")}
             </button>

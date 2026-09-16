@@ -21,6 +21,10 @@ interface FilterDropdownProps {
   panelWidthPx?: number;
   /** Extra classes on the outer wrapper. */
   wrapperClassName?: string;
+  /** Dark navy styling for callers whose surrounding page has already moved
+      to the dark palette (e.g. the Events list page). Every other caller
+      keeps the original light trigger/panel look. */
+  dark?: boolean;
 }
 
 /**
@@ -52,6 +56,7 @@ export default function FilterDropdown({
   align = "left",
   panelWidthPx = 224,
   wrapperClassName = "",
+  dark = false,
 }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -119,16 +124,20 @@ export default function FilterDropdown({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`flex items-center gap-2 rounded-full border border-[#005f63]/20 bg-white text-sm shadow-sm focus:border-[#005f63]/40 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 ${className}`}
+        className={`flex items-center gap-2 rounded-full border text-sm focus:outline-none focus:ring-2 ${
+          dark
+            ? "border-white/10 bg-white/[0.03] focus:border-[#4FBEB0]/50 focus:ring-[#4FBEB0]/20"
+            : "border-[#E6E0D3] bg-white focus:border-sage-400 focus:ring-sage-700/20"
+        } ${className}`}
       >
         {/* Chevron lives inside the button's own flex row (not absolutely
             positioned over the label) so it always reserves its own space
             next to the text via `gap-2` -- a caller that forgets extra
             right-padding for a long label ("All Conditions") can no longer
             end up with the chevron drawn on top of the tail of the text. */}
-        <span className="text-gray-800 truncate flex-1">{selectedLabel}</span>
+        <span className={`truncate flex-1 ${dark ? "text-white" : "text-[#1A1A1A]"}`}>{selectedLabel}</span>
         <ChevronDown
-          className={`h-4 w-4 shrink-0 text-[#005f63]/70 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`h-4 w-4 shrink-0 transition-transform ${dark ? "text-white/40" : "text-[#6B7280]"} ${open ? "rotate-180" : ""}`}
         />
       </button>
       {icon}
@@ -139,7 +148,9 @@ export default function FilterDropdown({
             ref={panelRef}
             role="listbox"
             style={{ position: "fixed", top: panelPos.top, left: panelPos.left, width: panelWidthPx }}
-            className="z-[9999] rounded-[20px] border border-[#ddd5ca] bg-white shadow-xl overflow-hidden py-1.5"
+            className={`z-[9999] rounded-2xl border shadow-xl overflow-hidden py-1.5 ${
+              dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#E6E0D3] bg-white"
+            }`}
           >
             <div className="max-h-[280px] overflow-y-auto">
               {options.map((opt) => (
@@ -153,9 +164,13 @@ export default function FilterDropdown({
                     setOpen(false);
                   }}
                   className={`w-full text-left px-4 py-2.5 text-sm truncate transition ${
-                    value === opt.value
-                      ? "bg-teal-50 text-[#005f63] font-semibold"
-                      : "text-gray-700 hover:bg-gray-50"
+                    dark
+                      ? value === opt.value
+                        ? "bg-[#4FBEB0]/10 text-[#7DD8CB] font-semibold"
+                        : "text-white hover:bg-white/10"
+                      : value === opt.value
+                        ? "bg-sage-50 text-sage-800 font-semibold"
+                        : "text-[#1A1A1A] hover:bg-sage-50/60"
                   }`}
                 >
                   {opt.label}

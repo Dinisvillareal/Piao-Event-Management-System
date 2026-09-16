@@ -8,6 +8,31 @@ use Illuminate\Http\Request;
 
 class FeedbackController extends Controller
 {
+    /**
+     * True once a resident's attendance record can be reviewed: either
+     * they signed in AND out (status 'Complete'), or they signed in and
+     * the event's own end time has already passed. The second branch
+     * covers a resident who genuinely attended the whole event but
+     * forgot to tap out again -- without it they'd be stuck
+     * 'Incomplete' forever and could never leave feedback, even though
+     * the event is long over. Checking status alone (the original bug)
+     * let a resident submit feedback the moment they signed in,
+     * potentially before the event had even started; requiring
+     * 'Complete' alone (an earlier fix) swung too far the other way and
+     * permanently locked out anyone who forgot to sign out. Events with
+     * no event_end configured can't be confirmed as "ended" this way,
+     * so only a true 'Complete' status counts for those.
+     */
+    private function attendanceIsReviewable(EventAttendance $attendance): bool
+    {
+        if ($attendance->status === 'Complete') {
+            return true;
+        }
+
+        $event = $attendance->event;
+        return $event && $event->event_end && now()->greaterThan($event->event_end);
+    }
+
     // UC-16: Submit Post-Event Feedback
     public function store(Request $request)
     {
@@ -19,13 +44,14 @@ class FeedbackController extends Controller
 
         $userId = auth()->id();
 
-        $attended = EventAttendance::where('event_id', $request->event_id)
+        $attendance = EventAttendance::with('event')
+            ->where('event_id', $request->event_id)
             ->where('user_id', $userId)
             ->whereNotNull('time_in')
-            ->exists();
+            ->first();
 
-        if (!$attended) {
-            return response()->json(['message' => 'Feedback is only available after attending the event.'], 403);
+        if (!$attendance || !$this->attendanceIsReviewable($attendance)) {
+            return response()->json(['message' => 'Feedback is only available after the event has ended.'], 403);
         }
 
         $feedback = Feedback::updateOrCreate(
@@ -36,23 +62,25 @@ class FeedbackController extends Controller
         return response()->json(['message' => 'Thank you for your feedback!', 'feedback' => $feedback], 201);
     }
 
-    // Events the resident completed but hasn't rated yet (drives the feedback prompt)
+    // Events the resident attended and can now review but hasn't rated
+    // yet (drives the feedback prompt) -- same reviewable rule as store().
     public function pending(Request $request)
     {
         $userId = auth()->id();
 
-        $completed = EventAttendance::with('event')
+        $attended = EventAttendance::with('event')
             ->where('user_id', $userId)
-            ->where('status', 'Complete')
+            ->whereNotNull('time_in')
             ->get()
             ->filter(fn ($a) => $a->event !== null)
+            ->filter(fn ($a) => $this->attendanceIsReviewable($a))
             ->pluck('event')
             ->unique('id')
             ->values();
 
         $rated = Feedback::where('user_id', $userId)->pluck('event_id');
 
-        $pending = $completed->reject(fn ($event) => $rated->contains($event->id))->values();
+        $pending = $attended->reject(fn ($event) => $rated->contains($event->id))->values();
 
         return response()->json($pending);
     }

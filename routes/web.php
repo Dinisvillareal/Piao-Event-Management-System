@@ -35,7 +35,10 @@ Route::get('/', function () {
 |--------------------------------------------------------------------------
 */
 
-Route::post('/login', [UserController::class, 'login'])->name('login');
+// Rate-limited (6 attempts/minute per IP+username combo, Laravel default
+// keying) -- without this, the login endpoint had no protection at all
+// against unlimited automated password guessing.
+Route::post('/login', [UserController::class, 'login'])->middleware('throttle:6,1')->name('login');
 
 /*
 |--------------------------------------------------------------------------

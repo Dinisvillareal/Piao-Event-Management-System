@@ -187,7 +187,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
       {/* Toggle Button (desktop collapse) */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`hidden md:flex fixed top-4 z-[45] bg-[#006666] text-white p-1.5 rounded-full shadow-md transition-all duration-300 ${
+        className={`hidden md:flex fixed top-4 z-[45] bg-gold-400 text-[#1A1A1A] p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-gold-600 ${
           isOpen ? "left-[235px]" : "left-[55px]"
         }`}
       >
@@ -195,7 +195,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
       </button>
 
       <aside
-        className={`flex-col border-r border-[#006666] bg-[#006666] h-screen fixed md:sticky top-0 z-40 transition-all duration-300 flex overflow-hidden w-[250px] ${
+        className={`flex-col border-r border-[#233A37] bg-gradient-to-b from-[#233A37] to-[#1C2E2B] h-screen fixed md:sticky top-0 z-40 transition-all duration-300 flex overflow-hidden w-[250px] ${
           isOpen ? "md:w-[250px]" : "md:w-[70px]"
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
@@ -203,8 +203,8 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           <XIcon size={20} />
         </button>
         {/* Sidebar Header */}
-        <div className="border-b border-[#007777] px-3 py-5 shrink-0 flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent shrink-0 shadow-md overflow-hidden">
+        <div className="border-b border-white/10 px-3 py-5 shrink-0 flex items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 border border-white/20 shrink-0 overflow-hidden">
             <img
             src="/logo-removebg-preview.png"
             alt="Logo"
@@ -216,10 +216,10 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
             isOpen ? "opacity-100 w-auto visible" : "opacity-0 w-0 invisible"
             }`}
         >
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white/70 font-medium">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-sage-300/80 font-medium">
             BARANGAY PIAO
             </p>
-            <h1 className="text-[15px] font-black text-white whitespace-nowrap leading-tight">
+            <h1 className="font-display text-[15px] font-bold text-white whitespace-nowrap leading-tight">
             e-Membership
             </h1>
         </div>
@@ -228,7 +228,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
         {/* Navigation Menu */}
         <div className="flex-1 px-2 py-5 overflow-y-auto smooth-scroll">
           <p
-            className={`mb-3 px-3 text-sm font-semibold text-white/60 transition-opacity duration-300 ${
+            className={`mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/40 transition-opacity duration-300 ${
               isOpen ? "opacity-100" : "opacity-0"
             }`}
           >
@@ -242,12 +242,12 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                 <button
                   key={item.key}
                   onClick={() => handleNavClick(item.key)}
-                  className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${
+                  className={`flex items-center w-full rounded-xl py-3 transition-all duration-200 group ${
                     isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"
                   } ${
                     isActive
-                      ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]"
-                      : "text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1"
+                      ? "bg-gold-400 text-[#1A1A1A] font-semibold"
+                      : "text-white/70 hover:bg-white/10 hover:text-white"
                   }`}
                 >
                   <item.icon className="h-5 w-5 shrink-0" />
@@ -265,10 +265,10 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
         </div>
 
         {/* Logout */}
-        <div className="border-t border-[#007777] p-2 shrink-0">
+        <div className="border-t border-white/10 p-2 shrink-0">
           <button
             onClick={() => setShowLogoutConfirm(true)}
-            className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition hover:bg-[#007777] hover:text-white ${
+            className={`flex items-center w-full rounded-xl py-3 text-white/70 transition hover:bg-white/10 hover:text-white ${
               isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"
             }`}
           >
@@ -290,12 +290,12 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
       {showLogoutConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-4 text-[#005f63] flex justify-center"><LogOut size={40} /></div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-3">{t("confirmLogoutTitle")}</h3>
+            <div className="mb-4 text-[#33534E] flex justify-center"><LogOut size={40} /></div>
+            <h3 className="font-display text-xl font-bold text-[#1A1A1A] mb-3">{t("confirmLogoutTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-5">{t("confirmLogoutMessage")}</p>
             <div className="flex justify-center gap-4">
               <button onClick={() => setShowLogoutConfirm(false)} disabled={loggingOut} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition disabled:opacity-60">{t("cancel")}</button>
-              <button onClick={handleLogout} disabled={loggingOut} className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition disabled:opacity-60">{t("yesLogoutButton")}</button>
+              <button onClick={handleLogout} disabled={loggingOut} className="px-5 py-2.5 rounded-full bg-[#33534E] text-white hover:bg-[#233A37] transition disabled:opacity-60">{t("yesLogoutButton")}</button>
             </div>
           </div>
         </div>

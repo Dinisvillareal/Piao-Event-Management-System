@@ -164,7 +164,15 @@ export default function ProfilingSettingsView() {
           max_age: bracketForm.max_age === "" ? null : Number(bracketForm.max_age),
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // Surface the backend's specific reason (e.g. an overlapping age
+        // range) instead of a generic message.
+        const data = await res.json().catch(() => null);
+        const fieldError = data?.errors ? Object.values(data.errors as Record<string, string[]>)[0]?.[0] : undefined;
+        setError(data?.message || fieldError || t("saveAgeBracketFailed"));
+        if (bracketForm.id) setBracketForm(originalBracketForm);
+        return;
+      }
       const wasEditing = !!bracketForm.id;
       resetBracketForm();
       load();
@@ -187,7 +195,13 @@ export default function ProfilingSettingsView() {
         credentials: "include",
         headers: { Accept: "application/json", "X-XSRF-TOKEN": csrfToken() },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // Surface the backend's specific reason (e.g. "currently in use by
+        // a membership's eligibility rule") instead of a generic message.
+        const data = await res.json().catch(() => null);
+        setError(data?.message || t("deleteAgeBracketFailed"));
+        return;
+      }
       load();
       setSuccessMessage(t("ageBracketDeletedSuccess"));
     } catch (e) {
@@ -223,7 +237,15 @@ export default function ProfilingSettingsView() {
         },
         body: JSON.stringify({ label: statusForm.label }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // Surface the backend's specific reason (e.g. a duplicate label)
+        // instead of a generic message.
+        const data = await res.json().catch(() => null);
+        const fieldError = data?.errors ? Object.values(data.errors as Record<string, string[]>)[0]?.[0] : undefined;
+        setError(data?.message || fieldError || t("saveCivilStatusFailed"));
+        if (statusForm.id) setStatusForm(originalStatusForm);
+        return;
+      }
       const wasEditing = !!statusForm.id;
       resetStatusForm();
       load();
@@ -246,7 +268,13 @@ export default function ProfilingSettingsView() {
         credentials: "include",
         headers: { Accept: "application/json", "X-XSRF-TOKEN": csrfToken() },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // Surface the backend's specific reason (e.g. "currently in use")
+        // instead of a generic message.
+        const data = await res.json().catch(() => null);
+        setError(data?.message || t("deleteCivilStatusFailed"));
+        return;
+      }
       load();
       setSuccessMessage(t("civilStatusDeletedSuccess"));
     } catch (e) {
@@ -282,7 +310,15 @@ export default function ProfilingSettingsView() {
         },
         body: JSON.stringify({ label: currentStatusForm.label }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // Surface the backend's specific reason (e.g. a duplicate label)
+        // instead of a generic message.
+        const data = await res.json().catch(() => null);
+        const fieldError = data?.errors ? Object.values(data.errors as Record<string, string[]>)[0]?.[0] : undefined;
+        setError(data?.message || fieldError || t("saveCurrentStatusFailed"));
+        if (currentStatusForm.id) setCurrentStatusForm(originalCurrentStatusForm);
+        return;
+      }
       const wasEditing = !!currentStatusForm.id;
       resetCurrentStatusForm();
       load();
@@ -305,7 +341,13 @@ export default function ProfilingSettingsView() {
         credentials: "include",
         headers: { Accept: "application/json", "X-XSRF-TOKEN": csrfToken() },
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        // Surface the backend's specific reason (e.g. "currently in use")
+        // instead of a generic message.
+        const data = await res.json().catch(() => null);
+        setError(data?.message || t("deleteCurrentStatusFailed"));
+        return;
+      }
       load();
       setSuccessMessage(t("currentStatusDeletedSuccess"));
     } catch (e) {

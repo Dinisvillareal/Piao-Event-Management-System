@@ -264,9 +264,9 @@ export default function MemberDashboard() {
   // ─── LOADING SCREEN ───────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#fcfcf9]">
+      <div className="flex items-center justify-center h-screen bg-[#F8F5EF]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sage-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading dashboard...</p>
         </div>
       </div>
@@ -275,7 +275,7 @@ export default function MemberDashboard() {
 
   // ─── RENDER ──────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#fcfcf9] text-gray-900">
+    <div className="min-h-screen bg-[#F8F5EF] text-gray-900">
       <div className="flex min-h-screen">
         <Sidebar
           active={active}

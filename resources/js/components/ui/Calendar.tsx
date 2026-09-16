@@ -8,6 +8,10 @@ interface CalendarProps {
   /** Inclusive bounds, also as ISO "yyyy-mm-dd" strings. */
   min?: string;
   max?: string;
+  /** Dark navy styling for the Add/Edit Resident forms -- mirrors the
+      `dark` prop on DatePicker/SearchableSelect. Every other caller of
+      this shared component keeps the original light card look. */
+  dark?: boolean;
 }
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
@@ -47,7 +51,7 @@ function isSameDay(a: Date, b: Date): boolean {
  * the app (DatePicker, DateRangePicker), so the fix applies everywhere
  * at once.
  */
-export default function Calendar({ value, onSelect, min, max }: CalendarProps) {
+export default function Calendar({ value, onSelect, min, max, dark = false }: CalendarProps) {
   const selected = parseISO(value);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -108,16 +112,16 @@ export default function Calendar({ value, onSelect, min, max }: CalendarProps) {
           <button
             type="button"
             onClick={() => setViewDate(new Date(year - 1, month, 1))}
-            className="h-8 w-8 flex items-center justify-center rounded-full text-[#005f63] hover:bg-teal-50 active:scale-95 transition"
+            className={`h-8 w-8 flex items-center justify-center rounded-full active:scale-95 transition ${dark ? "text-[#4FBEB0] hover:bg-white/10" : "text-[#005f63] hover:bg-teal-50"}`}
             aria-label="Previous year"
           >
             <ChevronLeft size={18} />
           </button>
-          <span className="text-sm font-bold text-[#005f63]">{year}</span>
+          <span className={`text-sm font-bold ${dark ? "text-[#4FBEB0]" : "text-[#005f63]"}`}>{year}</span>
           <button
             type="button"
             onClick={() => setViewDate(new Date(year + 1, month, 1))}
-            className="h-8 w-8 flex items-center justify-center rounded-full text-[#005f63] hover:bg-teal-50 active:scale-95 transition"
+            className={`h-8 w-8 flex items-center justify-center rounded-full active:scale-95 transition ${dark ? "text-[#4FBEB0] hover:bg-white/10" : "text-[#005f63] hover:bg-teal-50"}`}
             aria-label="Next year"
           >
             <ChevronRight size={18} />
@@ -139,8 +143,10 @@ export default function Calendar({ value, onSelect, min, max }: CalendarProps) {
                 }}
                 className={[
                   "h-10 rounded-full text-sm font-medium transition",
-                  disabled ? "opacity-30 cursor-not-allowed text-gray-400" : "text-gray-700 hover:bg-teal-50 cursor-pointer",
-                  isCurrentView && !disabled ? "!bg-[#005f63] !text-white font-bold shadow-sm" : "",
+                  disabled
+                    ? dark ? "opacity-30 cursor-not-allowed text-white/30" : "opacity-30 cursor-not-allowed text-gray-400"
+                    : dark ? "text-white hover:bg-white/10 cursor-pointer" : "text-gray-700 hover:bg-teal-50 cursor-pointer",
+                  isCurrentView && !disabled ? (dark ? "!bg-[#4FBEB0] !text-[#08130F] font-bold shadow-sm" : "!bg-[#005f63] !text-white font-bold shadow-sm") : "",
                 ].join(" ")}
               >
                 {label}
@@ -158,7 +164,7 @@ export default function Calendar({ value, onSelect, min, max }: CalendarProps) {
         <button
           type="button"
           onClick={() => setViewDate(new Date(year, month - 1, 1))}
-          className="h-8 w-8 flex items-center justify-center rounded-full text-[#005f63] hover:bg-teal-50 active:scale-95 transition"
+          className={`h-8 w-8 flex items-center justify-center rounded-full active:scale-95 transition ${dark ? "text-[#4FBEB0] hover:bg-white/10" : "text-[#005f63] hover:bg-teal-50"}`}
           aria-label="Previous month"
         >
           <ChevronLeft size={18} />
@@ -166,7 +172,7 @@ export default function Calendar({ value, onSelect, min, max }: CalendarProps) {
         <button
           type="button"
           onClick={() => setViewMode("year")}
-          className="flex items-center gap-1 rounded-full px-2 py-1 text-sm font-bold text-[#005f63] hover:bg-teal-50 transition"
+          className={`flex items-center gap-1 rounded-full px-2 py-1 text-sm font-bold transition ${dark ? "text-[#4FBEB0] hover:bg-white/10" : "text-[#005f63] hover:bg-teal-50"}`}
           title="Jump to a different year"
         >
           {monthLabel}
@@ -175,7 +181,7 @@ export default function Calendar({ value, onSelect, min, max }: CalendarProps) {
         <button
           type="button"
           onClick={() => setViewDate(new Date(year, month + 1, 1))}
-          className="h-8 w-8 flex items-center justify-center rounded-full text-[#005f63] hover:bg-teal-50 active:scale-95 transition"
+          className={`h-8 w-8 flex items-center justify-center rounded-full active:scale-95 transition ${dark ? "text-[#4FBEB0] hover:bg-white/10" : "text-[#005f63] hover:bg-teal-50"}`}
           aria-label="Next month"
         >
           <ChevronRight size={18} />
@@ -184,7 +190,7 @@ export default function Calendar({ value, onSelect, min, max }: CalendarProps) {
 
       <div className="grid grid-cols-7 gap-y-1 mb-1">
         {WEEKDAYS.map((w) => (
-          <div key={w} className="h-7 flex items-center justify-center text-[11px] font-semibold text-gray-400">
+          <div key={w} className={`h-7 flex items-center justify-center text-[11px] font-semibold ${dark ? "text-white/40" : "text-gray-400"}`}>
             {w}
           </div>
         ))}
@@ -203,10 +209,10 @@ export default function Calendar({ value, onSelect, min, max }: CalendarProps) {
                 onClick={() => onSelect(toISO(date))}
                 className={[
                   "h-8 w-8 flex items-center justify-center rounded-full text-xs font-medium transition",
-                  !inMonth ? "text-gray-300" : "text-gray-700",
-                  disabled ? "opacity-30 cursor-not-allowed" : "hover:bg-teal-50 cursor-pointer",
-                  isSelected ? "!bg-[#005f63] !text-white font-bold shadow-sm" : "",
-                  isToday && !isSelected ? "ring-1 ring-inset ring-[#005f63]/50" : "",
+                  !inMonth ? (dark ? "text-white/20" : "text-gray-300") : (dark ? "text-white" : "text-gray-700"),
+                  disabled ? "opacity-30 cursor-not-allowed" : (dark ? "hover:bg-white/10 cursor-pointer" : "hover:bg-teal-50 cursor-pointer"),
+                  isSelected ? (dark ? "!bg-[#4FBEB0] !text-[#08130F] font-bold shadow-sm" : "!bg-[#005f63] !text-white font-bold shadow-sm") : "",
+                  isToday && !isSelected ? (dark ? "ring-1 ring-inset ring-[#4FBEB0]/50" : "ring-1 ring-inset ring-[#005f63]/50") : "",
                 ].join(" ")}
               >
                 {date.getDate()}

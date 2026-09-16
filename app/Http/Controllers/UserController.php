@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Household;
 use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -37,6 +38,20 @@ class UserController extends Controller
     {
         return $e instanceof \Illuminate\Database\QueryException
             && str_contains($e->getMessage(), 'users_one_head_per_household');
+    }
+
+    /**
+     * True when $e is the DB rejecting a duplicate active (non-deleted)
+     * full name via the users_unique_active_full_name unique index --
+     * the race-condition case where two requests both pass the PHP-level
+     * "does this name already exist" check above before either commits.
+     * Lets callers turn that into the same friendly validation message
+     * the PHP-level check already returns, instead of a raw SQL error.
+     */
+    private function isDuplicateNameConflict(\Throwable $e): bool
+    {
+        return $e instanceof \Illuminate\Database\QueryException
+            && str_contains($e->getMessage(), 'users_unique_active_full_name');
     }
 
     private function localUpload($file): string
@@ -226,6 +241,11 @@ class UserController extends Controller
                 }
                 User::where('household_id', $user->household_id)->update(['is_household_head' => false]);
                 $user->update(['is_household_head' => true]);
+
+                $household = Household::find($user->household_id);
+                if ($household) {
+                    $household->backfillFromHead($user);
+                }
             }
 
             if ($request->has('membership_ids')) {
@@ -256,6 +276,14 @@ class UserController extends Controller
                 return response()->json([
                     'message' => 'This household already has a head from another request just now -- please refresh and try again.',
                 ], 409);
+            }
+
+            if ($this->isDuplicateNameConflict($e)) {
+                return response()->json([
+                    'errors' => [
+                        'last_name' => ['A record with this full name already exists.']
+                    ]
+                ], 422);
             }
 
             return response()->json([
@@ -342,10 +370,6 @@ class UserController extends Controller
                 $query->whereNotNull('birth_date')
                     ->whereRaw('TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN ? AND ?', $range);
             }
-        }
-
-        if ($request->filled('household_code')) {
-            $query->where('household_code', $request->household_code);
         }
 
         if ($request->filled('household_id')) {
@@ -444,7 +468,14 @@ class UserController extends Controller
                 'preferred_language',
             ]));
 
-            if ($request->has('household_id')) {
+            // Both blocks below are staff-only, same as role/has_account/
+            // membership_ids just further down -- a resident hitting this
+            // endpoint for their own profile (isOwnProfile() passes the
+            // gate at the top of this method) must not be able to link
+            // themselves into an arbitrary household or flag themselves as
+            // its head, which would also silently demote whoever the real
+            // head was.
+            if ($this->isStaff() && $request->has('household_id')) {
                 $originalHouseholdId = $user->household_id;
                 $user->household_id = $request->filled('household_id') ? (int) $request->household_id : null;
 
@@ -461,7 +492,7 @@ class UserController extends Controller
                 }
             }
 
-            if ($request->has('is_household_head')) {
+            if ($this->isStaff() && $request->has('is_household_head')) {
                 $wantsHead = filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN);
 
                 if ($wantsHead && !$user->household_id) {
@@ -513,6 +544,18 @@ class UserController extends Controller
 
             $user->save();
 
+            // Whether this request just made them head or they already
+            // were one, keep the household's own address/contact number
+            // filled in from whatever the head's Residents-page record
+            // now has -- but only for a field the household doesn't
+            // already have its own value for (see backfillFromHead()).
+            if ($user->is_household_head && $user->household_id) {
+                $household = Household::find($user->household_id);
+                if ($household) {
+                    $household->backfillFromHead($user);
+                }
+            }
+
             if ($this->isStaff() && $request->has('membership_ids')) {
                 $ids = array_filter((array) $request->membership_ids);
 
@@ -547,6 +590,14 @@ class UserController extends Controller
                 ], 409);
             }
 
+            if ($this->isDuplicateNameConflict($e)) {
+                return response()->json([
+                    'errors' => [
+                        'last_name' => ['A record with this full name already exists.']
+                    ]
+                ], 422);
+            }
+
             return response()->json([
                 'message' => 'Update failed',
                 'error' => $e->getMessage(),
@@ -569,6 +620,15 @@ class UserController extends Controller
         try {
 
             $user = User::findOrFail($id);
+
+            // A soft-deleted resident can't stay "head of household" -- it
+            // blocks the household from ever getting a new head (only one
+            // head per household is allowed) and would show a deleted
+            // resident as the active head if the household is viewed
+            // before this record is restored.
+            if ($user->is_household_head) {
+                $user->is_household_head = false;
+            }
 
             // ✅ STORE WHO DELETED IT
             $user->deleted_by = auth()->user()->user_code;
@@ -823,9 +883,7 @@ public function getAllForMemberships()
                     'civil_status_id' => $user->civil_status_id,
                     'current_status_ids' => $user->getRelationValue('currentStatuses')->pluck('id'),
                     'gender' => $user->gender,
-                    'household_code' => $user->household_code,
                     'is_household_head' => $user->is_household_head,
-                    'household_contact_number' => $user->household_contact_number,
                     'household_id' => $user->household_id,
                     'household' => $user->household ? [
                         'id' => $user->household->id,

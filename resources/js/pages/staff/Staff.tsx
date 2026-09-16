@@ -262,7 +262,7 @@ export default function StaffDashboard() {
     : staff.name;
 
   return (
-    <div className="flex min-h-screen bg-[#fcfcf9] text-gray-900">
+    <div className="flex min-h-screen bg-white text-gray-900">
       <Sidebar
         active={active}
         setActive={setActive}

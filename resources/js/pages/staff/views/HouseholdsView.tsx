@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, CheckCircle, AlertCircle, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
-import SearchBar from "../../../components/ui/SearchBar";
+import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, CheckCircle, AlertCircle, AlertTriangle, ChevronDown, Search } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -74,9 +73,6 @@ export default function HouseholdsView() {
   const [memberSearch, setMemberSearch] = useState("");
   const [pickerFor, setPickerFor] = useState<number | null>(null);
 
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [addForm, setAddForm] = useState({ address: "", contact_number: "" });
-
   const [editRecord, setEditRecord] = useState<Household | null>(null);
   const [editForm, setEditForm] = useState({ address: "", contact_number: "" });
   // Closing the Edit Household modal (backdrop or Cancel) with unsaved
@@ -130,23 +126,18 @@ export default function HouseholdsView() {
     );
   }, [unassigned, memberSearch]);
 
-  // The form's own submit only opens the confirm step; the actual
-  // POST happens in performAdd once the user confirms.
-  const submitAdd = (e: React.FormEvent) => {
-    e.preventDefault();
-    setConfirmAdd(true);
-  };
-
   const performAdd = async () => {
     setConfirmAdd(false);
     setSaving(true);
     try {
+      // No address/contact number to send anymore -- a brand new
+      // household starts blank and picks both up automatically from
+      // whichever resident staff later make its head (see
+      // Household::backfillFromHead() on the backend).
       await api("/households", {
         method: "POST",
-        body: JSON.stringify(addForm),
+        body: JSON.stringify({}),
       });
-      setShowAddForm(false);
-      setAddForm({ address: "", contact_number: "" });
       await load();
       setSuccessMessage(t("householdAddedSuccess"));
     } catch (e: any) {
@@ -259,57 +250,47 @@ export default function HouseholdsView() {
 
   return (
     <div className="space-y-6">
+      {/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents
+          background and palette. Modals further down stay in the original
+          light theme, same scoping used on the Residents page. */}
+      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("householdsTitle")}</h1>
-          <p className="mt-1 text-sm text-[#667777]">{t("householdsSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("householdsTitle")}</h1>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("householdsSubtitle")}</p>
         </div>
         <button
           type="button"
-          onClick={() => setShowAddForm((v) => !v)}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-3 text-sm font-semibold shadow-sm transition shrink-0"
+          onClick={() => setConfirmAdd(true)}
+          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
         >
-          <Plus className="h-4 w-4" /> {t("addHouseholdLabel")}
+          {t("addHouseholdLabel")}
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+            <Plus className="h-5 w-5 text-white" />
+          </span>
         </button>
       </div>
 
-      <SearchBar value={search} onChange={setSearch} placeholder={t("searchHouseholdsPlaceholder")} />
-
-      {showAddForm && (
-        <form onSubmit={submitAdd} className="rounded-[24px] border border-dashed border-[#005f63]/30 bg-white p-5 space-y-3">
-          <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">{t("addHouseholdLabel")}</p>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <input
-              value={addForm.address}
-              onChange={(e) => setAddForm((p) => ({ ...p, address: e.target.value }))}
-              placeholder={t("householdAddressPlaceholder")}
-              className="rounded-full border border-gray-200 px-4 py-2.5 text-sm"
-            />
-            <input
-              value={addForm.contact_number}
-              onChange={(e) => setAddForm((p) => ({ ...p, contact_number: e.target.value }))}
-              placeholder={t("householdContactPlaceholder")}
-              className="rounded-full border border-gray-200 px-4 py-2.5 text-sm"
-            />
-          </div>
-          <p className="text-xs text-gray-400">{t("householdCodeAutoNote")}</p>
-          <div className="flex gap-2 justify-end">
-            <button type="button" onClick={() => setShowAddForm(false)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 text-sm hover:bg-gray-50 transition">
-              {t("cancelLabel")}
-            </button>
-            <button type="submit" disabled={saving} className="px-5 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white text-sm font-medium disabled:opacity-60 transition">
-              {t("saveLabel")}
-            </button>
-          </div>
-        </form>
-      )}
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("searchHouseholdsPlaceholder")}
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+          />
+        </div>
+      </div>
 
       {loading ? (
         <div className="flex justify-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4FBEB0]" />
         </div>
       ) : households.length === 0 ? (
-        <div className="rounded-[24px] border border-[#ddd5ca] bg-white p-10 text-center text-sm text-gray-500">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
           {t("noHouseholdsFound")}
         </div>
       ) : (
@@ -318,75 +299,75 @@ export default function HouseholdsView() {
             const expanded = expandedId === h.id;
             const head = h.members?.find((m) => m.is_household_head);
             return (
-              <div key={h.id} className="rounded-[24px] border border-[#ddd5ca] bg-white overflow-hidden">
-                <div className="p-5 flex flex-wrap items-center gap-4">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-teal-50 shrink-0">
-                    <Home className="h-5 w-5 text-[#005f63]" />
+              <div key={h.id} className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden transition-colors hover:border-white/20">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setExpandedId(expanded ? null : h.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setExpandedId(expanded ? null : h.id);
+                    }
+                  }}
+                  className="p-5 flex flex-wrap items-center gap-4 cursor-pointer"
+                >
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#4FBEB0]/10 shrink-0">
+                    <Home className="h-5 w-5 text-[#4FBEB0]" />
                   </div>
                   <div className="min-w-[140px]">
-                    <p className="text-sm font-bold text-gray-800">{h.code}</p>
-                    <p className="text-xs text-gray-500">{h.address || t("noAddressOnFile")}</p>
+                    <p className="text-sm font-bold text-white">{h.code}</p>
+                    <p className="text-xs text-white/45">{h.address || t("noAddressOnFile")}</p>
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-600 bg-gray-100 rounded-full px-3 py-1">
+                  <div className="flex items-center gap-1.5 text-xs text-[#7DD8CB] bg-[#4FBEB0]/10 rounded-full px-3 py-1">
                     <Users className="h-3.5 w-3.5" /> {h.members_count} {t("membersLabel")}
                   </div>
                   {head ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-[#005f63] bg-teal-50 rounded-full px-3 py-1">
-                      <Star className="h-3.5 w-3.5 fill-[#005f63]" /> {fullName(head)}
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gold-300 bg-gold-500/10 rounded-full px-3 py-1">
+                      <Star className="h-3.5 w-3.5 fill-gold-300" /> {fullName(head)}
                     </span>
                   ) : h.members_count > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 rounded-full px-3 py-1">
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gold-300 bg-gold-500/10 rounded-full px-3 py-1">
                       <AlertCircle className="h-3.5 w-3.5" /> {t("noHeadAssigned")}
                     </span>
                   ) : null}
                   {h.contact_number && (
-                    <span className="text-xs text-gray-500">{h.contact_number}</span>
+                    <span className="text-xs text-white/40">{h.contact_number}</span>
                   )}
 
                   <div className="ml-auto flex items-center gap-1">
-                    <button type="button" onClick={() => openEdit(h)} className="p-2 rounded-full hover:bg-orange-50 text-orange-600" title={t("editLabel")}>
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button type="button" onClick={() => setDeleteRecord(h)} className="p-2 rounded-full hover:bg-red-50 text-red-500" title={t("deleteTitle")}>
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setExpandedId(expanded ? null : h.id)}
-                      className="p-2 rounded-full hover:bg-gray-100 text-gray-500"
-                      title={t("viewMembersLabel")}
-                    >
-                      {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </button>
+                    <ChevronDown
+                      className={`h-4 w-4 text-white/30 transition-transform ${expanded ? "rotate-180" : ""}`}
+                    />
                   </div>
                 </div>
 
                 {expanded && (
-                  <div className="border-t border-gray-100 bg-gray-50/60 px-5 py-4 space-y-3">
+                  <div className="border-t border-white/10 bg-black/20 px-5 py-4 space-y-3">
                     {h.members.length === 0 ? (
-                      <p className="text-xs text-gray-500">{t("noMembersYet")}</p>
+                      <p className="text-xs text-white/40">{t("noMembersYet")}</p>
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {h.members.map((m) => (
-                          <div key={m.id} className="flex items-center gap-2 rounded-full bg-white border border-gray-200 pl-3 pr-1.5 py-1.5 text-xs">
-                            <span className="font-medium text-gray-800">{fullName(m)}</span>
+                          <div key={m.id} className="flex items-center gap-2 rounded-full bg-white/[0.05] border border-white/10 pl-3 pr-1.5 py-1.5 text-xs">
+                            <span className="font-medium text-white">{fullName(m)}</span>
                             {m.role === "Staff" && (
-                              <span className="rounded-full bg-amber-50 text-amber-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
+                              <span className="rounded-full bg-gold-400/15 text-gold-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
                             )}
-                            <span className="text-gray-400">{m.user_code}</span>
+                            <span className="text-white/40">{m.user_code}</span>
                             <button
                               type="button"
                               onClick={() => setHead(h.id, m.id)}
                               title={m.is_household_head ? t("headOfHouseholdTitle") : t("setAsHeadLabel")}
-                              className={`p-1 rounded-full ${m.is_household_head ? "text-[#005f63]" : "text-gray-300 hover:text-amber-500"}`}
+                              className={`p-1 rounded-full ${m.is_household_head ? "text-gold-300" : "text-white/25 hover:text-gold-300"}`}
                             >
-                              <Star className={`h-3.5 w-3.5 ${m.is_household_head ? "fill-[#005f63]" : ""}`} />
+                              <Star className={`h-3.5 w-3.5 ${m.is_household_head ? "fill-gold-300" : ""}`} />
                             </button>
                             <button
                               type="button"
                               onClick={() => removeMember(h.id, m.id, m.is_household_head)}
                               title={t("removeMemberLabel")}
-                              className="p-1 rounded-full text-gray-300 hover:text-red-500"
+                              className="p-1 rounded-full text-white/25 hover:text-red-400"
                             >
                               <X className="h-3.5 w-3.5" />
                             </button>
@@ -396,48 +377,68 @@ export default function HouseholdsView() {
                     )}
 
                     {pickerFor === h.id ? (
-                      <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-3 space-y-2">
+                      <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-3 space-y-2">
                         <input
                           autoFocus
                           value={memberSearch}
                           onChange={(e) => setMemberSearch(e.target.value)}
                           placeholder={t("searchResidentPlaceholder")}
-                          className="w-full rounded-full border border-gray-200 px-4 py-2 text-xs"
+                          className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                         />
                         <div className="max-h-40 overflow-y-auto space-y-1">
                           {filteredUnassigned.length === 0 ? (
-                            <p className="text-xs text-gray-400 px-2 py-1">{t("noUnassignedResidents")}</p>
+                            <p className="text-xs text-white/40 px-2 py-1">{t("noUnassignedResidents")}</p>
                           ) : (
                             filteredUnassigned.map((m) => (
                               <button
                                 key={m.id}
                                 type="button"
                                 onClick={() => addMember(h.id, m.id)}
-                                className="w-full text-left text-xs px-3 py-2 rounded-full hover:bg-teal-50 flex items-center justify-between gap-2"
+                                className="w-full text-left text-xs px-3 py-2 rounded-full hover:bg-white/[0.06] flex items-center justify-between gap-2"
                               >
-                                <span className="flex items-center gap-1.5">
+                                <span className="flex items-center gap-1.5 text-white">
                                   {fullName(m)}
                                   {m.role === "Staff" && (
-                                    <span className="rounded-full bg-amber-50 text-amber-700 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
+                                    <span className="rounded-full bg-gold-400/15 text-gold-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
                                   )}
                                 </span>
-                                <span className="text-gray-400">{m.user_code}</span>
+                                <span className="text-white/40">{m.user_code}</span>
                               </button>
                             ))
                           )}
                         </div>
-                        <button type="button" onClick={() => { setPickerFor(null); setMemberSearch(""); }} className="text-xs text-gray-500 hover:text-gray-700 px-2">
+                        <button type="button" onClick={() => { setPickerFor(null); setMemberSearch(""); }} className="text-xs text-white/40 hover:text-white px-2">
                           {t("cancelLabel")}
                         </button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => setPickerFor(h.id)}
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-[#005f63] hover:text-[#004a4d]"
-                      >
-                        <UserPlus className="h-3.5 w-3.5" /> {t("addMemberLabel")}
-                      </button>
+                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setPickerFor(h.id)}
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#4FBEB0] hover:text-[#7DD8CB]"
+                        >
+                          <UserPlus className="h-3.5 w-3.5" /> {t("addMemberLabel")}
+                        </button>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openEdit(h); }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                            title={t("editLabel")}
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> {t("editLabel")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setDeleteRecord(h); }}
+                            className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-500/10 transition-colors"
+                            title={t("deleteTitle")}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" /> {t("deleteTitle")}
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )}
@@ -451,7 +452,7 @@ export default function HouseholdsView() {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`h-9 w-9 rounded-full text-sm ${p === page ? "bg-[#005f63] text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-50"}`}
+                  className={`h-9 w-9 rounded-full text-sm ${p === page ? "bg-gold-400 text-[#08130F] font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
                 >
                   {p}
                 </button>
@@ -460,37 +461,39 @@ export default function HouseholdsView() {
           )}
         </div>
       )}
+      </div>
+      </div>
 
       {/* Edit modal */}
       {editRecord && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={handleCloseEdit}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={handleCloseEdit}>
           <form
             onSubmit={submitEdit}
             onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl space-y-4"
+            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-lg p-8 shadow-2xl space-y-5"
           >
-            <h3 className="text-xl font-bold text-[#005f63]">{t("editHouseholdLabel")} -- {editRecord.code}</h3>
+            <h3 className="text-2xl font-bold text-white">{t("editHouseholdLabel")} -- {editRecord.code}</h3>
             <input
               value={editForm.address}
               onChange={(e) => setEditForm((p) => ({ ...p, address: e.target.value }))}
               placeholder={t("householdAddressPlaceholder")}
-              className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm"
+              className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
             <input
               value={editForm.contact_number}
               onChange={(e) => setEditForm((p) => ({ ...p, contact_number: e.target.value }))}
               placeholder={t("householdContactPlaceholder")}
-              className="w-full rounded-full border border-gray-200 px-4 py-2.5 text-sm"
+              className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
             <div className="flex justify-center gap-4 pt-2">
-              <button type="button" onClick={handleCloseEdit} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">
+              <button type="button" onClick={handleCloseEdit} className="px-6 py-3 rounded-full border border-white/15 text-white text-base hover:bg-white/10 transition">
                 {t("cancelLabel")}
               </button>
               <button
                 type="submit"
                 disabled={saving || isEditFormUnchanged}
                 title={isEditFormUnchanged ? t("noChangesToSaveHint") : undefined}
-                className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-[#005f63]"
+                className="px-6 py-3 rounded-full bg-gold-400 text-[#08130F] text-base font-bold hover:bg-gold-500 transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-gold-400"
               >
                 {t("saveChanges")}
               </button>
@@ -505,9 +508,9 @@ export default function HouseholdsView() {
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
-            <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
+            <p className="text-[#6B7280] mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("stayButton")}</button>
+              <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   setShowEditCancelConfirm(false);
@@ -551,9 +554,9 @@ export default function HouseholdsView() {
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
             <div className="mb-4 text-red-500 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-5">{t("deleteHouseholdConfirm")}</p>
+            <p className="text-[15px] text-[#6B7280] mb-5">{t("deleteHouseholdConfirm")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition">{t("cancel")}</button>
+              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("cancel")}</button>
               <button onClick={confirmDelete} disabled={saving} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
             </div>
           </div>
@@ -564,10 +567,10 @@ export default function HouseholdsView() {
       {successMessage && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setSuccessMessage(null)}>
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-[#005f63] flex justify-center"><CheckCircle size={48} /></div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{successMessage}</p>
-            <button onClick={() => setSuccessMessage(null)} className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition">
+            <div className="mb-3 text-sage-800 flex justify-center"><CheckCircle size={48} /></div>
+            <h3 className="text-xl font-bold text-sage-800 mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-[#6B7280] mb-6">{successMessage}</p>
+            <button onClick={() => setSuccessMessage(null)} className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition">
               {t("okLabel")}
             </button>
           </div>
@@ -580,7 +583,7 @@ export default function HouseholdsView() {
           <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-red-500 flex justify-center"><AlertCircle size={48} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{errorMessage}</p>
+            <p className="text-[15px] text-[#6B7280] mb-6">{errorMessage}</p>
             <button onClick={() => setErrorMessage(null)} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">
               {t("okLabel")}
             </button>

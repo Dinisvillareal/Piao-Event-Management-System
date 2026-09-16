@@ -1,3 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Piao design system — base surface + text color. Individual pages still
+   set their own backgrounds in places; this just keeps the default (and
+   anything that doesn't) on the warm-paper canvas instead of pure white. */
+html, body {
+  background-color: #F8F5EF;
+  color: #1A1A1A;
+}
+
+/* Tailwind's Preflight resets font-family to `inherit` on <select>,
+   <input>, <button>, <textarea> -- but it can't reach into a file input's
+   native "Choose File" button, which lives in a browser shadow root
+   (::file-selector-button / the older WebKit ::-webkit-file-upload-button).
+   Left alone, that button renders in the OS UI font (e.g. Segoe UI on
+   Windows) instead of the app's Public Sans, which is what made the ID
+   Photo field on Add/Edit Resident look like it belonged to a different
+   app. Forcing it to inherit keeps every control on the same typeface. */
+input[type="file"]::file-selector-button,
+input[type="file"]::-webkit-file-upload-button {
+  font-family: inherit;
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   LayoutDashboard,
   ScanLine,
@@ -8,8 +8,6 @@ import {
   CalendarDays,
   Bell,
   Settings,
-  ChevronLeft,
-  ChevronRight,
   LogOut,
   FileText,
   Archive,
@@ -25,6 +23,8 @@ import {
   CalendarCheck,
   Boxes,
   Undo2,
+  Search,
+  SearchX,
 } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -61,8 +61,7 @@ const NAV_BY_KEY: Record<string, typeof NAV[number]> = Object.fromEntries(NAV.ma
 // Each group icon is deliberately different from every icon used by its
 // own children below -- reusing a child's icon (e.g. the Events & Check-in
 // group and the Events item both showing a calendar) reads as a visual
-// duplicate, especially in the collapsed icon-only rail where there's no
-// label left to tell the two apart.
+// duplicate.
 const NAV_GROUP_DEFS: { key: string; labelKey: string; icon: any; itemKeys: string[] }[] = [
   { key: "membershipGroup", labelKey: "navGroupMembership", icon: IdCard, itemKeys: ["residents", "households", "memberships"] },
   { key: "eventsGroup", labelKey: "navGroupEvents", icon: CalendarCheck, itemKeys: ["events", "scan", "notify"] },
@@ -86,9 +85,22 @@ interface SidebarProps {
 
 export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile }: SidebarProps) {
   const { t } = useLanguage();
-  const [isOpen, setIsOpen] = useState(true);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [navQuery, setNavQuery] = useState("");
+
+  // Every real destination in the sidebar, flattened once, so the search
+  // box below can filter across standalone links, every module's items,
+  // and Settings' submenu all at the same time -- a real quick-jump, not
+  // a decorative input that does nothing.
+  const allNavItems = useMemo(
+    () => [...STANDALONE_NAV, ...NAV_GROUPS.flatMap((g) => g.items), ...SETTINGS_NAV],
+    []
+  );
+  const trimmedQuery = navQuery.trim().toLowerCase();
+  const searchResults = trimmedQuery
+    ? allNavItems.filter((item) => t(item.key).toLowerCase().includes(trimmedQuery) || item.label.toLowerCase().includes(trimmedQuery))
+    : [];
 
   // Which module the currently active page lives under -- "settings" is
   // its own pseudo-group key here, matching the group SETTINGS_NAV renders
@@ -120,8 +132,25 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
 
   const toggleGroup = (key: string) => setOpenGroups((prev) => ({ ...prev, [key]: !prev[key] }));
 
+  // Bolds + golds the matched substring inside a nav label while typing in
+  // the search box (e.g. "das" in "Dashboard"), rather than just filtering
+  // the list with no visual cue about what matched.
+  const highlightMatch = (label: string, query: string) => {
+    if (!query) return label;
+    const idx = label.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return label;
+    return (
+      <>
+        {label.slice(0, idx)}
+        <span className="font-bold text-gold-400">{label.slice(idx, idx + query.length)}</span>
+        {label.slice(idx + query.length)}
+      </>
+    );
+  };
+
   const handleNavClick = (key: string, path?: string) => {
     setActive(key, path);
+    setNavQuery("");
     onCloseMobile?.();
   };
 
@@ -159,118 +188,166 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
     }
   };
 
+  const inactiveNav = "text-white/55 hover:bg-white/[0.06] hover:text-white";
+  const activeNav = "bg-white/10 text-white font-semibold shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]";
+
   return (
     <>
       {mobileOpen && (
         <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={onCloseMobile} />
       )}
 
-      <button onClick={() => setIsOpen(!isOpen)} className={`hidden md:flex fixed top-4 z-[45] bg-[#006666] text-white p-1.5 rounded-full shadow-md transition-all duration-300 hover:bg-[#005555] ${isOpen ? "left-[235px]" : "left-[50px]"}`}>
-        {isOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
-      </button>
       <aside
-        className={`flex-col border-r border-[#006666] bg-[#006666] h-screen fixed md:sticky top-0 z-40 transition-all duration-300 flex overflow-hidden shadow-lg ${isOpen ? "md:w-[250px]" : "md:w-[70px]"} w-[250px] ${
+        className={`w-[340px] flex-col bg-[#0A0E1A] h-screen fixed md:sticky top-0 z-40 flex overflow-hidden ${
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
         <button
           onClick={onCloseMobile}
-          className="md:hidden absolute top-4 right-4 z-10 text-white/80 hover:text-white"
+          className="md:hidden absolute top-4 right-4 z-10 text-white/50 hover:text-white"
         >
           <XIcon size={20} />
         </button>
-        <div className="border-b border-[#007777] px-3 py-5 shrink-0 flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-transparent font-black shrink-0 shadow-md overflow-hidden">
+        <div className="border-b border-white/10 px-4 py-5 shrink-0 flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 border border-white/15 font-black shrink-0 overflow-hidden">
             <img
-            src="/logo-removebg-preview.png"
-            alt="Logo"
-            className="w-full h-full object-contain"
+              src="/logo-removebg-preview.png"
+              alt="Logo"
+              className="w-full h-full object-contain"
             />
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-[#7DD8CB] font-medium">BARANGAY PIAO</p>
+            <h1 className="font-display text-[15px] font-bold text-white whitespace-nowrap leading-tight">e-Membership</h1>
+          </div>
         </div>
-        <div className={`transition-all duration-300 overflow-hidden ${isOpen ? "opacity-100 w-auto visible" : "opacity-0 w-0 invisible"}`}>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-white/70 font-medium">BARANGAY PIAO</p>
-            <h1 className="text-[15px] font-black text-white whitespace-nowrap leading-tight">e-Membership</h1>
+
+        {/* Quick-jump search -- filters every real nav destination
+            (standalone links, module items, and Settings' submenu) as you
+            type, rather than sitting there decoratively. */}
+        <div className="px-3 pt-4 shrink-0">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+            <input
+              type="text"
+              value={navQuery}
+              onChange={(e) => setNavQuery(e.target.value)}
+              placeholder="Search"
+              className="w-full rounded-xl border border-white/10 bg-white/[0.05] py-2.5 pl-10 pr-3 text-[13.5px] text-white placeholder-white/35 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-2 focus:ring-[#4FBEB0]/20"
+            />
+          </div>
         </div>
-        </div>
-        <div className="flex-1 px-2 py-5 overflow-y-auto smooth-scroll">
-          <p className={`mb-3 px-3 text-sm font-semibold text-white/60 transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0"}`}>{t("staffConsole")}</p>
-          <div className="space-y-1.5">
-            {/* STANDALONE LINKS -- Dashboard and Reports each go straight
-                to one page, so they stay flat instead of being wrapped in
-                a one-item module. */}
-            {STANDALONE_NAV.map((item) => (
-              <button key={item.key} onClick={() => handleNavClick(item.key, item.path)} className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} ${active === item.key ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]" : "text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1"}`}>
-                <item.icon className="h-5 w-5 shrink-0" />
-                <span className={`transition-all duration-300 truncate flex-1 min-w-0 text-left ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>{t(item.key)}</span>
-              </button>
-            ))}
 
-            {/* MODULES -- same collapsible pattern as Settings below, just
-                generalized to every related group of pages. */}
-            {NAV_GROUPS.map((group) => (
-              <div key={group.key} className="space-y-1">
-                <button
-                  onClick={() => toggleGroup(group.key)}
-                  className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1`}
-                >
-                  <group.icon className="h-5 w-5 shrink-0" />
-                  <span className={`transition-all duration-300 truncate flex-1 min-w-0 text-left ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>{t(group.labelKey)}</span>
-                  {isOpen && (openGroups[group.key] ? <ChevronUp size={16} /> : <ChevronDown size={16} />)}
-                </button>
-
-                {openGroups[group.key] && (
-                  <div className={`${isOpen ? "pl-6" : "pl-0"} space-y-1 mt-1`}>
-                    {group.items.map((item) => (
-                      <button
-                        key={item.key}
-                        onClick={() => handleNavClick(item.key, item.path)}
-                        className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} ${active === item.key ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]" : "text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1"}`}
-                      >
-                        <item.icon className="h-5 w-5 shrink-0" />
-                        <span className={`transition-all duration-300 truncate flex-1 min-w-0 text-left ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>{t(item.key)}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* SETTINGS WITH SUBMENU */}
-            <div className="space-y-1">
-              <button
-                onClick={() => toggleGroup("settings")}
-                className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1`}
-              >
-                <Settings className="h-5 w-5 shrink-0" />
-                <span className={`transition-all duration-300 truncate flex-1 min-w-0 text-left ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>{t("settings")}</span>
-                {isOpen && (openGroups["settings"] ? <ChevronUp size={16} /> : <ChevronDown size={16} />)}
-              </button>
-
-              {/* SUB NAVIGATION */}
-              {openGroups["settings"] && (
-                <div className={`${isOpen ? "pl-6" : "pl-0"} space-y-1 mt-1`}>
-                  {SETTINGS_NAV.map((item) => (
+        <div className="flex-1 px-3 py-5 overflow-y-auto smooth-scroll">
+          {trimmedQuery ? (
+            <>
+              <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">
+                {searchResults.length > 0 ? "Search Results" : "No Matches"}
+              </p>
+              {searchResults.length > 0 ? (
+                <div className="space-y-1.5">
+                  {searchResults.map((item) => (
                     <button
                       key={item.key}
                       onClick={() => handleNavClick(item.key, item.path)}
-                      className={`flex items-center w-full rounded-[20px] py-3 transition-all duration-200 group ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"} ${active === item.key ? "bg-[#008888] text-white shadow-md font-medium border-l-4 border-[#ffc107]" : "text-white/80 hover:bg-[#007777] hover:text-white hover:translate-x-1"}`}
+                      className={`flex items-center w-full rounded-xl border px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${
+                        active === item.key ? `${activeNav} border-white/10` : `${inactiveNav} border-white/10`
+                      }`}
                     >
                       <item.icon className="h-5 w-5 shrink-0" />
-                      <span className={`transition-all duration-300 truncate flex-1 min-w-0 text-left ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>{t(item.key)}</span>
+                      <span className="truncate flex-1 min-w-0 text-left">{highlightMatch(t(item.key), trimmedQuery)}</span>
                     </button>
                   ))}
                 </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-white/35">
+                  <SearchX className="h-6 w-6" />
+                  <p className="text-[13px]">Nothing matches "{navQuery}"</p>
+                </div>
               )}
-            </div>
-          </div>
+            </>
+          ) : (
+            <>
+              <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">{t("staffConsole")}</p>
+              <div className="space-y-1.5">
+                {/* STANDALONE LINKS -- Dashboard and Reports each go straight
+                    to one page, so they stay flat instead of being wrapped in
+                    a one-item module. */}
+                {STANDALONE_NAV.map((item) => (
+                  <button key={item.key} onClick={() => handleNavClick(item.key, item.path)} className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${active === item.key ? activeNav : inactiveNav}`}>
+                    <item.icon className="h-5 w-5 shrink-0" />
+                    <span className="truncate flex-1 min-w-0 text-left">{t(item.key)}</span>
+                  </button>
+                ))}
+
+                {/* MODULES -- same collapsible pattern as Settings below, just
+                    generalized to every related group of pages. */}
+                {NAV_GROUPS.map((group) => (
+                  <div key={group.key} className="space-y-1">
+                    <button
+                      onClick={() => toggleGroup(group.key)}
+                      className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${inactiveNav}`}
+                    >
+                      <group.icon className="h-5 w-5 shrink-0" />
+                      <span className="truncate flex-1 min-w-0 text-left">{t(group.labelKey)}</span>
+                      {openGroups[group.key] ? <ChevronUp size={16} className="text-white/35" /> : <ChevronDown size={16} className="text-white/35" />}
+                    </button>
+
+                    {openGroups[group.key] && (
+                      <div className="pl-6 space-y-1 mt-1">
+                        {group.items.map((item) => (
+                          <button
+                            key={item.key}
+                            onClick={() => handleNavClick(item.key, item.path)}
+                            className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${active === item.key ? activeNav : inactiveNav}`}
+                          >
+                            <item.icon className="h-5 w-5 shrink-0" />
+                            <span className="truncate flex-1 min-w-0 text-left">{t(item.key)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* SETTINGS WITH SUBMENU */}
+                <div className="space-y-1">
+                  <button
+                    onClick={() => toggleGroup("settings")}
+                    className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${inactiveNav}`}
+                  >
+                    <Settings className="h-5 w-5 shrink-0" />
+                    <span className="truncate flex-1 min-w-0 text-left">{t("settings")}</span>
+                    {openGroups["settings"] ? <ChevronUp size={16} className="text-white/35" /> : <ChevronDown size={16} className="text-white/35" />}
+                  </button>
+
+                  {/* SUB NAVIGATION */}
+                  {openGroups["settings"] && (
+                    <div className="pl-6 space-y-1 mt-1">
+                      {SETTINGS_NAV.map((item) => (
+                        <button
+                          key={item.key}
+                          onClick={() => handleNavClick(item.key, item.path)}
+                          className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${active === item.key ? activeNav : inactiveNav}`}
+                        >
+                          <item.icon className="h-5 w-5 shrink-0" />
+                          <span className="truncate flex-1 min-w-0 text-left">{t(item.key)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </div>
-        <div className="border-t border-[#007777] p-2 shrink-0">
+        <div className="border-t border-white/10 p-2 shrink-0">
           <button
-            className={`flex items-center w-full rounded-[20px] py-3 text-white/80 transition-all hover:bg-[#007777] hover:text-white hover:translate-x-1 ${isOpen ? "px-4 justify-start gap-3" : "justify-center px-0"}`}
+            className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all ${inactiveNav}`}
             onClick={() => setShowLogoutConfirm(true)}
           >
             <LogOut className="h-5 w-5 shrink-0" />
-            <span className={`transition-all duration-300 truncate flex-1 min-w-0 text-left ${isOpen ? "opacity-100 w-auto" : "opacity-0 w-0 overflow-hidden"}`}>{t("signOut")}</span>
+            <span className="truncate flex-1 min-w-0 text-left">{t("signOut")}</span>
           </button>
         </div>
       </aside>
@@ -280,13 +357,13 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           gets the same "are you sure" treatment instead of firing instantly. */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-4 text-[#005f63] flex justify-center"><LogOut size={40} /></div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-3">{t("confirmLogoutTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-5">{t("confirmLogoutMessage")}</p>
+          <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-6 text-center shadow-2xl">
+            <div className="mb-4 flex justify-center text-[#4FBEB0]"><LogOut size={40} /></div>
+            <h3 className="font-display text-xl font-bold text-white mb-3">{t("confirmLogoutTitle")}</h3>
+            <p className="text-[15px] text-white/55 mb-5">{t("confirmLogoutMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowLogoutConfirm(false)} disabled={loggingOut} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition disabled:opacity-60">{t("cancel")}</button>
-              <button onClick={doLogout} disabled={loggingOut} className="px-5 py-2.5 rounded-full bg-[#005f63] text-white hover:bg-[#004a4d] transition disabled:opacity-60">{t("yesLogoutButton")}</button>
+              <button onClick={() => setShowLogoutConfirm(false)} disabled={loggingOut} className="px-5 py-2.5 rounded-full border border-white/15 text-white/70 hover:bg-white/5 transition disabled:opacity-60">{t("cancel")}</button>
+              <button onClick={doLogout} disabled={loggingOut} className="px-5 py-2.5 rounded-full bg-gradient-to-r from-gold-400 to-[#4FBEB0] text-[#08130F] font-bold hover:opacity-90 transition disabled:opacity-60">{t("yesLogoutButton")}</button>
             </div>
           </div>
         </div>
