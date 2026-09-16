@@ -77,15 +77,23 @@ class HouseholdController extends Controller
 
             $memberIds = $request->member_ids ?? [];
             if (!empty($memberIds)) {
+                // Same reasoning as addMember() below: a resident being
+                // linked in here never carries a stale is_household_head
+                // flag from wherever they were before -- otherwise this
+                // bulk assignment can silently hand the new household a
+                // head nobody actually chose.
                 User::whereIn('id', $memberIds)->update([
-                    'household_id' => $household->id,
+                    'household_id'      => $household->id,
+                    'is_household_head' => false,
                 ]);
             }
 
             if ($request->filled('head_user_id') && in_array($request->head_user_id, $memberIds)) {
                 // Only one head per household -- clear any stale flag first.
                 User::where('household_id', $household->id)->update(['is_household_head' => false]);
-                User::where('id', $request->head_user_id)->update(['is_household_head' => true]);
+                $head = User::find($request->head_user_id);
+                $head->update(['is_household_head' => true]);
+                $household->backfillFromHead($head);
             }
 
             DB::commit();
@@ -126,6 +134,18 @@ class HouseholdController extends Controller
             'address'        => $request->address,
             'contact_number' => $request->contact_number,
         ]);
+
+        // Keep the head's own resident record in sync -- an edit here
+        // should also show up as that resident's own address/contact
+        // number on the Residents page, instead of the two silently
+        // drifting apart.
+        $head = User::where('household_id', $household->id)->where('is_household_head', true)->first();
+        if ($head) {
+            $head->update([
+                'address'        => $household->address,
+                'contact_number' => $household->contact_number,
+            ]);
+        }
 
         $this->createLog('Update', "Updated household '{$household->code}'");
 
@@ -251,6 +271,7 @@ class HouseholdController extends Controller
             if ($request->filled('user_id')) {
                 $user = User::where('household_id', $household->id)->findOrFail($request->user_id);
                 $user->update(['is_household_head' => true]);
+                $household->backfillFromHead($user);
                 $this->createLog('Update', "Set {$user->first_name} {$user->last_name} as head of household '{$household->code}'");
             }
 

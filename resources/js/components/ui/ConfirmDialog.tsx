@@ -7,6 +7,11 @@ const TONE_STYLES: Record<Tone, { icon: string; title: string; button: string }>
   danger: { icon: "text-red-500", title: "text-red-600", button: "bg-red-600 hover:bg-red-700" },
 };
 
+const TONE_STYLES_DARK: Record<Tone, { icon: string; title: string; button: string }> = {
+  brand: { icon: "text-[#4FBEB0]", title: "text-white", button: "bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold" },
+  danger: { icon: "text-red-400", title: "text-red-400", button: "bg-red-500 hover:bg-red-600 text-white" },
+};
+
 interface ConfirmDialogProps {
   open: boolean;
   icon: React.ReactNode;
@@ -19,6 +24,10 @@ interface ConfirmDialogProps {
   tone?: Tone;
   /** z-index bump for confirm dialogs opened on top of an already-open form modal. */
   z?: number;
+  /** Dark navy styling for callers whose surrounding page/modal has already
+      moved to the dark palette (e.g. the Membership Groups page). Every
+      other caller keeps the original light card look. */
+  dark?: boolean;
 }
 
 /**
@@ -37,20 +46,24 @@ export default function ConfirmDialog({
   onConfirm,
   tone = "brand",
   z = 70,
+  dark = false,
 }: ConfirmDialogProps) {
   if (!open) return null;
-  const styles = TONE_STYLES[tone];
+  const styles = dark ? TONE_STYLES_DARK[tone] : TONE_STYLES[tone];
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center px-4" style={{ zIndex: z }}>
-      <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+    <div className={`fixed inset-0 flex items-center justify-center px-4 ${dark ? "bg-black/70" : "bg-black/40"}`} style={{ zIndex: z }}>
+      <div className={`rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center ${dark ? "bg-[#0A0E1A] border border-white/10" : "bg-white"}`}>
         <div className={`mb-3 flex justify-center ${styles.icon}`}>{icon}</div>
         <h3 className={`text-lg font-bold mb-2 ${styles.title}`}>{title}</h3>
-        <p className="text-sm text-[#6B7280] mb-6">{body}</p>
+        <p className={`text-sm mb-6 ${dark ? "text-white/50" : "text-[#6B7280]"}`}>{body}</p>
         <div className="flex justify-center gap-3">
-          <button onClick={onCancel} className="px-5 py-2 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50">
+          <button
+            onClick={onCancel}
+            className={`px-5 py-2 rounded-full border ${dark ? "border-white/15 text-white hover:bg-white/10" : "border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50"}`}
+          >
             {cancelLabel}
           </button>
-          <button onClick={onConfirm} className={`px-5 py-2 rounded-full text-white ${styles.button}`}>
+          <button onClick={onConfirm} className={`px-5 py-2 rounded-full transition ${dark ? styles.button : `text-white ${styles.button}`}`}>
             {confirmLabel}
           </button>
         </div>

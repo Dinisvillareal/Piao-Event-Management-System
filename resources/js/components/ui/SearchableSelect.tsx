@@ -18,6 +18,9 @@ interface SearchableSelectProps {
   /** Optional sticky row pinned to the bottom of the dropdown, e.g. "+ Add new household". */
   footerLabel?: string;
   onFooterClick?: () => void;
+  /** Dark navy styling for the Add/Edit Resident and Add/Edit Event forms
+      -- applies to both the trigger and the results dropdown panel. */
+  dark?: boolean;
 }
 
 // A type-to-filter combobox for long option lists (inventory items, etc.)
@@ -35,6 +38,7 @@ export default function SearchableSelect({
   className = "",
   footerLabel,
   onFooterClick,
+  dark = false,
 }: SearchableSelectProps) {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
@@ -99,7 +103,7 @@ export default function SearchableSelect({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <div className="relative">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+        <Search className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${dark ? "left-5 h-5 w-5 text-white/50" : "left-4 h-4 w-4 text-gray-400"}`} />
         <input
           ref={inputRef}
           type="text"
@@ -114,15 +118,23 @@ export default function SearchableSelect({
           placeholder={placeholder}
           role="combobox"
           aria-expanded={isOpen}
-          className="w-full rounded-full border border-gray-200 bg-white pl-10 pr-9 py-2 text-sm disabled:opacity-60 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30 focus:border-[#005f63]/40"
+          className={`w-full rounded-full border disabled:opacity-60 focus:outline-none ${
+            dark
+              ? "pl-12 pr-10 py-3.5 text-base border-white/25 bg-white/10 text-white placeholder:text-white/50 focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+              : "pl-10 pr-9 py-2 text-sm border-gray-200 bg-white focus:ring-1 focus:ring-[#005f63]/30 focus:border-[#005f63]/40"
+          }`}
         />
-        <ChevronDown className={`pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+        <ChevronDown className={`pointer-events-none absolute top-1/2 -translate-y-1/2 transition-transform ${dark ? "right-4 h-5 w-5 text-white/50" : "right-3.5 h-4 w-4 text-gray-400"} ${isOpen ? "rotate-180" : ""}`} />
       </div>
 
       {isOpen && !disabled && (
-        <div className="absolute z-20 mt-1.5 w-full max-h-64 overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-lg py-1.5">
+        <div
+          className={`absolute z-20 mt-1.5 w-full max-h-64 overflow-y-auto rounded-2xl border shadow-lg py-1.5 ${
+            dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-gray-200 bg-white"
+          }`}
+        >
           {filtered.length === 0 ? (
-            <p className="px-4 py-2.5 text-sm text-gray-400 italic">{noResultsLabel}</p>
+            <p className={`px-4 py-2.5 text-sm italic ${dark ? "text-white/40" : "text-gray-400"}`}>{noResultsLabel}</p>
           ) : (
             filtered.map((opt, i) => (
               <button
@@ -132,11 +144,17 @@ export default function SearchableSelect({
                 onClick={() => choose(opt)}
                 onMouseEnter={() => setHighlightedIndex(i)}
                 className={`block w-full text-left px-4 py-2 text-sm truncate ${
-                  i === highlightedIndex ? "bg-teal-50 text-[#005f63]" : "text-gray-700"
+                  dark
+                    ? i === highlightedIndex
+                      ? "bg-[#4FBEB0]/10 text-[#7DD8CB]"
+                      : "text-white"
+                    : i === highlightedIndex
+                      ? "bg-teal-50 text-[#005f63]"
+                      : "text-gray-700"
                 }`}
               >
                 {opt.label}
-                {opt.hint && <span className="ml-1.5 text-xs text-gray-400">{opt.hint}</span>}
+                {opt.hint && <span className={`ml-1.5 text-xs ${dark ? "text-white/40" : "text-gray-400"}`}>{opt.hint}</span>}
               </button>
             ))
           )}
@@ -149,7 +167,9 @@ export default function SearchableSelect({
                 inputRef.current?.blur();
                 onFooterClick();
               }}
-              className="mt-1 flex w-full items-center gap-1.5 border-t border-gray-100 px-4 py-2.5 text-left text-sm font-semibold text-[#005f63] hover:bg-teal-50"
+              className={`mt-1 flex w-full items-center gap-1.5 border-t px-4 py-2.5 text-left text-sm font-semibold ${
+                dark ? "border-white/10 text-[#7DD8CB] hover:bg-white/10" : "border-gray-100 text-[#005f63] hover:bg-teal-50"
+              }`}
             >
               <Plus className="h-3.5 w-3.5" /> {footerLabel ?? "Add new"}
             </button>

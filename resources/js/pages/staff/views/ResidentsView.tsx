@@ -15,6 +15,7 @@ import {
   QrCode,
   ArrowLeft,
   Trash2,
+  Save,
 } from "lucide-react";
 import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
@@ -170,14 +171,14 @@ const safeParseJson = async (res: Response): Promise<any> => {
 // DashboardView.tsx) -- kept in sync so a membership badge and a budget
 // bar in the same slot always read as the same color.
 const BADGE_COLORS = [
-  "bg-sage-50 text-sage-700",
-  "bg-sage-100 text-sage-900",
-  "bg-gold-50 text-gold-700",
-  "bg-sage-50 text-sage-600",
-  "bg-[#F5E6E1] text-[#8A3D2C]",
-  "bg-sage-100 text-sage-800",
-  "bg-sage-50 text-sage-600",
-  "bg-sage-100 text-sage-700",
+  "bg-[#4FBEB0]/15 text-[#7DD8CB]",
+  "bg-gold-400/15 text-gold-300",
+  "bg-[#2E8E82]/15 text-[#7DD8CB]",
+  "bg-gold-500/15 text-gold-200",
+  "bg-white/10 text-white/70",
+  "bg-[#4FBEB0]/10 text-[#4FBEB0]",
+  "bg-gold-400/10 text-gold-400",
+  "bg-white/[0.08] text-white/60",
 ];
 
 const getMembershipBadgeStyle = (idx: number) =>
@@ -1043,18 +1044,18 @@ const handleDeleteResident = async () => {
 
     return (
       <div>
-        <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("currentStatusLabel")}</label>
+        <label className="block text-base font-semibold text-white mb-1.5">{t("currentStatusLabel")}</label>
         {currentStatuses.length === 0 ? (
-          <p className="text-xs text-[#6B7280] italic">{t("noCurrentStatusesAvailable")}</p>
+          <p className="text-sm text-white/60 italic">{t("noCurrentStatusesAvailable")}</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-2xl border border-[#E6E0D3] px-4 py-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-white/25 bg-white/10 px-5 py-4">
             {currentStatuses.map((cs) => (
-              <label key={cs.id} className="flex items-center gap-2 text-sm cursor-pointer">
+              <label key={cs.id} className="flex items-center gap-2.5 text-base text-white cursor-pointer">
                 <input
                   type="checkbox"
                   checked={selected.includes(cs.id)}
                   onChange={() => toggle(cs.id)}
-                  className="w-4 h-4 text-sage-800"
+                  className="w-5 h-5 text-[#4FBEB0]"
                 />
                 <span>{cs.label}</span>
               </label>
@@ -1077,32 +1078,32 @@ const handleDeleteResident = async () => {
     );
 
     return (
-      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 space-y-3">
+      <div className="rounded-2xl border border-white/25 bg-white/10 p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">Membership</p>
+          <p className="text-sm font-bold uppercase tracking-wide text-gold-300">Membership</p>
           <span
             className={`inline-flex items-center rounded-full text-[11px] font-semibold px-2.5 py-1 transition-colors ${
-              count > 0 ? "bg-sage-50 text-sage-800" : "bg-[#F1EEE5] text-[#6B7280]"
+              count > 0 ? "bg-[#4FBEB0]/10 text-[#7DD8CB]" : "bg-white/[0.05] text-white/40"
             }`}
           >
             {count > 0 ? `${count} selected` : "None selected"}
           </span>
         </div>
-        <p className="text-xs text-[#6B7280]">Search and tap a program to enroll this resident in real time.</p>
+        <p className="text-sm text-white/60">Search and tap a program to enroll this resident in real time.</p>
 
         {count > 0 && (
           <div className="flex flex-wrap gap-2 pb-1">
             {selectedMemberships.map((mem) => (
               <span
                 key={mem.id}
-                className="inline-flex items-center gap-1.5 rounded-full bg-sage-800 text-white pl-3.5 pr-2 py-1.5 text-sm font-medium shadow-sm"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/20 text-[#7DD8CB] pl-4 pr-2 py-2 text-base font-medium shadow-sm"
               >
                 {mem.name}
                 <button
                   type="button"
                   onClick={() => toggleMembership(mem.id, isEdit)}
                   aria-label={`Remove ${mem.name}`}
-                  className="rounded-full p-0.5 hover:bg-white/20 transition-colors"
+                  className="rounded-full p-0.5 hover:bg-white/10 transition-colors"
                 >
                   <XIcon className="h-3.5 w-3.5" />
                 </button>
@@ -1113,21 +1114,21 @@ const handleDeleteResident = async () => {
 
         {availableMemberships.length > 0 && (
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
             <input
               type="text"
               value={membershipSearch}
               onChange={(e) => setMembershipSearch(e.target.value)}
               placeholder="Search membership programs..."
-              className="h-10 w-full rounded-full border border-sage-200 bg-white pl-10 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+              className="h-12 w-full rounded-full border border-white/25 bg-white/10 pl-11 pr-4 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
             />
           </div>
         )}
 
         {availableMemberships.length === 0 ? (
-          <p className="text-xs text-[#6B7280] italic">{t("noMembershipsAvailable")}</p>
+          <p className="text-sm text-white/60 italic">{t("noMembershipsAvailable")}</p>
         ) : filteredAvailable.length === 0 ? (
-          <p className="text-xs text-[#6B7280] italic">
+          <p className="text-sm text-white/60 italic">
             {query ? "No matching programs." : "All programs have been added."}
           </p>
         ) : (
@@ -1137,9 +1138,9 @@ const handleDeleteResident = async () => {
                 key={mem.id}
                 type="button"
                 onClick={() => toggleMembership(mem.id, isEdit)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-sage-200 bg-white px-3.5 py-1.5 text-sm font-medium text-[#1A1A1A] hover:bg-sage-50 hover:border-sage-300 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-base font-medium text-white hover:bg-white/20 hover:border-white/30 transition-colors"
               >
-                <Plus className="h-3.5 w-3.5 text-sage-700" />
+                <Plus className="h-3.5 w-3.5 text-[#4FBEB0]" />
                 {mem.name}
               </button>
             ))}
@@ -1147,7 +1148,7 @@ const handleDeleteResident = async () => {
         )}
 
         {formErrors.membership_ids && (
-          <p className="text-red-500 text-xs">{formErrors.membership_ids}</p>
+          <p className="text-red-400 text-xs">{formErrors.membership_ids}</p>
         )}
       </div>
     );
@@ -1163,31 +1164,31 @@ const handleDeleteResident = async () => {
     const displayName = file ? file.name : preview ? "Current photo" : "No file chosen";
     return (
       <div
-        className={`rounded-2xl border p-4 sm:p-5 transition-colors ${
-          preview ? "border-sage-400" : formErrors.photo ? "border-red-400" : "border-[#E6E0D3]"
+        className={`rounded-2xl border p-5 sm:p-6 transition-colors bg-white/10 ${
+          preview ? "border-[#4FBEB0]/50" : formErrors.photo ? "border-red-500" : "border-white/25"
         }`}
       >
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-sm font-bold uppercase tracking-wide text-[#1A1A1A]">
+            <p className="text-base font-bold uppercase tracking-wide text-white">
               {t("idPhotoFieldLabel")}{" "}
-              <span className="text-[#6B7280] font-medium normal-case">({t("optionalLabel")})</span>
+              <span className="text-white/50 font-medium normal-case">({t("optionalLabel")})</span>
             </p>
-            <p className="mt-1 text-xs text-[#6B7280] italic">A clear, recent photo used for the resident's ID.</p>
+            <p className="mt-1 text-sm text-white/60 italic">A clear, recent photo used for the resident's ID.</p>
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
             {preview && (
-              <img src={preview} alt="Preview" className="h-12 w-12 rounded-full object-cover border border-sage-200 shrink-0" />
+              <img src={preview} alt="Preview" className="h-14 w-14 rounded-full object-cover border border-white/15 shrink-0" />
             )}
             <div className="w-full sm:w-64">
               <div
-                className={`flex items-center justify-between gap-2 rounded-full border px-4 py-2 text-sm bg-white ${
-                  preview ? "border-sage-400 text-sage-800" : "border-sage-200 text-[#6B7280]"
+                className={`flex items-center justify-between gap-2 rounded-full border px-5 py-2.5 text-base bg-white/10 ${
+                  preview ? "border-[#4FBEB0]/50 text-[#7DD8CB]" : "border-white/25 text-white/50"
                 }`}
               >
                 <span className="truncate">{displayName}</span>
-                {preview && <CheckCircle className="h-4 w-4 text-sage-600 shrink-0" />}
+                {preview && <CheckCircle className="h-4 w-4 text-[#4FBEB0] shrink-0" />}
               </div>
             </div>
           </div>
@@ -1201,10 +1202,10 @@ const handleDeleteResident = async () => {
           className="hidden"
         />
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-4 flex flex-wrap items-center gap-2.5">
           <label
             htmlFor={inputId}
-            className="cursor-pointer inline-flex items-center rounded-full border border-[#E6E0D3] px-4 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-sage-50 transition"
+            className="cursor-pointer inline-flex items-center rounded-full border border-white/25 px-5 py-2.5 text-base font-semibold text-white hover:bg-white/15 transition"
           >
             {preview ? "Replace" : "Choose File"}
           </label>
@@ -1220,24 +1221,24 @@ const handleDeleteResident = async () => {
                     size: file ? file.size : null,
                   })
                 }
-                className="inline-flex items-center rounded-full border border-[#E6E0D3] px-4 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-sage-50 transition"
+                className="inline-flex items-center rounded-full border border-white/25 px-5 py-2.5 text-base font-semibold text-white hover:bg-white/15 transition"
               >
                 Preview
               </button>
               <button
                 type="button"
                 onClick={() => handleRemovePhoto(isEdit)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition"
+                className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-5 py-2.5 text-base font-semibold text-red-400 hover:bg-red-500/10 transition"
               >
-                <Trash2 className="h-3.5 w-3.5" /> Delete
+                <Trash2 className="h-4 w-4" /> Delete
               </button>
             </>
           )}
-          <span className="text-[11px] text-[#6B7280] sm:ml-auto">JPG, PNG, GIF, or WEBP</span>
+          <span className="text-[11px] text-white/40 sm:ml-auto">JPG, PNG, GIF, or WEBP</span>
         </div>
 
         {formErrors.photo && (
-          <p className="text-red-600 text-xs mt-2 font-medium">⚠ {formErrors.photo}</p>
+          <p className="text-red-400 text-xs mt-2 font-medium">⚠ {formErrors.photo}</p>
         )}
       </div>
     );
@@ -1249,32 +1250,43 @@ const handleDeleteResident = async () => {
 
   return (
     <div className="space-y-5">
+      {/* Full-bleed dark navy page, same technique and palette as the
+          Dashboard: cancels the shared content area's own padding so this
+          view reads as its own immersive "masterlist" instead of sitting
+          inside the light staff-shell padding. Add/Edit forms and the
+          smaller confirm modals further below are left on their original
+          light theme since they're full-screen takeovers, not part of the
+          list surface itself. */}
+      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("residentsMasterList")}</h1>
-          <p className="text-sm text-[#6E6A60] mt-1 max-w-xl">{t("residentsSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("residentsMasterList")}</h1>
+          <p className="text-sm text-white/50 mt-1 max-w-xl">{t("residentsSubtitle")}</p>
         </div>
         <button
           onClick={handleOpenAddForm}
-          className="inline-flex items-center gap-2 rounded-full bg-[#1A1A1A] hover:bg-[#2E2E2E] text-white px-5 py-2.5 text-sm font-semibold shadow-sm transition-colors shrink-0"
+          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
         >
-          <UserPlus className="h-4 w-4" />
           Register resident
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+            <UserPlus className="h-5 w-5 text-white" />
+          </span>
         </button>
       </div>
 
       {/* Search + membership filter pills */}
-      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-3">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
             <input
               type="text"
               value={residentSearch}
               onChange={(e) => setResidentSearch(e.target.value)}
               placeholder={t("searchByIdNameContactPlaceholder")}
-              className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.05] pl-11 pr-4 text-sm text-white placeholder:text-white/35 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]"
             />
           </div>
           <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
@@ -1287,7 +1299,7 @@ const handleDeleteResident = async () => {
                 key={opt.key}
                 onClick={() => setMembershipFilter(opt.key)}
                 className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
-                  membershipFilter === opt.key ? "bg-sage-800 text-white" : "bg-[#F8F6F0] text-[#5C574A] hover:bg-sage-50"
+                  membershipFilter === opt.key ? "bg-gold-400 text-[#08130F]" : "bg-white/[0.04] text-white/60 hover:bg-white/[0.08]"
                 }`}
               >
                 {opt.label}
@@ -1298,31 +1310,40 @@ const handleDeleteResident = async () => {
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-2.5 border-b border-[#E6E0D3] bg-[#1A1A1A]">
-          <p className="text-[11px] font-bold uppercase tracking-wide text-white">{t("residentsMasterList")}</p>
-          <p className="text-xs text-white/60">{filteredResidents.length} records</p>
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+        <div className="flex items-center justify-between px-5 py-2.5 border-b border-white/10 bg-white/[0.03]">
+          <div className="flex items-center gap-2.5">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-white">{t("residentsMasterList")}</p>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#7DD8CB]">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
+              </span>
+              Live
+            </span>
+          </div>
+          <p className="text-xs text-white/45">{filteredResidents.length} records</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[760px]">
             <thead>
-              <tr className="border-b border-[#E6E0D3]">
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">Resident</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">Age</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">Contact</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">Household</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">Membership</th>
+              <tr className="border-b border-white/10">
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">Resident</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">Age</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">Contact</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">Household</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">Membership</th>
                 <th className="py-3 px-4 w-10" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-[#6B7280] italic">{t("loading")}</td>
+                  <td colSpan={6} className="py-8 text-center text-white/40 italic">{t("loading")}</td>
                 </tr>
               ) : paginatedResidents.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-[#6B7280] italic">{t("noRecordsMatchFilter")}</td>
+                  <td colSpan={6} className="py-8 text-center text-white/40 italic">{t("noRecordsMatchFilter")}</td>
                 </tr>
               ) : (
                 paginatedResidents.map((r) => {
@@ -1332,34 +1353,34 @@ const handleDeleteResident = async () => {
                     <tr
                       key={r.id}
                       onClick={() => setViewRecord(r.id)}
-                      className="border-b border-[#F1EEE5] last:border-0 cursor-pointer hover:bg-sage-50/60 transition-colors"
+                      className="group border-b border-white/[0.06] last:border-0 cursor-pointer transition-colors hover:bg-white/[0.05]"
                     >
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3 min-w-0">
-                          <div className="h-9 w-9 shrink-0 rounded-full bg-sage-50 border border-sage-200 flex items-center justify-center text-xs font-bold text-sage-800">
+                          <div className="h-9 w-9 shrink-0 rounded-full bg-[#123A38] border border-white/10 flex items-center justify-center text-xs font-bold text-[#7DD8CB] transition-transform duration-200 group-hover:scale-105">
                             {initialsFor(r.firstName, r.lastName)}
                           </div>
                           <div className="min-w-0">
-                            <p className="font-semibold text-[#1A1A1A] truncate">{highlightText(`${r.firstName} ${r.lastName}`, residentSearch)}</p>
-                            <p className="text-xs text-[#6B7280] font-mono">{r.id}</p>
+                            <p className="font-semibold text-white truncate">{highlightText(`${r.firstName} ${r.lastName}`, residentSearch)}</p>
+                            <p className="text-xs text-white/35 font-mono">{r.id}</p>
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-[#5C574A]">{r.age !== null ? r.age : "—"}</td>
-                      <td className="py-3 px-4 text-[#5C574A]">{highlightText(r.contactNumber, residentSearch)}</td>
-                      <td className="py-3 px-4 text-[#5C574A]">{size > 0 ? `${size} pax` : "—"}</td>
+                      <td className="py-3 px-4 text-white/60">{r.age !== null ? r.age : "—"}</td>
+                      <td className="py-3 px-4 text-white/60">{highlightText(r.contactNumber, residentSearch)}</td>
+                      <td className="py-3 px-4 text-white/60">{size > 0 ? `${size} pax` : "—"}</td>
                       <td className="py-3 px-4">
                         <span
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                            active ? "bg-sage-50 text-sage-800" : "bg-[#F1EEE5] text-[#8A8474]"
+                            active ? "bg-[#4FBEB0]/10 text-[#7DD8CB]" : "bg-white/[0.06] text-white/45"
                           }`}
                         >
-                          <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-sage-600" : "bg-[#B8B2A2]"}`} />
+                          <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-[#4FBEB0]" : "bg-white/30"}`} />
                           {active ? "Active member" : "Not a member"}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
-                        <ChevronRight className="h-4 w-4 text-[#B8B2A2] inline-block" />
+                        <ChevronRight className="h-4 w-4 text-white/25 inline-block transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-gold-400" />
                       </td>
                     </tr>
                   );
@@ -1369,26 +1390,28 @@ const handleDeleteResident = async () => {
           </table>
         </div>
         {totalPages > 1 && (
-          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[#E6E0D3]">
+          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/10">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="h-8 w-8 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-50 transition"
+              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
             >
               ←
             </button>
-            <span className="h-8 w-8 rounded-full bg-sage-800 text-white flex items-center justify-center text-sm font-semibold">
+            <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] flex items-center justify-center text-sm font-bold">
               {currentPage}
             </span>
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="h-8 w-8 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-50 transition"
+              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
             >
               →
             </button>
           </div>
         )}
+      </div>
+      </div>
       </div>
 
       {/* ─── Resident profile slide-over ──────────────────────────────────────── */}
@@ -1433,30 +1456,30 @@ const handleDeleteResident = async () => {
               .resident-profile-slide-in { animation: residentProfileSlideIn 280ms ease-out; }
             `}</style>
             <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setViewRecord(null)} />
-            <div className="resident-profile-slide-in fixed inset-y-0 right-0 z-50 w-full max-w-xl bg-white shadow-2xl flex flex-col overflow-hidden">
+            <div className="resident-profile-slide-in fixed inset-y-0 right-0 z-50 w-full max-w-xl bg-[#0A0E1A] border-l border-white/10 shadow-2xl flex flex-col overflow-hidden">
               <img
                 src="/logo-removebg-preview.png"
                 alt=""
                 aria-hidden="true"
-                className="pointer-events-none select-none absolute z-0 bottom-[-3rem] right-[-3rem] h-72 w-72 object-contain opacity-[0.06]"
+                className="pointer-events-none select-none absolute z-0 bottom-[-3rem] right-[-3rem] h-72 w-72 object-contain opacity-[0.05]"
               />
 
-              <div className="relative z-10 flex items-center justify-between px-6 py-5 border-b border-[#E6E0D3] shrink-0 bg-white">
-                <h2 className="font-display text-lg font-bold text-[#1A1A1A]">Residents Profile</h2>
-                <button onClick={() => setViewRecord(null)} className="text-[#6B7280] hover:text-[#1A1A1A]">
+              <div className="relative z-10 flex items-center justify-between px-6 py-5 border-b border-white/10 shrink-0 bg-[#0A0E1A]">
+                <h2 className="font-display text-lg font-bold text-white">Residents Profile</h2>
+                <button onClick={() => setViewRecord(null)} className="text-white/50 hover:text-white">
                   <XIcon size={20} />
                 </button>
               </div>
 
               <div className="relative z-10 flex-1 overflow-y-auto px-6 py-6">
                 {r.deleted_at !== null && (
-                  <div className="mb-6 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-2.5 text-sm text-center">
+                  <div className="mb-6 rounded-xl border border-red-500/25 bg-red-500/10 text-red-300 px-4 py-2.5 text-sm text-center">
                     ⚠ {t("recordDeletedWarning")}
                   </div>
                 )}
 
                 <div className="flex items-center gap-4">
-                  <div className="h-16 w-16 rounded-full bg-sage-50 border border-sage-200 flex items-center justify-center text-lg font-bold text-sage-800 overflow-hidden shrink-0">
+                  <div className="h-16 w-16 rounded-full bg-[#123A38] border border-white/10 flex items-center justify-center text-lg font-bold text-[#7DD8CB] overflow-hidden shrink-0">
                     {r.photo ? (
                       <img src={r.photo} alt="" className="h-full w-full object-cover" />
                     ) : (
@@ -1464,39 +1487,39 @@ const handleDeleteResident = async () => {
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h1 className="font-display text-xl font-extrabold text-[#1A1A1A] truncate">
+                    <h1 className="font-display text-xl font-extrabold text-white truncate">
                       {r.firstName} {r.middleName} {r.lastName}
                     </h1>
-                    <p className="text-xs text-[#6B7280] font-mono mt-0.5">{r.id}</p>
+                    <p className="text-xs text-white/40 font-mono mt-0.5">{r.id}</p>
                   </div>
                   <span
                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold shrink-0 ${
-                      active ? "bg-sage-50 text-sage-800" : "bg-[#F1EEE5] text-[#8A8474]"
+                      active ? "bg-[#4FBEB0]/10 text-[#7DD8CB]" : "bg-white/[0.06] text-white/45"
                     }`}
                   >
-                    <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-sage-600" : "bg-[#B8B2A2]"}`} />
+                    <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-[#4FBEB0]" : "bg-white/30"}`} />
                     {active ? "Active" : "Not a member"}
                   </span>
                 </div>
 
                 <section className="mt-8">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-white pb-2.5 border-b-2 border-white/40 mb-5">
                     Personal Information
                   </h2>
                   <div className="grid grid-cols-1 gap-y-4">
                     {infoRows.map(([label, value]) => (
                       <div key={label} className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">{label}</span>
-                        <span className="text-sm font-medium text-[#1A1A1A] text-right">{value}</span>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-white/40">{label}</span>
+                        <span className="text-sm font-medium text-white text-right">{value}</span>
                       </div>
                     ))}
                     {r.household && (
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-[#6B7280]">Household</span>
-                        <span className="text-sm font-medium text-[#1A1A1A] text-right">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-white/40">Household</span>
+                        <span className="text-sm font-medium text-white text-right">
                           {r.household.code}
                           {r.isHouseholdHead && (
-                            <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-50 text-gold-700 align-middle">
+                            <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-400/15 text-gold-300 align-middle">
                               {t("headBadgeLabel") || "Head"}
                             </span>
                           )}
@@ -1505,10 +1528,10 @@ const handleDeleteResident = async () => {
                     )}
                     {r.currentStatuses.length > 0 && (
                       <div className="flex items-start justify-between gap-3">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-[#6B7280] shrink-0">Status</span>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-white/40 shrink-0">Status</span>
                         <div className="flex flex-wrap justify-end gap-1.5">
                           {r.currentStatuses.map((cs) => (
-                            <span key={cs.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-sage-50 text-sage-800">
+                            <span key={cs.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#4FBEB0]/10 text-[#7DD8CB]">
                               {cs.label}
                             </span>
                           ))}
@@ -1519,7 +1542,7 @@ const handleDeleteResident = async () => {
                 </section>
 
                 <section className="mt-8">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-white pb-2.5 border-b-2 border-white/40 mb-5">
                     Membership
                   </h2>
                   {allMems.length > 0 && (
@@ -1533,31 +1556,31 @@ const handleDeleteResident = async () => {
                   )}
                   <button
                     onClick={() => setShowQrPanel(true)}
-                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-[#8A3D2C]/30 px-4 py-2 text-xs font-semibold text-[#5C2A1E] hover:bg-[#8A3D2C]/10 transition-colors"
+                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-gold-400/30 px-4 py-2 text-xs font-semibold text-gold-300 hover:bg-gold-400/10 transition-colors"
                   >
                     <QrCode className="h-3.5 w-3.5" /> View QR code
                   </button>
                 </section>
 
                 <section className="mt-8">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-white pb-2.5 border-b-2 border-white/40 mb-5">
                     Attendance History
                   </h2>
                   {attendanceLoading ? (
-                    <p className="text-sm text-[#6B7280] italic">{t("loading")}</p>
+                    <p className="text-sm text-white/40 italic">{t("loading")}</p>
                   ) : attendanceHistory.length === 0 ? (
-                    <p className="text-sm text-[#6B7280] italic">No attendance recorded yet.</p>
+                    <p className="text-sm text-white/40 italic">No attendance recorded yet.</p>
                   ) : (
                     <div className="space-y-2">
                       {attendanceHistory.slice(0, 8).map((a) => (
-                        <div key={a.id} className="flex items-center justify-between gap-3 text-sm rounded-xl border border-[#E6E0D3] px-4 py-2.5">
+                        <div key={a.id} className="flex items-center justify-between gap-3 text-sm rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
                           <div className="min-w-0">
-                            <p className="font-medium text-[#1A1A1A] truncate">{a.isEventDeleted ? "(deleted event)" : a.eventTitle}</p>
-                            {a.eventDate && <p className="text-xs text-[#6B7280]">{formatDateShort(a.eventDate)}</p>}
+                            <p className="font-medium text-white truncate">{a.isEventDeleted ? "(deleted event)" : a.eventTitle}</p>
+                            {a.eventDate && <p className="text-xs text-white/40">{formatDateShort(a.eventDate)}</p>}
                           </div>
                           <span
                             className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                              a.status === "Complete" ? "bg-sage-50 text-sage-800" : "bg-gold-50 text-gold-700"
+                              a.status === "Complete" ? "bg-[#4FBEB0]/10 text-[#7DD8CB]" : "bg-gold-400/15 text-gold-300"
                             }`}
                           >
                             {a.status}
@@ -1569,11 +1592,11 @@ const handleDeleteResident = async () => {
                 </section>
               </div>
 
-              <div className="relative z-10 flex items-center gap-3 px-6 py-4 border-t border-[#E6E0D3] shrink-0 bg-white">
+              <div className="relative z-10 flex items-center gap-3 px-6 py-4 border-t border-white/10 shrink-0 bg-[#0A0E1A]">
                 {r.deleted_at === null && (
                   <button
                     onClick={() => setDeleteRecord(r.id)}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#5C2A1E] hover:underline"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-300 hover:underline"
                   >
                     <Archive className="h-3.5 w-3.5" /> Archive
                   </button>
@@ -1585,7 +1608,7 @@ const handleDeleteResident = async () => {
                         setEditRecord(r.id);
                         setViewRecord(null);
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-sage-200 px-4 py-2 text-sm font-semibold text-sage-800 hover:bg-sage-50 transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-[#4FBEB0]/30 px-4 py-2 text-sm font-semibold text-[#7DD8CB] hover:bg-[#4FBEB0]/10 transition-colors"
                     >
                       <UserPlus className="h-3.5 w-3.5" /> Add account
                     </button>
@@ -1596,14 +1619,14 @@ const handleDeleteResident = async () => {
                         setEditRecord(r.id);
                         setViewRecord(null);
                       }}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E0D3] px-4 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-sage-50 transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
                     >
                       <Pencil className="h-3.5 w-3.5" /> Edit record
                     </button>
                   )}
                   <button
                     onClick={() => setViewRecord(null)}
-                    className="rounded-full bg-[#1A1A1A] hover:bg-black text-white px-5 py-2 text-sm font-semibold transition-colors"
+                    className="rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] px-5 py-2 text-sm font-bold transition-colors"
                   >
                     Done
                   </button>
@@ -1616,15 +1639,17 @@ const handleDeleteResident = async () => {
                 className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center px-4"
                 onClick={() => setShowQrPanel(false)}
               >
-                <div className="bg-white rounded-2xl p-6 shadow-2xl text-center max-w-xs w-full" onClick={(e) => e.stopPropagation()}>
-                  <p className="font-display text-base font-bold text-[#1A1A1A] mb-1">
+                <div className="bg-[#0A0E1A] border border-white/10 rounded-2xl p-6 shadow-2xl text-center max-w-xs w-full" onClick={(e) => e.stopPropagation()}>
+                  <p className="font-display text-base font-bold text-white mb-1">
                     {r.firstName} {r.lastName}
                   </p>
-                  <p className="text-xs text-[#6B7280] mb-4 font-mono">{r.id}</p>
+                  <p className="text-xs text-white/40 mb-4 font-mono">{r.id}</p>
                   <div className="flex justify-center mb-4">
-                    <QRCodeCanvas ref={qrCanvasRef} value={qrPayload} size={180} bgColor="#ffffff" fgColor="#1A1A1A" />
+                    <div className="rounded-xl bg-white p-3">
+                      <QRCodeCanvas ref={qrCanvasRef} value={qrPayload} size={180} bgColor="#ffffff" fgColor="#0A0E1A" />
+                    </div>
                   </div>
-                  <p className="text-xs text-[#6B7280] mb-4">Scan this at the QR Scanner to sign this resident in or out.</p>
+                  <p className="text-xs text-white/45 mb-4">Scan this at the QR Scanner to sign this resident in or out.</p>
                   <div className="flex items-center justify-center gap-2">
                     <button
                       onClick={() => {
@@ -1637,13 +1662,13 @@ const handleDeleteResident = async () => {
                         link.click();
                         document.body.removeChild(link);
                       }}
-                      className="rounded-full border border-[#E6E0D3] px-5 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-sage-50 transition-colors"
+                      className="rounded-full border border-white/15 px-5 py-2 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
                     >
                       Download
                     </button>
                     <button
                       onClick={() => setShowQrPanel(false)}
-                      className="rounded-full bg-sage-800 hover:bg-sage-900 text-white px-5 py-2 text-sm font-semibold transition-colors"
+                      className="rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] px-5 py-2 text-sm font-bold transition-colors"
                     >
                       Close
                     </button>
@@ -1662,40 +1687,40 @@ const handleDeleteResident = async () => {
           sage caption pills, per the "register resident" layout redesign. Same
           fields, same handlers -- styling only. */}
       {showAddForm && (
-        <div className="fixed top-[73px] bottom-0 left-0 right-0 md:left-[280px] z-30 bg-white overflow-y-auto">
+        <div className="fixed top-[73px] bottom-0 left-0 right-0 md:left-[280px] z-30 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
             aria-hidden="true"
-            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-[0.06]"
+            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-20"
           />
 
           <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
             <button
               type="button"
               onClick={handleCancelAdd}
-              className="inline-flex items-center gap-2 text-sm font-semibold text-[#1A1A1A] hover:opacity-70 transition mb-8"
+              className="inline-flex items-center gap-2 text-base font-semibold text-white hover:opacity-70 transition mb-8"
             >
-              <ArrowLeft className="h-4 w-4" /> {t("cancel")}
+              <ArrowLeft className="h-5 w-5" /> {t("cancel")}
             </button>
 
-            <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-[#1A1A1A] text-center tracking-tight">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white text-center tracking-tight">
               {t("addNewRecordTitle")}
             </h1>
-            <p className="mt-2 text-sm text-[#6B7280] text-center max-w-md mx-auto">
+            <p className="mt-3 text-base text-white/60 text-center max-w-md mx-auto">
               Fill in the resident's basic information, profile, and household details.
             </p>
 
             <form onSubmit={handleAddResident} noValidate className="mt-10 space-y-10">
               <section>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
                   Basic Information
                 </h2>
                 <div className="space-y-4">
                   <div className="grid md:grid-cols-3 gap-4">
                     {(["firstName", "middleName", "lastName"] as const).map((field) => (
                       <div key={field}>
-                        <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
+                        <label className="block text-base font-semibold text-white mb-1.5">
                           {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
                         </label>
                         <input
@@ -1703,53 +1728,53 @@ const handleDeleteResident = async () => {
                           required={field !== "middleName"}
                           value={newResident[field]}
                           onChange={(e) => setNewResident((p) => ({ ...p, [field]: capitalizeName(e.target.value) }))}
-                          className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
-                            formErrors[field] ? "border-red-500" : "border-sage-200"
+                          className={`w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 ${
+                            formErrors[field] ? "border-red-500" : "border-white/25"
                           }`}
                         />
-                        {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+                        {formErrors[field] && <p className="text-red-400 text-xs mt-1">{formErrors[field]}</p>}
                       </div>
                     ))}
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("roleRequiredLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("roleRequiredLabel")}</label>
                       <div className="relative">
                         <select
                           required
                           value={newResident.role}
                           onChange={(e) => setNewResident((p) => ({ ...p, role: e.target.value }))}
-                          className={`w-full appearance-none rounded-full border px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
-                            !newResident.role ? "text-[#6B7280]" : "text-gray-900"
-                          } ${formErrors.role ? "border-red-500" : "border-sage-200"}`}
+                          className={`w-full appearance-none rounded-full border px-5 py-3.5 pr-11 text-base bg-white/10 font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 ${
+                            !newResident.role ? "text-white/40" : "text-white"
+                          } ${formErrors.role ? "border-red-500" : "border-white/25"}`}
                         >
-                          <option value="" style={{ display: "none" }} className="text-[#6B7280]">{t("chooseARoleOption")}</option>
-                          <option value="Resident" className="text-gray-900">{t("residentOption")}</option>
-                          <option value="Staff" className="text-gray-900">{t("staffOption")}</option>
+                          <option value="" style={{ display: "none" }}>{t("chooseARoleOption")}</option>
+                          <option value="Resident" className="bg-[#0A0E1A] text-white">{t("residentOption")}</option>
+                          <option value="Staff" className="bg-[#0A0E1A] text-white">{t("staffOption")}</option>
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                        <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
                       </div>
-                      {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
+                      {formErrors.role && <p className="text-red-400 text-xs mt-1">{formErrors.role}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("contactNumberRequiredLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("contactNumberRequiredLabel")}</label>
                       <input
                         type="text"
                         required
                         value={newResident.contactNumber}
                         onChange={(e) => setNewResident((p) => ({ ...p, contactNumber: formatContactNumber(e.target.value) }))}
-                        className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
-                          formErrors.contactNumber ? "border-red-500" : "border-sage-200"
+                        className={`w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 ${
+                          formErrors.contactNumber ? "border-red-500" : "border-white/25"
                         }`}
                         placeholder="09XX-XXX-XXXX"
                         maxLength={13}
                       />
                       {newResident.contactNumber.length > 0 && !newResident.contactNumber.startsWith("09") && (
-                        <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
+                        <p className="text-amber-400 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
                       )}
-                      {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+                      {formErrors.contactNumber && <p className="text-red-400 text-xs mt-1">{formErrors.contactNumber}</p>}
                     </div>
                   </div>
 
@@ -1759,65 +1784,66 @@ const handleDeleteResident = async () => {
 
               {/* Adviser recommendations: age profiling + household SMS notify */}
               <section>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
                   {t("profileHouseholdLabel")}
                 </h2>
                 <div className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("birthDateLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("birthDateLabel")}</label>
                       <DatePicker
                         value={newResident.birthDate}
                         max={new Date().toISOString().split("T")[0]}
                         onChange={(iso) => setNewResident((p) => ({ ...p, birthDate: iso }))}
-                        className="px-4 py-2.5"
+                        className="px-5 py-3.5"
+                        dark
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("addressPurokLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("addressPurokLabel")}</label>
                       <input
                         type="text"
                         value={newResident.address}
                         onChange={(e) => setNewResident((p) => ({ ...p, address: e.target.value }))}
                         placeholder={t("purokPlaceholder")}
-                        className="w-full rounded-full border border-sage-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                        className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("civilStatusLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("civilStatusLabel")}</label>
                       <div className="relative">
                         <select
                           value={newResident.civilStatusId ?? ""}
                           onChange={(e) => setNewResident((p) => ({ ...p, civilStatusId: e.target.value ? Number(e.target.value) : null }))}
-                          className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                          className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                         >
-                          <option value="">{t("anyOptionLabel")}</option>
+                          <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                           {civilStatuses.map((cs) => (
-                            <option key={cs.id} value={cs.id}>{cs.label}</option>
+                            <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                           ))}
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                        <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("genderLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("genderLabel")}</label>
                       <div className="relative">
                         <select
                           value={newResident.gender}
                           onChange={(e) => setNewResident((p) => ({ ...p, gender: e.target.value }))}
-                          className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                          className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                         >
-                          <option value="">{t("anyOptionLabel")}</option>
-                          <option value="Male">{t("maleOption")}</option>
-                          <option value="Female">{t("femaleOption")}</option>
+                          <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                          <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
+                          <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                        <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
                       </div>
                     </div>
                   </div>
                   <CurrentStatusCheckboxes isEdit={false} />
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("householdCodeLabel")}</label>
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("householdCodeLabel")}</label>
                     <SearchableSelect
                       options={householdOptions.map((h) => ({
                         value: String(h.id),
@@ -1829,17 +1855,18 @@ const handleDeleteResident = async () => {
                       noResultsLabel={t("householdLinkNoResults")}
                       footerLabel="Add new household"
                       onFooterClick={() => setShowAddHousehold({ isEdit: false })}
+                      dark
                     />
-                    <p className="mt-1 text-xs text-[#6B7280]">{t("manageHouseholdHint")}</p>
+                    <p className="mt-1 text-sm text-white/60">{t("manageHouseholdHint")}</p>
                     {newResident.householdId && (() => {
                       const picked = householdOptions.find((h) => h.id === newResident.householdId);
                       return (
-                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-sage-50 text-sage-800 text-xs font-medium px-3 py-1">
+                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] text-xs font-medium px-3 py-1">
                           🏠 {picked?.code ?? `#${newResident.householdId}`}
                           <button
                             type="button"
                             onClick={() => setNewResident((p) => ({ ...p, householdId: null, isHouseholdHead: false }))}
-                            className="ml-1 text-sage-700/70 hover:text-sage-800"
+                            className="ml-1 text-[#7DD8CB]/70 hover:text-[#7DD8CB]"
                           >
                             ×
                           </button>
@@ -1847,16 +1874,16 @@ const handleDeleteResident = async () => {
                       );
                     })()}
                   </div>
-                  <label className={`flex items-center gap-2 text-sm ${newResident.householdId && !addFormExistingHead ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                  <label className={`flex items-center gap-2 text-base ${newResident.householdId && !addFormExistingHead ? "cursor-pointer" : "cursor-not-allowed"}`}>
                     <input
                       type="checkbox"
                       checked={newResident.isHouseholdHead}
                       disabled={!newResident.householdId || !!addFormExistingHead}
                       onChange={(e) => setNewResident((p) => ({ ...p, isHouseholdHead: e.target.checked }))}
-                      className="w-4 h-4 text-[#1A1A1A] disabled:opacity-40"
+                      className="w-5 h-5 text-[#4FBEB0] disabled:opacity-40"
                     />
-                    <span className={`font-medium ${newResident.householdId && !addFormExistingHead ? "text-[#1A1A1A]" : "text-[#6B7280]"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
-                    <span className="text-[#6B7280]">
+                    <span className={`font-medium ${newResident.householdId && !addFormExistingHead ? "text-white" : "text-white/60"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
+                    <span className="text-white/60">
                       {!newResident.householdId
                         ? t("householdHeadDisabledHint")
                         : addFormExistingHead
@@ -1865,7 +1892,7 @@ const handleDeleteResident = async () => {
                     </span>
                   </label>
                   {addFormExistingHead && (
-                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5">
+                    <p className="text-xs text-gold-300 bg-gold-500/10 border border-gold-500/25 rounded-full px-3 py-1.5">
                       ⚠️ {t("currentHeadLabel")}: <span className="font-medium">{[addFormExistingHead.firstName, addFormExistingHead.lastName].filter(Boolean).join(" ")}</span> · {t("uncheckHeadFirstNote")}
                     </p>
                   )}
@@ -1878,11 +1905,20 @@ const handleDeleteResident = async () => {
                 <button
                   type="submit"
                   disabled={!hasAddChanges}
-                  className={`w-full py-4 rounded-xl font-bold uppercase tracking-wide text-sm transition ${
-                    hasAddChanges ? "bg-[#1A1A1A] text-white hover:bg-black" : "bg-[#F1EEE5] text-[#B8B2A2] cursor-not-allowed"
+                  className={`group w-full inline-flex items-center justify-center gap-3 rounded-full border pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide shadow-sm transition-all duration-500 ease-out ${
+                    hasAddChanges
+                      ? "border-[#1E3A5F] bg-[#1E3A5F] text-white hover:border-[#122436] hover:bg-[#122436] hover:shadow-md"
+                      : "border-white/10 bg-white/[0.02] text-white/30 cursor-not-allowed"
                   }`}
                 >
                   {t("saveRecordButton")}
+                  <span
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-500 ease-out ${
+                      hasAddChanges ? "bg-[#0A0E1A] group-hover:bg-white/15" : "bg-white/5"
+                    }`}
+                  >
+                    <Save className={`h-5 w-5 ${hasAddChanges ? "text-white" : "text-white/20"}`} />
+                  </span>
                 </button>
               </div>
             </form>
@@ -1896,32 +1932,32 @@ const handleDeleteResident = async () => {
           headers -- for a consistent Add/Edit experience. Same fields, same
           handlers -- styling only. */}
       {editRecord && editingResident && (
-        <div className="fixed top-[73px] bottom-0 left-0 right-0 md:left-[280px] z-30 bg-white overflow-y-auto">
+        <div className="fixed top-[73px] bottom-0 left-0 right-0 md:left-[280px] z-30 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
             aria-hidden="true"
-            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-[0.06]"
+            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-20"
           />
 
           <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
             <button
               type="button"
               onClick={handleCancelEdit}
-              className="inline-flex items-center gap-2 text-sm font-semibold text-[#1A1A1A] hover:opacity-70 transition mb-8"
+              className="inline-flex items-center gap-2 text-base font-semibold text-white hover:opacity-70 transition mb-8"
             >
-              <ArrowLeft className="h-4 w-4" /> {t("cancel")}
+              <ArrowLeft className="h-5 w-5" /> {t("cancel")}
             </button>
 
-            <h1 className="font-display text-2xl sm:text-3xl font-extrabold text-[#1A1A1A] text-center tracking-tight">
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white text-center tracking-tight">
               {t("editRecordTitle")}
             </h1>
-            <p className="mt-2 text-sm text-[#6B7280] text-center max-w-md mx-auto">
+            <p className="mt-3 text-base text-white/60 text-center max-w-md mx-auto">
               Update this resident's basic information, profile, and household details.
             </p>
 
             {editingResident.deleted_at !== null && (
-              <div className="mt-6 rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-2.5 text-sm text-center">
+              <div className="mt-6 rounded-xl border border-red-500/25 bg-red-500/10 text-red-400 px-4 py-2.5 text-sm text-center">
                 ⚠️ {t("recordDeletedEditingDisabled")}
               </div>
             )}
@@ -1936,14 +1972,14 @@ const handleDeleteResident = async () => {
               }}
             >
               <section>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
                   Basic Information
                 </h2>
                 <div className="space-y-4">
                   <div className="grid md:grid-cols-3 gap-4">
                     {(["firstName", "middleName", "lastName"] as const).map((field) => (
                       <div key={field}>
-                        <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
+                        <label className="block text-base font-semibold text-white mb-1.5">
                           {field === "firstName" ? t("firstNameRequiredLabel") : field === "middleName" ? t("middleNameLabel") : t("lastNameRequiredLabel")}
                         </label>
                         <input
@@ -1953,37 +1989,37 @@ const handleDeleteResident = async () => {
                           onChange={(e) =>
                             setEditingResident((p) => p ? { ...p, [field]: capitalizeName(e.target.value) } : p)
                           }
-                          className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
-                            formErrors[field] ? "border-red-500" : "border-sage-200"
+                          className={`w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 ${
+                            formErrors[field] ? "border-red-500" : "border-white/25"
                           }`}
                         />
-                        {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+                        {formErrors[field] && <p className="text-red-400 text-xs mt-1">{formErrors[field]}</p>}
                       </div>
                     ))}
                   </div>
 
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("roleRequiredLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("roleRequiredLabel")}</label>
                       <div className="relative">
                         <select
                           required
                           value={editingResident.role}
                           onChange={(e) => setEditingResident((p) => p ? { ...p, role: e.target.value } : p)}
-                          className={`w-full appearance-none rounded-full border px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
-                            formErrors.role ? "border-red-500" : "border-sage-200"
+                          className={`w-full appearance-none rounded-full border px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 ${
+                            formErrors.role ? "border-red-500" : "border-white/25"
                           }`}
                         >
-                          <option value="Resident">{t("residentOption")}</option>
-                          <option value="Staff">{t("staffOption")}</option>
+                          <option value="Resident" className="bg-[#0A0E1A] text-white">{t("residentOption")}</option>
+                          <option value="Staff" className="bg-[#0A0E1A] text-white">{t("staffOption")}</option>
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                        <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
                       </div>
-                      {formErrors.role && <p className="text-red-500 text-xs mt-1">{formErrors.role}</p>}
+                      {formErrors.role && <p className="text-red-400 text-xs mt-1">{formErrors.role}</p>}
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("contactNumberRequiredLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("contactNumberRequiredLabel")}</label>
                       <input
                         type="text"
                         required
@@ -1991,16 +2027,16 @@ const handleDeleteResident = async () => {
                         onChange={(e) =>
                           setEditingResident((p) => p ? { ...p, contactNumber: formatContactNumber(e.target.value) } : p)
                         }
-                        className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 ${
-                          formErrors.contactNumber ? "border-red-500" : "border-sage-200"
+                        className={`w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 ${
+                          formErrors.contactNumber ? "border-red-500" : "border-white/25"
                         }`}
                         placeholder="09XX-XXX-XXXX"
                         maxLength={13}
                       />
                       {editingResident.contactNumber.length > 0 && !editingResident.contactNumber.startsWith("09") && (
-                        <p className="text-amber-500 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
+                        <p className="text-amber-400 text-xs mt-1">⚠ {t("numberMustStart09Warning")}</p>
                       )}
-                      {formErrors.contactNumber && <p className="text-red-500 text-xs mt-1">{formErrors.contactNumber}</p>}
+                      {formErrors.contactNumber && <p className="text-red-400 text-xs mt-1">{formErrors.contactNumber}</p>}
                     </div>
                   </div>
 
@@ -2010,65 +2046,66 @@ const handleDeleteResident = async () => {
 
               {/* Adviser recommendations: age profiling + household SMS notify */}
               <section>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
                   {t("profileHouseholdLabel")}
                 </h2>
                 <div className="space-y-4">
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("birthDateLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("birthDateLabel")}</label>
                       <DatePicker
                         value={editingResident.birthDate}
                         max={new Date().toISOString().split("T")[0]}
                         onChange={(iso) => setEditingResident((p) => p ? { ...p, birthDate: iso } : p)}
-                        className="px-4 py-2.5"
+                        className="px-5 py-3.5"
+                        dark
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("addressPurokLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("addressPurokLabel")}</label>
                       <input
                         type="text"
                         value={editingResident.address}
                         onChange={(e) => setEditingResident((p) => p ? { ...p, address: e.target.value } : p)}
                         placeholder={t("purokPlaceholder")}
-                        className="w-full rounded-full border border-sage-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                        className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("civilStatusLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("civilStatusLabel")}</label>
                       <div className="relative">
                         <select
                           value={editingResident.civilStatusId ?? ""}
                           onChange={(e) => setEditingResident((p) => p ? { ...p, civilStatusId: e.target.value ? Number(e.target.value) : null } : p)}
-                          className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                          className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                         >
-                          <option value="">{t("anyOptionLabel")}</option>
+                          <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                           {civilStatuses.map((cs) => (
-                            <option key={cs.id} value={cs.id}>{cs.label}</option>
+                            <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                           ))}
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                        <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("genderLabel")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("genderLabel")}</label>
                       <div className="relative">
                         <select
                           value={editingResident.gender}
                           onChange={(e) => setEditingResident((p) => p ? { ...p, gender: e.target.value } : p)}
-                          className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20"
+                          className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                         >
-                          <option value="">{t("anyOptionLabel")}</option>
-                          <option value="Male">{t("maleOption")}</option>
-                          <option value="Female">{t("femaleOption")}</option>
+                          <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                          <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
+                          <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                        <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
                       </div>
                     </div>
                   </div>
                   <CurrentStatusCheckboxes isEdit={true} />
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("householdCodeLabel")}</label>
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("householdCodeLabel")}</label>
                     <SearchableSelect
                       options={householdOptions.map((h) => ({
                         value: String(h.id),
@@ -2080,17 +2117,18 @@ const handleDeleteResident = async () => {
                       noResultsLabel={t("householdLinkNoResults")}
                       footerLabel="Add new household"
                       onFooterClick={() => setShowAddHousehold({ isEdit: true })}
+                      dark
                     />
-                    <p className="mt-1 text-xs text-[#6B7280]">{t("manageHouseholdHint")}</p>
+                    <p className="mt-1 text-sm text-white/60">{t("manageHouseholdHint")}</p>
                     {editingResident.householdId && (() => {
                       const picked = householdOptions.find((h) => h.id === editingResident.householdId);
                       return (
-                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-sage-50 text-sage-800 text-xs font-medium px-3 py-1">
+                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] text-xs font-medium px-3 py-1">
                           🏠 {picked?.code ?? `#${editingResident.householdId}`}
                           <button
                             type="button"
                             onClick={() => setEditingResident((p) => p ? { ...p, householdId: null, isHouseholdHead: false } : p)}
-                            className="ml-1 text-sage-700/70 hover:text-sage-800"
+                            className="ml-1 text-[#7DD8CB]/70 hover:text-[#7DD8CB]"
                           >
                             ×
                           </button>
@@ -2098,16 +2136,16 @@ const handleDeleteResident = async () => {
                       );
                     })()}
                   </div>
-                  <label className={`flex items-center gap-2 text-sm ${editingResident.householdId && !editFormExistingHead ? "cursor-pointer" : "cursor-not-allowed"}`}>
+                  <label className={`flex items-center gap-2 text-base ${editingResident.householdId && !editFormExistingHead ? "cursor-pointer" : "cursor-not-allowed"}`}>
                     <input
                       type="checkbox"
                       checked={editingResident.isHouseholdHead}
                       disabled={!editingResident.householdId || !!editFormExistingHead}
                       onChange={(e) => setEditingResident((p) => p ? { ...p, isHouseholdHead: e.target.checked } : p)}
-                      className="w-4 h-4 text-[#1A1A1A] disabled:opacity-40"
+                      className="w-5 h-5 text-[#4FBEB0] disabled:opacity-40"
                     />
-                    <span className={`font-medium ${editingResident.householdId && !editFormExistingHead ? "text-[#1A1A1A]" : "text-[#6B7280]"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
-                    <span className="text-[#6B7280]">
+                    <span className={`font-medium ${editingResident.householdId && !editFormExistingHead ? "text-white" : "text-white/60"}`}>{t("headOfHouseholdCheckboxLabel")}</span>
+                    <span className="text-white/60">
                       {!editingResident.householdId
                         ? t("householdHeadDisabledHint")
                         : editFormExistingHead
@@ -2116,7 +2154,7 @@ const handleDeleteResident = async () => {
                     </span>
                   </label>
                   {editFormExistingHead && (
-                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-3 py-1.5">
+                    <p className="text-xs text-gold-300 bg-gold-500/10 border border-gold-500/25 rounded-full px-3 py-1.5">
                       ⚠️ {t("currentHeadLabel")}: <span className="font-medium">{[editFormExistingHead.firstName, editFormExistingHead.lastName].filter(Boolean).join(" ")}</span> · {t("uncheckHeadFirstNote")}
                     </p>
                   )}
@@ -2126,75 +2164,89 @@ const handleDeleteResident = async () => {
               <MembershipPicker isEdit={true} />
 
               <section>
-                <h2 className="text-sm font-bold uppercase tracking-wider text-[#1A1A1A] pb-2.5 border-b-2 border-[#1A1A1A] mb-5">
+                <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
                   Account Access
                 </h2>
                 <div className="space-y-3">
                   {editingResident.hasAccount ? (
                     <div className="space-y-3">
-                      <p className="text-sm font-medium text-[#1A1A1A]">{t("hasAccountCheckboxLabel")}</p>
+                      <p className="text-sm font-medium text-white">{t("hasAccountCheckboxLabel")}</p>
                       <div className="grid sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("usernameLabel")}</label>
+                          <label className="block text-base font-semibold text-white mb-1.5">{t("usernameLabel")}</label>
                           <input
                             type="text"
                             value={`PR-${String(editingResident.real_id).padStart(4, "0")}`}
                             disabled
-                            className="w-full rounded-full border px-4 py-2.5 bg-[#F1EEE5] text-[#6B7280] border-sage-200 cursor-not-allowed"
+                            className="w-full rounded-full border px-5 py-3.5 text-base bg-white/[0.05] text-white border-white/10 cursor-not-allowed"
                           />
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
-                            {t("passwordLabel")}{" "}
-                            <span className="text-[#6B7280] text-xs font-normal">{t("passwordResetNote")}</span>
-                          </label>
+                          <label className="block text-base font-semibold text-white mb-1.5">{t("passwordLabel")}</label>
                           <input
                             type="password"
                             value={editingResident.password}
                             onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
-                            className="w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 border-sage-200"
+                            className="resident-password-field w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 border-white/10"
                             placeholder={t("resetPasswordPlaceholder")}
                           />
-                          {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
+                          <p className="mt-1.5 text-sm text-white/60">{t("passwordResetNote")}</p>
+                          {formErrors.password && <p className="text-red-400 text-xs mt-1">{formErrors.password}</p>}
                         </div>
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <p className="text-sm text-[#6B7280] italic">This resident does not have a portal account yet.</p>
+                      <p className="text-base text-white/60 italic">This resident does not have a portal account yet.</p>
                       <div>
-                        <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
+                        <label className="block text-base font-semibold text-white mb-1.5">
                           {t("passwordLabel")}{" "}
-                          <span className="text-[#6B7280] text-xs font-normal">(set to create their account)</span>
+                          <span className="text-white/40 text-xs font-normal">(set to create their account)</span>
                         </label>
                         <input
                           type="password"
                           value={editingResident.password}
                           onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
-                          className="w-full sm:w-1/2 rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A1A]/20 border-sage-200"
+                          className="resident-password-field w-full sm:w-1/2 rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 border-white/10"
                           placeholder="Set an initial password"
                         />
-                        {formErrors.password && <p className="text-red-500 text-xs mt-1">{formErrors.password}</p>}
-                        <p className="mt-1 text-xs text-[#6B7280]">
+                        {formErrors.password && <p className="text-red-400 text-xs mt-1">{formErrors.password}</p>}
+                        <p className="mt-1 text-sm text-white/60">
                           Username will be {`PR-${String(editingResident.real_id).padStart(4, "0")}`}. Saving with a password creates the account.
                         </p>
                       </div>
                     </div>
                   )}
                 </div>
+                {/* Edge/IE draw their own native reveal-password eye inside
+                    the field itself; it renders dark and is nearly invisible
+                    against our dark navy inputs, so invert it to white. */}
+                <style>{`
+                  .resident-password-field::-ms-reveal,
+                  .resident-password-field::-ms-clear {
+                    filter: invert(1);
+                  }
+                `}</style>
               </section>
 
               <div className="pt-2 pb-4">
                 <button
                   type="submit"
                   disabled={!hasEditChanges || editingResident.deleted_at !== null}
-                  className={`w-full py-4 rounded-xl font-bold uppercase tracking-wide text-sm transition ${
+                  className={`group w-full inline-flex items-center justify-center gap-3 rounded-full border pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide shadow-sm transition-all duration-500 ease-out ${
                     hasEditChanges && editingResident.deleted_at === null
-                      ? "bg-[#1A1A1A] text-white hover:bg-black"
-                      : "bg-[#F1EEE5] text-[#B8B2A2] cursor-not-allowed"
+                      ? "border-[#1E3A5F] bg-[#1E3A5F] text-white hover:border-[#122436] hover:bg-[#122436] hover:shadow-md"
+                      : "border-white/10 bg-white/[0.02] text-white/30 cursor-not-allowed"
                   }`}
                 >
                   {t("updateRecordButton")}
+                  <span
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-500 ease-out ${
+                      hasEditChanges && editingResident.deleted_at === null ? "bg-[#0A0E1A] group-hover:bg-white/15" : "bg-white/5"
+                    }`}
+                  >
+                    <Save className={`h-5 w-5 ${hasEditChanges && editingResident.deleted_at === null ? "text-white" : "text-white/20"}`} />
+                  </span>
                 </button>
               </div>
             </form>

@@ -415,6 +415,7 @@ public function destroy($id)
             'title' => '❌ Event Cancelled: ' . $eventName,
             'message' => 'We apologize for the inconvenience. This event has been cancelled.',
             'is_updated' => true,
+            'read' => false,
             'updated_at' => now(),
         ]);
 

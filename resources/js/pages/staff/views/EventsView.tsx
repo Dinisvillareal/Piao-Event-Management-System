@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Filter, XCircle, X, LogIn, LogOut, ChevronLeft, Archive, CheckCircle, AlertCircle, AlertTriangle,
   Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown, Paperclip,
-  FileText, Download, Megaphone, ClipboardList, Users,
+  FileText, Download, Megaphone, ClipboardList, Users, ArrowLeft, Save,
 } from "lucide-react";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import DatePicker from "../../../components/ui/DatePicker";
+import TimePicker from "../../../components/ui/TimePicker";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -83,12 +84,22 @@ export function EventsView({
   // of "Past" -- "Past" stays as-is everywhere else (filter dropdown option,
   // etc.) since that wording is still correct there.
   const eventStatusChipLabel = (label: string) => (label === "Past" ? t("completedBadge") : eventStatusLabel(label));
-  const statusPillClasses = (label: string) => {
+  const statusPillClasses = (label: string, dark = false) => {
+    if (dark) {
+      if (label === "Upcoming") return "bg-[#4FBEB0]/15 text-[#7DD8CB]";
+      if (label === "Ongoing") return "bg-gold-400/15 text-gold-300";
+      return "bg-white/10 text-white/50";
+    }
     if (label === "Upcoming") return "bg-sage-50 text-sage-700";
     if (label === "Ongoing") return "bg-gold-50 text-gold-700";
     return "bg-[#E6E0D3]/70 text-[#6B7280]";
   };
-  const statusDotClasses = (label: string) => {
+  const statusDotClasses = (label: string, dark = false) => {
+    if (dark) {
+      if (label === "Upcoming") return "bg-[#4FBEB0]";
+      if (label === "Ongoing") return "bg-gold-400";
+      return "bg-white/40";
+    }
     if (label === "Upcoming") return "bg-sage-600";
     if (label === "Ongoing") return "bg-gold-600";
     return "bg-[#8A8474]";
@@ -1648,17 +1659,26 @@ export function EventsView({
         })()
       ) : (
         <>
+          {/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents/
+              Households/Memberships background and palette. The Add/Edit
+              Event modal further down stays in the original light theme,
+              same scoping used on those pages. */}
+          <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+          <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("events")}</h1>
-              <p className="mt-1.5 text-sm text-[#6B7280] max-w-xl">{t("eventsPageSubtitle")}</p>
+              <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("events")}</h1>
+              <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("eventsPageSubtitle")}</p>
             </div>
             <button
               type="button"
               onClick={openAddEventModal}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1A1A1A] hover:bg-[#2E2E2E] text-white px-5 py-2.5 text-sm font-semibold shadow-sm transition-colors shrink-0"
+              className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
             >
-              <Plus className="h-4 w-4" /> {t("postEvent")}
+              {t("postEvent")}
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+                <Plus className="h-5 w-5 text-white" />
+              </span>
             </button>
           </div>
 
@@ -1666,16 +1686,16 @@ export function EventsView({
               exactly (same card, icon, input sizing/colors) -- the event
               status filter and date filter sit alongside it in the same
               card, resized to match, instead of being removed. */}
-          <div className="rounded-2xl border border-[#E6E0D3] bg-white p-3">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="relative flex-1 min-w-[220px]">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                 <input
                   type="text"
                   value={eventSearch}
                   onChange={(e) => setEventSearch(e.target.value)}
                   placeholder={t("searchEventsPlaceholder")}
-                  className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                  className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                 />
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -1689,21 +1709,22 @@ export function EventsView({
                     { value: "past", label: t("pastEvents") },
                   ]}
                   className="h-11 pl-9 pr-8"
-                  icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sage-700/70 pointer-events-none" />}
+                  icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0]/70 pointer-events-none" />}
+                  dark
                 />
                 <div className="h-11">
-                  <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" />
+                  <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
                 </div>
               </div>
             </div>
           </div>
 
-          <p className="text-xs text-[#6B7280]">
+          <p className="text-xs text-white/50">
             {filteredEvents.length} {t("eventsMatchCount")}
           </p>
 
           {paginatedEvents.length === 0 ? (
-            <div className="rounded-2xl border border-[#E6E0D3] bg-white p-10 text-center text-sm text-[#6B7280]">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
               {t("noEventsMatchStaff")}
             </div>
           ) : (
@@ -1720,10 +1741,10 @@ export function EventsView({
                     <div
                       key={e.id}
                       onClick={() => setViewEv(e)}
-                      className="cursor-pointer rounded-2xl border border-[#E6E0D3] bg-white p-5 hover:shadow-md transition-shadow duration-300 flex flex-col"
+                      className="cursor-pointer rounded-2xl border border-white/10 bg-white/[0.04] p-5 hover:border-white/20 hover:shadow-md transition-all duration-300 flex flex-col"
                     >
                       <div className="flex items-start justify-between gap-2 flex-wrap">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sage-50 text-sage-700 shrink-0">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#4FBEB0]/10 text-[#4FBEB0] shrink-0">
                           <Calendar className="h-5 w-5" />
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
@@ -1731,7 +1752,7 @@ export function EventsView({
                             onClick={(ev) => { ev.stopPropagation(); startEditEvent(e); }}
                             disabled={isSubmitting || locked}
                             title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
-                            className="p-1.5 rounded-full text-[#6B7280] hover:bg-sage-50 hover:text-sage-800 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="p-1.5 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
@@ -1739,35 +1760,35 @@ export function EventsView({
                             onClick={(ev) => { ev.stopPropagation(); setEventToDelete(e.id); }}
                             disabled={locked}
                             title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
-                            className="p-1.5 rounded-full text-[#6B7280] hover:bg-red-50 hover:text-red-500 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            className="p-1.5 rounded-full text-white/50 hover:bg-red-500/10 hover:text-red-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
                           >
                             <Archive className="h-3.5 w-3.5" />
                           </button>
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${statusPillClasses(status.label)}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(status.label)}`} />
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${statusPillClasses(status.label, true)}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(status.label, true)}`} />
                             {eventStatusChipLabel(status.label)}
                           </span>
                         </div>
                       </div>
 
-                      <h2 className="mt-4 text-base font-bold text-[#1A1A1A] break-words">
+                      <h2 className="mt-4 text-base font-bold text-white break-words">
                         {highlightText(e.title, eventSearch)}
                       </h2>
-                      <p className="mt-1.5 text-sm text-[#6B7280] flex items-center gap-1.5">
-                        <MapPin className="h-3.5 w-3.5 text-[#8A3D2C] shrink-0" />
+                      <p className="mt-1.5 text-sm text-white/50 flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 text-gold-300 shrink-0" />
                         <span className="truncate">{highlightText(e.location, eventSearch)}</span>
                       </p>
-                      <p className="mt-1 text-sm text-[#6B7280] flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-gold-700 shrink-0" />
+                      <p className="mt-1 text-sm text-white/50 flex items-center gap-1.5">
+                        <Clock className="h-3.5 w-3.5 text-gold-300 shrink-0" />
                         <span className="truncate">
                           {(e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || "")} · {formatTime12Hour(e.startTime)}
                         </span>
                       </p>
-                      <p className="mt-2 text-sm text-[#6B7280] break-words line-clamp-2">
+                      <p className="mt-2 text-sm text-white/50 break-words line-clamp-2">
                         {highlightText(e.description || t("noDescription"), eventSearch)}
                       </p>
 
-                      <div className="mt-4 pt-4 border-t border-[#E6E0D3] flex items-center justify-between gap-2 text-xs text-[#6B7280]">
+                      <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-2 text-xs text-white/50">
                         <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {signedIn} {t("attendeesCountLabel")}</span>
                         <span className="font-medium truncate" title={getCoverageLabel(e)}>{getCoverageLabel(e)}</span>
                       </div>
@@ -1782,7 +1803,7 @@ export function EventsView({
                     <button
                       key={p}
                       onClick={() => setCurrentPage(p)}
-                      className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-sage-800 text-white" : "bg-white border border-sage-200 text-[#6B7280] hover:bg-sage-50"}`}
+                      className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-gold-400 text-[#08130F] font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
                     >
                       {p}
                     </button>
@@ -1791,224 +1812,269 @@ export function EventsView({
               )}
             </div>
           )}
+          </div>
+          </div>
         </>
       )}
 
-      {/* Add / Edit Event Modal -- sized and sectioned to match the Add New
-          Record (Residents) and New Membership Group modals exactly. */}
+      {/* Add / Edit Event Page -- right-anchored slide-over drawer, same
+          mechanic as the Residents Profile slide-over (dimmed backdrop,
+          slides in from the right edge, ~half the page wide) instead of a
+          full content-area take-over. Same dark background + logo
+          watermark, same title/back link treatment, same section header
+          and input styling, same full-width Save button inside -- only the
+          outer positioning/animation changed. Same fields, same handlers. */}
       {formOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={(ev) => { if (ev.target === ev.currentTarget) closeEventModal(); }}>
-          <div className="bg-white rounded-3xl w-full max-w-5xl p-6 sm:p-8 shadow-xl border border-[#E6E0D3] max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-xl font-bold text-[#1A1A1A]">{editingEvent ? t("editEventTitle") : t("createNewEvent")}</h2>
-              <button onClick={closeEventModal} className="text-[#6B7280] hover:text-[#1A1A1A]"><XCircle size={20} /></button>
-            </div>
-            <p className="text-sm text-[#6B7280] mb-5">{editingEvent ? t("editEventModalSubtitle") : t("newEventModalSubtitle")}</p>
+        <>
+          <style>{`
+            @keyframes eventFormSlideIn {
+              from { transform: translateX(100%); }
+              to { transform: translateX(0); }
+            }
+            .event-form-slide-in { animation: eventFormSlideIn 280ms ease-out; }
+          `}</style>
+          <div className="fixed inset-0 bg-black/80 z-40" onClick={closeEventModal} />
+          <div className="event-form-slide-in fixed inset-y-0 right-0 z-50 w-full sm:w-1/2 bg-[#0A0E1A] border-l border-white/10 shadow-2xl overflow-y-auto">
+          <img
+            src="/logo-removebg-preview.png"
+            alt=""
+            aria-hidden="true"
+            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-20"
+          />
 
-            <form onSubmit={handleSaveEvent} noValidate className="space-y-5">
-              <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("eventDetailsLabel")}</p>
+          <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
+            <button
+              type="button"
+              onClick={closeEventModal}
+              disabled={isSubmitting}
+              className="inline-flex items-center gap-2 text-base font-semibold text-white hover:opacity-70 transition mb-8 disabled:opacity-50"
+            >
+              <ArrowLeft className="h-5 w-5" /> {t("cancelLabel")}
+            </button>
 
-                <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("eventTitleRequired")}</label>
-                  <input
-                    type="text"
-                    required
-                    value={newEvent.title}
-                    placeholder={t("eventTitlePlaceholder")}
-                    onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
-                    className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30"
-                  />
-                </div>
+            <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white text-center tracking-tight">
+              {editingEvent ? t("editEventTitle") : t("createNewEvent")}
+            </h1>
+            <p className="mt-3 text-base text-white/60 text-center max-w-md mx-auto">
+              {editingEvent ? t("editEventModalSubtitle") : t("newEventModalSubtitle")}
+            </p>
 
-                <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("dateRequired")}</label>
-                  <DatePicker
-                    value={newEvent.date}
-                    onChange={(iso) => setNewEvent({ ...newEvent, date: iso })}
-                    className="px-4 py-2.5"
-                    min={getTodayString()}
-                    required
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <form onSubmit={handleSaveEvent} noValidate className="mt-10 space-y-10">
+              <section>
+                <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
+                  {t("eventDetailsLabel")}
+                </h2>
+                <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("startTimeRequired")}</label>
-                    <input type="time" required value={newEvent.time} onChange={(e) => handleTimeFieldChange("time", e.target.value)} className={`w-full rounded-full border px-4 py-2.5 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${timeFieldErrors.time ? "border-red-400" : "border-sage-200"}`} />
-                    {timeFieldErrors.time && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.time}</p>}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("endTimeLabel")}</label>
-                    <input type="time" required value={newEvent.endTime} onChange={(e) => handleTimeFieldChange("endTime", e.target.value)} className={`w-full rounded-full border px-4 py-2.5 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${timeFieldErrors.endTime ? "border-red-400" : "border-sage-200"}`} />
-                    {timeFieldErrors.endTime && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.endTime}</p>}
-                  </div>
-                </div>
-
-                {/* Call time: sign-in/out attendance window, separate from the event's own start/end */}
-                <div className="rounded-2xl border border-dashed border-sage-300 p-3 space-y-2">
-                  <p className="text-xs font-bold uppercase tracking-wide text-sage-700/70">{t("callTimeSectionTitle")}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-[#6B7280] mb-1">{t("callTimeStartLabel")}</label>
-                      <input type="time" required value={newEvent.callTimeStart} onChange={(e) => handleTimeFieldChange("callTimeStart", e.target.value)} className={`w-full rounded-full border px-4 py-2.5 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${timeFieldErrors.callTimeStart ? "border-red-400" : "border-sage-200"}`} />
-                      {timeFieldErrors.callTimeStart && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.callTimeStart}</p>}
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-[#6B7280] mb-1">{t("callTimeEndLabel")}</label>
-                      <input type="time" required value={newEvent.callTimeEnd} onChange={(e) => handleTimeFieldChange("callTimeEnd", e.target.value)} className={`w-full rounded-full border px-4 py-2.5 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${timeFieldErrors.callTimeEnd ? "border-red-400" : "border-sage-200"}`} disabled={!newEvent.endTime} title={!newEvent.endTime ? t("setEndTimeFirstHint") : undefined} />
-                      {timeFieldErrors.callTimeEnd && <p className="mt-1 text-[11px] text-red-500">{timeFieldErrors.callTimeEnd}</p>}
-                    </div>
-                  </div>
-                  <p className="text-[11px] text-[#6B7280]">{t("callTimeHint")}</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("locationRequired")}</label>
-                  <input type="text" required value={newEvent.location} placeholder={t("locationPlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })} className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30" />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("notificationBudgetLabel")}</p>
-
-                <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("descriptionLabel")}</label>
-                  <textarea value={newEvent.description} placeholder={t("descriptionPlaceholderEvent")} onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} className="w-full rounded-3xl border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 resize-none" rows={3} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("messageLabel")}</label>
-                  <textarea value={newEvent.notificationMessage} placeholder={t("messagePlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, notificationMessage: e.target.value })} className="w-full rounded-3xl border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 resize-none" rows={2} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("targetMembersRequired")}</label>
-                  <div className="relative">
-                    <select
-                      value={newEvent.targetMembership}
-                      onChange={(e) => setNewEvent({ ...newEvent, targetMembership: e.target.value })}
-                      className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30"
-                    >
-                      <option value="all">{t("allResidentsOption")}</option>
-                      {memberships.map((m: any) => (<option key={m.id} value={String(m.id)}>{m.name}</option>))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
-                  </div>
-                </div>
-
-                {/* UC-8: Record Event Budget and Expenses */}
-                <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("approvedBudgetOptional")}</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={newEvent.approvedBudget}
-                    onChange={(e) => setNewEvent({ ...newEvent, approvedBudget: e.target.value })}
-                    placeholder={t("approvedBudgetPlaceholder")}
-                    className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30"
-                  />
-                  <p className="mt-1 text-[11px] text-[#6B7280]">{t("trackExpensesHint")}</p>
-                </div>
-
-                {/* Items borrowed from Inventory for this event -- excludes
-                    Disposed/Lost stock (see InventoryController::borrowable()),
-                    and deducts the chosen quantity from Inventory on save. */}
-                <div className="rounded-2xl border border-dashed border-sage-300 p-3 space-y-3">
-                  <div className="flex items-center gap-1.5">
-                    <Package className="h-3.5 w-3.5 text-sage-700/70" />
-                    <p className="text-xs font-bold uppercase tracking-wide text-sage-700/70">{t("borrowedItemsSectionTitle")}</p>
-                  </div>
-
-                  {newEvent.borrowedItems.length > 0 && (
-                    <div className="space-y-2">
-                      {newEvent.borrowedItems.map((row) => {
-                        const max = Math.max(0, availableStockFor(row.inventoryItemId));
-                        return (
-                          <div key={row.inventoryItemId} className="flex items-center gap-2 rounded-xl bg-white border border-sage-200 px-3 py-2">
-                            <span className="flex-1 text-sm text-[#1A1A1A] truncate">{getBorrowItemName(row.inventoryItemId)}</span>
-                            <input
-                              type="number"
-                              min={1}
-                              max={max}
-                              value={row.quantity}
-                              onChange={(e) => {
-                                const raw = e.target.value;
-                                const clamped = raw === "" ? "" : String(Math.max(1, Math.min(max || 1, Math.round(Number(raw)) || 1)));
-                                updateBorrowQuantity(row.inventoryItemId, clamped);
-                              }}
-                              className="w-16 rounded-full border border-sage-200 px-2 py-1 text-sm text-center font-sans"
-                            />
-                            <span className="text-[11px] text-[#6B7280] shrink-0">/ {max} {t("availableStockShortLabel")}</span>
-                            <button
-                              type="button"
-                              onClick={() => removeBorrowRow(row.inventoryItemId)}
-                              className="text-[#6B7280] hover:text-red-500 transition shrink-0"
-                              title={t("removeLabel")}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {!borrowableItemsLoading && borrowableItems.filter((it) => it.quantity > 0).length === 0 ? (
-                    <p className="text-xs text-[#6B7280] italic">{t("noBorrowableItemsLabel")}</p>
-                  ) : (
-                    <SearchableSelect
-                      onSelect={addBorrowRow}
-                      disabled={borrowableItemsLoading}
-                      placeholder={borrowableItemsLoading ? t("loadingLabel") : t("addBorrowedItemPlaceholder")}
-                      noResultsLabel={t("noMatchingBorrowItemsLabel")}
-                      options={borrowableItems
-                        .filter((it) => it.quantity > 0)
-                        .filter((it) => !newEvent.borrowedItems.some((r) => r.inventoryItemId === String(it.id)))
-                        .map((it) => ({
-                          value: String(it.id),
-                          label: it.name,
-                          hint: `(${it.quantity} ${t("availableStockShortLabel")})`,
-                        }))}
-                    />
-                  )}
-                  <p className="text-[11px] text-[#6B7280]">{t("borrowedItemsHint")}</p>
-                </div>
-
-                {/* Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)" */}
-                {!editingEvent && (
-                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("eventTitleRequired")}</label>
                     <input
-                      type="checkbox"
-                      checked={newEvent.postToFacebook}
-                      onChange={(e) => setNewEvent({ ...newEvent, postToFacebook: e.target.checked })}
-                      className="w-4 h-4 text-sage-700"
+                      type="text"
+                      required
+                      value={newEvent.title}
+                      placeholder={t("eventTitlePlaceholder")}
+                      onChange={(e) => setNewEvent({ ...newEvent, title: e.target.value })}
+                      className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                     />
-                    <span className="font-medium text-[#1A1A1A]">{t("alsoPostToFacebook")}</span>
-                  </label>
-                )}
-              </div>
+                  </div>
 
-              <div className="flex justify-between gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={closeEventModal}
-                  disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition disabled:opacity-50"
-                >
-                  {t("cancelLabel")}
-                </button>
+                  <div>
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("dateRequired")}</label>
+                    <DatePicker
+                      value={newEvent.date}
+                      onChange={(iso) => setNewEvent({ ...newEvent, date: iso })}
+                      className="px-5 py-3.5"
+                      min={getTodayString()}
+                      required
+                      dark
+                    />
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("startTimeRequired")}</label>
+                      <TimePicker required value={newEvent.time} onChange={(v) => handleTimeFieldChange("time", v)} className="px-5 py-3.5" error={!!timeFieldErrors.time} dark />
+                      {timeFieldErrors.time && <p className="mt-1 text-sm text-red-400">{timeFieldErrors.time}</p>}
+                    </div>
+                    <div>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("endTimeLabel")}</label>
+                      <TimePicker required value={newEvent.endTime} onChange={(v) => handleTimeFieldChange("endTime", v)} className="px-5 py-3.5" error={!!timeFieldErrors.endTime} dark />
+                      {timeFieldErrors.endTime && <p className="mt-1 text-sm text-red-400">{timeFieldErrors.endTime}</p>}
+                    </div>
+                  </div>
+
+                  {/* Call time: sign-in/out attendance window, separate from the event's own start/end */}
+                  <div className="rounded-2xl border border-dashed border-white/20 bg-white/[0.02] p-4 space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-white/50">{t("callTimeSectionTitle")}</p>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-white/70 mb-1">{t("callTimeStartLabel")}</label>
+                        <TimePicker required value={newEvent.callTimeStart} onChange={(v) => handleTimeFieldChange("callTimeStart", v)} className="px-5 py-3.5" error={!!timeFieldErrors.callTimeStart} dark />
+                        {timeFieldErrors.callTimeStart && <p className="mt-1 text-sm text-red-400">{timeFieldErrors.callTimeStart}</p>}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-white/70 mb-1">{t("callTimeEndLabel")}</label>
+                        <TimePicker required value={newEvent.callTimeEnd} onChange={(v) => handleTimeFieldChange("callTimeEnd", v)} className="px-5 py-3.5" error={!!timeFieldErrors.callTimeEnd} disabled={!newEvent.endTime} title={!newEvent.endTime ? t("setEndTimeFirstHint") : undefined} dark />
+                        {timeFieldErrors.callTimeEnd && <p className="mt-1 text-sm text-red-400">{timeFieldErrors.callTimeEnd}</p>}
+                      </div>
+                    </div>
+                    <p className="text-sm text-white/50">{t("callTimeHint")}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("locationRequired")}</label>
+                    <input type="text" required value={newEvent.location} placeholder={t("locationPlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })} className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70" />
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
+                  {t("notificationBudgetLabel")}
+                </h2>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("descriptionLabel")}</label>
+                    <textarea value={newEvent.description} placeholder={t("descriptionPlaceholderEvent")} onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 resize-none" rows={3} />
+                  </div>
+                  <div>
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("messageLabel")}</label>
+                    <textarea value={newEvent.notificationMessage} placeholder={t("messagePlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, notificationMessage: e.target.value })} className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 resize-none" rows={2} />
+                  </div>
+                  <div>
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("targetMembersRequired")}</label>
+                    <div className="relative">
+                      <select
+                        value={newEvent.targetMembership}
+                        onChange={(e) => setNewEvent({ ...newEvent, targetMembership: e.target.value })}
+                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                      >
+                        <option value="all" className="bg-[#0A0E1A] text-white">{t("allResidentsOption")}</option>
+                        {memberships.map((m: any) => (<option key={m.id} value={String(m.id)} className="bg-[#0A0E1A] text-white">{m.name}</option>))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
+                    </div>
+                  </div>
+
+                  {/* UC-8: Record Event Budget and Expenses */}
+                  <div>
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("approvedBudgetOptional")}</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={newEvent.approvedBudget}
+                      onChange={(e) => setNewEvent({ ...newEvent, approvedBudget: e.target.value })}
+                      placeholder={t("approvedBudgetPlaceholder")}
+                      className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                    />
+                    <p className="mt-1.5 text-sm text-white/60">{t("trackExpensesHint")}</p>
+                  </div>
+
+                  {/* Items borrowed from Inventory for this event -- excludes
+                      Disposed/Lost stock (see InventoryController::borrowable()),
+                      and deducts the chosen quantity from Inventory on save. */}
+                  <div className="rounded-2xl border border-dashed border-white/20 bg-white/[0.02] p-4 space-y-3">
+                    <div className="flex items-center gap-1.5">
+                      <Package className="h-4 w-4 text-white/50" />
+                      <p className="text-xs font-bold uppercase tracking-wide text-white/50">{t("borrowedItemsSectionTitle")}</p>
+                    </div>
+
+                    {newEvent.borrowedItems.length > 0 && (
+                      <div className="space-y-2">
+                        {newEvent.borrowedItems.map((row) => {
+                          const max = Math.max(0, availableStockFor(row.inventoryItemId));
+                          return (
+                            <div key={row.inventoryItemId} className="flex items-center gap-2 rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2">
+                              <span className="flex-1 text-sm text-white truncate">{getBorrowItemName(row.inventoryItemId)}</span>
+                              <input
+                                type="number"
+                                min={1}
+                                max={max}
+                                value={row.quantity}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  const clamped = raw === "" ? "" : String(Math.max(1, Math.min(max || 1, Math.round(Number(raw)) || 1)));
+                                  updateBorrowQuantity(row.inventoryItemId, clamped);
+                                }}
+                                className="w-16 rounded-full border border-white/20 bg-white/10 px-2 py-1 text-sm text-center text-white font-sans"
+                              />
+                              <span className="text-xs text-white/50 shrink-0">/ {max} {t("availableStockShortLabel")}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeBorrowRow(row.inventoryItemId)}
+                                className="text-white/50 hover:text-red-400 transition shrink-0"
+                                title={t("removeLabel")}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {!borrowableItemsLoading && borrowableItems.filter((it) => it.quantity > 0).length === 0 ? (
+                      <p className="text-sm text-white/50 italic">{t("noBorrowableItemsLabel")}</p>
+                    ) : (
+                      <SearchableSelect
+                        onSelect={addBorrowRow}
+                        disabled={borrowableItemsLoading}
+                        placeholder={borrowableItemsLoading ? t("loadingLabel") : t("addBorrowedItemPlaceholder")}
+                        noResultsLabel={t("noMatchingBorrowItemsLabel")}
+                        options={borrowableItems
+                          .filter((it) => it.quantity > 0)
+                          .filter((it) => !newEvent.borrowedItems.some((r) => r.inventoryItemId === String(it.id)))
+                          .map((it) => ({
+                            value: String(it.id),
+                            label: it.name,
+                            hint: `(${it.quantity} ${t("availableStockShortLabel")})`,
+                          }))}
+                        dark
+                      />
+                    )}
+                    <p className="text-sm text-white/50">{t("borrowedItemsHint")}</p>
+                  </div>
+
+                  {/* Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)" */}
+                  {!editingEvent && (
+                    <label className="flex items-center gap-2 cursor-pointer text-base">
+                      <input
+                        type="checkbox"
+                        checked={newEvent.postToFacebook}
+                        onChange={(e) => setNewEvent({ ...newEvent, postToFacebook: e.target.checked })}
+                        className="w-5 h-5 text-[#4FBEB0]"
+                      />
+                      <span className="font-medium text-white">{t("alsoPostToFacebook")}</span>
+                    </label>
+                  )}
+                </div>
+              </section>
+
+              <div className="pt-2 pb-4">
                 <button
                   type="submit"
                   disabled={isSubmitting || isEventFormUnchanged}
                   title={isEventFormUnchanged ? t("noChangesToSaveHint") : undefined}
-                  className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  className={`group w-full inline-flex items-center justify-center gap-3 rounded-full border pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide shadow-sm transition-all duration-500 ease-out ${
+                    !isSubmitting && !isEventFormUnchanged
+                      ? "border-[#1E3A5F] bg-[#1E3A5F] text-white hover:border-[#122436] hover:bg-[#122436] hover:shadow-md"
+                      : "border-white/10 bg-white/[0.02] text-white/30 cursor-not-allowed"
+                  }`}
                 >
                   {isSubmitting ? t("savingLabel") : (editingEvent ? t("updateEvent") : t("postEvent"))}
+                  <span
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-500 ease-out ${
+                      !isSubmitting && !isEventFormUnchanged ? "bg-[#0A0E1A] group-hover:bg-white/15" : "bg-white/5"
+                    }`}
+                  >
+                    <Save className={`h-5 w-5 ${!isSubmitting && !isEventFormUnchanged ? "text-white" : "text-white/20"}`} />
+                  </span>
                 </button>
               </div>
             </form>
           </div>
-        </div>
+          </div>
+        </>
       )}
 
       <ConfirmDialog

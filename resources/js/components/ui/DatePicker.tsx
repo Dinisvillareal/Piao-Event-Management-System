@@ -13,6 +13,9 @@ interface DatePickerProps {
   clearLabel?: string;
   /** Extra classes applied to the trigger button -- pass sizing/height to match whatever it's replacing (h-14, h-full, etc). */
   className?: string;
+  /** Dark navy styling for the Add/Edit Resident forms -- applies to both
+      the trigger and the calendar dropdown panel. */
+  dark?: boolean;
   disabled?: boolean;
   /** Visually marks the field as required (a red dot) -- this is a fully custom widget so it can't hook into native HTML5 form validation; callers should still check the value before submit. */
   required?: boolean;
@@ -46,6 +49,7 @@ export default function DatePicker({
   todayLabel = "Today",
   clearLabel = "Clear",
   className = "",
+  dark = false,
   disabled = false,
   required = false,
   align = "left",
@@ -118,10 +122,14 @@ export default function DatePicker({
         type="button"
         disabled={disabled}
         onClick={() => !disabled && setOpen((v) => !v)}
-        className={`w-full inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white text-sm text-left disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-[#005f63]/30 transition ${open ? "ring-2 ring-[#005f63]/30 border-[#005f63]/40" : ""} ${className}`}
+        className={`w-full inline-flex items-center gap-2 rounded-full border text-left disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none transition ${
+          dark
+            ? `text-base border-white/25 bg-white/10 focus:ring-2 focus:ring-[#4FBEB0]/40 ${open ? "ring-2 ring-[#4FBEB0]/40 border-[#4FBEB0]/70" : ""}`
+            : `text-sm border-gray-200 bg-white focus:ring-2 focus:ring-[#005f63]/30 ${open ? "ring-2 ring-[#005f63]/30 border-[#005f63]/40" : ""}`
+        } ${className}`}
       >
-        <CalendarIcon className="h-4 w-4 text-[#005f63]/70 shrink-0" />
-        <span className={`flex-1 truncate ${value ? "text-gray-800" : "text-gray-400"}`}>
+        <CalendarIcon className={`shrink-0 ${dark ? "h-5 w-5 text-[#4FBEB0]" : "h-4 w-4 text-[#005f63]/70"}`} />
+        <span className={`flex-1 truncate ${value ? (dark ? "text-white" : "text-gray-800") : (dark ? "text-white/50" : "text-gray-400")}`}>
           {formatDisplay(value) ?? placeholder}
         </span>
         {required && !value && <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" aria-hidden />}
@@ -129,26 +137,29 @@ export default function DatePicker({
 
       {open && (
         <div
-          className={`absolute z-50 w-[min(92vw,300px)] rounded-[24px] border border-[#ddd5ca] bg-white shadow-xl p-4 ${panelPos.openUp ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"}`}
+          className={`absolute z-50 w-[min(92vw,300px)] rounded-[24px] border shadow-xl p-4 ${
+            dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#ddd5ca] bg-white"
+          } ${panelPos.openUp ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"}`}
           style={{ left: panelPos.left }}
         >
           <Calendar
             value={value}
             min={min}
             max={max}
+            dark={dark}
             onSelect={(iso) => {
               onChange(iso);
               setOpen(false);
             }}
           />
-          <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+          <div className={`flex items-center justify-between mt-3 pt-3 border-t ${dark ? "border-white/10" : "border-gray-100"}`}>
             <button
               type="button"
               onClick={() => {
                 onChange("");
                 setOpen(false);
               }}
-              className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-red-500 transition"
+              className={`inline-flex items-center gap-1 text-xs font-medium transition ${dark ? "text-white/50 hover:text-red-400" : "text-gray-500 hover:text-red-500"}`}
             >
               <X className="h-3.5 w-3.5" /> {clearLabel}
             </button>
@@ -160,7 +171,9 @@ export default function DatePicker({
                 onChange(t);
                 setOpen(false);
               }}
-              className="rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white px-4 py-1.5 text-xs font-semibold transition"
+              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
+                dark ? "bg-[#4FBEB0] hover:bg-[#7DD8CB] text-[#08130F]" : "bg-[#005f63] hover:bg-[#004a4d] text-white"
+              }`}
             >
               {todayLabel}
             </button>

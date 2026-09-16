@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Users, Plus, Pencil, Trash2, Search, CheckCircle, AlertCircle, AlertTriangle, Layers, ChevronRight, ChevronDown, XCircle } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, Search, CheckCircle, AlertCircle, AlertTriangle, Layers, ChevronRight, ChevronDown, XCircle, Save } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -634,39 +634,47 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   return (
     <div className="space-y-6">
+      {/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents/
+          Households background and palette. Modals further down stay in
+          the original light theme, same scoping used on those pages. */}
+      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("membershipGroupsTitle")}</h1>
-          <p className="mt-1.5 text-sm text-[#6B7280] max-w-xl">{t("membershipGroupsPageSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("membershipGroupsTitle")}</h1>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("membershipGroupsPageSubtitle")}</p>
         </div>
         <button
           type="button"
           onClick={() => setShowAddModal(true)}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-[#1A1A1A] hover:bg-[#2E2E2E] text-white px-5 py-2.5 text-sm font-semibold shadow-sm transition-colors shrink-0"
+          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
         >
-          <Plus className="h-4 w-4" /> {t("newMembershipGroupButton")}
+          {t("newMembershipGroupButton")}
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+            <Plus className="h-5 w-5 text-white" />
+          </span>
         </button>
       </div>
 
-      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-3">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t("searchMembershipsAdminPlaceholder")}
-            className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
           />
         </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sage-700" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4FBEB0]" />
         </div>
       ) : filteredMemberships.length === 0 ? (
-        <div className="rounded-2xl border border-[#E6E0D3] bg-white p-10 text-center text-sm text-[#6B7280]">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
           {t("noMembershipsFoundAdmin")}
         </div>
       ) : (
@@ -679,43 +687,43 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               return (
                 <div
                   key={m.id}
-                  className="rounded-2xl border border-[#E6E0D3] bg-white p-5 hover:shadow-md transition-shadow duration-300"
+                  className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 hover:border-white/20 hover:shadow-md transition-all duration-300"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-sage-50 text-sage-700 shrink-0">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#4FBEB0]/10 text-[#4FBEB0] shrink-0">
                       <Layers className="h-5 w-5" />
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => openEditModal(m)}
-                        className="p-1.5 rounded-full text-[#6B7280] hover:bg-sage-50 hover:text-sage-800 transition"
+                        className="p-1.5 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition"
                         title={t("editMembershipTitle")}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
-                      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-[#8A3D2C]/10 px-3 py-1 text-xs font-semibold text-[#5C2A1E]">
+                      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-[#4FBEB0]/10 px-3 py-1 text-xs font-semibold text-[#7DD8CB]">
                         {residentCount} {t("membersBadgeSuffix")}
                       </span>
                     </div>
                   </div>
 
-                  <h2 className="mt-4 text-base font-bold text-[#1A1A1A] break-words">
+                  <h2 className="mt-4 text-base font-bold text-white break-words">
                     {highlightText(m.name, searchQuery)}
                   </h2>
-                  <p className="mt-1 text-sm text-[#6B7280] break-words line-clamp-2">
+                  <p className="mt-1 text-sm text-white/50 break-words line-clamp-2">
                     {highlightText(m.description || t("noDescription"), searchQuery)}
                   </p>
 
                   {hasEligibility && (
-                    <p className="mt-2.5 inline-flex items-center gap-1 rounded-full bg-gold-50 border border-gold-100 px-2.5 py-0.5 text-[11px] font-semibold text-gold-700">
+                    <p className="mt-2.5 inline-flex items-center gap-1 rounded-full bg-gold-400/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold-300">
                       {t("requiresLabelShort")} {[m.eligible_age_bracket?.label, m.eligible_civil_status?.label, m.eligible_current_status?.label, m.eligible_gender].filter(Boolean).join(" • ")}
                     </p>
                   )}
 
-                  <div className="mt-4 pt-4 border-t border-[#E6E0D3] flex items-center justify-between gap-2">
+                  <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-2">
                     <button
                       onClick={() => handleViewMembers(m)}
-                      className="inline-flex items-center gap-1 text-sm font-semibold text-sage-700 hover:text-sage-900 hover:underline transition"
+                      className="inline-flex items-center gap-1 text-sm font-semibold text-[#4FBEB0] hover:text-[#7DD8CB] hover:underline transition"
                     >
                       {t("viewRosterLabel")} <ChevronRight className="h-4 w-4" />
                     </button>
@@ -723,7 +731,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                       <button
                         onClick={() => checkEligibility(m)}
                         disabled={checkingEligibilityId === m.id}
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-gold-700 hover:underline disabled:opacity-50 shrink-0"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-gold-300 hover:underline disabled:opacity-50 shrink-0"
                       >
                         <AlertTriangle className="h-3.5 w-3.5" /> {checkingEligibilityId === m.id ? t("checkingEligibility") : t("checkEligibilityLabel")}
                       </button>
@@ -740,7 +748,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 <button
                   key={p}
                   onClick={() => setCurrentPage(p)}
-                  className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-sage-800 text-white" : "bg-white border border-sage-200 text-[#6B7280] hover:bg-sage-50"}`}
+                  className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-gold-400 text-[#08130F] font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
                 >
                   {p}
                 </button>
@@ -749,21 +757,23 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           )}
         </div>
       )}
+      </div>
+      </div>
 
       {/* View Roster Modal */}
       {showModal && selectedMembership && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 sm:p-0"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 sm:p-0"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleBackdropClick}
         >
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl relative mx-4 sm:mx-auto">
-            <div className="bg-white px-4 sm:px-6 py-4 border-b border-[#E6E0D3] flex items-center justify-between">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl relative mx-4 sm:mx-auto">
+            <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between">
               <div>
-                <h2 className="text-lg sm:text-xl font-bold text-[#1A1A1A]">{selectedMembership.name}</h2>
-                <p className="text-xs sm:text-sm text-[#6B7280] mt-0.5 line-clamp-2">{selectedMembership.description || t("noDescriptionModal")}</p>
+                <h2 className="text-lg sm:text-xl font-bold text-white">{selectedMembership.name}</h2>
+                <p className="text-xs sm:text-sm text-white/50 mt-0.5 line-clamp-2">{selectedMembership.description || t("noDescriptionModal")}</p>
               </div>
-              <button onClick={closeModal} className="text-[#6B7280] hover:text-[#1A1A1A] p-1">
+              <button onClick={closeModal} className="text-white/50 hover:text-white p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -772,19 +782,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
             <div className="p-4 sm:p-6 overflow-y-auto max-h-[60vh]">
               <div className="flex items-center gap-2 mb-4">
-                <Users className="h-5 w-5 text-sage-700" />
-                <span className="text-sm font-semibold text-[#1A1A1A]">
+                <Users className="h-5 w-5 text-[#4FBEB0]" />
+                <span className="text-sm font-semibold text-white">
                   {selectedMembership.residents.length} {t("residentsCountLabel")}
                 </span>
               </div>
 
               {selectedMembership.residents.length === 0 ? (
                 <div className="text-center py-8 sm:py-12">
-                  <div className="text-[#6B7280] mb-2">
+                  <div className="text-white/40 mb-2">
                     <Users className="h-12 w-12 mx-auto opacity-50" />
                   </div>
-                  <p className="text-[#6B7280] text-sm sm:text-base">{t("noResidentsAssigned")}</p>
-                  <p className="text-xs text-[#6B7280] mt-2">
+                  <p className="text-white/50 text-sm sm:text-base">{t("noResidentsAssigned")}</p>
+                  <p className="text-xs text-white/40 mt-2">
                     {t("goToResidentsHint")}
                   </p>
                 </div>
@@ -793,17 +803,17 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   {selectedMembership.residents.map((resident: any, idx: number) => (
                     <div
                       key={resident.id || idx}
-                      className="flex items-center justify-between p-3 sm:p-4 rounded-xl bg-[#FAF9F5] hover:bg-sage-50 transition-all"
+                      className="flex items-center justify-between p-3 sm:p-4 rounded-xl bg-white/[0.04] hover:bg-white/10 transition-all"
                     >
                       <div className="flex items-center gap-3 sm:gap-4">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full bg-sage-50 border border-sage-200 flex items-center justify-center text-sage-800 font-bold text-sm sm:text-base">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full bg-[#4FBEB0]/10 border border-[#4FBEB0]/20 flex items-center justify-center text-[#4FBEB0] font-bold text-sm sm:text-base">
                           {resident.first_name?.charAt(0)}{resident.last_name?.charAt(0)}
                         </div>
                         <div>
-                          <p className="font-semibold text-[#1A1A1A] text-sm sm:text-base">
+                          <p className="font-semibold text-white text-sm sm:text-base">
                             {resident.first_name} {resident.last_name}
                           </p>
-                          <p className="text-xs text-[#6B7280] font-mono">
+                          <p className="text-xs text-white/40 font-mono">
                             {resident.user_code || resident.id}
                           </p>
                         </div>
@@ -814,8 +824,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               )}
             </div>
 
-            <div className="bg-white px-4 sm:px-6 py-4 border-t border-[#E6E0D3] flex justify-end">
-              <button onClick={closeModal} className="bg-sage-800 hover:bg-sage-900 text-white px-4 py-2 rounded-full text-sm font-medium transition">
+            <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-t border-white/10 flex justify-end">
+              <button onClick={closeModal} className="bg-gold-400 hover:bg-gold-500 text-[#08130F] px-4 py-2 rounded-full text-sm font-bold transition">
                 {t("closeLabel")}
               </button>
             </div>
@@ -826,20 +836,20 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       {eligibilityCheck && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 sm:p-0"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 sm:p-0"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={() => setEligibilityCheck(null)}
         >
           <div
-            className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl relative mx-4 sm:mx-auto"
+            className="bg-[#0A0E1A] border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl relative mx-4 sm:mx-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="bg-white px-4 sm:px-6 py-4 border-b border-[#E6E0D3] flex items-center justify-between">
+            <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-bold text-[#1A1A1A]">{t("eligibilityCheckTitle")}</h2>
-                <p className="text-xs sm:text-sm text-[#6B7280] mt-0.5">{eligibilityCheck.membershipName}</p>
+                <h2 className="text-lg font-bold text-white">{t("eligibilityCheckTitle")}</h2>
+                <p className="text-xs sm:text-sm text-white/50 mt-0.5">{eligibilityCheck.membershipName}</p>
               </div>
-              <button onClick={() => setEligibilityCheck(null)} className="text-[#6B7280] hover:text-[#1A1A1A] p-1">
+              <button onClick={() => setEligibilityCheck(null)} className="text-white/50 hover:text-white p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -849,19 +859,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <div className="p-4 sm:p-6 overflow-y-auto max-h-[60vh]">
               {eligibilityCheck.ineligible.length === 0 ? (
                 <div className="text-center py-8">
-                  <CheckCircle className="h-10 w-10 mx-auto text-sage-700 mb-2" />
-                  <p className="text-[#6B7280] text-sm">{t("allMembersStillEligible")}</p>
+                  <CheckCircle className="h-10 w-10 mx-auto text-[#4FBEB0] mb-2" />
+                  <p className="text-white/50 text-sm">{t("allMembersStillEligible")}</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-xs text-gold-700 bg-gold-50 border border-gold-100 rounded-xl px-3 py-2 mb-3">
+                  <p className="text-xs text-gold-300 bg-gold-400/15 rounded-xl px-3 py-2 mb-3">
                     {t("ineligibleMembersFoundHint")}
                   </p>
                   {eligibilityCheck.ineligible.map((r: any) => (
-                    <div key={r.id} className="rounded-xl bg-[#FAF9F5] p-3">
-                      <p className="font-semibold text-[#1A1A1A] text-sm">{r.name}</p>
-                      <p className="text-xs text-[#6B7280] font-mono">{r.user_code}</p>
-                      <ul className="mt-1 list-disc list-inside text-xs text-gold-700">
+                    <div key={r.id} className="rounded-xl bg-white/[0.04] p-3">
+                      <p className="font-semibold text-white text-sm">{r.name}</p>
+                      <p className="text-xs text-white/40 font-mono">{r.user_code}</p>
+                      <ul className="mt-1 list-disc list-inside text-xs text-gold-300">
                         {r.reasons.map((reason: string, i: number) => (
                           <li key={i}>{reason}</li>
                         ))}
@@ -872,8 +882,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               )}
             </div>
 
-            <div className="bg-white px-4 sm:px-6 py-4 border-t border-[#E6E0D3] flex justify-end">
-              <button onClick={() => setEligibilityCheck(null)} className="bg-sage-800 hover:bg-sage-900 text-white px-4 py-2 rounded-full text-sm font-medium transition">
+            <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-t border-white/10 flex justify-end">
+              <button onClick={() => setEligibilityCheck(null)} className="bg-gold-400 hover:bg-gold-500 text-[#08130F] px-4 py-2 rounded-full text-sm font-bold transition">
                 {t("closeLabel")}
               </button>
             </div>
@@ -887,115 +897,115 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           title size, close icon, and button treatment. */}
       {showAddModal && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleAddBackdropClick}
         >
-          <div className="bg-white rounded-3xl w-full max-w-2xl p-6 sm:p-8 shadow-xl border border-[#E6E0D3] max-h-[90vh] overflow-y-auto">
+          <div className="bg-[#0A0E1A] rounded-3xl w-full max-w-3xl p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-xl font-bold text-[#1A1A1A]">{t("newMembershipGroupTitle")}</h2>
-              <button onClick={handleCancelAdd} className="text-[#6B7280] hover:text-[#1A1A1A]"><XCircle size={20} /></button>
+              <h2 className="text-xl font-bold text-white">{t("newMembershipGroupTitle")}</h2>
+              <button onClick={handleCancelAdd} className="text-white/50 hover:text-white"><XCircle size={20} /></button>
             </div>
-            <p className="text-sm text-[#6B7280] mb-5">{t("newMembershipGroupSubtitle")}</p>
+            <p className="text-sm text-white/50 mb-5">{t("newMembershipGroupSubtitle")}</p>
 
             <form onSubmit={handleAddMembership} noValidate className="space-y-5">
-              <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("groupDetailsLabel")}</p>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-gold-300">{t("groupDetailsLabel")}</p>
                 <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
-                    {t("groupNameLabel")} <span className="text-red-500">*</span>
+                  <label className="block text-sm font-medium text-white mb-1">
+                    {t("groupNameLabel")} <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={newMembership.name}
                     onChange={(e) => setNewMembership(prev => ({ ...prev, name: e.target.value }))}
-                    className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
-                      addFormErrors.name ? "border-red-500" : "border-sage-200"
+                    className={`w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 ${
+                      addFormErrors.name ? "border-red-400" : "border-white/25 focus:border-[#4FBEB0]/70"
                     }`}
                     placeholder={t("groupNamePlaceholder")}
                   />
                   {addFormErrors.name && (
-                    <p className="text-red-500 text-xs mt-1">{addFormErrors.name}</p>
+                    <p className="text-red-400 text-xs mt-1">{addFormErrors.name}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("descriptionLabel")}</label>
+                  <label className="block text-sm font-medium text-white mb-1">{t("descriptionLabel")}</label>
                   <textarea
                     value={newMembership.description}
                     onChange={(e) => setNewMembership(prev => ({ ...prev, description: e.target.value }))}
                     rows={3}
-                    className="w-full rounded-3xl border border-sage-200 px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 resize-none"
+                    className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 resize-none"
                     placeholder={t("descriptionPlaceholder")}
                   />
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("eligibilityRequirementsLabel")}</p>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-gold-300">{t("eligibilityRequirementsLabel")}</p>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("eligibleAgeBracketLabel")}</label>
+                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleAgeBracketLabel")}</label>
                     <div className="relative">
                       <select
                         value={newMembership.eligibleAgeBracketId ?? ""}
                         onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleAgeBracketId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       >
-                        <option value="">{t("anyOptionLabel")}</option>
+                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                         {ageBrackets.map((b) => (
-                          <option key={b.id} value={b.id}>{b.label}</option>
+                          <option key={b.id} value={b.id} className="bg-[#0A0E1A] text-white">{b.label}</option>
                         ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("eligibleCivilStatusLabel")}</label>
+                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleCivilStatusLabel")}</label>
                     <div className="relative">
                       <select
                         value={newMembership.eligibleCivilStatusId ?? ""}
                         onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCivilStatusId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       >
-                        <option value="">{t("anyOptionLabel")}</option>
+                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                         {civilStatuses.map((cs) => (
-                          <option key={cs.id} value={cs.id}>{cs.label}</option>
+                          <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                         ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("eligibleCurrentStatusLabel")}</label>
+                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleCurrentStatusLabel")}</label>
                     <div className="relative">
                       <select
                         value={newMembership.eligibleCurrentStatusId ?? ""}
                         onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       >
-                        <option value="">{t("anyOptionLabel")}</option>
+                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                         {currentStatuses.map((cs) => (
-                          <option key={cs.id} value={cs.id}>{cs.label}</option>
+                          <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                         ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("eligibleGenderLabel")}</label>
+                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleGenderLabel")}</label>
                     <div className="relative">
                       <select
                         value={newMembership.eligibleGender}
                         onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleGender: e.target.value }))}
-                        className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       >
-                        <option value="">{t("anyOptionLabel")}</option>
-                        <option value="Male">{t("maleOption")}</option>
-                        <option value="Female">{t("femaleOption")}</option>
+                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                        <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
+                        <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                     </div>
                   </div>
                 </div>
@@ -1005,16 +1015,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 <button
                   type="button"
                   onClick={handleCancelAdd}
-                  className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition"
+                  className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition"
                 >
                   {t("cancelLabel")}
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 disabled:opacity-50 transition"
+                  className="group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide text-white shadow-sm transition-all duration-500 ease-out hover:border-[#122436] hover:bg-[#122436] hover:shadow-md disabled:opacity-50"
                 >
                   {isSubmitting ? t("adding") : t("addMembership")}
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+                    <Save className="h-5 w-5 text-white" />
+                  </span>
                 </button>
               </div>
             </form>
@@ -1026,115 +1039,115 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Edit Membership Group Modal -- same treatment as the Add modal above. */}
       {showEditModal && editingMembership && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleEditBackdropClick}
         >
-          <div className="bg-white rounded-3xl w-full max-w-2xl p-6 sm:p-8 shadow-xl border border-[#E6E0D3] max-h-[90vh] overflow-y-auto">
+          <div className="bg-[#0A0E1A] rounded-3xl w-full max-w-3xl p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="text-xl font-bold text-[#1A1A1A]">{t("editMembershipGroupTitle")}</h2>
-              <button onClick={handleCancelEdit} className="text-[#6B7280] hover:text-[#1A1A1A]"><XCircle size={20} /></button>
+              <h2 className="text-xl font-bold text-white">{t("editMembershipGroupTitle")}</h2>
+              <button onClick={handleCancelEdit} className="text-white/50 hover:text-white"><XCircle size={20} /></button>
             </div>
-            <p className="text-sm text-[#6B7280] mb-5">{t("editMembershipGroupSubtitle")}</p>
+            <p className="text-sm text-white/50 mb-5">{t("editMembershipGroupSubtitle")}</p>
 
             <form onSubmit={handleEditMembership} noValidate className="space-y-5">
-              <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("groupDetailsLabel")}</p>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
+                <p className="text-xs font-bold uppercase tracking-wide text-gold-300">{t("groupDetailsLabel")}</p>
                 <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
-                    {t("groupNameLabel")} <span className="text-red-500">*</span>
+                  <label className="block text-sm font-medium text-white mb-1">
+                    {t("groupNameLabel")} <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"
                     required
                     value={editingMembership.name}
                     onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, name: e.target.value }))}
-                    className={`w-full rounded-full border px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 ${
-                      editFormErrors.name ? "border-red-500" : "border-sage-200"
+                    className={`w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 ${
+                      editFormErrors.name ? "border-red-400" : "border-white/25 focus:border-[#4FBEB0]/70"
                     }`}
                     placeholder={t("groupNamePlaceholder")}
                   />
                   {editFormErrors.name && (
-                    <p className="text-red-500 text-xs mt-1">{editFormErrors.name}</p>
+                    <p className="text-red-400 text-xs mt-1">{editFormErrors.name}</p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("descriptionLabel")}</label>
+                  <label className="block text-sm font-medium text-white mb-1">{t("descriptionLabel")}</label>
                   <textarea
                     value={editingMembership.description}
                     onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, description: e.target.value }))}
                     rows={3}
-                    className="w-full rounded-3xl border border-sage-200 px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 resize-none"
+                    className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 resize-none"
                     placeholder={t("descriptionPlaceholder")}
                   />
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("eligibilityRequirementsLabel")}</p>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-gold-300">{t("eligibilityRequirementsLabel")}</p>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("eligibleAgeBracketLabel")}</label>
+                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleAgeBracketLabel")}</label>
                     <div className="relative">
                       <select
                         value={editingMembership.eligibleAgeBracketId ?? ""}
                         onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleAgeBracketId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       >
-                        <option value="">{t("anyOptionLabel")}</option>
+                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                         {ageBrackets.map((b) => (
-                          <option key={b.id} value={b.id}>{b.label}</option>
+                          <option key={b.id} value={b.id} className="bg-[#0A0E1A] text-white">{b.label}</option>
                         ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("eligibleCivilStatusLabel")}</label>
+                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleCivilStatusLabel")}</label>
                     <div className="relative">
                       <select
                         value={editingMembership.eligibleCivilStatusId ?? ""}
                         onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCivilStatusId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       >
-                        <option value="">{t("anyOptionLabel")}</option>
+                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                         {civilStatuses.map((cs) => (
-                          <option key={cs.id} value={cs.id}>{cs.label}</option>
+                          <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                         ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("eligibleCurrentStatusLabel")}</label>
+                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleCurrentStatusLabel")}</label>
                     <div className="relative">
                       <select
                         value={editingMembership.eligibleCurrentStatusId ?? ""}
                         onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       >
-                        <option value="">{t("anyOptionLabel")}</option>
+                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                         {currentStatuses.map((cs) => (
-                          <option key={cs.id} value={cs.id}>{cs.label}</option>
+                          <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                         ))}
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("eligibleGenderLabel")}</label>
+                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleGenderLabel")}</label>
                     <div className="relative">
                       <select
                         value={editingMembership.eligibleGender ?? ""}
                         onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleGender: e.target.value }))}
-                        className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 pr-10 bg-white font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       >
-                        <option value="">{t("anyOptionLabel")}</option>
-                        <option value="Male">{t("maleOption")}</option>
-                        <option value="Female">{t("femaleOption")}</option>
+                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                        <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
+                        <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
                       </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                     </div>
                   </div>
                 </div>
@@ -1144,7 +1157,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 <button
                   type="button"
                   onClick={handleDeleteFromEditModal}
-                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 px-3 py-2.5 rounded-full transition"
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-400 hover:text-red-300 hover:bg-red-500/10 px-3 py-2.5 rounded-full transition"
                 >
                   <Trash2 className="h-4 w-4" /> {t("deleteGroupLabel")}
                 </button>
@@ -1152,7 +1165,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   <button
                     type="button"
                     onClick={handleCancelEdit}
-                    className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition"
+                    className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition"
                   >
                     {t("cancelLabel")}
                   </button>
@@ -1160,9 +1173,12 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                     type="submit"
                     disabled={isSubmitting || isEditMembershipUnchanged}
                     title={isEditMembershipUnchanged ? t("noChangesToSaveHint") : undefined}
-                    className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                    className="group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide text-white shadow-sm transition-all duration-500 ease-out hover:border-[#122436] hover:bg-[#122436] hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSubmitting ? t("savingLabel") : t("saveChanges")}
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+                      <Save className="h-5 w-5 text-white" />
+                    </span>
                   </button>
                 </div>
               </div>
@@ -1183,6 +1199,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           onCancel={() => setConfirmAddMembership(false)}
           onConfirm={performAddMembership}
           z={9999}
+          dark
         />,
         document.body
       )}
@@ -1198,6 +1215,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           onCancel={() => setConfirmEditMembership(false)}
           onConfirm={performEditMembership}
           z={9999}
+          dark
         />,
         document.body
       )}
@@ -1205,26 +1223,26 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && membershipToDelete && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteBackdropClick}
         >
-          <div className="bg-white rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center">
-            <div className="mb-4 text-red-500 flex justify-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center">
+            <div className="mb-4 text-red-400 flex justify-center">
               <Trash2 size={36} />
             </div>
-            <h3 className="text-lg font-bold text-red-600 mb-2">{t("confirmDeletionTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{t("confirmDeletionBody")}</p>
+            <h3 className="text-lg font-bold text-red-400 mb-2">{t("confirmDeletionTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-6">{t("confirmDeletionBody")}</p>
             <div className="flex justify-center gap-4">
               <button
                 onClick={closeDeleteConfirm}
-                className="px-5 py-2 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition"
+                className="px-5 py-2 rounded-full border border-white/15 text-white hover:bg-white/10 transition"
               >
                 {t("cancelLabel")}
               </button>
               <button
                 onClick={handleConfirmDelete}
-                className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+                className="px-5 py-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
               >
                 {t("yesDelete")}
               </button>
@@ -1237,19 +1255,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Add Success Modal */}
       {showAddSuccess && createPortal(
         <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleAddSuccessBackdropClick}
         >
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-3 text-sage-800 flex justify-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-[#4FBEB0] flex justify-center">
               <CheckCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-sage-800 mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{t("membershipAddedSuccess")}</p>
+            <h3 className="text-xl font-bold text-white mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-6">{t("membershipAddedSuccess")}</p>
             <button
               onClick={closeAddSuccess}
-              className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
+              className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
             >
               {t("okLabel")}
             </button>
@@ -1261,19 +1279,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Delete Success Modal */}
       {showDeleteSuccess && createPortal(
         <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteSuccessBackdropClick}
         >
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-3 text-sage-800 flex justify-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-[#4FBEB0] flex justify-center">
               <CheckCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-sage-800 mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{t("membershipDeletedSuccess")}</p>
+            <h3 className="text-xl font-bold text-white mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-6">{t("membershipDeletedSuccess")}</p>
             <button
               onClick={closeDeleteSuccess}
-              className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
+              className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
             >
               {t("okLabel")}
             </button>
@@ -1284,19 +1302,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       {showUpdateSuccess && createPortal(
         <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
+          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleUpdateSuccessBackdropClick}
         >
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-3 text-sage-800 flex justify-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-[#4FBEB0] flex justify-center">
               <CheckCircle size={48} />
             </div>
-            <h3 className="text-xl font-bold text-sage-800 mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{t("membershipUpdatedSuccess")}</p>
+            <h3 className="text-xl font-bold text-white mb-2">{t("successTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-6">{t("membershipUpdatedSuccess")}</p>
             <button
               onClick={closeUpdateSuccess}
-              className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
+              className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
             >
               {t("okLabel")}
             </button>
@@ -1308,19 +1326,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Deletion Failed Modal */}
       {showDeleteFailed && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteFailedBackdropClick}
         >
-          <div className="bg-white rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center">
-            <div className="mb-4 text-red-500 flex justify-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center">
+            <div className="mb-4 text-red-400 flex justify-center">
               <AlertCircle size={40} />
             </div>
-            <h3 className="text-lg font-bold text-red-600 mb-2">{t("deletionFailedTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{t("membershipInUse")}</p>
+            <h3 className="text-lg font-bold text-red-400 mb-2">{t("deletionFailedTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-6">{t("membershipInUse")}</p>
             <button
               onClick={closeDeleteFailed}
-              className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+              className="px-5 py-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
             >
               {t("okLabel")}
             </button>
@@ -1332,19 +1350,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Generic Error Modal -- replaces native alert() for add/edit failures */}
       {genericError && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleGenericErrorBackdropClick}
         >
-          <div className="bg-white rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center">
-            <div className="mb-4 text-red-500 flex justify-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center">
+            <div className="mb-4 text-red-400 flex justify-center">
               <AlertCircle size={40} />
             </div>
-            <h3 className="text-lg font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{genericError}</p>
+            <h3 className="text-lg font-bold text-red-400 mb-2">{t("errorTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-6">{genericError}</p>
             <button
               onClick={closeGenericError}
-              className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+              className="px-5 py-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition"
             >
               {t("okLabel")}
             </button>
@@ -1356,18 +1374,18 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Cancel Unsaved Changes Confirm Modal -- same pattern as the Residents form */}
       {showCancelConfirm && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowCancelConfirm(null);
           }}
         >
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
-            <p className="text-[#6B7280] mb-5">{t("unsavedChangesMessage")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-gold-300 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-gold-300 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("stayButton")}</button>
+              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   const target = showCancelConfirm;
@@ -1375,7 +1393,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   if (target === "add") closeAddModal();
                   if (target === "edit") closeEditModal();
                 }}
-                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+                className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
               >
                 {t("discardCloseButton")}
               </button>

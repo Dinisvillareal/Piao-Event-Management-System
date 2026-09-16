@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Household;
 use App\Models\ActivityLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -240,6 +241,11 @@ class UserController extends Controller
                 }
                 User::where('household_id', $user->household_id)->update(['is_household_head' => false]);
                 $user->update(['is_household_head' => true]);
+
+                $household = Household::find($user->household_id);
+                if ($household) {
+                    $household->backfillFromHead($user);
+                }
             }
 
             if ($request->has('membership_ids')) {
@@ -462,7 +468,14 @@ class UserController extends Controller
                 'preferred_language',
             ]));
 
-            if ($request->has('household_id')) {
+            // Both blocks below are staff-only, same as role/has_account/
+            // membership_ids just further down -- a resident hitting this
+            // endpoint for their own profile (isOwnProfile() passes the
+            // gate at the top of this method) must not be able to link
+            // themselves into an arbitrary household or flag themselves as
+            // its head, which would also silently demote whoever the real
+            // head was.
+            if ($this->isStaff() && $request->has('household_id')) {
                 $originalHouseholdId = $user->household_id;
                 $user->household_id = $request->filled('household_id') ? (int) $request->household_id : null;
 
@@ -479,7 +492,7 @@ class UserController extends Controller
                 }
             }
 
-            if ($request->has('is_household_head')) {
+            if ($this->isStaff() && $request->has('is_household_head')) {
                 $wantsHead = filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN);
 
                 if ($wantsHead && !$user->household_id) {
@@ -530,6 +543,18 @@ class UserController extends Controller
             }
 
             $user->save();
+
+            // Whether this request just made them head or they already
+            // were one, keep the household's own address/contact number
+            // filled in from whatever the head's Residents-page record
+            // now has -- but only for a field the household doesn't
+            // already have its own value for (see backfillFromHead()).
+            if ($user->is_household_head && $user->household_id) {
+                $household = Household::find($user->household_id);
+                if ($household) {
+                    $household->backfillFromHead($user);
+                }
+            }
 
             if ($this->isStaff() && $request->has('membership_ids')) {
                 $ids = array_filter((array) $request->membership_ids);
