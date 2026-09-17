@@ -111,62 +111,62 @@ class SmsService
      * @return \App\Models\SmsLog[]
      */
     public function notifyHouseholds(iterable $residents, ?int $eventId, string $message): array
-    {
-        $logs = [];
+{
+    $logs = [];
 
-        // First pass: group residents by household so we can tell, per
-        // household, whether a head was actually designated.
-        $groups = [];
-        foreach ($residents as $resident) {
-            if ($resident->household_id) {
-                $key = 'hh:' . $resident->household_id;
-            } elseif ($resident->household_code) {
-                $key = 'code:' . $resident->household_code;
-            } else {
-                $key = 'user:' . $resident->id;
+    $groups = [];
+    foreach ($residents as $resident) {
+        if ($resident->household_id) {
+            $key = 'hh:' . $resident->household_id;
+        } elseif ($resident->household_code) {
+            $key = 'code:' . $resident->household_code;
+        } else {
+            $key = 'user:' . $resident->id;
+        }
+        $groups[$key][] = $resident;
+    }
+
+    foreach ($groups as $members) {
+        $head = null;
+        foreach ($members as $member) {
+            if ($member->is_household_head ?? false) {
+                $head = $member;
+                break;
             }
-            $groups[$key][] = $resident;
         }
 
-        foreach ($groups as $members) {
-            $head = null;
-            foreach ($members as $member) {
-                if ($member->is_household_head ?? false) {
-                    $head = $member;
-                    break;
-                }
+        if ($head) {
+            $number = $head->household?->contact_number ?: $head->household_contact_number ?: $head->contact_number;
+            if ($number) {
+                $personalized = $this->personalizeMessage($message, $head);
+                $logs[] = $this->send($head->id, $eventId, $number, $personalized);
             }
+            continue;
+        }
 
-            if ($head) {
-                // Normal case: one SMS to the designated head's number only,
-                // so the rest of the household isn't texted separately.
-                // Prefer the real Household record's shared contact_number
-                // (the number staff actually manage on the Households page)
-                // over the legacy per-user household_contact_number, which
-                // is never shown or editable there -- falling all the way
-                // back to the head's own personal number if neither is set.
-                $number = $head->household?->contact_number ?: $head->household_contact_number ?: $head->contact_number;
-                if ($number) {
-                    $logs[] = $this->send($head->id, $eventId, $number, $message);
-                }
+        foreach ($members as $resident) {
+            $number = $resident->household?->contact_number ?: $resident->household_contact_number ?: $resident->contact_number;
+            if (!$number) {
                 continue;
             }
-
-            // No head was designated for this household (or the resident
-            // isn't grouped into one at all) — don't silently drop everyone.
-            // A household with no head checked used to mean nobody in it
-            // ever got notified; instead, notify every member on their own
-            // number so a missed "head" pick doesn't cost a whole family
-            // their event notice.
-            foreach ($members as $resident) {
-                $number = $resident->household?->contact_number ?: $resident->household_contact_number ?: $resident->contact_number;
-                if (!$number) {
-                    continue;
-                }
-                $logs[] = $this->send($resident->id, $eventId, $number, $message);
-            }
+            $personalized = $this->personalizeMessage($message, $resident);
+            $logs[] = $this->send($resident->id, $eventId, $number, $personalized);
         }
-
-        return $logs;
     }
+
+    return $logs;
+}
+
+/**
+ * Replace {name} in the message with the recipient's full name.
+ */
+private function personalizeMessage(string $message, $resident): string
+{
+    $fullName = trim(($resident->first_name ?? '') . ' ' . ($resident->last_name ?? ''));
+    if ($fullName === '') {
+        $fullName = 'Resident';
+    }
+    return str_replace('{name}', $fullName, $message);
+}
+
 }
