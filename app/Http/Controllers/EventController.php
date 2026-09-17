@@ -521,7 +521,8 @@ public function destroy($id)
             ->get(['id', 'contact_number', 'household_id', 'household_code', 'is_household_head', 'household_contact_number']);
 
         $smsPrefix = $isUpdate ? 'UPDATED: ' : '';
-        $smsMessage = $smsPrefix . trim($event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.'));
+        // $smsMessage = $smsPrefix . trim($event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.'));
+        $smsMessage = $smsPrefix . 'To: {name} — ' . $event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.');
         app(SmsService::class)->notifyHouseholds($residents, $event->id, $smsMessage);
 
         $staff = auth()->user();
