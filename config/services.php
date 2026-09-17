@@ -29,12 +29,7 @@ return [
     ],
 
     'sms' => [
-        // Adviser recommendation: household head SMS notifications.
-        // Set SMS_PROVIDER=semaphore and SMS_API_KEY=... to send real texts;
-        // left unset, messages are logged only (see App\Services\SmsService).
-        'provider' => env('SMS_PROVIDER'),
-        'api_key' => env('SMS_API_KEY'),
-        'sender_name' => env('SMS_SENDER_NAME', 'BrgyPiao'),
+        'api_key' => env('SMS_API_KEY')
     ],
 
     'facebook' => [
