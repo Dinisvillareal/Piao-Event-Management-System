@@ -1049,7 +1049,7 @@ const handleDeleteResident = async () => {
           <p className="text-sm text-white/60 italic">{t("noCurrentStatusesAvailable")}</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-white/25 bg-white/10 px-5 py-4">
-            {currentStatuses.map((cs) => (
+            {[...currentStatuses].sort((a, b) => a.label.localeCompare(b.label)).map((cs) => (
               <label key={cs.id} className="flex items-center gap-2.5 text-base text-white cursor-pointer">
                 <input
                   type="checkbox"
@@ -1071,11 +1071,13 @@ const handleDeleteResident = async () => {
     const selMems = isEdit ? editingResident?.selectedMemberships ?? [] : newResident.selectedMemberships;
     const count = selMems.length;
 
-    const selectedMemberships = availableMemberships.filter((m) => selMems.includes(m.id));
+    const selectedMemberships = availableMemberships
+      .filter((m) => selMems.includes(m.id))
+      .sort((a, b) => a.name.localeCompare(b.name));
     const query = membershipSearch.trim().toLowerCase();
-    const filteredAvailable = availableMemberships.filter(
-      (m) => !selMems.includes(m.id) && m.name.toLowerCase().includes(query)
-    );
+    const filteredAvailable = availableMemberships
+      .filter((m) => !selMems.includes(m.id) && m.name.toLowerCase().includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name));
 
     return (
       <div className="rounded-2xl border border-white/25 bg-white/10 p-5 space-y-3">
