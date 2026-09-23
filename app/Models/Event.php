@@ -238,10 +238,20 @@ class Event extends Model
             ]);
         }
         
-        // Remove records for residents no longer eligible
+        // Remove records for residents no longer eligible -- but only ever
+        // delete a row that's still a blank, never-used placeholder
+        // (time_in and time_out both null). A row that already has a real
+        // time_in or time_out means someone actually attended, and no later
+        // change to the event's targeting should be able to erase that --
+        // there's no SoftDeletes on EventAttendance, so a delete here is
+        // instant and permanent with nothing to restore from Archive.
         $removedResidentIds = array_diff($existingResidentIds, $eligibleResidentIds);
         if (!empty($removedResidentIds)) {
-            $this->attendances()->whereIn('user_id', $removedResidentIds)->delete();
+            $this->attendances()
+                ->whereIn('user_id', $removedResidentIds)
+                ->whereNull('time_in')
+                ->whereNull('time_out')
+                ->delete();
         }
     }
 

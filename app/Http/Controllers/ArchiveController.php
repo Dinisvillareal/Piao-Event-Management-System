@@ -277,6 +277,8 @@ class ArchiveController extends Controller
                 case 'resident':
                     $item = User::onlyTrashed()->findOrFail($request->id);
                     $itemName = $item->first_name . ' ' . $item->last_name;
+                    $item->deleted_by = null;
+                    $item->save();
                     $item->restore();
                     break;
 

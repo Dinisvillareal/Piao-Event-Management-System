@@ -10,6 +10,10 @@ class ActivityLogController extends Controller
 {
     public function index(Request $request)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $query = ActivityLog::query();
 
         // 🔍 SEARCH FILTER
@@ -64,6 +68,10 @@ class ActivityLogController extends Controller
 
     public function show($id)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         return response()->json(
             ActivityLog::findOrFail($id)
         );
@@ -71,6 +79,10 @@ class ActivityLogController extends Controller
 
     public function today(Request $request)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $query = ActivityLog::query()
             ->whereDate('created_at', now()->timezone('Asia/Manila'));
 
