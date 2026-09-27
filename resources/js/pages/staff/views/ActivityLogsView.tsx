@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Search,
   Filter,
@@ -11,6 +11,7 @@ import {
   Users,
   Bell,
   QrCode,
+  ArrowUpDown,
 } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import DatePicker from "../../../components/ui/DatePicker";
@@ -28,30 +29,32 @@ type Activity = {
 
 const itemsPerPage = 20;
 
-// Badge colors per module type -- sage for routine records, gold for
-// scans/notifications (worth a glance), maroon for auth/system events
-// (the ones staff most want to be able to spot at a glance).
+// Dark-palette badge colors per module type -- teal for routine records,
+// gold for scans/notifications (worth a glance), rust for auth/system
+// events (the ones staff most want to be able to spot at a glance), same
+// semantic mapping the light version used, just recolored for the dark
+// navy/gold/teal system used everywhere else.
 const MODULE_BADGE_STYLES: Record<string, string> = {
-  system: "bg-[#8A3D2C]/10 text-[#5C2A1E] border border-[#8A3D2C]/30",
-  scan: "bg-gold-50 text-gold-700 border border-gold-200",
-  notification: "bg-gold-50 text-gold-700 border border-gold-200",
-  event: "bg-sage-50 text-sage-700 border border-sage-200",
-  resident: "bg-sage-50 text-sage-700 border border-sage-200",
-  membership: "bg-sage-50 text-sage-700 border border-sage-200",
+  system: "bg-[#8A3D2C]/25 text-[#E2A088] border border-[#8A3D2C]/40",
+  scan: "bg-gold-400/15 text-gold-300 border border-gold-400/30",
+  notification: "bg-gold-400/15 text-gold-300 border border-gold-400/30",
+  event: "bg-[#4FBEB0]/15 text-[#7DD8CB] border border-[#4FBEB0]/30",
+  resident: "bg-[#4FBEB0]/15 text-[#7DD8CB] border border-[#4FBEB0]/30",
+  membership: "bg-[#4FBEB0]/15 text-[#7DD8CB] border border-[#4FBEB0]/30",
 };
-const DEFAULT_MODULE_BADGE = "bg-[#F1EEE5] text-[#37423F] border border-[#E6E0D3]";
+const DEFAULT_MODULE_BADGE = "bg-white/10 text-white/60 border border-white/15";
 
 // Same palette, applied to each feed item's icon roundel instead of a
 // table badge -- keeps type recognizable at a glance in a scannable feed.
 const MODULE_ICON_WRAP: Record<string, string> = {
-  system: "bg-[#8A3D2C]/10 text-[#5C2A1E]",
-  scan: "bg-gold-50 text-gold-700",
-  notification: "bg-gold-50 text-gold-700",
-  event: "bg-sage-50 text-sage-700",
-  resident: "bg-sage-50 text-sage-700",
-  membership: "bg-sage-50 text-sage-700",
+  system: "bg-[#8A3D2C]/25 text-[#E2A088]",
+  scan: "bg-gold-400/15 text-gold-300",
+  notification: "bg-gold-400/15 text-gold-300",
+  event: "bg-[#4FBEB0]/15 text-[#7DD8CB]",
+  resident: "bg-[#4FBEB0]/15 text-[#7DD8CB]",
+  membership: "bg-[#4FBEB0]/15 text-[#7DD8CB]",
 };
-const DEFAULT_ICON_WRAP = "bg-[#F1EEE5] text-[#37423F]";
+const DEFAULT_ICON_WRAP = "bg-white/10 text-white/60";
 
 const MODULE_ICONS: Record<string, typeof ActivityIcon> = {
   system: ShieldAlert,
@@ -68,6 +71,7 @@ export default function ActivityLogsView() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
@@ -100,8 +104,21 @@ export default function ActivityLogsView() {
   // =========================
   // ✅ FETCH — send ALL filters to backend
   // =========================
+  // Tags every fetch with an ever-increasing id so a slower, older
+  // request can never overwrite what a newer one already returned. This
+  // app fires more than one fetch per user action -- a filter/sort change
+  // triggers this effect AND (when not already on page 1) a follow-up
+  // page-reset re-fetch, and the 20-second background poll can already be
+  // in flight when the user changes something -- so without this guard,
+  // whichever response's network round-trip happens to land last wins,
+  // even when it was the OLDER, now-stale request (e.g. switching to
+  // "Oldest First" appearing to do nothing because a leftover
+  // "Newest First" response for the previous selection lands afterward).
+  const fetchRequestIdRef = useRef(0);
+
   const fetchActivities = async (page = 1, background = false) => {
     if (!background) setLoading(true);
+    const requestId = ++fetchRequestIdRef.current;
     try {
       // Build query params with all filters
       const params = new URLSearchParams({
@@ -109,10 +126,13 @@ export default function ActivityLogsView() {
         search: searchQuery,
         type: filterType !== "all" ? filterType : "",
         date: selectedDate,
+        sort: sortOrder,
       });
 
       const res = await fetch(`/activity-logs?${params.toString()}`);
       const json = await res.json();
+
+      if (requestId !== fetchRequestIdRef.current) return; // superseded by a newer request
 
       const logs = json.data ?? [];
 
@@ -132,6 +152,7 @@ export default function ActivityLogsView() {
       setLastUpdated(new Date());
 
     } catch (err) {
+      if (requestId !== fetchRequestIdRef.current) return; // superseded by a newer request
       console.error("Error loading activity logs:", err);
       if (!background) {
         setActivities([]);
@@ -139,19 +160,19 @@ export default function ActivityLogsView() {
         setTotalRecords(0);
       }
     } finally {
-      if (!background) setLoading(false);
+      if (requestId === fetchRequestIdRef.current && !background) setLoading(false);
     }
   };
 
   // Fetch when page, search, filter, or date changes
   useEffect(() => {
     fetchActivities(currentPage);
-  }, [currentPage, searchQuery, filterType, selectedDate]);
+  }, [currentPage, searchQuery, filterType, selectedDate, sortOrder]);
 
   // Reset to page 1 when any filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterType, selectedDate]);
+  }, [searchQuery, filterType, selectedDate, sortOrder]);
 
   // Quiet background poll -- keeps the log fresh without disturbing
   // whatever the staff member is currently reading or typing.
@@ -159,7 +180,7 @@ export default function ActivityLogsView() {
     const poll = setInterval(() => fetchActivities(currentPage, true), 20000);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, searchQuery, filterType, selectedDate]);
+  }, [currentPage, searchQuery, filterType, selectedDate, sortOrder]);
 
   useEffect(() => {
     const tick = setInterval(() => setNowTick(Date.now()), 1000);
@@ -251,6 +272,11 @@ export default function ActivityLogsView() {
     { value: "household", label: t("households") },
     { value: "profiling", label: t("profilingSettingsOption") },
     { value: "archive", label: t("archiveActivityOption") },
+  ].sort((a, b) => a.label.localeCompare(b.label));
+
+  const sortOptions = [
+    { value: "desc", label: t("newestFirstLabel") },
+    { value: "asc", label: t("oldestFirstLabel") },
   ];
 
   const statCards: Array<{
@@ -299,11 +325,11 @@ export default function ActivityLogsView() {
 
   const SkeletonItem = () => (
     <div className="relative pl-11 pb-6 last:pb-0">
-      <span className="absolute left-[15px] top-9 bottom-0 w-px bg-[#F1EEE5]" />
-      <span className="absolute left-0 top-0 h-8 w-8 rounded-full bg-[#F1EEE5] animate-pulse" />
-      <div className="h-3.5 bg-[#F1EEE5] rounded w-1/2 animate-pulse" />
-      <div className="h-3 bg-[#F1EEE5] rounded w-2/3 mt-2 animate-pulse" />
-      <div className="h-3 bg-[#F1EEE5] rounded w-1/3 mt-2 animate-pulse" />
+      <span className="absolute left-[15px] top-9 bottom-0 w-px bg-white/10" />
+      <span className="absolute left-0 top-0 h-8 w-8 rounded-full bg-white/10 animate-pulse" />
+      <div className="h-3.5 bg-white/10 rounded w-1/2 animate-pulse" />
+      <div className="h-3 bg-white/10 rounded w-2/3 mt-2 animate-pulse" />
+      <div className="h-3 bg-white/10 rounded w-1/3 mt-2 animate-pulse" />
     </div>
   );
 
@@ -313,19 +339,26 @@ export default function ActivityLogsView() {
   let renderedFeedIndex = 0;
 
   return (
+    <>
+    {/* Full-bleed dark navy page -- same technique and palette as the
+        Dashboard/Residents/Households/Memberships/Events/Budget/Returns
+        pages, so Activity Logs reads as part of the same system instead
+        of the old light "paper" page. This page has no add/edit modal of
+        its own, just the feed below. */}
+    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("activitylogs")}</h1>
-          <p className="mt-1.5 text-sm text-[#6B7280] max-w-xl">{t("activityLogsSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("activitylogs")}</h1>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("activityLogsSubtitle")}</p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-[#E6E0D3] bg-white px-3.5 py-2 shrink-0">
+        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 shrink-0">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sage-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-sage-600" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
           </span>
-          <span className="text-xs font-bold uppercase tracking-wide text-sage-700">{t("liveLabel")}</span>
-          {lastUpdatedLabel && <span className="text-xs text-[#9C9584]">&bull; {lastUpdatedLabel}</span>}
+          <span className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB]">{t("liveLabel")}</span>
+          {lastUpdatedLabel && <span className="text-xs text-white/40">&bull; {lastUpdatedLabel}</span>}
         </div>
       </div>
 
@@ -352,15 +385,15 @@ export default function ActivityLogsView() {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 rounded-2xl border border-[#E6E0D3] bg-white p-3">
+        <div className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9C9584]" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("searchActivitiesPlaceholder")}
-              className="h-11 w-full rounded-xl border border-transparent bg-transparent pl-10 pr-3 text-sm text-[#1A1A1A] placeholder:text-[#9C9584] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+              className="h-11 w-full rounded-xl border border-transparent bg-transparent pl-10 pr-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
           </div>
         </div>
@@ -371,32 +404,41 @@ export default function ActivityLogsView() {
             onChange={setFilterType}
             options={typeOptions}
             className="h-11 pl-10 pr-8"
-            icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-sage-700/70 pointer-events-none" />}
+            icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+            dark
           />
-          <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 px-4" />
+          <FilterDropdown
+            value={sortOrder}
+            onChange={(v) => setSortOrder(v as "desc" | "asc")}
+            options={sortOptions}
+            className="h-11 pl-10 pr-8"
+            icon={<ArrowUpDown className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+            dark
+          />
+          <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 px-4" dark />
         </div>
       </div>
 
-      <p className="text-xs text-[#6B7280]">
+      <p className="text-xs text-white/45">
         {filteredActivities.length} {t("recordsFoundCount")} &bull; {t("showingLabel")} {itemsPerPage} {t("perPage")}
       </p>
 
-      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5 sm:p-6">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
         {loading ? (
           <div>{Array(6).fill(0).map((_, i) => <SkeletonItem key={i} />)}</div>
         ) : filteredActivities.length === 0 ? (
-          <div className="py-12 text-center text-[#6B7280]">
-            <Filter size={32} className="mx-auto mb-3 text-[#9C9584]" />
+          <div className="py-12 text-center text-white/40">
+            <Filter size={32} className="mx-auto mb-3 text-white/25" />
             {t("noActivityMatch")}
           </div>
         ) : (
           groupedActivities.map((group) => (
             <div key={group.key} className="mb-6 last:mb-0">
               <div className="flex items-center gap-3 mb-4">
-                <span className="text-xs font-bold uppercase tracking-wide text-[#1A1A1A] bg-[#F1EEE5] rounded-full px-3 py-1 shrink-0">
+                <span className="text-xs font-bold uppercase tracking-wide text-white bg-white/10 rounded-full px-3 py-1 shrink-0">
                   {group.label}
                 </span>
-                <span className="h-px flex-1 bg-[#E6E0D3]" />
+                <span className="h-px flex-1 bg-white/10" />
               </div>
 
               <div>
@@ -415,34 +457,34 @@ export default function ActivityLogsView() {
 
                   return (
                     <div key={act.id} className={`relative pl-11 ${isLast ? "" : "pb-6"} group`}>
-                      {!isLast && <span className="absolute left-[15px] top-9 bottom-0 w-px bg-[#E6E0D3]" />}
+                      {!isLast && <span className="absolute left-[15px] top-9 bottom-0 w-px bg-white/10" />}
                       <span className={`absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full ${iconWrap}`}>
                         <Icon className="h-4 w-4" />
                       </span>
 
-                      <div className="rounded-xl -mx-2 px-2 py-1.5 transition-colors group-hover:bg-sage-50/60">
+                      <div className="rounded-xl -mx-2 px-2 py-1.5 transition-colors group-hover:bg-white/[0.05]">
                         <div className="flex items-start justify-between gap-3 flex-wrap">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-sm font-semibold text-[#1A1A1A]">{act.action}</p>
+                              <p className="text-sm font-semibold text-white">{act.action}</p>
                               {isFresh && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-sage-50 text-sage-700 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-sage-500 animate-pulse" />
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[#4FBEB0]/15 text-[#7DD8CB] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-[#4FBEB0] animate-pulse" />
                                   {t("newLabel")}
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-[#6B7280] mt-0.5">{act.description}</p>
+                            <p className="text-sm text-white/50 mt-0.5">{act.description}</p>
                             <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${MODULE_BADGE_STYLES[act.type ?? ""] ?? DEFAULT_MODULE_BADGE}`}>
                                 {act.module}
                               </span>
-                              <span className="text-xs text-[#9C9584]">{t("staffColon")} {act.user_code}</span>
+                              <span className="text-xs text-white/40">{t("staffColon")} {act.user_code}</span>
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
-                            <p className="text-xs font-semibold text-[#37423F] whitespace-nowrap">{timeOfDay}</p>
-                            <p className="text-[11px] text-[#9C9584] mt-0.5 whitespace-nowrap">{relativeTimeLabel(act.created_at)}</p>
+                            <p className="text-xs font-semibold text-white/70 whitespace-nowrap">{timeOfDay}</p>
+                            <p className="text-[11px] text-white/40 mt-0.5 whitespace-nowrap">{relativeTimeLabel(act.created_at)}</p>
                           </div>
                         </div>
                       </div>
@@ -457,24 +499,24 @@ export default function ActivityLogsView() {
 
       {totalPages > 1 && (
         <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
-          <p className="text-sm text-[#6B7280] text-center sm:text-left">
+          <p className="text-sm text-white/45 text-center sm:text-left">
             {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages}
           </p>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="h-8 w-8 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >
               ←
             </button>
-            <span className="h-8 w-8 rounded-full bg-sage-800 text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+            <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
               {currentPage}
             </span>
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="h-8 w-8 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >
               →
             </button>
@@ -482,5 +524,7 @@ export default function ActivityLogsView() {
         </div>
       )}
     </div>
+    </div>
+    </>
   );
 }

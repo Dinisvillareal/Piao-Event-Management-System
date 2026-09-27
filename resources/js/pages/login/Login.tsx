@@ -732,7 +732,14 @@ export default function LoginPage() {
                 </p>
 
                 {showContact && (
-                  <div className="absolute w-[170px] left-full ml-3 flex items-center gap-2 border border-white/10 bg-[#0F1B33] rounded-xl px-4 py-2 text-sm text-white shadow">
+                  // Below-and-centered on phones/small tablets, where the
+                  // trigger text is itself centered on the page -- popping
+                  // this out to the right (the sm+ layout below) would push
+                  // a fixed 170px box past the right edge of a narrow
+                  // viewport, clipping it or forcing the whole page to
+                  // scroll horizontally. From `sm:` up there's enough room
+                  // beside the centered form for the original side popout.
+                  <div className="absolute z-10 left-1/2 top-full mt-2 w-[calc(100vw-2.5rem)] max-w-[240px] -translate-x-1/2 sm:left-full sm:top-0 sm:mt-0 sm:ml-3 sm:w-[170px] sm:max-w-none sm:translate-x-0 flex items-center gap-2 border border-white/10 bg-[#0F1B33] rounded-xl px-4 py-2 text-sm text-white shadow">
                     <span>{contactNumber}</span>
                     <Copy
                       className="h-4 w-4 cursor-pointer text-white/50 hover:text-[#4FBEB0]"

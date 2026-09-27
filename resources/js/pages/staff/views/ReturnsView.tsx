@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import api from "../../../lib/api";
 import DatePicker from "../../../components/ui/DatePicker";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface OverdueEventItem {
@@ -227,19 +228,29 @@ export default function ReturnsView() {
   ];
 
   return (
+    <>
+    {/* Full-bleed dark navy page -- same technique and palette as the
+        Dashboard/Residents/Households/Memberships/Events/Budget pages, so
+        Returns reads as part of the same system instead of the old light
+        "paper" page. The Release Items modal is darkened along with the
+        page (it's this page's core action, same treatment as the
+        Households/Inventory/Budget Edit modals); the confirm and success
+        modals further below stay on their original light theme, same
+        scoping used everywhere else. */}
+    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("returnsTitle")}</h1>
-          <p className="mt-1.5 text-sm text-[#6B7280] max-w-xl">{t("returnsSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("returnsTitle")}</h1>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("returnsSubtitle")}</p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-[#E6E0D3] bg-white px-3.5 py-2 shrink-0">
+        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 shrink-0">
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sage-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-sage-600" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
           </span>
-          <span className="text-xs font-bold uppercase tracking-wide text-sage-700">{t("liveLabel")}</span>
-          {lastUpdatedLabel && <span className="text-xs text-[#9C9584]">&bull; {lastUpdatedLabel}</span>}
+          <span className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB]">{t("liveLabel")}</span>
+          {lastUpdatedLabel && <span className="text-xs text-white/40">&bull; {lastUpdatedLabel}</span>}
         </div>
       </div>
 
@@ -262,26 +273,26 @@ export default function ReturnsView() {
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 rounded-2xl border border-[#E6E0D3] bg-white p-3">
+        <div className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
           <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#9C9584]" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("searchReturnsPlaceholder")}
-              className="h-11 w-full rounded-xl border border-transparent bg-transparent pl-10 pr-3 text-sm text-[#1A1A1A] placeholder:text-[#9C9584] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+              className="h-11 w-full rounded-xl border border-transparent bg-transparent pl-10 pr-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
           </div>
         </div>
         <div className="flex items-end gap-3">
           <div>
-            <p className="text-xs font-semibold text-[#6B7280] mb-1">{t("filterEndedDateLabel")}</p>
-            <DatePicker value={endedDate} onChange={setEndedDate} className="h-11 px-4" />
+            <p className="text-xs font-semibold text-white/50 mb-1">{t("filterEndedDateLabel")}</p>
+            <DatePicker value={endedDate} onChange={setEndedDate} className="h-11 px-4" dark />
           </div>
           {(search || endedDate) && (
             <button
               onClick={clearFilters}
-              className="h-11 inline-flex items-center gap-1.5 rounded-full border border-[#E6E0D3] bg-white px-4 text-sm text-[#37423F] hover:bg-sage-50 transition"
+              className="h-11 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-4 text-sm text-white hover:bg-white/10 transition"
             >
               <RotateCcw className="h-3.5 w-3.5" /> {t("clearFiltersLabel")}
             </button>
@@ -290,57 +301,57 @@ export default function ReturnsView() {
       </div>
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+        <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>
       )}
 
       {loading ? (
         <div className="flex justify-center py-16">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sage-600" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4FBEB0]" />
         </div>
       ) : events.length === 0 ? (
-        <div className="rounded-2xl border border-[#E6E0D3] bg-white p-12 text-center">
-          <CheckCircle2 className="h-10 w-10 mx-auto text-sage-600 mb-3" />
-          <p className="text-[#1A1A1A] font-semibold">{t("noOverdueReturns")}</p>
-          <p className="text-sm text-[#6B7280] mt-1">{t("noOverdueReturnsHint")}</p>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-12 text-center">
+          <CheckCircle2 className="h-10 w-10 mx-auto text-[#4FBEB0] mb-3" />
+          <p className="text-white font-semibold">{t("noOverdueReturns")}</p>
+          <p className="text-sm text-white/45 mt-1">{t("noOverdueReturnsHint")}</p>
         </div>
       ) : filteredEvents.length === 0 ? (
-        <div className="rounded-2xl border border-[#E6E0D3] bg-white p-12 text-center">
-          <p className="text-[#1A1A1A] font-semibold">{t("noResultsForFilterLabel")}</p>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-12 text-center">
+          <p className="text-white font-semibold">{t("noResultsForFilterLabel")}</p>
         </div>
       ) : (
         <>
-          <div className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden">
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-[#E6E0D3]">
-                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("eventColumnLabel")}</th>
-                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("endedOnColumnLabel")}</th>
-                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("daysOverdueColumnLabel")}</th>
-                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("itemsColumnLabel")}</th>
-                    <th className="py-3 px-4 text-right text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("actionColumnLabel")}</th>
+                  <tr className="border-b border-white/10">
+                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("eventColumnLabel")}</th>
+                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("endedOnColumnLabel")}</th>
+                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("daysOverdueColumnLabel")}</th>
+                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("itemsColumnLabel")}</th>
+                    <th className="py-3 px-4 text-right text-[11px] font-bold uppercase tracking-wide text-white">{t("actionColumnLabel")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedEvents.map((ev) => {
                     const days = daysOverdue(ev.ended_at);
                     return (
-                      <tr key={ev.id} className="border-b border-[#F1EEE5] last:border-0 hover:bg-sage-50/60 transition-colors">
+                      <tr key={ev.id} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.05] transition-colors">
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#8A3D2C]/10 shrink-0">
-                              <PackageX className="h-4 w-4 text-[#5C2A1E]" />
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#8A3D2C]/25 shrink-0">
+                              <PackageX className="h-4 w-4 text-[#E2A088]" />
                             </div>
-                            <p className="font-semibold text-[#1A1A1A] truncate">{ev.name}</p>
+                            <p className="font-semibold text-white truncate">{ev.name}</p>
                           </div>
                         </td>
-                        <td className="py-3.5 px-4 text-[#37423F] whitespace-nowrap">{formatEndedAt(ev.ended_at)}</td>
+                        <td className="py-3.5 px-4 text-white/60 whitespace-nowrap">{formatEndedAt(ev.ended_at)}</td>
                         <td className="py-3.5 px-4">
-                          <span className="inline-flex items-center rounded-full bg-[#8A3D2C]/10 text-[#5C2A1E] border border-[#8A3D2C]/30 px-2.5 py-1 text-xs font-bold">
+                          <span className="inline-flex items-center rounded-full bg-[#8A3D2C]/25 text-[#E2A088] border border-[#8A3D2C]/40 px-2.5 py-1 text-xs font-bold">
                             {t("daysOverdueBadge").replace("{n}", String(days))}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 text-[#6B7280]">
+                        <td className="py-3.5 px-4 text-white/50">
                           <ul className="space-y-0.5">
                             {ev.items.map((it) => (
                               <li key={it.id} className="text-xs">{it.quantity}&times; {it.name}</li>
@@ -350,7 +361,7 @@ export default function ReturnsView() {
                         <td className="py-3.5 px-4 text-right">
                           <button
                             onClick={() => setSelectedEventId(ev.id)}
-                            className="inline-flex items-center gap-2 rounded-full bg-[#1A1A1A] hover:bg-black text-white text-xs font-bold uppercase tracking-wide px-4 py-2 transition"
+                            className="inline-flex items-center gap-2 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] text-xs font-bold uppercase tracking-wide px-4 py-2 transition"
                           >
                             <Undo2 className="h-3.5 w-3.5" />
                             {t("reviewLabel")}
@@ -366,24 +377,24 @@ export default function ReturnsView() {
 
           {totalPages > 1 && (
             <div className="flex flex-col sm:flex-row gap-3 justify-between items-center mt-6">
-              <p className="text-sm text-[#6B7280] text-center sm:text-left">
+              <p className="text-sm text-white/45 text-center sm:text-left">
                 {t("pageOfLabel")} {safePage} {t("ofPagesLabel")} {totalPages} &bull; {filteredEvents.length} {t("recordsShownLabel")}
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={safePage === 1}
-                  className="h-8 w-8 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
                   &larr;
                 </button>
-                <span className="h-8 w-8 rounded-full bg-sage-800 text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
                   {safePage}
                 </span>
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={safePage === totalPages}
-                  className="h-8 w-8 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
                   &rarr;
                 </button>
@@ -392,45 +403,51 @@ export default function ReturnsView() {
           )}
         </>
       )}
+      </div>
+      </div>
 
+      {/* Release Items modal -- dark navy card, same treatment as the
+          Households/Inventory/Budget core edit modals, since releasing
+          items is this page's main action rather than a peripheral
+          confirm/success alert. */}
       {modalEvent && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
           onClick={() => setSelectedEventId(null)}
         >
           <div
-            className="bg-white rounded-2xl w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl flex flex-col"
+            className="bg-[#0A0E1A] border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-5 py-4 border-b border-[#E6E0D3] flex items-start justify-between gap-3">
+            <div className="px-5 py-4 border-b border-white/10 flex items-start justify-between gap-3">
               <div>
-                <h2 className="font-display text-lg font-bold text-[#1A1A1A]">{modalEvent.name}</h2>
-                <p className="text-xs text-[#5C2A1E] mt-0.5">{t("endedOnLabel")} {formatEndedAt(modalEvent.ended_at)}</p>
+                <h2 className="font-display text-lg font-bold text-white">{modalEvent.name}</h2>
+                <p className="text-xs text-[#E2A088] mt-0.5">{t("endedOnLabel")} {formatEndedAt(modalEvent.ended_at)}</p>
               </div>
-              <button onClick={() => setSelectedEventId(null)} className="text-[#9C9584] hover:text-[#1A1A1A] p-1">
+              <button onClick={() => setSelectedEventId(null)} className="text-white/50 hover:text-white p-1">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <div className="p-5 overflow-y-auto space-y-2">
-              <p className="text-xs text-[#6B7280] mb-2">{t("releaseEachItemHint")}</p>
+              <p className="text-xs text-white/50 mb-2">{t("releaseEachItemHint")}</p>
               {modalEvent.items.map((it) => (
-                <div key={it.id} className="flex items-center justify-between gap-3 rounded-xl bg-[#FAF9F5] border border-[#F1EEE5] px-4 py-3 flex-wrap">
-                  <p className="text-sm text-[#1A1A1A]">{it.quantity}&times; {it.name}</p>
+                <div key={it.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 flex-wrap">
+                  <p className="text-sm text-white">{it.quantity}&times; {it.name}</p>
                   <div className="flex items-center gap-2 ml-auto">
-                    <label className="text-xs text-[#6B7280]">{t("qtyLabel")}</label>
+                    <label className="text-xs text-white/50">{t("qtyLabel")}</label>
                     <input
                       type="number"
                       min={1}
                       max={it.quantity}
                       value={qtyFor(it)}
                       onChange={(e) => setQtyFor(it, Number(e.target.value))}
-                      className="w-16 rounded-lg border border-[#E6E0D3] px-2 py-1.5 text-sm text-center text-[#1A1A1A] focus:border-sage-400 focus:outline-none focus:ring-1 focus:ring-sage-700/20"
+                      className="w-16 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-sm text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
                     />
                     <button
                       onClick={() => setConfirmRelease({ eventId: modalEvent.id, item: it, qty: qtyFor(it) })}
                       disabled={releasingItemId === it.id}
-                      className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-[#5C2A1E] hover:bg-[#4A2118] disabled:opacity-60 text-white text-xs font-semibold px-4 py-2 transition"
+                      className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-gold-400 hover:bg-gold-500 disabled:opacity-60 text-[#08130F] text-xs font-bold px-4 py-2 transition"
                     >
                       <Undo2 className="h-3.5 w-3.5" />
                       {releasingItemId === it.id ? t("releasingLabel") : t("releaseLabel")}
@@ -440,8 +457,8 @@ export default function ReturnsView() {
               ))}
             </div>
 
-            <div className="px-5 py-4 border-t border-[#E6E0D3] flex justify-end">
-              <button onClick={() => setSelectedEventId(null)} className="px-5 py-2 rounded-full border border-[#E6E0D3] text-[#37423F] text-sm hover:bg-sage-50 transition">
+            <div className="px-5 py-4 border-t border-white/10 flex justify-end">
+              <button onClick={() => setSelectedEventId(null)} className="px-5 py-2 rounded-full border border-white/15 text-white text-sm hover:bg-white/10 transition">
                 {t("closeLabel")}
               </button>
             </div>
@@ -467,18 +484,7 @@ export default function ReturnsView() {
         z={10000}
       />
 
-      {successMessage && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[10000] px-4" onClick={() => setSuccessMessage(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-sage-700 flex justify-center"><CheckCircle2 size={40} /></div>
-            <h3 className="font-display text-xl font-bold text-[#1A1A1A] mb-2">{t("returnSuccessTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{successMessage}</p>
-            <button onClick={() => setSuccessMessage(null)} className="px-6 py-2.5 rounded-full bg-sage-800 hover:bg-sage-900 text-white transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+      <StatusModal open={!!successMessage} type="success" title={t("returnSuccessTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} z={10000} />
+    </>
   );
 }

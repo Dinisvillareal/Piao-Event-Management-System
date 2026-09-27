@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Wallet, Plus, X, AlertTriangle, Trash2, XCircle, Pencil, Paperclip, FileText, Download, CheckCircle2, Banknote, PiggyBank, Search } from "lucide-react";
+import { Wallet, Plus, X, AlertTriangle, Trash2, Pencil, Paperclip, FileText, Download, Banknote, PiggyBank, Search } from "lucide-react";
+import StatusModal from "../../../components/ui/StatusModal";
 import api, { apiErrorMessage } from "../../../lib/api";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -202,11 +203,14 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     return isNaN(d.getTime()) ? null : d;
   };
 
+  // Dark-palette equivalents of the same three statuses, same teal/gold/
+  // neutral mapping used for event status pills everywhere else (Events
+  // list/detail).
   const getEventStatus = (event: EventOption): { label: "Upcoming" | "Ongoing" | "Past"; color: string; dot: string } => {
     const now = new Date();
-    const upcoming = { label: "Upcoming" as const, color: "bg-sage-50 text-sage-700", dot: "bg-sage-600" };
-    const ongoing = { label: "Ongoing" as const, color: "bg-gold-50 text-gold-700", dot: "bg-gold-600" };
-    const past = { label: "Past" as const, color: "bg-[#E6E0D3]/70 text-[#6B7280]", dot: "bg-[#8A8474]" };
+    const upcoming = { label: "Upcoming" as const, color: "bg-[#4FBEB0]/15 text-[#7DD8CB]", dot: "bg-[#4FBEB0]" };
+    const ongoing = { label: "Ongoing" as const, color: "bg-gold-400/15 text-gold-300", dot: "bg-gold-400" };
+    const past = { label: "Past" as const, color: "bg-white/10 text-white/50", dot: "bg-white/40" };
 
     const start = parseEventDateTime(event.event_start) ?? parseEventDateTime(event.date);
     if (!start) return upcoming;
@@ -449,19 +453,29 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     : 0;
 
   return (
+    <>
+    {/* Full-bleed dark navy page -- same technique and palette as the
+        Dashboard/Residents/Households/Memberships/Events pages, so Budget
+        & Expenses reads as part of the same system instead of the old
+        light "paper" page. The smaller modals further below (receipt
+        viewer, confirm/success/error/delete) stay on their original light
+        theme, same scoping used on every other staff view; the Edit
+        Expense modal is darkened along with the page, matching the
+        Households/Inventory Edit modal treatment. */}
+    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("budget")}</h1>
-          <p className="mt-1.5 text-sm text-[#6B7280] max-w-xl">{t("budgetSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("budget")}</h1>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("budgetSubtitle")}</p>
         </div>
         {/* Genuinely live -- fetchPortfolio() re-polls /reports/budget-summary
             every 20s (see effect above), this just renders how long ago
             that last landed, ticking every second off nowTick. */}
-        <div className="hidden sm:inline-flex items-center gap-1.5 self-start sm:self-auto rounded-full border border-[#E6E0D3] bg-white px-3.5 py-2 text-xs font-medium text-[#6B7280] shrink-0" title={t("liveLabel")}>
+        <div className="hidden sm:inline-flex items-center gap-1.5 self-start sm:self-auto rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-white/50 shrink-0" title={t("liveLabel")}>
           <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sage-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-sage-600" />
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
           </span>
           {lastUpdatedLabel}
         </div>
@@ -492,24 +506,24 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1fr_1.4fr]">
-        <div className="rounded-2xl border border-[#E6E0D3] bg-white p-4">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("searchEventsPlaceholderShort")}
-              className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
           </div>
           <div className="mt-3 max-h-[55vh] overflow-y-auto space-y-2 pr-1">
             {filteredEvents.length === 0 ? (
-              <p className="text-sm text-[#6B7280] italic py-6 text-center">{t("noEventsFound")}</p>
+              <p className="text-sm text-white/40 italic py-6 text-center">{t("noEventsFound")}</p>
             ) : (
               groupedEvents.map(([dateLabel, eventsInGroup]) => (
                 <div key={dateLabel}>
-                  <p className="px-1 pb-1.5 pt-3 first:pt-0 text-[11px] font-bold uppercase tracking-wide text-sage-700/70">
+                  <p className="px-1 pb-1.5 pt-3 first:pt-0 text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">
                     {dateLabel === THIS_WEEK_KEY ? t("thisWeekLabel") : dateLabel === UNKNOWN_DATE_KEY ? t("unknownDateLabel") : dateLabel}
                   </p>
                   <div className="space-y-2">
@@ -532,16 +546,16 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                           onClick={() => setSelectedEventId(String(e.id))}
                           className={`w-full text-left rounded-2xl px-4 py-3 transition ${
                             isSelected
-                              ? "bg-sage-800 text-white shadow-md"
-                              : "bg-[#FAF9F5] text-[#1A1A1A] hover:bg-sage-50"
+                              ? "bg-gold-400 text-[#08130F] shadow-md"
+                              : "bg-white/[0.03] border border-white/10 text-white hover:bg-white/[0.06]"
                           }`}
                         >
                           <p className="font-semibold text-sm truncate">{e.title}</p>
-                          {timeLabel && <p className={`text-xs ${isSelected ? "text-white/70" : "text-[#6B7280]"}`}>{timeLabel}</p>}
+                          {timeLabel && <p className={`text-xs ${isSelected ? "text-[#08130F]/70" : "text-white/45"}`}>{timeLabel}</p>}
                           {rowPct !== null && (
-                            <div className={`mt-2 h-1.5 rounded-full overflow-hidden ${isSelected ? "bg-white/25" : "bg-[#E6E0D3]"}`}>
+                            <div className={`mt-2 h-1.5 rounded-full overflow-hidden ${isSelected ? "bg-[#08130F]/20" : "bg-white/10"}`}>
                               <div
-                                className={`h-full rounded-full ${rowOver ? "bg-red-500" : isSelected ? "bg-white" : "bg-sage-600"}`}
+                                className={`h-full rounded-full ${rowOver ? "bg-red-500" : isSelected ? "bg-[#08130F]" : "bg-[#4FBEB0]"}`}
                                 style={{ width: `${rowPct}%` }}
                               />
                             </div>
@@ -555,8 +569,8 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
             )}
           </div>
           {eventListTotalPages > 1 && (
-            <div className="mt-3 pt-3 border-t border-[#E6E0D3] flex items-center justify-between">
-              <p className="text-xs text-[#6B7280]">
+            <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between">
+              <p className="text-xs text-white/45">
                 {t("pageOfLabel")} {eventListPage} {t("ofPagesLabel")} {eventListTotalPages}
               </p>
               <div className="flex items-center gap-1.5">
@@ -564,7 +578,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                   onClick={() => setEventListPage(1)}
                   disabled={eventListPage === 1}
                   title={t("firstPageLabel")}
-                  className="h-7 w-7 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-50 transition"
+                  className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                 >
                   «
                 </button>
@@ -572,18 +586,18 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                   onClick={() => setEventListPage((p) => Math.max(1, p - 1))}
                   disabled={eventListPage === 1}
                   title={t("previousPageLabel")}
-                  className="h-7 w-7 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-50 transition"
+                  className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                 >
                   ←
                 </button>
-                <span className="h-7 w-7 rounded-full bg-sage-800 text-white flex items-center justify-center text-xs font-semibold">
+                <span className="h-7 w-7 rounded-full bg-gold-400 text-[#08130F] flex items-center justify-center text-xs font-bold">
                   {eventListPage}
                 </span>
                 <button
                   onClick={() => setEventListPage((p) => Math.min(eventListTotalPages, p + 1))}
                   disabled={eventListPage === eventListTotalPages}
                   title={t("nextPageLabel")}
-                  className="h-7 w-7 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-50 transition"
+                  className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                 >
                   →
                 </button>
@@ -591,7 +605,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                   onClick={() => setEventListPage(eventListTotalPages)}
                   disabled={eventListPage === eventListTotalPages}
                   title={t("lastPageLabel")}
-                  className="h-7 w-7 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-50 transition"
+                  className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                 >
                   »
                 </button>
@@ -600,21 +614,21 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           )}
         </div>
 
-        <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
           {!selectedEventId ? (
-            <div className="h-full flex flex-col items-center justify-center text-[#6B7280] py-16">
-              <Wallet className="h-10 w-10 mb-3 text-sage-300" />
+            <div className="h-full flex flex-col items-center justify-center text-white/40 py-16">
+              <Wallet className="h-10 w-10 mb-3 text-white/20" />
               <p>{t("selectEventToViewBudget")}</p>
             </div>
           ) : loadingSummary || !summary ? (
             <div className="flex justify-center items-center h-64">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sage-700"></div>
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#4FBEB0]"></div>
             </div>
           ) : (
             <div className="space-y-5">
-              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF9F5] p-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                 <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                  <span className="text-sm font-semibold text-[#1A1A1A]">
+                  <span className="text-sm font-semibold text-white">
                     ₱{summary.total_expenses.toLocaleString()} {t("spentOf")}
                     {summary.approved_budget !== null && ` ${t("ofLabel")} ₱${Number(summary.approved_budget).toLocaleString()}`}
                   </span>
@@ -626,33 +640,33 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                       </span>
                     )}
                     {summary.is_over_budget && (
-                      <span className="flex items-center gap-1 text-xs font-bold text-red-600">
+                      <span className="flex items-center gap-1 text-xs font-bold text-red-400">
                         <AlertTriangle className="h-3.5 w-3.5" /> {t("overBudget")}
                       </span>
                     )}
                   </div>
                 </div>
                 {summary.approved_budget !== null && (
-                  <div className="h-2.5 rounded-full bg-[#E6E0D3] overflow-hidden">
+                  <div className="h-2.5 rounded-full bg-white/10 overflow-hidden">
                     <div
-                      className={`h-full transition-all ${summary.is_over_budget ? "bg-red-500" : "bg-sage-600"}`}
+                      className={`h-full transition-all ${summary.is_over_budget ? "bg-red-500" : "bg-[#4FBEB0]"}`}
                       style={{ width: `${spentPct}%` }}
                     />
                   </div>
                 )}
                 {summary.approved_budget === null && (
-                  <p className="text-xs text-[#6B7280] italic">{t("noApprovedBudgetYet")}</p>
+                  <p className="text-xs text-white/40 italic">{t("noApprovedBudgetYet")}</p>
                 )}
               </div>
 
               {isExpenseLocked && (
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-4 py-2">
+                <p className="text-xs text-gold-300 bg-gold-400/10 border border-gold-400/25 rounded-full px-4 py-2">
                   {t("expenseAddLockedHint")}
                 </p>
               )}
               <form onSubmit={handleAddExpense} noValidate className="grid sm:grid-cols-[1fr_140px_auto_auto] gap-2">
-                <input required disabled={isExpenseLocked} value={form.item} onChange={(e) => setForm((p) => ({ ...p, item: e.target.value }))} placeholder={t("itemExpenseDescPlaceholder")} className="rounded-full border border-sage-200 px-4 py-2 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 disabled:opacity-60 disabled:cursor-not-allowed" />
-                <input required disabled={isExpenseLocked} type="number" min={0} step="0.01" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} placeholder={t("amountPlaceholder")} className="rounded-full border border-sage-200 px-4 py-2 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30 disabled:opacity-60 disabled:cursor-not-allowed" />
+                <input required disabled={isExpenseLocked} value={form.item} onChange={(e) => setForm((p) => ({ ...p, item: e.target.value }))} placeholder={t("itemExpenseDescPlaceholder")} className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50 disabled:opacity-60 disabled:cursor-not-allowed" />
+                <input required disabled={isExpenseLocked} type="number" min={0} step="0.01" value={form.amount} onChange={(e) => setForm((p) => ({ ...p, amount: e.target.value }))} placeholder={t("amountPlaceholder")} className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50 disabled:opacity-60 disabled:cursor-not-allowed" />
                 <input
                   ref={addReceiptInputRef}
                   type="file"
@@ -667,7 +681,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                   onClick={() => addReceiptInputRef.current?.click()}
                   title={receiptFile ? receiptFile.name : t("attachReceiptRequiredLabel")}
                   className={`inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                    receiptFile ? "border-sage-600 text-sage-800 bg-sage-50" : "border-amber-300 text-amber-600 hover:bg-amber-50"
+                    receiptFile ? "border-[#4FBEB0]/50 text-[#7DD8CB] bg-[#4FBEB0]/10" : "border-gold-400/40 text-gold-300 hover:bg-gold-400/10"
                   }`}
                 >
                   <Paperclip className="h-4 w-4" />
@@ -676,13 +690,13 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                   type="submit"
                   disabled={isExpenseLocked}
                   title={isExpenseLocked ? t("expenseAddLockedHint") : undefined}
-                  className="inline-flex items-center justify-center gap-1 rounded-full bg-sage-800 hover:bg-sage-900 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-800"
+                  className="inline-flex items-center justify-center gap-1 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] px-4 py-2 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gold-400"
                 >
                   <Plus className="h-4 w-4" /> {t("addLabel")}
                 </button>
               </form>
               {receiptFile ? (
-                <p className="-mt-1 text-xs text-[#6B7280] flex items-center gap-1">
+                <p className="-mt-1 text-xs text-white/50 flex items-center gap-1">
                   <FileText className="h-3.5 w-3.5 shrink-0" />
                   <span className="truncate">{receiptFile.name}</span>
                   <button
@@ -691,47 +705,47 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                       setReceiptFile(null);
                       if (addReceiptInputRef.current) addReceiptInputRef.current.value = "";
                     }}
-                    className="text-[#6B7280] hover:text-red-500 shrink-0"
+                    className="text-white/50 hover:text-red-400 shrink-0"
                   >
                     <X className="h-3 w-3" />
                   </button>
                 </p>
               ) : (
                 !isExpenseLocked && (
-                  <p className="-mt-1 text-xs text-amber-600">{t("receiptRequiredHint")}</p>
+                  <p className="-mt-1 text-xs text-gold-300">{t("receiptRequiredHint")}</p>
                 )
               )}
 
               <div className="max-h-[35vh] overflow-y-auto space-y-2">
                 {summary.expenses.length === 0 ? (
-                  <p className="text-sm text-[#6B7280] italic py-6 text-center">{t("noExpensesRecorded")}</p>
+                  <p className="text-sm text-white/40 italic py-6 text-center">{t("noExpensesRecorded")}</p>
                 ) : (
                   summary.expenses.map((exp) => (
-                    <div key={exp.id} className="flex items-center justify-between rounded-xl bg-[#FAF9F5] px-4 py-2.5 group">
+                    <div key={exp.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 group">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <p className="text-sm font-medium text-[#1A1A1A] truncate">{exp.item}</p>
+                          <p className="text-sm font-medium text-white truncate">{exp.item}</p>
                           {exp.receipt_url && (
                             <button
                               type="button"
                               onClick={() => setViewingReceipt({ url: exp.receipt_url as string, item: exp.item })}
                               title={t("viewReceiptLabel")}
-                              className="text-[#6B7280] hover:text-sage-800 transition shrink-0"
+                              className="text-white/50 hover:text-[#7DD8CB] transition shrink-0"
                             >
                               <Paperclip className="h-3.5 w-3.5" />
                             </button>
                           )}
                         </div>
-                        {exp.notes && <p className="text-xs text-[#6B7280] truncate">{exp.notes}</p>}
+                        {exp.notes && <p className="text-xs text-white/40 truncate">{exp.notes}</p>}
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-3">
-                        <span className="text-sm font-bold text-sage-800">₱{Number(exp.amount).toLocaleString()}</span>
+                        <span className="text-sm font-bold text-[#7DD8CB]">₱{Number(exp.amount).toLocaleString()}</span>
                         <button
                           type="button"
                           onClick={() => openEditExpense(exp)}
                           disabled={isExpenseLocked}
                           title={isExpenseLocked ? t("expenseEventLockedHint") : t("editLabel")}
-                          className="p-1.5 rounded-full text-[#6B7280] hover:text-sage-800 hover:bg-sage-50 transition opacity-0 group-hover:opacity-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[#6B7280] group-hover:disabled:opacity-40"
+                          className="p-1.5 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition opacity-0 group-hover:opacity-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-white/40 group-hover:disabled:opacity-40"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </button>
@@ -740,7 +754,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                           onClick={() => setDeleteExpense({ id: exp.id, item: exp.item })}
                           disabled={isExpenseLocked}
                           title={isExpenseLocked ? t("expenseEventLockedHint") : t("deleteTitle")}
-                          className="p-1.5 rounded-full text-[#6B7280] hover:text-red-500 hover:bg-red-50 transition opacity-0 group-hover:opacity-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[#6B7280] group-hover:disabled:opacity-40"
+                          className="p-1.5 rounded-full text-white/40 hover:text-red-400 hover:bg-red-500/10 transition opacity-0 group-hover:opacity-100 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-white/40 group-hover:disabled:opacity-40"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -753,58 +767,41 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           )}
         </div>
       </div>
+      </div>
+      </div>
 
-      {error && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setError(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{error}</p>
-            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
+      <StatusModal open={!!error} type="error" title={t("errorTitle")} message={error || ""} okLabel={t("okLabel")} onClose={() => setError(null)} />
+      <StatusModal open={!!budgetWarning} type="warning" title={t("overBudgetTitle")} message={budgetWarning || ""} okLabel={t("okLabel")} onClose={() => setBudgetWarning(null)} />
 
-      {budgetWarning && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setBudgetWarning(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-600 mb-2">{t("overBudgetTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{budgetWarning}</p>
-            <button onClick={() => setBudgetWarning(null)} className="px-6 py-2.5 rounded-full bg-amber-500 hover:bg-amber-600 text-white transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
-
+      {/* Edit Expense modal -- dark navy card, same treatment as the
+          Households/Inventory Edit modals (this page's own core edit
+          form, as opposed to the confirm/success/error/receipt modals
+          further below which stay on their original light theme). */}
       {editingExpense && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => !savingEdit && handleCloseEditExpense()}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={() => !savingEdit && handleCloseEditExpense()}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-black text-sage-800">{t("editExpenseTitle")}</h2>
-              <button onClick={handleCloseEditExpense} className="text-[#6B7280] hover:text-[#1A1A1A]"><X size={20} /></button>
+              <h2 className="text-xl font-black text-white">{t("editExpenseTitle")}</h2>
+              <button onClick={handleCloseEditExpense} className="text-white/50 hover:text-white"><X size={20} /></button>
             </div>
             <form onSubmit={handleUpdateExpense} noValidate className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("itemExpenseDescPlaceholder")}</label>
-                <input required value={editForm.item} onChange={(e) => setEditForm((p) => ({ ...p, item: e.target.value }))} className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30" />
+                <label className="block text-sm font-medium text-white/80 mb-1">{t("itemExpenseDescPlaceholder")}</label>
+                <input required value={editForm.item} onChange={(e) => setEditForm((p) => ({ ...p, item: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("amountPlaceholder")}</label>
-                <input required type="number" min={0} step="0.01" value={editForm.amount} onChange={(e) => setEditForm((p) => ({ ...p, amount: e.target.value }))} className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30" />
+                <label className="block text-sm font-medium text-white/80 mb-1">{t("amountPlaceholder")}</label>
+                <input required type="number" min={0} step="0.01" value={editForm.amount} onChange={(e) => setEditForm((p) => ({ ...p, amount: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("notesLabel")}</label>
-                <textarea value={editForm.notes} onChange={(e) => setEditForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-xl border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30" rows={2} />
+                <label className="block text-sm font-medium text-white/80 mb-1">{t("notesLabel")}</label>
+                <textarea value={editForm.notes} onChange={(e) => setEditForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={2} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("receiptLabel")}</label>
+                <label className="block text-sm font-medium text-white/80 mb-1">{t("receiptLabel")}</label>
                 {editReceiptFile ? (
-                  <div className="flex items-center gap-2 text-sm text-[#6B7280]">
-                    <FileText className="h-4 w-4 text-sage-800 shrink-0" />
+                  <div className="flex items-center gap-2 text-sm text-white/50">
+                    <FileText className="h-4 w-4 text-[#7DD8CB] shrink-0" />
                     <span className="truncate">{editReceiptFile.name}</span>
                     <button
                       type="button"
@@ -812,7 +809,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                         setEditReceiptFile(null);
                         if (editReceiptInputRef.current) editReceiptInputRef.current.value = "";
                       }}
-                      className="text-[#6B7280] hover:text-red-500 shrink-0"
+                      className="text-white/50 hover:text-red-400 shrink-0"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -822,11 +819,11 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                     <button
                       type="button"
                       onClick={() => setViewingReceipt({ url: existingEditReceiptUrl, item: editForm.item })}
-                      className="text-sage-800 hover:underline flex items-center gap-1"
+                      className="text-[#7DD8CB] hover:underline flex items-center gap-1"
                     >
                       <Paperclip className="h-3.5 w-3.5" /> {t("viewReceiptLabel")}
                     </button>
-                    <button type="button" onClick={() => editReceiptInputRef.current?.click()} className="text-xs text-[#6B7280] hover:underline">
+                    <button type="button" onClick={() => editReceiptInputRef.current?.click()} className="text-xs text-white/50 hover:underline">
                       {t("replaceReceiptLabel")}
                     </button>
                   </div>
@@ -834,7 +831,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                   <button
                     type="button"
                     onClick={() => editReceiptInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-sage-200 px-4 py-2 text-sm text-[#1A1A1A] hover:bg-sage-50 transition"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/10 px-4 py-2 text-sm text-white hover:bg-white/10 transition"
                   >
                     <Paperclip className="h-4 w-4" /> {t("attachReceiptLabel")}
                   </button>
@@ -848,8 +845,8 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                 />
               </div>
               <div className="flex gap-2 pt-2">
-                <button type="submit" disabled={savingEdit || isEditExpenseUnchanged} title={isEditExpenseUnchanged ? t("noChangesToSaveHint") : undefined} className="flex-1 py-2.5 rounded-full font-bold bg-sage-800 hover:bg-sage-900 text-white disabled:opacity-60 disabled:cursor-not-allowed">{savingEdit ? t("savingLabel") : t("saveChanges")}</button>
-                <button type="button" onClick={handleCloseEditExpense} disabled={savingEdit} className="px-6 py-2.5 rounded-full border border-[#E6E0D3] bg-[#FAF9F5] text-[#1A1A1A] disabled:opacity-60">{t("cancelLabel")}</button>
+                <button type="submit" disabled={savingEdit || isEditExpenseUnchanged} title={isEditExpenseUnchanged ? t("noChangesToSaveHint") : undefined} className="flex-1 py-2.5 rounded-full font-bold bg-gold-400 hover:bg-gold-500 text-[#08130F] disabled:opacity-60 disabled:cursor-not-allowed">{savingEdit ? t("savingLabel") : t("saveChanges")}</button>
+                <button type="button" onClick={handleCloseEditExpense} disabled={savingEdit} className="px-6 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 disabled:opacity-60">{t("cancelLabel")}</button>
               </div>
             </form>
           </div>
@@ -859,12 +856,12 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       {/* Unsaved-changes guard for the Edit Expense modal */}
       {showEditCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
-            <p className="text-[#6B7280] mb-5">{t("unsavedChangesMessage")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50/60 transition">{t("stayButton")}</button>
+              <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   setShowEditCancelConfirm(false);
@@ -901,18 +898,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
         onConfirm={performUpdateExpense}
       />
 
-      {expenseSuccessMessage && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setExpenseSuccessMessage(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-sage-700 flex justify-center"><CheckCircle2 size={40} /></div>
-            <h3 className="text-xl font-bold text-sage-800 mb-2">{t("expenseSuccessTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{expenseSuccessMessage}</p>
-            <button onClick={() => setExpenseSuccessMessage(null)} className="px-6 py-2.5 rounded-full bg-sage-800 hover:bg-sage-900 text-white transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
+      <StatusModal open={!!expenseSuccessMessage} type="success" title={t("expenseSuccessTitle")} message={expenseSuccessMessage || ""} okLabel={t("okLabel")} onClose={() => setExpenseSuccessMessage(null)} />
 
       {viewingReceipt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] px-4" onClick={() => setViewingReceipt(null)}>
@@ -969,17 +955,17 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
 
       {deleteExpense && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => !deletingExpense && setDeleteExpense(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 text-red-500 flex justify-center"><Trash2 size={36} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-5">{t("deleteExpenseConfirm")} "{deleteExpense.item}"?</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
+            <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-5">{t("deleteExpenseConfirm")} "{deleteExpense.item}"?</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setDeleteExpense(null)} disabled={deletingExpense} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50/60 transition disabled:opacity-60">{t("cancel")}</button>
-              <button onClick={confirmDeleteExpense} disabled={deletingExpense} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
+              <button onClick={() => setDeleteExpense(null)} disabled={deletingExpense} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition disabled:opacity-60">{t("cancel")}</button>
+              <button onClick={confirmDeleteExpense} disabled={deletingExpense} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }

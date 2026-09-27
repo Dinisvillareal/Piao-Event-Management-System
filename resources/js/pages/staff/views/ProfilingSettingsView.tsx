@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { Users2, Heart, Tag, Plus, Pencil, Trash2, XCircle, CheckCircle } from "lucide-react";
+import { Users2, Heart, Tag, Plus, Pencil, Trash2 } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -625,34 +626,8 @@ export default function ProfilingSettingsView() {
         </div>
       </div>
 
-      {successMessage && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setSuccessMessage(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-[#005f63] flex justify-center"><CheckCircle size={48} /></div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{successMessage}</p>
-            <button onClick={() => setSuccessMessage(null)} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Templated delete-confirm modal, shared across every module -- reused
-          here instead of the old "delete immediately, no confirmation"
-          behavior. */}
-      {error && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setError(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{error}</p>
-            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
+      <StatusModal open={!!successMessage} type="success" title={t("successTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} />
+      <StatusModal open={!!error} type="error" title={t("errorTitle")} message={error || ""} okLabel={t("okLabel")} onClose={() => setError(null)} />
 
       <ConfirmDialog
         open={confirmBracketSave}
@@ -689,13 +664,13 @@ export default function ProfilingSettingsView() {
 
       {pendingDelete && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-4 text-red-500 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
-            <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-5">{t("moveToTrashConfirm")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-red-400 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
+            <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-5">{t("moveToTrashConfirm")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setPendingDelete(null)} disabled={deleting} className="px-5 py-2.5 rounded-full border border-gray-200 text-gray-700 hover:bg-gray-50 transition disabled:opacity-60">{t("cancel")}</button>
-              <button onClick={confirmPendingDelete} disabled={deleting} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
+              <button onClick={() => setPendingDelete(null)} disabled={deleting} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition disabled:opacity-60">{t("cancel")}</button>
+              <button onClick={confirmPendingDelete} disabled={deleting} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
             </div>
           </div>
         </div>

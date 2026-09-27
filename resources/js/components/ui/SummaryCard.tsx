@@ -1,30 +1,31 @@
 import React from "react";
+import type { LucideIcon } from "lucide-react";
 
 interface SummaryCardProps {
   value: number;
   title: string;
   gradient: string;
   description: string;
+  icon?: LucideIcon;
   onClick?: () => void;
 }
 
-export default function SummaryCard({ value, title, gradient, description, onClick }: SummaryCardProps) {
-  // Piao design system: stat tiles read as calm, bordered paper cards --
-  // the caller's "gradient" becomes a thin 3px accent stripe instead of a
-  // full-bleed color fill, so the dashboard isn't a wall of color.
+export default function SummaryCard({ value, title, gradient, description, icon: Icon, onClick }: SummaryCardProps) {
+  // Same full-gradient KPI tile used by the staff Dashboard and Inventory
+  // stat strips (solid gradient fill, value + icon up top, uppercase label,
+  // always-visible description) -- so the two portals' stat cards read as
+  // one consistent design language instead of two different card styles.
   return (
     <button
       onClick={onClick}
-      className="group relative w-full overflow-hidden rounded-2xl border border-[#E6E0D3] bg-white p-5 text-left text-[#1A1A1A] shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-[#A2C9BC]"
+      className={`group relative w-full overflow-hidden rounded-2xl bg-gradient-to-br ${gradient} p-5 text-left text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}
     >
-      <span className={`absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r ${gradient}`} aria-hidden="true" />
-      <h2 className="text-4xl font-display font-extrabold tracking-tight">{value}</h2>
-      <p className="mt-2 text-[13px] font-semibold uppercase tracking-wide text-sage-700">
-        {title}
-      </p>
-      <p className="mt-1 text-xs text-[#6E6A60] opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-        {description}
-      </p>
+      <div className="flex items-start justify-between gap-3">
+        <h2 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight [font-variant-numeric:tabular-nums]">{value}</h2>
+        {Icon && <Icon className="h-5 w-5 shrink-0 text-white/80" />}
+      </div>
+      <p className="mt-3 text-[11px] font-bold uppercase tracking-wide">{title}</p>
+      <p className="mt-1 text-xs text-white/75">{description}</p>
     </button>
   );
 }

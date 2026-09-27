@@ -3,6 +3,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { UserPlus, CalendarPlus, ScanLine, Bell, BarChart3, Users, Award, CalendarDays, Undo2, LayoutDashboard, Download, Activity, Clock } from "lucide-react";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
 
 interface DashboardViewProps {
   setActive: (route: string) => void;
@@ -226,7 +228,14 @@ export default function DashboardView({
     };
   }, []);
 
-  const downloadQRCode = () => {
+  // Download itself is unchanged -- only wrapped with a confirm step before
+  // it runs and a success popup once the file has actually been written,
+  // matching the confirm-then-report pattern used for every other
+  // destructive/generating action across the app (ConfirmDialog + StatusModal).
+  const [showQrDownloadConfirm, setShowQrDownloadConfirm] = useState(false);
+  const [showQrDownloadSuccess, setShowQrDownloadSuccess] = useState(false);
+
+  const performQrDownload = () => {
     const svgElement = document.getElementById('system-qr-code');
     if (!svgElement) return;
 
@@ -247,10 +256,13 @@ export default function DashboardView({
       document.body.appendChild(downloadLink);
       downloadLink.click();
       document.body.removeChild(downloadLink);
+      setShowQrDownloadSuccess(true);
     };
 
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
   };
+
+  const downloadQRCode = () => setShowQrDownloadConfirm(true);
 
   // Every caption below is either static copy or a real, already-fetched
   // count -- no invented period-over-period percentages, since the system
@@ -574,6 +586,28 @@ export default function DashboardView({
                 </div>
               </div>
             </div>
+
+            <ConfirmDialog
+              open={showQrDownloadConfirm}
+              icon={<Download className="h-6 w-6" />}
+              title="Download QR Code?"
+              body="This will save the barangay system QR code as a PNG image to your device."
+              cancelLabel="Cancel"
+              confirmLabel="Download"
+              onCancel={() => setShowQrDownloadConfirm(false)}
+              onConfirm={() => {
+                setShowQrDownloadConfirm(false);
+                performQrDownload();
+              }}
+            />
+            <StatusModal
+              open={showQrDownloadSuccess}
+              type="success"
+              title="Download complete"
+              message="The QR code image has been saved to your device."
+              okLabel="OK"
+              onClose={() => setShowQrDownloadSuccess(false)}
+            />
 
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06]">
               <div className="flex items-center justify-between gap-3">

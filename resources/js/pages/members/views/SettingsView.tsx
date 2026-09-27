@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
-import { KeyRound, Globe, Home, User, Phone, XCircle, CheckCircle, Pencil } from "lucide-react";
+import { KeyRound, Globe, Home, User, Phone, Pencil } from "lucide-react";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { LANGUAGES } from "../../../i18n/translations";
+import StatusModal from "../../../components/ui/StatusModal";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 
 interface SettingsViewProps {
   member: {
@@ -24,6 +26,12 @@ export default function SettingsView({ member }: SettingsViewProps) {
   const [contactValue, setContactValue]     = useState("");
   const [contactError, setContactError]     = useState("");
   const [contactSaving, setContactSaving]   = useState(false);
+  const [confirmContactOpen, setConfirmContactOpen] = useState(false);
+
+  // Nothing to save if the field still matches what's already on the
+  // profile -- covers both "opened Edit and clicked Save without typing
+  // anything" and "typed it back to the original value".
+  const contactUnchanged = contactValue.trim() === (profile?.contact_number || "").trim();
 
   const openEditContact = () => {
     setContactValue(profile?.contact_number || "");
@@ -31,13 +39,17 @@ export default function SettingsView({ member }: SettingsViewProps) {
     setEditingContact(true);
   };
 
-  const handleSaveContact = async () => {
+  const requestSaveContact = () => {
     setContactError("");
     if (!contactValue.trim()) {
       setContactError(t("contactNumberRequired"));
       return;
     }
+    setConfirmContactOpen(true);
+  };
 
+  const handleSaveContact = async () => {
+    setConfirmContactOpen(false);
     setContactSaving(true);
     try {
       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
@@ -74,11 +86,12 @@ export default function SettingsView({ member }: SettingsViewProps) {
   const [pwError, setPwError]               = useState("");
   const [pwSuccess, setPwSuccess]           = useState("");
   const [pwLoading, setPwLoading]           = useState(false);
+  const [confirmPwOpen, setConfirmPwOpen]   = useState(false);
 
   const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
   const passwordsMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
 
-  const handleChangePassword = async () => {
+  const requestChangePassword = () => {
     setPwError("");
     setPwSuccess("");
 
@@ -91,6 +104,11 @@ export default function SettingsView({ member }: SettingsViewProps) {
       return;
     }
 
+    setConfirmPwOpen(true);
+  };
+
+  const handleChangePassword = async () => {
+    setConfirmPwOpen(false);
     setPwLoading(true);
     try {
       const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
@@ -127,40 +145,43 @@ export default function SettingsView({ member }: SettingsViewProps) {
   };
 
   return (
+    <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="max-w-xl space-y-8">
-      {/* PROFILE / HOUSEHOLD INFO — UC-5 profiling display */}
-      <div className="overflow-hidden rounded-3xl bg-white shadow-[8px_8px_6px_rgba(0,0,0,0.10)] hover:shadow-[12px_12px_18px_rgba(0,0,0,0.20)] transition-shadow duration-300">
-        <div className="h-1.5 bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300" />
+      {/* PROFILE / HOUSEHOLD INFO — UC-5 profiling display. Darkened like
+          every other core content/edit card in the app -- this is where the
+          resident actually edits their own contact number. */}
+      <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
+        <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
         <div className="p-10">
           <div className="flex items-center gap-2">
-            <User className="h-5 w-5 text-[#005f63]" />
-            <h2 className="text-3xl font-black text-[#005f63]">{t("myProfile")}</h2>
+            <User className="h-5 w-5 text-[#4FBEB0]" />
+            <h2 className="text-3xl font-black text-white">{t("myProfile")}</h2>
           </div>
 
           {!profile ? (
-            <p className="mt-6 text-sm text-gray-400">{t("loadingProfile")}</p>
+            <p className="mt-6 text-sm text-white/40">{t("loadingProfile")}</p>
           ) : (
             <div className="mt-6 space-y-3">
-              <div className="flex items-center justify-between rounded-full bg-gray-50 px-5 py-3">
-                <span className="text-sm text-gray-500">{t("addressLabel")}</span>
-                <span className="text-sm font-semibold text-[#005f63]">{profile.address || t("notSet")}</span>
+              <div className="flex items-center justify-between rounded-full bg-white/[0.04] border border-white/10 px-5 py-3">
+                <span className="text-sm text-white/50">{t("addressLabel")}</span>
+                <span className="text-sm font-semibold text-white">{profile.address || t("notSet")}</span>
               </div>
 
               {/* Contact number -- the one field on this card residents can
                   actually edit themselves; everything else here (address,
                   age, household) is set by Staff during profiling. */}
-              <div className={`rounded-2xl bg-gray-50 px-5 py-3 ${editingContact ? "" : "rounded-full"}`}>
+              <div className={`bg-white/[0.04] border border-white/10 px-5 py-3 ${editingContact ? "rounded-2xl" : "rounded-full"}`}>
                 {!editingContact ? (
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-sm text-gray-500">
+                    <span className="flex items-center gap-1.5 text-sm text-white/50">
                       <Phone className="h-3.5 w-3.5" /> {t("contactNumberLabel")}
                     </span>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold text-[#005f63]">{profile.contact_number || t("notSet")}</span>
+                      <span className="text-sm font-semibold text-white">{profile.contact_number || t("notSet")}</span>
                       <button
                         onClick={openEditContact}
                         title={t("editLabel")}
-                        className="p-1 rounded-full text-gray-400 hover:text-[#005f63] hover:bg-white transition"
+                        className="p-1 rounded-full text-white/40 hover:text-[#4FBEB0] hover:bg-white/10 transition"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
@@ -168,7 +189,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
                   </div>
                 ) : (
                   <div>
-                    <span className="text-sm text-gray-500">{t("contactNumberLabel")}</span>
+                    <span className="text-sm text-white/50">{t("contactNumberLabel")}</span>
                     <div className="mt-2 flex gap-2">
                       <input
                         type="tel"
@@ -176,43 +197,43 @@ export default function SettingsView({ member }: SettingsViewProps) {
                         onChange={(e) => setContactValue(e.target.value)}
                         placeholder={t("contactNumberPlaceholder")}
                         disabled={contactSaving}
-                        className="min-w-0 flex-1 rounded-full border border-gray-200 px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#9acace] disabled:opacity-50"
+                        className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 disabled:opacity-50"
                       />
                       <button
-                        onClick={handleSaveContact}
-                        disabled={contactSaving || !contactValue.trim()}
-                        className="shrink-0 rounded-full bg-[#2cb7b7] hover:bg-[#41d1d1] text-white text-sm font-semibold px-4 disabled:opacity-50"
+                        onClick={requestSaveContact}
+                        disabled={contactSaving || !contactValue.trim() || contactUnchanged}
+                        className="shrink-0 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-semibold px-4 disabled:opacity-50 transition"
                       >
                         {contactSaving ? t("savingLabel") : t("saveLabel")}
                       </button>
                       <button
                         onClick={() => setEditingContact(false)}
                         disabled={contactSaving}
-                        className="shrink-0 rounded-full border border-gray-200 text-gray-500 text-sm font-medium px-4 disabled:opacity-50"
+                        className="shrink-0 rounded-full border border-white/15 text-white/60 hover:bg-white/5 text-sm font-medium px-4 disabled:opacity-50 transition"
                       >
                         {t("cancelLabel")}
                       </button>
                     </div>
-                    {contactError && <p className="mt-1.5 text-xs text-red-500 font-medium px-2">{contactError}</p>}
+                    {contactError && <p className="mt-1.5 text-xs text-red-400 font-medium px-2">{contactError}</p>}
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center justify-between rounded-full bg-gray-50 px-5 py-3">
-                <span className="text-sm text-gray-500">{t("ageLabel")}</span>
-                <span className="text-sm font-semibold text-[#005f63]">
+              <div className="flex items-center justify-between rounded-full bg-white/[0.04] border border-white/10 px-5 py-3">
+                <span className="text-sm text-white/50">{t("ageLabel")}</span>
+                <span className="text-sm font-semibold text-white">
                   {profile.age != null ? `${profile.age} ${t("yrsOld")}` : t("notSet")}
                   {profile.age_group ? ` · ${profile.age_group}` : ""}
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-full bg-gray-50 px-5 py-3">
-                <span className="flex items-center gap-1.5 text-sm text-gray-500">
+              <div className="flex items-center justify-between rounded-full bg-white/[0.04] border border-white/10 px-5 py-3">
+                <span className="flex items-center gap-1.5 text-sm text-white/50">
                   <Home className="h-3.5 w-3.5" /> {t("householdLabel")}
                 </span>
-                <span className="flex items-center gap-2 text-sm font-semibold text-[#005f63]">
+                <span className="flex items-center gap-2 text-sm font-semibold text-white">
                   {profile.household ? profile.household.code : t("notSet")}
                   {profile.is_household_head && (
-                    <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-600">
+                    <span className="rounded-full bg-gold-400/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-300">
                       {t("headBadge")}
                     </span>
                   )}
@@ -224,14 +245,14 @@ export default function SettingsView({ member }: SettingsViewProps) {
       </div>
 
       {/* LANGUAGE — UC-17 Switch Interface Language */}
-      <div className="overflow-hidden rounded-3xl bg-white shadow-[8px_8px_6px_rgba(0,0,0,0.10)] hover:shadow-[12px_12px_18px_rgba(0,0,0,0.20)] transition-shadow duration-300">
-        <div className="h-1.5 bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300" />
+      <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
+        <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
         <div className="p-10">
           <div className="flex items-center gap-2">
-            <Globe className="h-5 w-5 text-[#005f63]" />
-            <h2 className="text-3xl font-black text-[#005f63]">{t("language")}</h2>
+            <Globe className="h-5 w-5 text-[#4FBEB0]" />
+            <h2 className="text-3xl font-black text-white">{t("language")}</h2>
           </div>
-          <p className="mt-2 text-sm text-gray-500">{t("languageSectionDesc")}</p>
+          <p className="mt-2 text-sm text-white/50">{t("languageSectionDesc")}</p>
 
           <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {LANGUAGES.map((opt) => (
@@ -240,8 +261,8 @@ export default function SettingsView({ member }: SettingsViewProps) {
                 onClick={() => setLanguage(opt.code, { userId: member.id })}
                 className={`rounded-full border-2 px-4 py-3 text-sm font-semibold transition-colors ${
                   language === opt.code
-                    ? "border-[#2cb7b7] bg-[#2cb7b7]/10 text-[#005f63]"
-                    : "border-gray-200 text-gray-500 hover:border-[#9acace]"
+                    ? "border-[#4FBEB0] bg-[#4FBEB0]/10 text-[#7DD8CB]"
+                    : "border-white/15 text-white/60 hover:border-[#4FBEB0]/50"
                 }`}
               >
                 {opt.label}
@@ -251,13 +272,13 @@ export default function SettingsView({ member }: SettingsViewProps) {
         </div>
       </div>
 
-      {/* CHANGE PASSWORD — TEAL THEME MATCHING PROFILE SETTINGS */}
-      <div className="overflow-hidden rounded-3xl bg-white shadow-[8px_8px_6px_rgba(0,0,0,0.10)] hover:shadow-[12px_12px_18px_rgba(0,0,0,0.20)] transition-shadow duration-300">
-        <div className="h-1.5 bg-gradient-to-r from-[#067a7a] via-[#3ec5c5] to-orange-300" />
+      {/* CHANGE PASSWORD */}
+      <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
+        <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
         <div className="p-10">
           <div className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-[#005f63]" />
-            <h2 className="text-3xl font-black text-[#005f63]">{t("changePassword")}</h2>
+            <KeyRound className="h-5 w-5 text-[#4FBEB0]" />
+            <h2 className="text-3xl font-black text-white">{t("changePassword")}</h2>
           </div>
 
           <div className="mt-6 space-y-4">
@@ -269,7 +290,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 disabled={pwLoading}
-                className="w-full rounded-full border border-gray-200 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#9acace] disabled:opacity-50"
+                className="w-full rounded-full border border-white/15 bg-white/10 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 disabled:opacity-50"
               />
             </div>
 
@@ -280,30 +301,30 @@ export default function SettingsView({ member }: SettingsViewProps) {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 disabled={pwLoading}
-                className={`w-full rounded-full border px-4 py-3 focus:outline-none focus:ring-2 disabled:opacity-50 transition-colors ${
+                className={`w-full rounded-full border px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 disabled:opacity-50 transition-colors ${
                   passwordsMismatch
-                    ? "border-red-400 focus:ring-red-300 bg-red-50"
+                    ? "border-red-500/40 focus:ring-red-400/30 bg-red-500/10"
                     : passwordsMatch
-                    ? "border-green-400 focus:ring-green-300 bg-green-50"
-                    : "border-gray-200 focus:ring-[#9acace]"
+                    ? "border-[#4FBEB0]/50 focus:ring-[#4FBEB0]/30 bg-[#4FBEB0]/10"
+                    : "border-white/15 bg-white/10 focus:ring-[#4FBEB0]/40"
                 }`}
               />
               {passwordsMismatch && (
-                <p className="mt-1.5 text-xs text-red-500 font-medium px-2">
+                <p className="mt-1.5 text-xs text-red-400 font-medium px-2">
                   ✗ {t("passwordsDoNotMatch")}
                 </p>
               )}
               {passwordsMatch && (
-                <p className="mt-1.5 text-xs text-green-600 font-medium px-2">
+                <p className="mt-1.5 text-xs text-[#7DD8CB] font-medium px-2">
                   ✓ {t("passwordsMatchNote")}
                 </p>
               )}
             </div>
 
             <button
-              onClick={handleChangePassword}
+              onClick={requestChangePassword}
               disabled={pwLoading || !passwordsMatch}
-              className="w-full rounded-full bg-[#2cb7b7] py-3 font-semibold text-white hover:bg-[#41d1d1] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-full bg-gold-400 py-3 font-bold text-[#08130F] hover:bg-gold-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {pwLoading ? t("updating") : t("updatePassword")}
             </button>
@@ -311,31 +332,33 @@ export default function SettingsView({ member }: SettingsViewProps) {
         </div>
       </div>
 
-      {pwError && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorLabel")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{pwError}</p>
-            <button onClick={() => setPwError("")} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Peripheral alert modals -- the shared StatusModal, same as every
+          other page's success/warning/error popups. */}
+      <StatusModal open={!!pwError} type="error" title={t("errorLabel")} message={pwError} okLabel={t("okLabel")} onClose={() => setPwError("")} />
+      <StatusModal open={!!pwSuccess} type="success" title={t("successTitle")} message={pwSuccess} okLabel={t("okLabel")} onClose={() => setPwSuccess("")} />
 
-      {pwSuccess && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-3 text-[#005f63] flex justify-center"><CheckCircle size={40} /></div>
-            <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{pwSuccess}</p>
-            <button onClick={() => setPwSuccess("")} className="px-6 py-2.5 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirmContactOpen}
+        icon={<Phone size={32} />}
+        title={t("confirmUpdateContactTitle")}
+        body={t("confirmUpdateContactBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesUpdate")}
+        onCancel={() => setConfirmContactOpen(false)}
+        onConfirm={handleSaveContact}
+      />
+
+      <ConfirmDialog
+        open={confirmPwOpen}
+        icon={<KeyRound size={32} />}
+        title={t("confirmUpdatePasswordTitle")}
+        body={t("confirmUpdatePasswordBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesUpdate")}
+        onCancel={() => setConfirmPwOpen(false)}
+        onConfirm={handleChangePassword}
+      />
+    </div>
     </div>
   );
 }

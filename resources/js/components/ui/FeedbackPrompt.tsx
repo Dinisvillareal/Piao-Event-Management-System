@@ -52,12 +52,15 @@ export default function FeedbackPrompt() {
 
   return (
     <div className="fixed bottom-4 right-4 left-4 sm:left-auto z-40 sm:w-[380px]">
-      <div className="rounded-[24px] bg-white shadow-2xl border border-[#ddd5ca] p-5 relative">
-        <button onClick={skip} className="absolute top-3 right-3 text-gray-400 hover:text-gray-600">
+      {/* Darkened like every other core interactive form in the app (this is
+          the member submitting real feedback, not a peripheral alert) --
+          same bg-[#0A0E1A]/border-white/10/rounded-[30px] card convention. */}
+      <div className="rounded-[30px] bg-[#0A0E1A] shadow-2xl border border-white/10 p-5 relative">
+        <button onClick={skip} className="absolute top-3 right-3 text-white/40 hover:text-white">
           <X size={16} />
         </button>
-        <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70">How was it?</p>
-        <h3 className="text-lg font-black text-[#005f63] mt-0.5 pr-6 truncate">{current.name}</h3>
+        <p className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB]">How was it?</p>
+        <h3 className="text-lg font-black text-white mt-0.5 pr-6 truncate">{current.name}</h3>
         <div className="flex items-center gap-1 mt-3">
           {[1, 2, 3, 4, 5].map((n) => (
             <button
@@ -69,7 +72,7 @@ export default function FeedbackPrompt() {
             >
               <Star
                 size={26}
-                className={(hoverRating || rating) >= n ? "text-orange-400 fill-orange-400" : "text-gray-300"}
+                className={(hoverRating || rating) >= n ? "text-gold-400 fill-gold-400" : "text-white/20"}
               />
             </button>
           ))}
@@ -79,17 +82,17 @@ export default function FeedbackPrompt() {
           onChange={(e) => setComment(e.target.value)}
           placeholder="Optional comment..."
           rows={2}
-          className="mt-3 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+          className="mt-3 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
         />
         <div className="mt-3 flex gap-2">
           <button
             onClick={handleSubmit}
             disabled={rating < 1 || submitting}
-            className="flex-1 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white text-sm font-bold py-2.5 disabled:opacity-50"
+            className="flex-1 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-bold py-2.5 disabled:opacity-50 transition"
           >
             {submitting ? "Submitting..." : "Submit Feedback"}
           </button>
-          <button onClick={skip} className="rounded-full border border-gray-200 text-gray-500 text-sm font-medium px-4">
+          <button onClick={skip} className="rounded-full border border-white/15 text-white/60 hover:bg-white/5 text-sm font-medium px-4 transition">
             Later
           </button>
         </div>

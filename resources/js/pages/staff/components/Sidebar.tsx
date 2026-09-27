@@ -188,8 +188,8 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
     }
   };
 
-  const inactiveNav = "text-white/55 hover:bg-white/[0.06] hover:text-white";
-  const activeNav = "bg-white/10 text-white font-semibold shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]";
+  const inactiveNav = "text-white/55 hover:bg-white/[0.06] hover:text-white border border-transparent";
+  const activeNav = "bg-white/10 text-white font-semibold border border-white/40";
 
   return (
     <>
@@ -250,8 +250,10 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                     <button
                       key={item.key}
                       onClick={() => handleNavClick(item.key, item.path)}
-                      className={`flex items-center w-full rounded-xl border px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${
-                        active === item.key ? `${activeNav} border-white/10` : `${inactiveNav} border-white/10`
+                      className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group border ${
+                        active === item.key
+                          ? "bg-white/10 text-white font-semibold border-white/40"
+                          : "text-white/55 hover:bg-white/[0.06] hover:text-white border-white/10"
                       }`}
                     >
                       <item.icon className="h-5 w-5 shrink-0" />

@@ -146,13 +146,21 @@ class EventAttendanceController extends Controller
         $user = User::findOrFail($request->user_id);
         $userName = $user->first_name . ' ' . $user->last_name;
 
-        // Deliberately NO eligibility check here (unlike timeIn() above).
-        // Someone who already has a time_in already physically attended --
-        // blocking their sign-out because the event's targeting changed
-        // afterward would strand their record at "Incomplete" forever with
-        // no way to fix it, even though they were genuinely there for the
-        // whole event. Eligibility only gates a NEW sign-in, never the
-        // completion of one that already happened.
+        // Eligibility check, same as timeIn(). Deliberate project decision:
+        // once a resident is no longer on the event's current eligible
+        // list, Event::syncAttendanceRecords() has already deleted their
+        // attendance row entirely (see that method). Without this check, a
+        // late time-out scan would silently create a brand-new orphan row
+        // with only time_out set -- exactly the leftover "Incomplete"
+        // record the project doesn't want. Blocking the scan here means no
+        // row gets created at all, so nothing shows up on either the Staff
+        // or Member side.
+        $eligibleIds = $event->getEligibleResidents()->pluck('id')->toArray();
+        if (!in_array($user->id, $eligibleIds, true)) {
+            return response()->json([
+                'message' => "{$userName} is not eligible for this event under its current membership targeting.",
+            ], 403);
+        }
 
         // Sign-out window = [event_end, call_time_end]. Events with no
         // event_end skip this check entirely (old behavior -- no

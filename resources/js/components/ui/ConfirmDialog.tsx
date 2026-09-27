@@ -24,9 +24,9 @@ interface ConfirmDialogProps {
   tone?: Tone;
   /** z-index bump for confirm dialogs opened on top of an already-open form modal. */
   z?: number;
-  /** Dark navy styling for callers whose surrounding page/modal has already
-      moved to the dark palette (e.g. the Membership Groups page). Every
-      other caller keeps the original light card look. */
+  /** Dark navy styling matching the app's dark page background. Both
+      portals are dark-themed now, so this defaults to true; pass
+      dark={false} only for a caller still on a light surface. */
   dark?: boolean;
 }
 
@@ -46,7 +46,7 @@ export default function ConfirmDialog({
   onConfirm,
   tone = "brand",
   z = 70,
-  dark = false,
+  dark = true,
 }: ConfirmDialogProps) {
   if (!open) return null;
   const styles = dark ? TONE_STYLES_DARK[tone] : TONE_STYLES[tone];

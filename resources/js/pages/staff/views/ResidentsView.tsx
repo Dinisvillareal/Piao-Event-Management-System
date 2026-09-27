@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import {
   Search,
-  XCircle,
   X as XIcon,
   Archive,
   CheckCircle,
@@ -20,6 +19,7 @@ import {
 import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -259,9 +259,11 @@ export default function ResidentsView() {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [viewRecord, setViewRecord] = useState<string | null>(null);
+  const [showQrPanel, setShowQrPanel] = useState(false);
+  const [showQrDownloadConfirm, setShowQrDownloadConfirm] = useState(false);
+  const [showQrDownloadSuccess, setShowQrDownloadSuccess] = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
-  const [showQrPanel, setShowQrPanel] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const [editRecord, setEditRecord] = useState<string | null>(null);
   const [deleteRecord, setDeleteRecord] = useState<string | null>(null);
@@ -520,6 +522,8 @@ export default function ResidentsView() {
   // panel is currently open (GET /users/{id}/attendances) ────────────────
   useEffect(() => {
     setShowQrPanel(false);
+    setShowQrDownloadConfirm(false);
+    setShowQrDownloadSuccess(false);
     if (!viewRecord) {
       setAttendanceHistory([]);
       return;
@@ -1654,16 +1658,7 @@ const handleDeleteResident = async () => {
                   <p className="text-xs text-white/45 mb-4">Scan this at the QR Scanner to sign this resident in or out.</p>
                   <div className="flex items-center justify-center gap-2">
                     <button
-                      onClick={() => {
-                        const canvas = qrCanvasRef.current;
-                        if (!canvas) return;
-                        const link = document.createElement("a");
-                        link.href = canvas.toDataURL("image/png");
-                        link.download = `${r.id}-qr.png`;
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      }}
+                      onClick={() => setShowQrDownloadConfirm(true)}
                       className="rounded-full border border-white/15 px-5 py-2 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
                     >
                       Download
@@ -1678,6 +1673,38 @@ const handleDeleteResident = async () => {
                 </div>
               </div>
             )}
+
+            <ConfirmDialog
+              open={showQrDownloadConfirm}
+              icon={<QrCode className="h-6 w-6" />}
+              title="Download QR Code?"
+              body={`This will save ${r.firstName} ${r.lastName}'s QR code as a PNG image to your device.`}
+              cancelLabel="Cancel"
+              confirmLabel="Download"
+              onCancel={() => setShowQrDownloadConfirm(false)}
+              onConfirm={() => {
+                setShowQrDownloadConfirm(false);
+                const canvas = qrCanvasRef.current;
+                if (!canvas) return;
+                const link = document.createElement("a");
+                link.href = canvas.toDataURL("image/png");
+                link.download = `${r.id}-qr.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                setShowQrDownloadSuccess(true);
+              }}
+              z={70}
+            />
+            <StatusModal
+              open={showQrDownloadSuccess}
+              type="success"
+              title="Download complete"
+              message="The QR code image has been saved to your device."
+              okLabel="OK"
+              onClose={() => setShowQrDownloadSuccess(false)}
+              z={70}
+            />
           </>
         );
       })()}
@@ -2282,16 +2309,7 @@ const handleDeleteResident = async () => {
       )}
 
       {/* ─── Validation / save-error popup (replaces the old inline red banner) ── */}
-      {apiError && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setApiError(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 text-red-500 flex justify-center"><XCircle size={40} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-3">{apiErrorTitle || t("errorTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-5">{apiError}</p>
-            <button onClick={() => setApiError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">{t("okLabel")}</button>
-          </div>
-        </div>
-      )}
+      <StatusModal open={!!apiError} type="error" title={apiErrorTitle || t("errorTitle")} message={apiError || ""} okLabel={t("okLabel")} onClose={() => setApiError(null)} />
 
       <ConfirmDialog
         open={showAddConfirm}
@@ -2393,128 +2411,44 @@ const handleDeleteResident = async () => {
 
       {deleteRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-             <div className="mb-4 text-red-500 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
-            <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-5">{t("moveToTrashConfirm")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+             <div className="mb-4 text-red-400 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
+            <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-5">{t("moveToTrashConfirm")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("cancel")}</button>
-              <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">{t("yesDeleteButton")}</button>
+              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("cancel")}</button>
+              <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition">{t("yesDeleteButton")}</button>
             </div>
           </div>
         </div>
       )}
 
-      {showDeleteSuccess && (
-        <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
-          onClick={() => setShowDeleteSuccess(false)}
-        >
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-sage-700 flex justify-center">
-              <CheckCircle size={48} />
-            </div>
-            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{t("residentDeletedSuccess")}</p>
-          </div>
-        </div>
-      )}
-
-      {showUpdateSuccess && (
-        <div
-          className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
-          onClick={() => setShowUpdateSuccess(false)}
-        >
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-sage-700 flex justify-center">
-              <CheckCircle size={48} />
-            </div>
-            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-gray-600 mb-6">{t("recordUpdatedSuccess")}</p>
-            <button
-              onClick={() => setShowUpdateSuccess(false)}
-              className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
-            >
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
-
-        {showAddSuccess && (
-        <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
-            onClick={() => setShowAddSuccess(false)}
-        >
-            <div
-            className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center"
-            onClick={(e) => e.stopPropagation()}
-            >
-            <div className="mb-3 text-sage-700 flex justify-center">
-                <CheckCircle size={48} />
-            </div>
-
-            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">
-                {t("successTitle")}
-            </h3>
-
-            <p className="text-[15px] text-gray-600 mb-6">
-                {t("residentAddedSuccess")}
-            </p>
-
-            <button
-                onClick={() => setShowAddSuccess(false)}
-                className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
-            >
-                {t("okLabel")}
-            </button>
-            </div>
-        </div>
-        )}
-
-        {showRoleChangedModal && (
-        <div
-            className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4"
-        >
-            <div
-            className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center"
-            >
-            <div className="mb-3 text-sage-700 flex justify-center">
-                <CheckCircle size={48} />
-            </div>
-
-            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2">
-                {t("roleUpdatedTitle")}
-            </h3>
-
-            <p className="text-[15px] text-gray-600 mb-6">
-                {t("roleChangedToResidentMessage")}
-            </p>
-
-            <button
-                onClick={() => {
-                setShowRoleChangedModal(false);
-                window.location.href = "/login";
-                }}
-                className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
-            >
-                {t("okLabel")}
-            </button>
-            </div>
-        </div>
-        )}
+      <StatusModal open={showDeleteSuccess} type="success" title={t("successTitle")} message={t("residentDeletedSuccess")} okLabel={t("okLabel")} onClose={() => setShowDeleteSuccess(false)} />
+      <StatusModal open={showUpdateSuccess} type="success" title={t("successTitle")} message={t("recordUpdatedSuccess")} okLabel={t("okLabel")} onClose={() => setShowUpdateSuccess(false)} />
+      <StatusModal open={showAddSuccess} type="success" title={t("successTitle")} message={t("residentAddedSuccess")} okLabel={t("okLabel")} onClose={() => setShowAddSuccess(false)} />
+      <StatusModal
+        open={showRoleChangedModal}
+        type="success"
+        title={t("roleUpdatedTitle")}
+        message={t("roleChangedToResidentMessage")}
+        okLabel={t("okLabel")}
+        onClose={() => {
+          setShowRoleChangedModal(false);
+          window.location.href = "/login";
+        }}
+      />
 
       {/* Restoring an archived resident happens on the Archive page. */}
 
       {/* ─── Cancel Unsaved Changes Confirm Modal ─────────────────────────────── */}
       {showCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
-            <p className="text-gray-600 mb-5">{t("unsavedChangesMessage")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("stayButton")}</button>
+              <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   setShowCancelConfirm(null);

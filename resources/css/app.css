@@ -24,3 +24,12 @@ input[type="file"]::file-selector-button,
 input[type="file"]::-webkit-file-upload-button {
   font-family: inherit;
 }
+
+/* Edge/Chromium draws its own "reveal password" eye icon inside
+   type="password" fields (::-ms-reveal). It renders as a dark icon by
+   default, which disappears against the app's dark navy password inputs
+   (Settings' Change Password, Login). Inverting it turns it white so it's
+   actually visible on the dark background. */
+input[type="password"]::-ms-reveal {
+  filter: invert(1);
+}

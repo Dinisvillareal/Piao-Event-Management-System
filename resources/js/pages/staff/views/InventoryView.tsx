@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Package, Plus, X, MapPin, Trash2, Pencil, XCircle, CheckCircle, AlertTriangle, Search, Layers, RefreshCw } from "lucide-react";
+import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw } from "lucide-react";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -24,13 +25,17 @@ interface InventoryItem {
   overdue_borrow_event: { id: number; name: string; ended_at: string } | null;
 }
 
+// Dark-palette badges -- same semantic hue mapping as the light styles
+// they replace (teal for good condition, gold for caution, rust/red for
+// needing attention), matching the navy/gold/teal system used everywhere
+// else (Dashboard, Residents, Households, Events).
 const CONDITION_STYLES: Record<Condition, string> = {
-  New: "bg-sage-100 text-sage-800",
-  Good: "bg-sage-50 text-sage-700",
-  Fair: "bg-gold-50 text-gold-700",
-  Poor: "bg-[#8A3D2C]/10 text-[#5C2A1E]",
-  Disposed: "bg-[#E6E0D3]/70 text-[#6B7280]",
-  Lost: "bg-red-50 text-red-700",
+  New: "bg-[#4FBEB0]/20 text-[#7DD8CB]",
+  Good: "bg-[#4FBEB0]/10 text-[#7DD8CB]",
+  Fair: "bg-gold-400/15 text-gold-300",
+  Poor: "bg-[#8A3D2C]/25 text-[#E2A088]",
+  Disposed: "bg-white/10 text-white/45",
+  Lost: "bg-red-500/15 text-red-400",
 };
 
 const emptyForm = { name: "", quantity: 1, condition: "Good" as Condition, storage_location: "", notes: "" };
@@ -268,25 +273,38 @@ export default function InventoryView() {
   };
 
   return (
+    <>
+    {/* Full-bleed dark navy page -- same technique and palette as the
+        Dashboard/Residents/Households/Events pages, so Inventory reads as
+        part of the same system instead of the old light "paper" page.
+        Confirm/success/error/delete modals further below stay on their
+        original light theme, same scoping used on every other staff view. */}
+    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("barangayInventory")}</h1>
-          <p className="mt-1.5 text-sm text-[#6B7280] max-w-xl">{t("inventorySubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("barangayInventory")}</h1>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("inventorySubtitle")}</p>
         </div>
         <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0">
           {/* Genuinely live -- fetchStats() re-polls /inventory every 20s
               (see effect above), this just renders how long ago that last
               landed, ticking every second off nowTick. */}
-          <div className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-[#E6E0D3] bg-white px-3.5 py-2 text-xs font-medium text-[#6B7280]" title={t("liveLabel")}>
+          <div className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-white/50" title={t("liveLabel")}>
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sage-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-sage-600" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
             </span>
             {lastUpdatedLabel}
           </div>
-          <button onClick={openAdd} className="inline-flex items-center gap-2 rounded-full bg-[#1A1A1A] hover:bg-[#2E2E2E] text-white px-5 py-2.5 text-sm font-semibold shadow-sm transition-colors">
-            <Plus className="h-4 w-4" /> {t("addItem")}
+          <button
+            onClick={openAdd}
+            className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
+          >
+            {t("addItem")}
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+              <Plus className="h-5 w-5 text-white" />
+            </span>
           </button>
         </div>
       </div>
@@ -314,16 +332,16 @@ export default function InventoryView() {
         ))}
       </div>
 
-      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-3">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="relative flex-1 min-w-[220px]">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("searchInventoryPlaceholder")}
-              className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
           </div>
           <FilterDropdown
@@ -337,82 +355,83 @@ export default function InventoryView() {
               })),
             ]}
             className="h-11 px-4 shrink-0"
+            dark
           />
         </div>
       </div>
 
       {loading ? (
         <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sage-700"></div>
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#4FBEB0]"></div>
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-[#E6E0D3] bg-white p-10 text-center text-[#6B7280]">
-          <Package size={40} className="mx-auto mb-3 text-sage-300" />
+        <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
+          <Package size={40} className="mx-auto mb-3 text-white/20" />
           <p>{t("noInventoryItems")}</p>
         </div>
       ) : (
         <>
-        <div className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[#E6E0D3]">
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("itemColumn")}</th>
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("conditionColumn")}</th>
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("quantityColumn")}</th>
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("storageLocationLabel")}</th>
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("statusColumn")}</th>
-                  <th className="py-3 px-4 text-right text-[11px] font-bold uppercase tracking-wide text-[#1A1A1A]">{t("actionsColumn")}</th>
+                <tr className="border-b border-white/10">
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("itemColumn")}</th>
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("conditionColumn")}</th>
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("quantityColumn")}</th>
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("storageLocationLabel")}</th>
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("statusColumn")}</th>
+                  <th className="py-3 px-4 text-right text-[11px] font-bold uppercase tracking-wide text-white">{t("actionsColumn")}</th>
                 </tr>
               </thead>
               <tbody>
                 {paginatedItems.map((item) => (
-                  <tr key={item.id} className="border-b border-[#F1EEE5] last:border-0 hover:bg-sage-50/60 transition-colors">
+                  <tr key={item.id} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.05] transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sage-50 text-sage-700">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#123A38] border border-white/10 text-[#7DD8CB]">
                           <Package className="h-4 w-4" />
                         </div>
-                        <p className="font-semibold text-[#1A1A1A] truncate" title={item.name}>{item.name}</p>
+                        <p className="font-semibold text-white truncate" title={item.name}>{item.name}</p>
                       </div>
                     </td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap ${CONDITION_STYLES[item.condition]}`}>{t(CONDITION_LABEL_KEYS[item.condition])}</span>
                     </td>
-                    <td className="py-3 px-4 font-semibold text-[#1A1A1A] [font-variant-numeric:tabular-nums]">
-                      {item.quantity} <span className="font-normal text-xs text-[#6B7280]">{t("inStock")}</span>
+                    <td className="py-3 px-4 font-semibold text-white [font-variant-numeric:tabular-nums]">
+                      {item.quantity} <span className="font-normal text-xs text-white/45">{t("inStock")}</span>
                     </td>
-                    <td className="py-3 px-4 text-[#6B7280]">
+                    <td className="py-3 px-4 text-white/50">
                       {item.storage_location ? (
                         <span className="flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5 shrink-0 text-[#8A3D2C]" /> {item.storage_location}
+                          <MapPin className="h-3.5 w-3.5 shrink-0 text-[#4FBEB0]" /> {item.storage_location}
                         </span>
                       ) : "—"}
                     </td>
                     <td className="py-3 px-4">
                       {item.overdue_borrow_event ? (
                         <span
-                          className="px-2 py-1 rounded-full text-[11px] font-semibold bg-red-50 text-red-700 whitespace-nowrap"
+                          className="px-2 py-1 rounded-full text-[11px] font-semibold bg-red-500/15 text-red-400 whitespace-nowrap"
                           title={t("overdueBorrowTooltip").replace("{event}", item.overdue_borrow_event.name)}
                         >
                           {t("overdueReturnBadge")}
                         </span>
                       ) : item.borrowed_quantity > 0 ? (
-                        <span className="px-2 py-1 rounded-full text-[11px] font-semibold border border-[#E6E0D3] bg-white text-[#6B7280] whitespace-nowrap">{t("onLoanBadge")}</span>
+                        <span className="px-2 py-1 rounded-full text-[11px] font-semibold border border-white/10 bg-white/[0.04] text-white/50 whitespace-nowrap">{t("onLoanBadge")}</span>
                       ) : (
-                        <span className="text-[#B8B2A2]">—</span>
+                        <span className="text-white/25">—</span>
                       )}
                     </td>
                     <td className="py-3 px-4">
-                      {/* Neutral with a sage hover for Edit, red hover for
+                      {/* Neutral with a white hover for Edit, red hover for
                           Delete -- matches the icon-only Edit/Delete
-                          pairing used on the Events card grid. Delete is
-                          disabled while any units are out on loan --
+                          pairing used elsewhere on the dark pages. Delete
+                          is disabled while any units are out on loan --
                           deleting an item an active event still points to
                           would orphan its borrow record (see
                           InventoryController::destroy). */}
                       <div className="flex items-center justify-end gap-1">
-                        <button onClick={() => openEdit(item)} className="p-1.5 rounded-full text-[#6B7280] hover:bg-sage-50 hover:text-sage-800 transition" title={t("editLabel")}>
+                        <button onClick={() => openEdit(item)} className="p-1.5 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition" title={t("editLabel")}>
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
@@ -420,8 +439,8 @@ export default function InventoryView() {
                           disabled={item.borrowed_quantity > 0}
                           className={`p-1.5 rounded-full transition ${
                             item.borrowed_quantity > 0
-                              ? "text-[#B8B2A2] cursor-not-allowed"
-                              : "text-[#6B7280] hover:bg-red-50 hover:text-red-500"
+                              ? "text-white/20 cursor-not-allowed"
+                              : "text-white/50 hover:bg-red-500/10 hover:text-red-400"
                           }`}
                           title={item.borrowed_quantity > 0 ? t("itemCurrentlyBorrowedTooltip") : t("removeLabel")}
                         >
@@ -436,25 +455,25 @@ export default function InventoryView() {
           </div>
 
           {totalPages > 1 && (
-            <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 py-3 border-t border-[#E6E0D3]">
-              <p className="text-sm text-[#6B7280] text-center sm:text-left">
+            <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 py-3 border-t border-white/10">
+              <p className="text-sm text-white/45 text-center sm:text-left">
                 {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages} • {items.length} {t("recordsShownLabel")}
               </p>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-50 transition"
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                 >
                   ←
                 </button>
-                <span className="h-8 w-8 rounded-full bg-sage-800 text-white flex items-center justify-center text-sm font-semibold">
+                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] flex items-center justify-center text-sm font-bold">
                   {currentPage}
                 </span>
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-full border border-[#E6E0D3] bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-50 transition"
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                 >
                   →
                 </button>
@@ -464,51 +483,56 @@ export default function InventoryView() {
         </div>
         </>
       )}
+      </div>
+      </div>
 
+      {/* Add/Edit Item modal -- dark navy card, same treatment as the
+          Households Edit modal (centered card rather than a full-page
+          takeover, since this form is small). */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={handleCloseForm}>
-          <div className="bg-white rounded-[30px] w-full max-w-lg p-6 sm:p-8 shadow-2xl border border-[#E6E0D3] max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={handleCloseForm}>
+          <div className="bg-[#0A0E1A] rounded-[30px] w-full max-w-lg p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-[#1A1A1A]">{editing ? t("editItem") : t("addInventoryItem")}</h2>
-              <button onClick={handleCloseForm} className="text-[#6B7280] hover:text-[#1A1A1A]"><X size={20} /></button>
+              <h2 className="text-xl font-bold text-white">{editing ? t("editItem") : t("addInventoryItem")}</h2>
+              <button onClick={handleCloseForm} className="text-white/50 hover:text-white"><X size={20} /></button>
             </div>
             <form onSubmit={handleFormSubmit} noValidate className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("itemNameRequired")}</label>
-                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30" placeholder="Plastic chairs" />
+                <label className="block text-sm font-medium text-white/80 mb-1">{t("itemNameRequired")}</label>
+                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder="Plastic chairs" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("quantityRequired")}</label>
-                  <input type="number" min={0} required value={form.quantity} onChange={(e) => setForm((p) => ({ ...p, quantity: Number(e.target.value) }))} className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30" />
+                  <label className="block text-sm font-medium text-white/80 mb-1">{t("quantityRequired")}</label>
+                  <input type="number" min={0} required value={form.quantity} onChange={(e) => setForm((p) => ({ ...p, quantity: Number(e.target.value) }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("conditionRequired")}</label>
-                  <select value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value as Condition }))} className="w-full appearance-none rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30">
+                  <label className="block text-sm font-medium text-white/80 mb-1">{t("conditionRequired")}</label>
+                  <select value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value as Condition }))} className="w-full appearance-none rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50">
                     {(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as Condition[]).map((c) => (
-                      <option key={c} value={c}>{t(CONDITION_LABEL_KEYS[c])}</option>
+                      <option key={c} value={c} className="bg-[#0A0E1A] text-white">{t(CONDITION_LABEL_KEYS[c])}</option>
                     ))}
                   </select>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("storageLocationLabel")}</label>
-                <input value={form.storage_location} onChange={(e) => setForm((p) => ({ ...p, storage_location: e.target.value }))} className="w-full rounded-full border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30" placeholder={t("storageLocationPlaceholder")} />
+                <label className="block text-sm font-medium text-white/80 mb-1">{t("storageLocationLabel")}</label>
+                <input value={form.storage_location} onChange={(e) => setForm((p) => ({ ...p, storage_location: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("storageLocationPlaceholder")} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">{t("notesLabel")}</label>
-                <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-2xl border border-sage-200 px-4 py-2.5 text-sm font-sans bg-white focus:outline-none focus:ring-2 focus:ring-sage-700/30" rows={2} />
+                <label className="block text-sm font-medium text-white/80 mb-1">{t("notesLabel")}</label>
+                <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={2} />
               </div>
               <div className="flex gap-2 pt-2">
                 <button
                   type="submit"
                   disabled={isFormUnchanged}
                   title={isFormUnchanged ? t("noChangesToSaveHint") : undefined}
-                  className="flex-1 py-2.5 rounded-full font-semibold bg-sage-800 hover:bg-sage-900 text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-800 transition"
+                  className="flex-1 py-2.5 rounded-full font-bold bg-gold-400 hover:bg-gold-500 text-[#08130F] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gold-400 transition"
                 >
                   {editing ? t("updateItem") : t("addItem")}
                 </button>
-                <button type="button" onClick={handleCloseForm} className="px-6 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("cancelLabel")}</button>
+                <button type="button" onClick={handleCloseForm} className="px-6 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("cancelLabel")}</button>
               </div>
             </form>
           </div>
@@ -518,12 +542,12 @@ export default function InventoryView() {
       {/* Unsaved-changes guard for the Add/Edit Item modal */}
       {showFormCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
-            <p className="text-[#6B7280] mb-5">{t("unsavedChangesMessage")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowFormCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("stayButton")}</button>
+              <button onClick={() => setShowFormCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   setShowFormCancelConfirm(false);
@@ -538,43 +562,21 @@ export default function InventoryView() {
         </div>
       )}
 
-      {error && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[65] px-4" onClick={() => setError(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{error}</p>
-            <button onClick={() => setError(null)} className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
+      <StatusModal open={!!error} type="error" title={t("errorTitle")} message={error || ""} okLabel={t("okLabel")} onClose={() => setError(null)} z={65} />
 
       {/* Add / Update / Delete all land here on success, instead of just
           silently closing the form/confirm dialog. */}
-      {successMessage && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[65] px-4" onClick={() => setSuccessMessage(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-sage-800 flex justify-center"><CheckCircle size={40} /></div>
-            <h3 className="text-xl font-bold text-sage-800 mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{successMessage}</p>
-            <button onClick={() => setSuccessMessage(null)} className="px-6 py-2.5 rounded-full bg-sage-800 hover:bg-sage-900 text-white transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
+      <StatusModal open={!!successMessage} type="success" title={t("successTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} z={65} />
 
       {deleteId !== null && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-3 text-red-500 flex justify-center"><Trash2 size={36} /></div>
-            <h3 className="text-lg font-bold text-red-600 mb-2">{t("removeItemConfirmTitle")}</h3>
-            <p className="text-sm text-[#6B7280] mb-6">{t("removeItemConfirmBody")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-3 text-red-400 flex justify-center"><Trash2 size={36} /></div>
+            <h3 className="text-lg font-bold text-red-400 mb-2">{t("removeItemConfirmTitle")}</h3>
+            <p className="text-sm text-white/50 mb-6">{t("removeItemConfirmBody")}</p>
             <div className="flex justify-center gap-3">
-              <button onClick={() => setDeleteId(null)} className="px-5 py-2 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("cancelLabel")}</button>
-              <button onClick={handleDelete} className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition">{t("yesRemove")}</button>
+              <button onClick={() => setDeleteId(null)} className="px-5 py-2 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("cancelLabel")}</button>
+              <button onClick={handleDelete} className="px-5 py-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition">{t("yesRemove")}</button>
             </div>
           </div>
         </div>
@@ -593,6 +595,6 @@ export default function InventoryView() {
         onCancel={() => setShowConfirm(false)}
         onConfirm={performSave}
       />
-    </div>
+    </>
   );
 }

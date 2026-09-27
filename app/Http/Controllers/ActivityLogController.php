@@ -61,8 +61,14 @@ class ActivityLogController extends Controller
             ]);
         }
 
+        // 🔀 SORT ORDER -- defaults to newest-first (previous, hardcoded
+        // behavior); 'asc' lets staff read the log oldest-first instead.
+        // Whitelisted rather than passed straight to orderBy() since this
+        // value comes from the query string.
+        $sort = $request->get('sort') === 'asc' ? 'asc' : 'desc';
+
         return response()->json(
-            $query->orderBy('created_at', 'desc')->paginate(20)
+            $query->orderBy('created_at', $sort)->paginate(20)
         );
     }
 

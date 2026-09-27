@@ -135,6 +135,14 @@ class EventController extends Controller
 
     public function store(Request $request)
     {
+        // Only Staff create events -- this was previously reachable by any
+        // authenticated Resident (the route only requires 'auth'), letting
+        // them create a real event, trigger notifications/SMS to the whole
+        // barangay, and even post to the official Facebook Page.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $request->validate([
             'name'                 => 'required|string|max:255',
             'description'          => 'required|string',
@@ -232,6 +240,13 @@ class EventController extends Controller
 
     public function update(Request $request, $id)
     {
+        // Only Staff edit events -- same reasoning as store() above. This
+        // is separate from the ongoing/already-ended locks below: those
+        // control WHEN an edit is allowed, this controls WHO is allowed.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $request->validate([
             'name'                 => 'required|string|max:255',
             'description'          => 'required|string',
@@ -376,6 +391,11 @@ class EventController extends Controller
     // ✅ MODIFIED: Implement SOFT DELETE instead of hard delete
 public function destroy($id)
 {
+    // Only Staff archive events -- same reasoning as store() above.
+    if (!$this->isStaff()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
     $user = auth()->user();
 
     // ✅ Find only active (non-deleted) events
@@ -437,6 +457,11 @@ public function destroy($id)
     // ✅ NEW: Restore soft-deleted event (admin feature)
    public function restore($id)
 {
+    // Only Staff restore archived events -- same reasoning as store() above.
+    if (!$this->isStaff()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
     $user = auth()->user();
 
     $event = Event::onlyTrashed()->findOrFail($id);
@@ -466,6 +491,13 @@ public function destroy($id)
     // ✅ NEW: Force delete (permanent) - for admin only
     public function forceDelete($id)
     {
+        // Only Staff permanently delete events -- same reasoning as store()
+        // above, but higher stakes: this wipes the event and its
+        // notifications/attendance/inventory records with no recovery.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $user = auth()->user();
 
         // ✅ Find soft-deleted event
@@ -521,8 +553,7 @@ public function destroy($id)
             ->get(['id', 'contact_number', 'household_id', 'household_code', 'is_household_head', 'household_contact_number']);
 
         $smsPrefix = $isUpdate ? 'UPDATED: ' : '';
-        // $smsMessage = $smsPrefix . trim($event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.'));
-        $smsMessage = $smsPrefix . 'To: {name} — ' . $event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.');
+        $smsMessage = $smsPrefix . trim($event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.'));
         app(SmsService::class)->notifyHouseholds($residents, $event->id, $smsMessage);
 
         $staff = auth()->user();
