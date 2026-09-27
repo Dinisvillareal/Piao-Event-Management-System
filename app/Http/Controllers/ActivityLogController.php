@@ -10,6 +10,10 @@ class ActivityLogController extends Controller
 {
     public function index(Request $request)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $query = ActivityLog::query();
 
         // 🔍 SEARCH FILTER
@@ -57,13 +61,23 @@ class ActivityLogController extends Controller
             ]);
         }
 
+        // 🔀 SORT ORDER -- defaults to newest-first (previous, hardcoded
+        // behavior); 'asc' lets staff read the log oldest-first instead.
+        // Whitelisted rather than passed straight to orderBy() since this
+        // value comes from the query string.
+        $sort = $request->get('sort') === 'asc' ? 'asc' : 'desc';
+
         return response()->json(
-            $query->orderBy('created_at', 'desc')->paginate(20)
+            $query->orderBy('created_at', $sort)->paginate(20)
         );
     }
 
     public function show($id)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         return response()->json(
             ActivityLog::findOrFail($id)
         );
@@ -71,6 +85,10 @@ class ActivityLogController extends Controller
 
     public function today(Request $request)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $query = ActivityLog::query()
             ->whereDate('created_at', now()->timezone('Asia/Manila'));
 

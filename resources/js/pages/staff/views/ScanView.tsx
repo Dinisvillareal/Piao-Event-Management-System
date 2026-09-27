@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Camera, CameraOff, CheckCircle, XCircle, LogIn, LogOut, IdCard, ScanLine, Search, ChevronDown } from "lucide-react";
+import { Camera, CameraOff, CheckCircle, XCircle, AlertTriangle, LogIn, LogOut, IdCard, ScanLine, Search, ChevronDown } from "lucide-react";
 import { Scanner } from '@yudiel/react-qr-scanner';
 import api from "../../../lib/api";
 import { queueAttendance } from "../../../lib/offlineQueue";
@@ -31,6 +31,18 @@ type ModalConfig = {
   type: 'success' | 'error' | 'info' | 'timeout-in' | 'timeout-out';
   title: string;
   message: string;
+};
+
+// Every distinct scan outcome still carries its own message, but visually
+// they collapse onto the app's shared 3-state success/warning/error palette
+// (same colors StatusModal uses everywhere else) instead of each state
+// growing its own one-off color.
+const SCAN_STATUS_VARIANT: Record<ModalConfig['type'], 'success' | 'warning' | 'error'> = {
+  success: 'success',
+  info: 'success',
+  'timeout-out': 'success',
+  'timeout-in': 'warning',
+  error: 'error',
 };
 
 export default function ScanView({ events, residents, memberships }: any) {
@@ -864,34 +876,28 @@ export default function ScanView({ events, residents, memberships }: any) {
         </div>
       </div>
 
-      {modalConfig.isOpen && (
-        <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-[30px] w-full max-w-[340px] p-6 py-8 flex flex-col items-center text-center shadow-2xl animate-in zoom-in-95 duration-200">
-            {modalConfig.type === 'success' && <CheckCircle className="text-sage-800 mb-4" size={56} strokeWidth={2} />}
-            {modalConfig.type === 'error' && <XCircle className="text-red-500 mb-4" size={56} strokeWidth={2} />}
-            {modalConfig.type === 'info' && <CheckCircle className="text-sage-800 mb-4" size={56} strokeWidth={2} />}
-            {modalConfig.type === 'timeout-in' && <CheckCircle className="text-gold-700 mb-4" size={56} strokeWidth={2} />}
-            {modalConfig.type === 'timeout-out' && <CheckCircle className="text-sage-800 mb-4" size={56} strokeWidth={2} />}
-
-            <h3 className={`text-xl font-bold mb-2 ${modalConfig.type === 'error' ? 'text-red-600' : modalConfig.type === 'timeout-in' ? 'text-gold-700' : 'text-sage-800'}`}>
-              {modalConfig.title}
-            </h3>
-            <p className="text-[15px] text-[#6B7280] mb-6 px-2">{modalConfig.message}</p>
-            <button
-              onClick={closeModal}
-              className={`text-white px-10 py-2.5 rounded-full font-semibold tracking-wide transition-colors ${
-                modalConfig.type === 'error'
-                  ? 'bg-red-600 hover:bg-red-700'
-                  : modalConfig.type === 'timeout-in'
-                  ? 'bg-gold-700 hover:brightness-95'
-                  : 'bg-sage-800 hover:bg-sage-900'
-              }`}
-            >
-              {t("okLabel")}
-            </button>
+      {modalConfig.isOpen && (() => {
+        const variant = SCAN_STATUS_VARIANT[modalConfig.type];
+        const accent = variant === 'error' ? 'text-red-400' : variant === 'warning' ? 'text-amber-400' : 'text-sage-400';
+        const titleColor = variant === 'success' ? 'text-white' : accent;
+        const buttonColor = variant === 'error' ? 'bg-red-500 hover:bg-red-600' : variant === 'warning' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-sage-700 hover:bg-sage-800';
+        const Icon = variant === 'error' ? XCircle : variant === 'warning' ? AlertTriangle : CheckCircle;
+        return (
+          <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-[340px] p-6 py-8 flex flex-col items-center text-center shadow-2xl animate-in zoom-in-95 duration-200">
+              <Icon className={`${accent} mb-4`} size={56} strokeWidth={2} />
+              <h3 className={`text-xl font-bold mb-2 ${titleColor}`}>{modalConfig.title}</h3>
+              <p className="text-[15px] text-white/50 mb-6 px-2">{modalConfig.message}</p>
+              <button
+                onClick={closeModal}
+                className={`text-white px-10 py-2.5 rounded-full font-semibold tracking-wide transition-colors ${buttonColor}`}
+              >
+                {t("okLabel")}
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

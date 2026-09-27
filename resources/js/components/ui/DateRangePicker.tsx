@@ -15,6 +15,10 @@ interface DateRangePickerProps {
   thisYearLabel: string;
   clearLabel: string;
   applyLabel: string;
+  /** Dark navy styling to match the redesigned pages -- mirrors the `dark`
+      prop on DatePicker/Calendar. Default false keeps every other caller
+      on the original light look. */
+  dark?: boolean;
 }
 
 const toISODate = (d: Date) => d.toISOString().split("T")[0];
@@ -40,6 +44,7 @@ export default function DateRangePicker({
   thisYearLabel,
   clearLabel,
   applyLabel,
+  dark = false,
 }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [draftFrom, setDraftFrom] = useState(from);
@@ -181,16 +186,22 @@ export default function DateRangePicker({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="h-11 inline-flex items-center gap-2 pl-4 pr-3 rounded-full border border-[#005f63]/20 bg-white text-sm text-gray-700 shadow-sm hover:border-[#005f63]/40 transition"
+        className={`h-11 inline-flex items-center gap-2 pl-4 pr-3 rounded-full border text-sm transition ${
+          dark
+            ? "border-white/25 bg-white/10 text-white/80 hover:border-[#4FBEB0]/50"
+            : "border-[#005f63]/20 bg-white text-gray-700 shadow-sm hover:border-[#005f63]/40"
+        }`}
       >
-        <Calendar className="h-4 w-4 text-[#005f63]/70" />
-        <span className={from || to ? "font-medium text-gray-800" : "text-gray-500"}>{displayLabel}</span>
-        <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />
+        <Calendar className={`h-4 w-4 ${dark ? "text-[#4FBEB0]" : "text-[#005f63]/70"}`} />
+        <span className={from || to ? (dark ? "font-medium text-white" : "font-medium text-gray-800") : (dark ? "text-white/50" : "text-gray-500")}>{displayLabel}</span>
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""} ${dark ? "text-white/40" : "text-gray-400"}`} />
       </button>
 
       {open && (
         <div
-          className={`absolute z-50 w-[min(92vw,340px)] rounded-[24px] border border-[#ddd5ca] bg-white shadow-xl p-4 ${panelPos.openUp ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"}`}
+          className={`absolute z-50 w-[min(92vw,340px)] rounded-[24px] border shadow-xl p-4 ${
+            dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#ddd5ca] bg-white"
+          } ${panelPos.openUp ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"}`}
           style={{ left: panelPos.left }}
         >
           <div className="grid grid-cols-2 gap-2 mb-3">
@@ -199,40 +210,52 @@ export default function DateRangePicker({
                 key={r.label}
                 type="button"
                 onClick={r.apply}
-                className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-teal-50 hover:border-[#005f63]/30 hover:text-[#005f63] transition"
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                  dark
+                    ? "border-white/15 text-white/60 hover:bg-white/10 hover:border-[#4FBEB0]/40 hover:text-[#7DD8CB]"
+                    : "border-gray-200 text-gray-600 hover:bg-teal-50 hover:border-[#005f63]/30 hover:text-[#005f63]"
+                }`}
               >
                 {r.label}
               </button>
             ))}
           </div>
 
-          <div className="space-y-3 border-t border-gray-100 pt-3">
+          <div className={`space-y-3 border-t pt-3 ${dark ? "border-white/10" : "border-gray-100"}`}>
             <div className="grid grid-cols-2 gap-2 text-center">
               <div>
-                <label className="block text-[11px] font-semibold text-gray-500 mb-1">{fromLabel}</label>
-                <div className="rounded-2xl border border-gray-200 px-2 py-1.5 text-sm text-gray-700 truncate">
+                <label className={`block text-[11px] font-semibold mb-1 ${dark ? "text-white/50" : "text-gray-500"}`}>{fromLabel}</label>
+                <div className={`rounded-2xl border px-2 py-1.5 text-sm truncate ${dark ? "border-white/15 text-white/80" : "border-gray-200 text-gray-700"}`}>
                   {draftFrom || "…"}
                 </div>
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-gray-500 mb-1">{toLabel}</label>
-                <div className="rounded-2xl border border-gray-200 px-2 py-1.5 text-sm text-gray-700 truncate">
+                <label className={`block text-[11px] font-semibold mb-1 ${dark ? "text-white/50" : "text-gray-500"}`}>{toLabel}</label>
+                <div className={`rounded-2xl border px-2 py-1.5 text-sm truncate ${dark ? "border-white/15 text-white/80" : "border-gray-200 text-gray-700"}`}>
                   {draftTo || "…"}
                 </div>
               </div>
             </div>
-            <div className="flex rounded-full bg-gray-50 p-1 text-xs font-semibold text-gray-500">
+            <div className={`flex rounded-full p-1 text-xs font-semibold ${dark ? "bg-white/5 text-white/50" : "bg-gray-50 text-gray-500"}`}>
               <button
                 type="button"
                 onClick={() => setPickerTarget("from")}
-                className={`flex-1 rounded-full py-1.5 transition ${pickerTarget === "from" ? "bg-white text-[#005f63] shadow-sm" : "hover:text-gray-700"}`}
+                className={`flex-1 rounded-full py-1.5 transition ${
+                  pickerTarget === "from"
+                    ? (dark ? "bg-[#4FBEB0] text-[#08130F] shadow-sm" : "bg-white text-[#005f63] shadow-sm")
+                    : (dark ? "hover:text-white/80" : "hover:text-gray-700")
+                }`}
               >
                 {fromLabel}
               </button>
               <button
                 type="button"
                 onClick={() => setPickerTarget("to")}
-                className={`flex-1 rounded-full py-1.5 transition ${pickerTarget === "to" ? "bg-white text-[#005f63] shadow-sm" : "hover:text-gray-700"}`}
+                className={`flex-1 rounded-full py-1.5 transition ${
+                  pickerTarget === "to"
+                    ? (dark ? "bg-[#4FBEB0] text-[#08130F] shadow-sm" : "bg-white text-[#005f63] shadow-sm")
+                    : (dark ? "hover:text-white/80" : "hover:text-gray-700")
+                }`}
               >
                 {toLabel}
               </button>
@@ -242,24 +265,27 @@ export default function DateRangePicker({
                 value={draftFrom}
                 onSelect={(iso) => { setDraftFrom(iso); setPickerTarget("to"); }}
                 max={draftTo || undefined}
+                dark={dark}
               />
             ) : (
-              <MiniCalendar value={draftTo} onSelect={setDraftTo} min={draftFrom || undefined} />
+              <MiniCalendar value={draftTo} onSelect={setDraftTo} min={draftFrom || undefined} dark={dark} />
             )}
           </div>
 
-          <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+          <div className={`flex items-center justify-between mt-4 pt-3 border-t ${dark ? "border-white/10" : "border-gray-100"}`}>
             <button
               type="button"
               onClick={handleClear}
-              className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-red-500 transition"
+              className={`inline-flex items-center gap-1 text-xs font-medium transition ${dark ? "text-white/50 hover:text-red-400" : "text-gray-500 hover:text-red-500"}`}
             >
               <X className="h-3.5 w-3.5" /> {clearLabel}
             </button>
             <button
               type="button"
               onClick={handleApply}
-              className="rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white px-5 py-2 text-xs font-semibold transition"
+              className={`rounded-full px-5 py-2 text-xs font-semibold transition ${
+                dark ? "bg-[#4FBEB0] hover:bg-[#7DD8CB] text-[#08130F]" : "bg-[#005f63] hover:bg-[#004a4d] text-white"
+              }`}
             >
               {applyLabel}
             </button>

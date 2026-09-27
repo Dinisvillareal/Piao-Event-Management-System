@@ -268,71 +268,78 @@ export default function EventsView({
   }, [paginatedEvents]);
 
   return (
+    <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
-      <div className="sticky top-0 z-20 bg-[#fcfcf9] px-1 pt-2 pb-4 border-b border-[#ece7de]">
+      {/* Not sticky -- matches every other converted page. */}
+      <div className="px-1 pt-2 pb-4">
         <div className="w-full">
-          <h1 className="text-4xl font-black text-[#005f63]">{t("eventsAndAttendance")}</h1>
-          <p className="mt-1 text-sm text-[#667777]">
+          <h1 className="text-4xl font-black text-white">{t("eventsAndAttendance")}</h1>
+          <p className="mt-1 text-sm text-white/50">
             {t("eventsSubtitle")}
           </p>
 
-          <div className="mt-4 flex items-center gap-4 w-full">
-            <div className="flex-1">
-              <SearchBar
-                value={eventSearch}
-                onChange={setEventSearch}
-                placeholder={t("searchEventsPlaceholder")}
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex-1 min-w-[220px]">
+                <SearchBar
+                  value={eventSearch}
+                  onChange={setEventSearch}
+                  placeholder={t("searchEventsPlaceholder")}
+                  dark
+                />
+              </div>
+
+              <FilterDropdown
+                value={eventFilter}
+                onChange={setEventFilter}
+                options={[
+                  { value: "all", label: t("allEvents") },
+                  { value: "upcoming", label: t("upcomingEvents") },
+                  { value: "past", label: t("pastEvents") },
+                ]}
+                className="h-11 pl-10 pr-8 shrink-0"
+                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+                dark
+              />
+
+              <FilterDropdown
+                value={membershipFilter}
+                onChange={setMembershipFilter}
+                options={[
+                  { value: "all", label: t("allMembershipsOption") },
+                  ...userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
+                ]}
+                className="h-11 pl-10 pr-8 shrink-0"
+                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+                dark
               />
             </div>
-
-            <FilterDropdown
-              value={eventFilter}
-              onChange={setEventFilter}
-              options={[
-                { value: "all", label: t("allEvents") },
-                { value: "upcoming", label: t("upcomingEvents") },
-                { value: "past", label: t("pastEvents") },
-              ]}
-              className="h-14 pl-10 pr-8"
-              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
-            />
-
-            <FilterDropdown
-              value={membershipFilter}
-              onChange={setMembershipFilter}
-              options={[
-                { value: "all", label: t("allMembershipsOption") },
-                ...userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
-              ]}
-              className="h-14 pl-10 pr-8"
-              icon={<Filter className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
-            />
           </div>
 
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-white/40">
             {filteredEvents.length} of {allEvents.length} {t("eventsMatchCount")}
           </p>
 
-          {/* ✅ PAGINATION - ← 1 → RIGHT SIDE BELOW SEARCH BAR */}
+          {/* PAGINATION - ← 1 → RIGHT SIDE BELOW SEARCH BAR */}
           {totalPages > 1 && (
             <div className="flex justify-end mt-4">
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
                   ←
                 </button>
-                
-                <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+
+                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
                   {currentPage}
                 </span>
-                
+
                 <button
                   onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
                   →
                 </button>
@@ -344,12 +351,12 @@ export default function EventsView({
 
       <div className="pl-1">
         {filteredEvents.length === 0 ? (
-          <p className="text-gray-500 italic">{t("noEventsMatch")}</p>
+          <p className="text-white/40 italic">{t("noEventsMatch")}</p>
         ) : (
           <div className="space-y-8">
             {Object.entries(groupedEvents).map(([dateLabel, eventsInGroup]) => (
               <div key={dateLabel}>
-                <h3 className="mb-4 border-b border-gray-200 pb-2 text-lg font-bold text-[#005f63]">
+                <h3 className="mb-4 border-b border-white/10 pb-2 text-lg font-bold text-white">
                   {dateLabel === THIS_WEEK_KEY ? t("thisWeekLabel") : dateLabel}
                 </h3>
                 <div className="grid gap-5 md:grid-cols-2">
@@ -368,47 +375,47 @@ export default function EventsView({
                     return (
                       <div
                         key={e.id}
-                        className="relative rounded-3xl border-l-4 border-[#f8e67d] bg-white p-5 shadow-[8px_8px_6px_rgba(0,0,0,0.10)] hover:shadow-[12px_12px_18px_rgba(0,0,0,0.20)] transition-shadow duration-200"
+                        className="relative rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] p-5 hover:bg-white/[0.06] transition-all duration-200"
                       >
                         <div className="absolute top-4 right-4 flex items-center gap-1.5">
                           <span
                             className={`w-2.5 h-2.5 rounded-full ${
-                              isUpcoming ? "bg-[#ffd448]" : "bg-[#4dacaf]"
+                              isUpcoming ? "bg-gold-400" : "bg-[#4FBEB0]"
                             }`}
                           />
-                          <span className="text-xs font-medium text-gray-600">
+                          <span className="text-xs font-medium text-white/50">
                             {isUpcoming ? t("upcomingBadge") : t("pastBadge")}
                           </span>
                         </div>
 
-                        <h2 className="pr-20 text-base font-bold text-[#005f63]">
+                        <h2 className="pr-20 text-base font-bold text-white">
                           {highlightText(e.title, eventSearch)}
                         </h2>
-                        
-                        <p className="mt-1 text-sm text-gray-500">
+
+                        <p className="mt-1 text-sm text-white/40">
                           {highlightText(dateOnly, eventSearch)} · {timeOnly}
                         </p>
-                        
-                        <p className="mt-1 text-sm text-gray-500">
+
+                        <p className="mt-1 text-sm text-white/40">
                           {highlightText(e.location, eventSearch)}
                         </p>
-                        
-                        <p className="mt-3 text-sm text-gray-700">
+
+                        <p className="mt-3 text-sm text-white/70">
                           {highlightText(e.description, eventSearch)}
                         </p>
 
                         <div className="mt-4 flex flex-wrap items-center gap-2">
                           {memNames.length > 0 ? (
                             <>
-                              <span className="rounded-full bg-[#005f63]/10 px-3 py-1 text-xs font-semibold text-[#005f63] border border-[#005f63]/20">
+                              <span className="rounded-full bg-[#4FBEB0]/15 px-3 py-1 text-xs font-semibold text-[#7DD8CB] border border-[#4FBEB0]/25">
                                 {t("forLabel")} {memNames.join(", ")}
                               </span>
-                              <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-500 border border-gray-200">
+                              <span className="rounded-full bg-white/[0.06] px-3 py-1 text-xs font-semibold text-white/50 border border-white/10">
                                 {t("includedInMembership")}
                               </span>
                             </>
                           ) : (
-                            <span className="rounded-full bg-[#005f63]/10 px-3 py-1 text-xs font-semibold text-[#005f63] border border-[#005f63]/20">
+                            <span className="rounded-full bg-[#4FBEB0]/15 px-3 py-1 text-xs font-semibold text-[#7DD8CB] border border-[#4FBEB0]/25">
                               {t("openEventAllResidents")}
                             </span>
                           )}
@@ -432,10 +439,10 @@ export default function EventsView({
                           const feedback = getFeedbackForEvent(e.id);
                           const isReviewing = reviewingEventId === e.id;
                           return (
-                            <div className="mt-4 pt-4 border-t border-gray-100">
+                            <div className="mt-4 pt-4 border-t border-white/10">
                               {isReviewing ? (
                                 <div>
-                                  <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70 mb-2">{t("rateThisEventLabel")}</p>
+                                  <p className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">{t("rateThisEventLabel")}</p>
                                   <div className="flex items-center gap-1">
                                     {[1, 2, 3, 4, 5].map((n) => (
                                       <button
@@ -446,7 +453,7 @@ export default function EventsView({
                                         onClick={() => setReviewRating(n)}
                                         className="p-0.5"
                                       >
-                                        <Star size={22} className={(reviewHoverRating || reviewRating) >= n ? "text-orange-400 fill-orange-400" : "text-gray-300"} />
+                                        <Star size={22} className={(reviewHoverRating || reviewRating) >= n ? "text-gold-400 fill-gold-400" : "text-white/20"} />
                                       </button>
                                     ))}
                                   </div>
@@ -455,19 +462,19 @@ export default function EventsView({
                                     onChange={(ev) => setReviewComment(ev.target.value)}
                                     placeholder={t("optionalCommentPlaceholder")}
                                     rows={2}
-                                    className="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"
+                                    className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                                   />
-                                  {reviewError && <p className="mt-1 text-xs text-red-500">{reviewError}</p>}
+                                  {reviewError && <p className="mt-1 text-xs text-red-400">{reviewError}</p>}
                                   <div className="mt-2 flex gap-2">
                                     <button
                                       type="button"
                                       onClick={() => submitReview(e.id)}
                                       disabled={reviewRating < 1 || submittingReview}
-                                      className="flex-1 rounded-full bg-[#005f63] hover:bg-[#004a4d] text-white text-sm font-bold py-2 disabled:opacity-50"
+                                      className="flex-1 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-bold py-2 disabled:opacity-50 transition"
                                     >
                                       {submittingReview ? t("submittingLabel") : t("submitReviewButton")}
                                     </button>
-                                    <button type="button" onClick={cancelReview} disabled={submittingReview} className="rounded-full border border-gray-200 text-gray-500 text-sm font-medium px-4 disabled:opacity-50">
+                                    <button type="button" onClick={cancelReview} disabled={submittingReview} className="rounded-full border border-white/15 text-white/60 hover:bg-white/5 text-sm font-medium px-4 disabled:opacity-50 transition">
                                       {t("cancelLabel")}
                                     </button>
                                   </div>
@@ -476,25 +483,25 @@ export default function EventsView({
                                 <div>
                                   <div className="flex items-center justify-between gap-2">
                                     <div className="min-w-0">
-                                      <p className="text-xs font-bold uppercase tracking-wide text-[#005f63]/70 mb-1.5">{t("yourRatingLabel")}</p>
+                                      <p className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB] mb-1.5">{t("yourRatingLabel")}</p>
                                       <div className="flex items-center gap-1">
                                         {[1, 2, 3, 4, 5].map((n) => (
-                                          <Star key={n} size={16} className={feedback.rating >= n ? "text-orange-400 fill-orange-400 shrink-0" : "text-gray-200 shrink-0"} />
+                                          <Star key={n} size={16} className={feedback.rating >= n ? "text-gold-400 fill-gold-400 shrink-0" : "text-white/15 shrink-0"} />
                                         ))}
                                       </div>
-                                      {feedback.comment && <p className="mt-1 text-xs text-gray-500 truncate">"{feedback.comment}"</p>}
+                                      {feedback.comment && <p className="mt-1 text-xs text-white/40 truncate">"{feedback.comment}"</p>}
                                     </div>
                                     <button
                                       type="button"
                                       onClick={() => startReview(e.id)}
                                       title={t("editReviewTitle")}
-                                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-[#005f63]/20 text-[#005f63] text-xs font-semibold px-3 py-1.5 hover:bg-teal-50 transition"
+                                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 text-white/70 text-xs font-semibold px-3 py-1.5 hover:bg-white/10 transition"
                                     >
                                       <Pencil className="h-3 w-3" /> {t("editLabel")}
                                     </button>
                                   </div>
                                   {justSubmittedEventId === e.id && (
-                                    <p className="mt-2 flex items-center gap-1 text-xs font-medium text-[#005f63]">
+                                    <p className="mt-2 flex items-center gap-1 text-xs font-medium text-[#7DD8CB]">
                                       <CheckCircle className="h-3.5 w-3.5" /> {t("feedbackSavedConfirmation")}
                                     </p>
                                   )}
@@ -504,7 +511,7 @@ export default function EventsView({
                                 <button
                                   type="button"
                                   onClick={() => startReview(e.id)}
-                                  className="inline-flex items-center gap-1.5 rounded-full border border-[#005f63]/20 text-[#005f63] text-sm font-semibold px-4 py-2 hover:bg-teal-50 transition"
+                                  className="inline-flex items-center gap-1.5 rounded-full border border-white/15 text-white/70 text-sm font-semibold px-4 py-2 hover:bg-white/10 transition"
                                 >
                                   <Star className="h-4 w-4" /> {t("rateThisEventButton")}
                                 </button>
@@ -521,6 +528,7 @@ export default function EventsView({
           </div>
         )}
       </div>
+    </div>
     </div>
   );
 }

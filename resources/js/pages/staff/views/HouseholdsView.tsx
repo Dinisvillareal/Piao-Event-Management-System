@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, CheckCircle, AlertCircle, AlertTriangle, ChevronDown, Search } from "lucide-react";
+import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, AlertCircle, AlertTriangle, ChevronDown, Search } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -505,12 +506,12 @@ export default function HouseholdsView() {
       {/* Unsaved-changes guard for the Edit Household modal */}
       {showEditCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
-            <p className="text-[#6B7280] mb-5">{t("unsavedChangesMessage")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("stayButton")}</button>
+              <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   setShowEditCancelConfirm(false);
@@ -551,45 +552,20 @@ export default function HouseholdsView() {
       {/* Delete confirm modal */}
       {deleteRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-4 text-red-500 flex justify-center"><Trash2 size={36} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-5">{t("deleteHouseholdConfirm")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
+            <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-5">{t("deleteHouseholdConfirm")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("cancel")}</button>
-              <button onClick={confirmDelete} disabled={saving} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
+              <button onClick={() => setDeleteRecord(null)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("cancel")}</button>
+              <button onClick={confirmDelete} disabled={saving} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Success modal (shared template) */}
-      {successMessage && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setSuccessMessage(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-sage-800 flex justify-center"><CheckCircle size={48} /></div>
-            <h3 className="text-xl font-bold text-sage-800 mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{successMessage}</p>
-            <button onClick={() => setSuccessMessage(null)} className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Error modal (shared template, red variant) */}
-      {errorMessage && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setErrorMessage(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-red-500 flex justify-center"><AlertCircle size={48} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{errorMessage}</p>
-            <button onClick={() => setErrorMessage(null)} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition">
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
+      <StatusModal open={!!successMessage} type="success" title={t("successTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} />
+      <StatusModal open={!!errorMessage} type="error" title={t("errorTitle")} message={errorMessage || ""} okLabel={t("okLabel")} onClose={() => setErrorMessage(null)} />
     </div>
   );
 }

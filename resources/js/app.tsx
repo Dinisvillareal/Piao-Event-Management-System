@@ -194,31 +194,14 @@ export default function App() {
     }
   }, [loading, userRole, portalMode]);
 
-  // ── Loading splash ────────────────────────────────────────────────────────
+  // ── Loading ────────────────────────────────────────────────────────────
+  // Auth check happens on every full page load (including right after the
+  // staff/member portal transition redirects here, right after the dark
+  // branded splash screen). Keep this the same dark background so there is
+  // no white/paper-colored flash in between -- no spinner, no visible UI,
+  // just a hold on the same color already on screen.
   if (loading) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100vh",
-          background: "#fcfcf9",
-        }}
-      >
-        <div
-          style={{
-            width: 40,
-            height: 40,
-            border: "3px solid #e5e5e5",
-            borderTopColor: "#006666",
-            borderRadius: "50%",
-            animation: "spin 0.8s linear infinite",
-          }}
-        />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
+    return <div style={{ position: "fixed", inset: 0, background: "#0A0E1A" }} />;
   }
 
   // ── Not authenticated → Login ────────────────────────────────────────────

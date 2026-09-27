@@ -124,7 +124,7 @@ export default function FilterDropdown({
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`flex items-center gap-2 rounded-full border text-sm focus:outline-none focus:ring-2 ${
+        className={`relative flex items-center gap-2 rounded-full border text-sm focus:outline-none focus:ring-2 ${
           dark
             ? "border-white/10 bg-white/[0.03] focus:border-[#4FBEB0]/50 focus:ring-[#4FBEB0]/20"
             : "border-[#E6E0D3] bg-white focus:border-sage-400 focus:ring-sage-700/20"
@@ -139,8 +139,17 @@ export default function FilterDropdown({
         <ChevronDown
           className={`h-4 w-4 shrink-0 transition-transform ${dark ? "text-white/40" : "text-[#6B7280]"} ${open ? "rotate-180" : ""}`}
         />
+        {/* The icon renders INSIDE the button (which now carries its own
+            `relative`) instead of as a sibling positioned against the
+            outer wrapper. The wrapper is `h-full` and can get stretched
+            taller than the button by flex `align-items: stretch` when a
+            taller sibling (e.g. a DatePicker) shares its row -- the button
+            itself always keeps the fixed height its caller passed in via
+            `className` (h-11, etc.), so anchoring the icon to the button
+            guarantees it stays centered no matter what happens to the
+            wrapper around it. */}
+        {icon}
       </button>
-      {icon}
 
       {open && panelPos &&
         createPortal(
@@ -152,7 +161,7 @@ export default function FilterDropdown({
               dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#E6E0D3] bg-white"
             }`}
           >
-            <div className="max-h-[280px] overflow-y-auto">
+            <div className={`max-h-[280px] overflow-y-auto ${dark ? "filter-dropdown-scroll-dark" : "filter-dropdown-scroll-light"}`}>
               {options.map((opt) => (
                 <button
                   key={opt.value}
@@ -180,6 +189,27 @@ export default function FilterDropdown({
           </div>,
           document.body
         )}
+
+      {/* Thin, rounded scrollbar for the option panel above -- without
+          this it falls back to the browser's default scrollbar, which on
+          a small rounded dark popover reads as a big, jarring white bar
+          with square arrow buttons that clash with the rest of the app's
+          styling. Global (not scoped) like the app's other `.smooth-scroll`
+          style blocks, so it's safe if more than one FilterDropdown is
+          open/mounted on the same page at once. */}
+      <style>{`
+        .filter-dropdown-scroll-dark::-webkit-scrollbar { width: 6px; }
+        .filter-dropdown-scroll-dark::-webkit-scrollbar-track { background: transparent; }
+        .filter-dropdown-scroll-dark::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 10px; }
+        .filter-dropdown-scroll-dark::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+        .filter-dropdown-scroll-dark { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
+
+        .filter-dropdown-scroll-light::-webkit-scrollbar { width: 6px; }
+        .filter-dropdown-scroll-light::-webkit-scrollbar-track { background: transparent; }
+        .filter-dropdown-scroll-light::-webkit-scrollbar-thumb { background: #d8d2c4; border-radius: 10px; }
+        .filter-dropdown-scroll-light::-webkit-scrollbar-thumb:hover { background: #c7bfab; }
+        .filter-dropdown-scroll-light { scrollbar-width: thin; scrollbar-color: #d8d2c4 transparent; }
+      `}</style>
     </div>
   );
 }

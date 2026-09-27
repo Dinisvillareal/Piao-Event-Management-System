@@ -238,7 +238,15 @@ class Event extends Model
             ]);
         }
         
-        // Remove records for residents no longer eligible
+        // Remove records for residents no longer eligible. Deliberate
+        // project decision: when an event's targeting changes, anyone no
+        // longer on the eligible list is removed ENTIRELY, including
+        // residents who already scanned in/out -- no partial "Incomplete"
+        // row is left behind on either the Staff or Member side. There's no
+        // SoftDeletes on EventAttendance, so this delete is instant and
+        // permanent with no Archive/restore. (timeIn()/timeOut() in
+        // EventAttendanceController separately block a no-longer-eligible
+        // resident from creating a new row after this runs.)
         $removedResidentIds = array_diff($existingResidentIds, $eligibleResidentIds);
         if (!empty($removedResidentIds)) {
             $this->attendances()->whereIn('user_id', $removedResidentIds)->delete();

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
-  Filter, XCircle, X, LogIn, LogOut, ChevronLeft, Archive, CheckCircle, AlertCircle, AlertTriangle,
+  Filter, X, LogIn, LogOut, ChevronLeft, Archive, AlertTriangle,
   Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown, Paperclip,
   FileText, Download, Megaphone, ClipboardList, Users, ArrowLeft, Save,
 } from "lucide-react";
@@ -9,6 +9,7 @@ import FilterDropdown from "../../../components/ui/FilterDropdown";
 import DatePicker from "../../../components/ui/DatePicker";
 import TimePicker from "../../../components/ui/TimePicker";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -1206,10 +1207,15 @@ export function EventsView({
           ];
 
           return (
+            // Full-bleed dark navy wrapper -- same technique and palette as
+            // the list view right below this (and the Dashboard/Residents/
+            // Households pages), so the event detail reads as part of the
+            // same system instead of the light page it used to be.
+            <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
             <div className="space-y-6">
               <button
                 onClick={() => setViewEv(null)}
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-sage-700 hover:text-sage-900 transition"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-white/60 hover:text-white transition"
               >
                 <ChevronLeft className="h-4 w-4" /> {t("backToEventsLabel")}
               </button>
@@ -1217,16 +1223,16 @@ export function EventsView({
               <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A] break-words">{viewEv.title}</h1>
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${statusPillClasses(status.label)}`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(status.label)}`} />
+                    <h1 className="font-display text-2xl sm:text-3xl font-bold text-white break-words">{viewEv.title}</h1>
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${statusPillClasses(status.label, true)}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(status.label, true)}`} />
                       {eventStatusChipLabel(status.label)}
                     </span>
                   </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-[#6B7280]">
-                    <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-[#8A3D2C] shrink-0" /> {viewEv.location}</span>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/50">
+                    <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-gold-300 shrink-0" /> {viewEv.location}</span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Clock className="h-4 w-4 text-gold-700 shrink-0" />
+                      <Clock className="h-4 w-4 text-gold-300 shrink-0" />
                       {(viewEv.startDate || viewEv.date)} · {formatTime12Hour(viewEv.startTime)}
                     </span>
                   </div>
@@ -1236,7 +1242,7 @@ export function EventsView({
                     onClick={() => startEditEvent(viewEv)}
                     disabled={isSubmitting || locked}
                     title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E0D3] bg-white px-4 py-2 text-sm font-semibold text-[#1A1A1A] hover:bg-sage-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Pencil className="h-3.5 w-3.5" /> {t("editTitle")}
                   </button>
@@ -1244,20 +1250,20 @@ export function EventsView({
                     onClick={() => setEventToDelete(viewEv.id)}
                     disabled={locked}
                     title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-[#E6E0D3] bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Archive className="h-3.5 w-3.5" /> {t("deleteTitle")}
                   </button>
                 </div>
               </div>
 
-              <div className="border-b border-[#E6E0D3] flex gap-6 overflow-x-auto">
+              <div className="border-b border-white/10 flex gap-6 overflow-x-auto">
                 {tabs.map((tab) => (
                   <button
                     key={tab.key}
                     onClick={() => setDetailTab(tab.key)}
                     className={`pb-3 px-1 text-sm font-semibold border-b-2 whitespace-nowrap transition ${
-                      detailTab === tab.key ? "border-sage-700 text-sage-800" : "border-transparent text-[#6B7280] hover:text-[#1A1A1A]"
+                      detailTab === tab.key ? "border-[#4FBEB0] text-[#4FBEB0]" : "border-transparent text-white/50 hover:text-white"
                     }`}
                   >
                     {tab.label}{tab.count !== undefined ? ` (${tab.count})` : ""}
@@ -1267,20 +1273,22 @@ export function EventsView({
 
               {detailTab === "overview" && (
                 <div className="space-y-5">
-                  <div className="rounded-2xl border border-[#E6E0D3] bg-white p-5">
-                    <h3 className="text-xs font-bold uppercase tracking-wide text-sage-700/80 mb-2">{t("descriptionLabel")}</h3>
-                    <p className="text-sm text-[#1A1A1A] leading-relaxed whitespace-pre-wrap">{viewEv.description || t("noDescription")}</p>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                    <h3 className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">{t("descriptionLabel")}</h3>
+                    <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{viewEv.description || t("noDescription")}</p>
                     {viewEv.notificationMessage && (
-                      <div className="mt-4 pt-4 border-t border-[#E6E0D3]">
-                        <h4 className="text-xs font-bold uppercase tracking-wide text-sage-700/80 mb-1.5">{t("notificationPreview")}</h4>
-                        <p className="text-sm text-sage-800 bg-sage-50 rounded-xl p-3">{viewEv.notificationMessage}</p>
+                      <div className="mt-4 pt-4 border-t border-white/10">
+                        <h4 className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB] mb-1.5">{t("notificationPreview")}</h4>
+                        <p className="text-sm text-[#7DD8CB] bg-[#4FBEB0]/10 rounded-xl p-3">{viewEv.notificationMessage}</p>
                       </div>
                     )}
                   </div>
 
                   {/* Solid-colored to match the Dashboard's Residents / Active
                       Memberships / Overdue Returns stat cards -- same three
-                      colors, just flat instead of the Dashboard's gradient. */}
+                      colors, just flat instead of the Dashboard's gradient.
+                      These already read fine on the dark page, so only the
+                      surrounding surfaces needed to change. */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="rounded-2xl bg-sage-700 p-4 text-center">
                       <p className="text-xs font-semibold uppercase tracking-wide text-white/70">{t("coverageStatLabel")}</p>
@@ -1303,7 +1311,7 @@ export function EventsView({
                       type="button"
                       disabled
                       title={t("featureComingSoonHint")}
-                      className="inline-flex items-center gap-2 rounded-full border border-[#E6E0D3] bg-[#FAF9F5] text-[#6B7280] px-4 py-2.5 text-sm font-semibold opacity-70 cursor-not-allowed"
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] text-white/40 px-4 py-2.5 text-sm font-semibold opacity-70 cursor-not-allowed"
                     >
                       <Megaphone className="h-4 w-4" /> {t("broadcastSmsButton")}
                     </button>
@@ -1311,7 +1319,7 @@ export function EventsView({
                       type="button"
                       disabled
                       title={t("featureComingSoonHint")}
-                      className="inline-flex items-center gap-2 rounded-full bg-[#1A1A1A] text-white px-4 py-2.5 text-sm font-semibold opacity-70 cursor-not-allowed"
+                      className="inline-flex items-center gap-2 rounded-full bg-white/10 text-white/60 px-4 py-2.5 text-sm font-semibold opacity-70 cursor-not-allowed"
                     >
                       <ClipboardList className="h-4 w-4" /> {t("generateReportButton")}
                     </button>
@@ -1324,16 +1332,16 @@ export function EventsView({
                   {/* Same search bar card/input pattern as the Residents,
                       Households, Memberships and main Events search --
                       the status filter sits alongside it, unchanged. */}
-                  <div className="rounded-2xl border border-[#E6E0D3] bg-white p-3">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                       <div className="relative flex-1 min-w-[220px]">
-                        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                         <input
                           type="text"
                           value={attendanceSearch}
                           onChange={(e) => setAttendanceSearch(e.target.value)}
                           placeholder={t("searchResidentNamePlaceholder")}
-                          className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                         />
                       </div>
                       <div className="shrink-0">
@@ -1347,15 +1355,16 @@ export function EventsView({
                             { value: "missed", label: t("statusMissed") },
                           ]}
                           className="h-11 pl-9 pr-8"
-                          icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-sage-700/70 pointer-events-none" />}
+                          icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+                          dark
                         />
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[#E6E0D3] w-full overflow-x-auto">
+                  <div className="rounded-xl border border-white/10 w-full overflow-x-auto">
                     <table className="w-full text-sm min-w-[560px]">
-                      <thead className="bg-[#1A1A1A] sticky top-0 z-10">
+                      <thead className="bg-white/[0.06] sticky top-0 z-10">
                         <tr>
                           <th className="text-left p-4 font-bold text-white w-[30%]">{t("residentNameColumn")}</th>
                           <th className="text-left p-4 font-bold text-white w-[25%]">{t("timeInColumn")}</th>
@@ -1366,33 +1375,33 @@ export function EventsView({
                       <tbody>
                         {paginatedAttendance.length === 0 ? (
                           <tr>
-                            <td colSpan={4} className="p-6 text-center text-[#6B7280] italic">
+                            <td colSpan={4} className="p-6 text-center text-white/40 italic bg-white/[0.03]">
                               {t("noMatchingRecords")}
                             </td>
                           </tr>
                         ) : (
                           paginatedAttendance.map((record: any, i: number) => {
                             const recStatus = getAttendanceStatus(record);
-                            let statusColor = "text-[#6B7280] bg-[#F3F1EA]";
-                            if (recStatus.label === "Complete") statusColor = "text-sage-800 bg-sage-50";
-                            if (recStatus.label === "Incomplete") statusColor = "text-gold-700 bg-gold-50";
-                            if (recStatus.label === "Missed") statusColor = "text-red-700 bg-red-100";
+                            let statusColor = "text-white/50 bg-white/10";
+                            if (recStatus.label === "Complete") statusColor = "text-[#7DD8CB] bg-[#4FBEB0]/15";
+                            if (recStatus.label === "Incomplete") statusColor = "text-gold-300 bg-gold-400/15";
+                            if (recStatus.label === "Missed") statusColor = "text-red-400 bg-red-500/15";
 
                             return (
-                              <tr key={i} className="border-t border-[#E6E0D3] hover:bg-[#FAF9F5] transition-colors">
-                                <td className="p-4 text-[#1A1A1A]">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
-                                <td className="p-4 text-[#1A1A1A]">
+                              <tr key={i} className="border-t border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors">
+                                <td className="p-4 text-white">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
+                                <td className="p-4 text-white">
                                   {record.timeIn ? (
                                     <span className="flex items-center gap-2">
-                                      <LogIn className="h-4 w-4 text-sage-700" />
+                                      <LogIn className="h-4 w-4 text-[#4FBEB0]" />
                                       {formatTime12Hour(record.timeIn)}
                                     </span>
                                   ) : "—"}
                                 </td>
-                                <td className="p-4 text-[#1A1A1A]">
+                                <td className="p-4 text-white">
                                   {record.timeOut ? (
                                     <span className="flex items-center gap-2">
-                                      <LogOut className="h-4 w-4 text-red-600" />
+                                      <LogOut className="h-4 w-4 text-red-400" />
                                       {formatTime12Hour(record.timeOut)}
                                     </span>
                                   ) : "—"}
@@ -1412,24 +1421,24 @@ export function EventsView({
 
                   {attendanceTotalPages > 1 && (
                     <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
-                      <p className="text-sm text-[#6B7280] text-center sm:text-left">
+                      <p className="text-sm text-white/45 text-center sm:text-left">
                         {t("pageOfLabel")} {attendanceCurrentPage} {t("ofPagesLabel")} {attendanceTotalPages} • {paginatedAttendance.length} {t("recordsShownLabel")}
                       </p>
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setAttendanceCurrentPage(p => Math.max(1, p - 1))}
                           disabled={attendanceCurrentPage === 1}
-                          className="h-8 w-8 rounded-full border border-sage-200 bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+                          className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                         >
                           ←
                         </button>
-                        <span className="h-8 w-8 rounded-full bg-sage-800 text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                        <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
                           {attendanceCurrentPage}
                         </span>
                         <button
                           onClick={() => setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1))}
                           disabled={attendanceCurrentPage === attendanceTotalPages}
-                          className="h-8 w-8 rounded-full border border-sage-200 bg-white text-sage-800 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+                          className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                         >
                           →
                         </button>
@@ -1443,31 +1452,31 @@ export function EventsView({
                 <div className="space-y-4">
                   {budgetLoading || !budgetSummary ? (
                     <div className="flex justify-center items-center h-40">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-sage-700" />
+                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#4FBEB0]" />
                     </div>
                   ) : (
                     <>
-                      <div className="rounded-2xl border border-[#E6E0D3] bg-white p-4">
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                          <span className="text-sm font-semibold text-[#1A1A1A]">
+                          <span className="text-sm font-semibold text-white">
                             ₱{budgetSummary.total_expenses.toLocaleString()} {t("spentOf")}
                             {budgetSummary.approved_budget !== null && ` ${t("ofLabel")} ₱${Number(budgetSummary.approved_budget).toLocaleString()}`}
                           </span>
                           {budgetSummary.is_over_budget && (
-                            <span className="flex items-center gap-1 text-xs font-bold text-red-600">
+                            <span className="flex items-center gap-1 text-xs font-bold text-red-400">
                               <AlertTriangle className="h-3.5 w-3.5" /> {t("overBudget")}
                             </span>
                           )}
                         </div>
                         {budgetSummary.approved_budget !== null ? (
-                          <div className="h-2.5 rounded-full bg-[#EDE9DD] overflow-hidden">
+                          <div className="h-2.5 rounded-full bg-white/10 overflow-hidden">
                             <div
-                              className={`h-full transition-all ${budgetSummary.is_over_budget ? "bg-red-500" : "bg-sage-600"}`}
+                              className={`h-full transition-all ${budgetSummary.is_over_budget ? "bg-red-500" : "bg-[#4FBEB0]"}`}
                               style={{ width: `${spentPct}%` }}
                             />
                           </div>
                         ) : (
-                          <p className="text-xs text-[#6B7280] italic">{t("noApprovedBudgetYet")}</p>
+                          <p className="text-xs text-white/40 italic">{t("noApprovedBudgetYet")}</p>
                         )}
                       </div>
 
@@ -1477,7 +1486,7 @@ export function EventsView({
                           value={expenseForm.item}
                           onChange={(e) => setExpenseForm((p) => ({ ...p, item: e.target.value }))}
                           placeholder={t("itemExpenseDescPlaceholder")}
-                          className="rounded-full border border-sage-200 px-4 py-2 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                          className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                         />
                         <input
                           required
@@ -1487,7 +1496,7 @@ export function EventsView({
                           value={expenseForm.amount}
                           onChange={(e) => setExpenseForm((p) => ({ ...p, amount: e.target.value }))}
                           placeholder={t("amountPlaceholder")}
-                          className="rounded-full border border-sage-200 px-4 py-2 text-sm font-sans focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                          className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                         />
                         <input
                           ref={expenseReceiptInputRef}
@@ -1501,20 +1510,20 @@ export function EventsView({
                           onClick={() => expenseReceiptInputRef.current?.click()}
                           title={expenseReceiptFile ? expenseReceiptFile.name : t("attachReceiptRequiredLabel")}
                           className={`inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                            expenseReceiptFile ? "border-sage-700 text-sage-800 bg-sage-50" : "border-gold-300 text-gold-700 hover:bg-gold-50"
+                            expenseReceiptFile ? "border-[#4FBEB0]/50 text-[#7DD8CB] bg-[#4FBEB0]/10" : "border-gold-400/40 text-gold-300 hover:bg-gold-400/10"
                           }`}
                         >
                           <Paperclip className="h-4 w-4" />
                         </button>
                         <button
                           type="submit"
-                          className="inline-flex items-center justify-center gap-1 rounded-full bg-sage-800 hover:bg-sage-900 text-white px-4 py-2 text-sm font-semibold transition"
+                          className="inline-flex items-center justify-center gap-1 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] px-4 py-2 text-sm font-bold transition"
                         >
                           <Plus className="h-4 w-4" /> {t("addLabel")}
                         </button>
                       </form>
                       {expenseReceiptFile ? (
-                        <p className="-mt-1 text-xs text-[#6B7280] flex items-center gap-1">
+                        <p className="-mt-1 text-xs text-white/50 flex items-center gap-1">
                           <FileText className="h-3.5 w-3.5 shrink-0" />
                           <span className="truncate">{expenseReceiptFile.name}</span>
                           <button
@@ -1523,44 +1532,44 @@ export function EventsView({
                               setExpenseReceiptFile(null);
                               if (expenseReceiptInputRef.current) expenseReceiptInputRef.current.value = "";
                             }}
-                            className="text-[#6B7280] hover:text-red-500 shrink-0"
+                            className="text-white/50 hover:text-red-400 shrink-0"
                           >
                             <X className="h-3 w-3" />
                           </button>
                         </p>
                       ) : (
-                        <p className="-mt-1 text-xs text-gold-700">{t("receiptRequiredHint")}</p>
+                        <p className="-mt-1 text-xs text-gold-300">{t("receiptRequiredHint")}</p>
                       )}
 
                       <div className="max-h-[40vh] overflow-y-auto space-y-2">
                         {budgetSummary.expenses.length === 0 ? (
-                          <p className="text-sm text-[#6B7280] italic py-6 text-center">{t("noExpensesRecorded")}</p>
+                          <p className="text-sm text-white/40 italic py-6 text-center">{t("noExpensesRecorded")}</p>
                         ) : (
                           budgetSummary.expenses.map((exp) => (
-                            <div key={exp.id} className="flex items-center justify-between rounded-xl bg-[#FAF9F5] px-4 py-2.5 group">
+                            <div key={exp.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 group">
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1.5 min-w-0">
-                                  <p className="text-sm font-medium text-[#1A1A1A] truncate">{exp.item}</p>
+                                  <p className="text-sm font-medium text-white truncate">{exp.item}</p>
                                   {exp.receipt_url && (
                                     <button
                                       type="button"
                                       onClick={() => setViewingReceipt({ url: exp.receipt_url as string, item: exp.item })}
                                       title={t("viewReceiptLabel")}
-                                      className="text-[#6B7280] hover:text-sage-800 transition shrink-0"
+                                      className="text-white/50 hover:text-[#7DD8CB] transition shrink-0"
                                     >
                                       <Paperclip className="h-3.5 w-3.5" />
                                     </button>
                                   )}
                                 </div>
-                                {exp.notes && <p className="text-xs text-[#6B7280] truncate">{exp.notes}</p>}
+                                {exp.notes && <p className="text-xs text-white/40 truncate">{exp.notes}</p>}
                               </div>
                               <div className="flex items-center gap-2 shrink-0 ml-3">
-                                <span className="text-sm font-bold text-sage-800">₱{Number(exp.amount).toLocaleString()}</span>
+                                <span className="text-sm font-bold text-[#7DD8CB]">₱{Number(exp.amount).toLocaleString()}</span>
                                 <button
                                   type="button"
                                   onClick={() => openEditExpense(exp)}
                                   title={t("editLabel")}
-                                  className="p-1.5 rounded-full text-[#C9C2AF] hover:text-sage-800 hover:bg-sage-50 transition opacity-0 group-hover:opacity-100"
+                                  className="p-1.5 rounded-full text-white/40 hover:text-white hover:bg-white/10 transition opacity-0 group-hover:opacity-100"
                                 >
                                   <Pencil className="h-3.5 w-3.5" />
                                 </button>
@@ -1568,7 +1577,7 @@ export function EventsView({
                                   type="button"
                                   onClick={() => setDeleteExpenseTarget({ id: exp.id, item: exp.item })}
                                   title={t("deleteTitle")}
-                                  className="p-1.5 rounded-full text-[#C9C2AF] hover:text-red-500 hover:bg-red-50 transition opacity-0 group-hover:opacity-100"
+                                  className="p-1.5 rounded-full text-white/40 hover:text-red-400 hover:bg-red-500/10 transition opacity-0 group-hover:opacity-100"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -1584,41 +1593,41 @@ export function EventsView({
 
               {detailTab === "feedback" && (
                 <div className="space-y-5">
-                  <div className="rounded-2xl border border-[#E6E0D3] bg-white p-6 text-center">
-                    <p className="text-4xl font-black text-[#1A1A1A]">{averageRating > 0 ? averageRating.toFixed(1) : "—"}</p>
-                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#6B7280]">{t("averageRatingLabel")}</p>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center">
+                    <p className="text-4xl font-black text-white">{averageRating > 0 ? averageRating.toFixed(1) : "—"}</p>
+                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-white/45">{t("averageRatingLabel")}</p>
                     <div className="mt-2.5 flex justify-center gap-1">
                       {[1, 2, 3, 4, 5].map((n) => (
-                        <Star key={n} className={`h-5 w-5 ${n <= Math.round(averageRating) ? "text-amber-400 fill-amber-400" : "text-gray-200"}`} />
+                        <Star key={n} className={`h-5 w-5 ${n <= Math.round(averageRating) ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
                       ))}
                     </div>
-                    <p className="mt-1.5 text-xs text-[#6B7280]">{eventFeedback.length} {t("ratingsCountLabel")}</p>
+                    <p className="mt-1.5 text-xs text-white/45">{eventFeedback.length} {t("ratingsCountLabel")}</p>
                   </div>
 
                   {feedbackLoading ? (
-                    <p className="text-sm text-[#6B7280] italic text-center py-6">{t("loadingLabel")}</p>
+                    <p className="text-sm text-white/40 italic text-center py-6">{t("loadingLabel")}</p>
                   ) : eventFeedback.length === 0 ? (
-                    <p className="text-sm text-[#6B7280] italic bg-[#FAF9F5] rounded-2xl p-6 text-center">{t("noFeedbackYetLabel")}</p>
+                    <p className="text-sm text-white/40 italic bg-white/[0.03] rounded-2xl p-6 text-center">{t("noFeedbackYetLabel")}</p>
                   ) : (
                     <div className="space-y-2">
                       {paginatedFeedback.map((f) => {
                         const name = f.user ? `${f.user.first_name} ${f.user.last_name}` : t("unknownItemLabel");
                         const initials = f.user ? `${f.user.first_name?.charAt(0) ?? ""}${f.user.last_name?.charAt(0) ?? ""}` : "?";
                         return (
-                          <div key={f.id} className="rounded-2xl border border-[#E6E0D3] bg-white p-4 flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-sage-500 to-sage-700 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                          <div key={f.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-full bg-[#123A38] border border-white/10 flex items-center justify-center text-[#7DD8CB] font-bold text-sm shrink-0">
                               {initials}
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <span className="text-sm font-semibold text-[#1A1A1A] truncate">{name}</span>
+                                <span className="text-sm font-semibold text-white truncate">{name}</span>
                                 <span className="flex items-center gap-0.5 shrink-0">
                                   {[1, 2, 3, 4, 5].map((n) => (
-                                    <Star key={n} className={`h-3.5 w-3.5 ${n <= f.rating ? "text-amber-400 fill-amber-400" : "text-gray-200"}`} />
+                                    <Star key={n} className={`h-3.5 w-3.5 ${n <= f.rating ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
                                   ))}
                                 </span>
                               </div>
-                              {f.comment && <p className="mt-1 text-sm text-[#6B7280]">{f.comment}</p>}
+                              {f.comment && <p className="mt-1 text-sm text-white/50">{f.comment}</p>}
                             </div>
                           </div>
                         );
@@ -1626,24 +1635,24 @@ export function EventsView({
 
                       {feedbackTotalPages > 1 && (
                         <div className="flex items-center justify-between pt-2">
-                          <p className="text-xs text-[#6B7280]">
+                          <p className="text-xs text-white/45">
                             {t("pageOfLabel")} {feedbackCurrentPage} {t("ofPagesLabel")} {feedbackTotalPages} • {eventFeedback.length} {t("recordsShownLabel")}
                           </p>
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={() => setFeedbackCurrentPage(p => Math.max(1, p - 1))}
                               disabled={feedbackCurrentPage === 1}
-                              className="h-7 w-7 rounded-full border border-sage-200 bg-white text-sage-800 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+                              className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                             >
                               ←
                             </button>
-                            <span className="h-7 w-7 rounded-full bg-sage-800 text-white shadow-sm flex items-center justify-center text-xs font-semibold">
+                            <span className="h-7 w-7 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-xs font-bold">
                               {feedbackCurrentPage}
                             </span>
                             <button
                               onClick={() => setFeedbackCurrentPage(p => Math.min(feedbackTotalPages, p + 1))}
                               disabled={feedbackCurrentPage === feedbackTotalPages}
-                              className="h-7 w-7 rounded-full border border-sage-200 bg-white text-sage-800 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-sage-800 hover:text-white hover:border-sage-800 transition-all active:scale-95"
+                              className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                             >
                               →
                             </button>
@@ -1654,6 +1663,7 @@ export function EventsView({
                   )}
                 </div>
               )}
+            </div>
             </div>
           );
         })()
@@ -2091,73 +2101,24 @@ export function EventsView({
       {/* Delete Event Confirm Modal */}
       {eventToDelete !== null && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-4 text-red-500 flex justify-center"><Trash2 size={36} /></div>
-            <h3 className="text-lg font-bold text-red-600 mb-2">{t("confirmDeletionTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{t("confirmDeletionBody")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+            <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
+            <h3 className="text-lg font-bold text-red-400 mb-2">{t("confirmDeletionTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-6">{t("confirmDeletionBody")}</p>
             <div className="flex justify-center gap-3">
-              <button onClick={cancelDelete} className="px-5 py-2 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("cancelLabel")}</button>
-              <button onClick={confirmDelete} className="px-5 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 transition">{t("yesDelete")}</button>
+              <button onClick={cancelDelete} className="px-5 py-2 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("cancelLabel")}</button>
+              <button onClick={confirmDelete} className="px-5 py-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition">{t("yesDelete")}</button>
             </div>
           </div>
         </div>
       )}
 
-      {showSuccessModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setShowSuccessModal(false)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-sage-800 flex justify-center">
-              <CheckCircle size={48} />
-            </div>
-            <h3 className="text-xl font-bold text-sage-800 mb-2">{t("successTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{successMessage}</p>
-            <button
-              onClick={() => setShowSuccessModal(false)}
-              className="px-5 py-2.5 rounded-full bg-sage-800 text-white hover:bg-sage-900 transition"
-            >
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {showErrorModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setShowErrorModal(false)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex justify-center text-red-500">
-              <XCircle size={48} />
-            </div>
-            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{errorMessage}</p>
-            <button
-              onClick={() => setShowErrorModal(false)}
-              className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
-            >
-              {t("goBack")}
-            </button>
-          </div>
-        </div>
-      )}
+      <StatusModal open={showSuccessModal} type="success" title={t("successTitle")} message={successMessage} okLabel={t("okLabel")} onClose={() => setShowSuccessModal(false)} />
+      <StatusModal open={showErrorModal} type="error" title={t("errorTitle")} message={errorMessage} okLabel={t("goBack")} onClose={() => setShowErrorModal(false)} />
 
       {/* Delete failure modal -- was a native alert(), replaced to match the
           rest of the app's popup template. */}
-      {deleteErrorMessage && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setDeleteErrorMessage(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex justify-center text-red-500">
-              <AlertCircle size={48} />
-            </div>
-            <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-6">{deleteErrorMessage}</p>
-            <button
-              onClick={() => setDeleteErrorMessage(null)}
-              className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
-            >
-              {t("okLabel")}
-            </button>
-          </div>
-        </div>
-      )}
+      <StatusModal open={!!deleteErrorMessage} type="error" title={t("errorTitle")} message={deleteErrorMessage || ""} okLabel={t("okLabel")} onClose={() => setDeleteErrorMessage(null)} />
 
       {/* ---- Budget tab modals (Add/Edit Expense confirms, Edit Expense form,
           receipt viewer, delete-expense confirm) -- ported from the standalone
@@ -2262,12 +2223,12 @@ export function EventsView({
 
       {showEditExpenseCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[80] px-4" onClick={() => setShowEditExpenseCancelConfirm(false)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-amber-500 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-500 mb-3">{t("unsavedChangesTitle")}</h3>
-            <p className="text-[#6B7280] mb-5">{t("unsavedChangesMessage")}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
+            <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setShowEditExpenseCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition">{t("stayButton")}</button>
+              <button onClick={() => setShowEditExpenseCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("stayButton")}</button>
               <button
                 onClick={() => {
                   setShowEditExpenseCancelConfirm(false);
@@ -2337,13 +2298,13 @@ export function EventsView({
 
       {deleteExpenseTarget && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[80] px-4" onClick={() => !deletingExpense && setDeleteExpenseTarget(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-4 text-red-500 flex justify-center"><Trash2 size={36} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-3">{t("confirmDeletionTitle")}</h3>
-            <p className="text-[15px] text-[#6B7280] mb-5">{t("deleteExpenseConfirm")} "{deleteExpenseTarget.item}"?</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
+            <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
+            <p className="text-[15px] text-white/50 mb-5">{t("deleteExpenseConfirm")} "{deleteExpenseTarget.item}"?</p>
             <div className="flex justify-center gap-4">
-              <button onClick={() => setDeleteExpenseTarget(null)} disabled={deletingExpense} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition disabled:opacity-60">{t("cancelLabel")}</button>
-              <button onClick={confirmDeleteExpense} disabled={deletingExpense} className="px-5 py-2.5 rounded-full bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
+              <button onClick={() => setDeleteExpenseTarget(null)} disabled={deletingExpense} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition disabled:opacity-60">{t("cancelLabel")}</button>
+              <button onClick={confirmDeleteExpense} disabled={deletingExpense} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
             </div>
           </div>
         </div>

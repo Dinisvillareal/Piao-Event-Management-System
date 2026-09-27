@@ -93,6 +93,17 @@ export default function MemberDashboard() {
     }
   }, [active]);
 
+  // ─── LIVE NOTIFICATION POLLING ───────────────────────────────────────────────
+  // Quietly re-checks for new notifications every 20s while the member is on
+  // the Dashboard or Notifications page, the same "keeps itself current"
+  // pattern the staff portal's live dashboards use -- instead of only ever
+  // refreshing on mount or on navigation.
+  useEffect(() => {
+    if (active !== "dashboard" && active !== "notify") return;
+    const poll = setInterval(fetchNotifications, 20000);
+    return () => clearInterval(poll);
+  }, [active]);
+
   // ─── FETCH LOGGED-IN USER ────────────────────────────────────────────────────
   useEffect(() => {
     api.get('/me')
@@ -264,10 +275,10 @@ export default function MemberDashboard() {
   // ─── LOADING SCREEN ───────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[#F8F5EF]">
+      <div className="flex items-center justify-center h-screen bg-[#0A0E1A]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sage-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading dashboard...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4FBEB0] mx-auto"></div>
+          <p className="mt-4 text-white/50">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -275,7 +286,7 @@ export default function MemberDashboard() {
 
   // ─── RENDER ──────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#F8F5EF] text-gray-900">
+    <div className="min-h-screen bg-[#0A0E1A] text-white">
       <div className="flex min-h-screen">
         <Sidebar
           active={active}
@@ -299,9 +310,13 @@ export default function MemberDashboard() {
               {active === "dashboard" && (
                 <DashboardView
                   memberName={member.first_name}
+                  fullName={member.name}
+                  userId={member.id}
+                  userCode={member.user_code}
                   membershipsCount={userMembershipsCount}
                   attendedCount={attended}
                   missedCount={missed}
+                  attendanceRecords={attendanceRecords}
                   setActive={setActive}
                   notifications={notifications}
                   upcomingEvents={upcomingEvents}
@@ -325,6 +340,8 @@ export default function MemberDashboard() {
                 <AttendanceView
                   attendanceRecords={attendanceRecords}
                   highlightText={highlightText}
+                  allEvents={allEvents}
+                  userMemberships={userMemberships}
                 />
               )}
 
