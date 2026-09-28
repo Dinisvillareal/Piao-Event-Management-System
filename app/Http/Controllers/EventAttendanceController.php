@@ -122,6 +122,22 @@ class EventAttendanceController extends Controller
             DB::commit();
             return response()->json(['message' => 'Time-in successful!', 'attendance' => $attendance], 201);
 
+        } catch (\Illuminate\Database\QueryException $e) {
+            DB::rollBack();
+            // SQLSTATE 23000 = integrity constraint violation, the same code
+            // across MySQL/Postgres/SQLite -- means the (event_id, user_id)
+            // unique index on `attendances` caught a concurrent duplicate
+            // insert that slipped past the check above (a double-tap of the
+            // Confirm button, two staff devices scanning the same resident
+            // for the same event at once, or the offline queue replaying a
+            // scan that actually landed on an earlier attempt before the
+            // connection dropped). Report the same friendly message the
+            // explicit already-signed-in check gives, instead of leaking the
+            // raw SQL error to the UI as an unexplained failure.
+            if ($e->getCode() === '23000') {
+                return response()->json(['message' => 'Member already signed in.'], 400);
+            }
+            return response()->json(['message' => 'Time-in failed', 'error' => $e->getMessage()], 500);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['message' => 'Time-in failed', 'error' => $e->getMessage()], 500);
@@ -230,6 +246,17 @@ class EventAttendanceController extends Controller
             DB::commit();
             return response()->json(['message' => 'Time-out successful!', 'attendance' => $attendance]);
 
+        } catch (\Illuminate\Database\QueryException $e) {
+            DB::rollBack();
+            // Same reasoning as the matching catch in timeIn(): a concurrent
+            // duplicate insert/update was caught by the (event_id, user_id)
+            // unique index instead of the explicit "already signed out"
+            // check above -- report the friendly message instead of a raw
+            // SQL error.
+            if ($e->getCode() === '23000') {
+                return response()->json(['message' => 'Member already signed out.'], 400);
+            }
+            return response()->json(['message' => 'Time-out failed', 'error' => $e->getMessage()], 500);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['message' => 'Time-out failed', 'error' => $e->getMessage()], 500);

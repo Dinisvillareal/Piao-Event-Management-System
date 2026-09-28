@@ -230,6 +230,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/reports/membership-summary', [ReportController::class, 'membershipSummary']);
     Route::get('/reports/budget-summary', [ReportController::class, 'budgetSummary']);
     Route::get('/reports/inventory-summary', [ReportController::class, 'inventorySummary']);
+    // Official-record downloads (always English -- see ReportController::buildExportPayload)
+    Route::get('/reports/export/pdf', [ReportController::class, 'exportPdf']);
+    Route::get('/reports/export/word', [ReportController::class, 'exportWord']);
 
     /*
     |--------------------------------------------------------------------------

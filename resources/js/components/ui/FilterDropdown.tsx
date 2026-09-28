@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 
 export interface FilterDropdownOption {
   value: string;
@@ -25,6 +25,15 @@ interface FilterDropdownProps {
       to the dark palette (e.g. the Events list page). Every other caller
       keeps the original light trigger/panel look. */
   dark?: boolean;
+  /** Adds a type-to-filter search box pinned to the top of the option panel,
+      for lists that grow (memberships, events) rather than the short, fixed
+      lists (age group, condition, etc.) this component was originally built
+      for. Off by default so every existing caller is unaffected. */
+  searchable?: boolean;
+  /** Placeholder for the search box above. Only used when searchable. */
+  searchPlaceholder?: string;
+  /** Shown in place of the option list when a search matches nothing. Only used when searchable. */
+  noResultsLabel?: string;
 }
 
 /**
@@ -57,11 +66,33 @@ export default function FilterDropdown({
   panelWidthPx = 224,
   wrapperClassName = "",
   dark = false,
+  searchable = false,
+  searchPlaceholder = "Search...",
+  noResultsLabel = "No matches found.",
 }: FilterDropdownProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
+
+  // The search box (when enabled) filters what's rendered below it, but the
+  // trigger's own selected-value label always comes from the full `options`
+  // list further down -- searching never changes what's currently selected.
+  const filteredOptions = searchable && query.trim()
+    ? options.filter((opt) => opt.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : options;
+
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+    } else if (searchable) {
+      // Autofocus so typing can start immediately, same as SearchableSelect.
+      const id = requestAnimationFrame(() => searchInputRef.current?.focus());
+      return () => cancelAnimationFrame(id);
+    }
+  }, [open, searchable]);
 
   useLayoutEffect(() => {
     if (!open || !wrapperRef.current) return;
@@ -70,7 +101,7 @@ export default function FilterDropdown({
       if (!wrapperRef.current) return;
       const rect = wrapperRef.current.getBoundingClientRect();
       const margin = 8;
-      const panelHeightEstimate = Math.min(options.length * 40 + 16, 296);
+      const panelHeightEstimate = Math.min(options.length * 40 + (searchable ? 64 : 16), 296);
 
       let left = align === "right" ? rect.right - panelWidthPx : rect.left;
       if (left + panelWidthPx + margin > window.innerWidth) {
@@ -91,7 +122,7 @@ export default function FilterDropdown({
       window.removeEventListener("resize", recompute);
       window.removeEventListener("scroll", recompute, true);
     };
-  }, [open, align, panelWidthPx, options.length]);
+  }, [open, align, panelWidthPx, options.length, searchable]);
 
   useEffect(() => {
     if (!open) return;
@@ -161,30 +192,53 @@ export default function FilterDropdown({
               dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#E6E0D3] bg-white"
             }`}
           >
+            {searchable && (
+              <div className="px-2 pb-1.5">
+                <div className="relative">
+                  <Search className={`pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 ${dark ? "text-white/40" : "text-gray-400"}`} />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder={searchPlaceholder}
+                    className={`w-full rounded-full border pl-8 pr-3 py-1.5 text-sm focus:outline-none ${
+                      dark
+                        ? "border-white/10 bg-white/[0.06] text-white placeholder-white/30 focus:border-[#4FBEB0]/50"
+                        : "border-[#E6E0D3] bg-sage-50/40 text-[#1A1A1A] placeholder-gray-400 focus:border-sage-400"
+                    }`}
+                  />
+                </div>
+              </div>
+            )}
             <div className={`max-h-[280px] overflow-y-auto ${dark ? "filter-dropdown-scroll-dark" : "filter-dropdown-scroll-light"}`}>
-              {options.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="option"
-                  aria-selected={value === opt.value}
-                  onClick={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                  }}
-                  className={`w-full text-left px-4 py-2.5 text-sm truncate transition ${
-                    dark
-                      ? value === opt.value
-                        ? "bg-[#4FBEB0]/10 text-[#7DD8CB] font-semibold"
-                        : "text-white hover:bg-white/10"
-                      : value === opt.value
-                        ? "bg-sage-50 text-sage-800 font-semibold"
-                        : "text-[#1A1A1A] hover:bg-sage-50/60"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
+              {searchable && filteredOptions.length === 0 ? (
+                <p className={`px-4 py-2.5 text-sm italic ${dark ? "text-white/40" : "text-gray-400"}`}>{noResultsLabel}</p>
+              ) : (
+                filteredOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="option"
+                    aria-selected={value === opt.value}
+                    onClick={() => {
+                      onChange(opt.value);
+                      setOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2.5 text-sm truncate transition ${
+                      dark
+                        ? value === opt.value
+                          ? "bg-[#4FBEB0]/10 text-[#7DD8CB] font-semibold"
+                          : "text-white hover:bg-white/10"
+                        : value === opt.value
+                          ? "bg-sage-50 text-sage-800 font-semibold"
+                          : "text-[#1A1A1A] hover:bg-sage-50/60"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))
+              )}
             </div>
           </div>,
           document.body

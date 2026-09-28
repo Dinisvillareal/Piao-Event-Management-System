@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Clock, X } from "lucide-react";
 
 interface TimePickerProps {
@@ -72,10 +73,16 @@ export default function TimePicker({
 }: TimePickerProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const hourListRef = useRef<HTMLDivElement>(null);
   const minuteListRef = useRef<HTMLDivElement>(null);
   const periodListRef = useRef<HTMLDivElement>(null);
-  const [panelPos, setPanelPos] = useState<{ left: number; openUp: boolean }>({ left: 0, openUp: false });
+  // Portaled to document.body and positioned with `position: fixed` from
+  // the trigger's own getBoundingClientRect (same fix as FilterDropdown and
+  // DatePicker), instead of a plain `absolute` panel -- a plain absolute
+  // panel gets silently clipped by any scrollable/overflow-y-auto ancestor,
+  // exactly what a tall Add/Edit form modal is.
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
 
   const parsed = parse(value);
 
@@ -89,17 +96,16 @@ export default function TimePicker({
       const panelWidth = Math.min(window.innerWidth * 0.92, 260);
       const panelHeightEstimate = 260;
 
-      let left = align === "right" ? rect.width - panelWidth : 0;
-      if (rect.left + left + panelWidth + margin > window.innerWidth) {
-        left = window.innerWidth - margin - panelWidth - rect.left;
+      let left = align === "right" ? rect.right - panelWidth : rect.left;
+      if (left + panelWidth + margin > window.innerWidth) {
+        left = window.innerWidth - margin - panelWidth;
       }
-      if (rect.left + left < margin) {
-        left = margin - rect.left;
-      }
+      if (left < margin) left = margin;
 
       const openUp = rect.bottom + panelHeightEstimate > window.innerHeight && rect.top > panelHeightEstimate;
+      const top = openUp ? rect.top - panelHeightEstimate - 6 : rect.bottom + 6;
 
-      setPanelPos({ left, openUp });
+      setPanelPos({ top, left });
     };
 
     recompute();
@@ -114,7 +120,11 @@ export default function TimePicker({
   useEffect(() => {
     if (!open) return;
     const handleClick = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        wrapperRef.current && !wrapperRef.current.contains(target) &&
+        panelRef.current && !panelRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     };
@@ -185,12 +195,14 @@ export default function TimePicker({
         <Clock className={`shrink-0 ${dark ? "h-5 w-5 text-white/40" : "h-4 w-4 text-gray-400"}`} />
       </button>
 
-      {open && (
+      {open && panelPos &&
+        createPortal(
         <div
-          className={`absolute z-50 w-[min(92vw,260px)] rounded-[24px] border shadow-xl p-4 ${
+          ref={panelRef}
+          style={{ position: "fixed", top: panelPos.top, left: panelPos.left }}
+          className={`z-[9999] w-[min(92vw,260px)] rounded-[24px] border shadow-xl p-4 ${
             dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#ddd5ca] bg-white"
-          } ${panelPos.openUp ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"}`}
-          style={{ left: panelPos.left }}
+          }`}
         >
           <div className="grid grid-cols-3 gap-2">
             <div>
@@ -264,8 +276,9 @@ export default function TimePicker({
               <X className="h-3.5 w-3.5" /> {clearLabel}
             </button>
           </div>
-        </div>
-      )}
+        </div>,
+        document.body
+        )}
     </div>
   );
 }

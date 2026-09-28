@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Calendar as CalendarIcon, X } from "lucide-react";
 import Calendar from "./Calendar";
 
@@ -56,13 +57,16 @@ export default function DatePicker({
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  // Computed each time the panel opens (and kept in sync on resize/scroll)
-  // instead of a fixed left-0/right-0 -- that fixed positioning is what let
-  // the panel render cut off past the right edge when its trigger sat near
-  // the edge of the screen. `left` is relative to the trigger's own left
-  // edge; `openUp` flips the panel above the trigger when there isn't
-  // enough room below it.
-  const [panelPos, setPanelPos] = useState<{ left: number; openUp: boolean }>({ left: 0, openUp: false });
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Portaled to document.body and positioned with `position: fixed` from
+  // the trigger's own getBoundingClientRect (same fix as FilterDropdown),
+  // instead of a plain `absolute` panel living inside the trigger's own DOM
+  // subtree. A plain absolute panel gets silently clipped by any
+  // scrollable/overflow-y-auto ancestor -- exactly what a tall Add/Edit
+  // form modal is -- so a date field near the bottom of one of those forms
+  // used to show a calendar that was cut off instead of opening on top of
+  // everything, the same way a native date input's own popup always does.
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
 
   useLayoutEffect(() => {
     if (!open || !wrapperRef.current) return;
@@ -74,19 +78,18 @@ export default function DatePicker({
       const panelWidth = Math.min(window.innerWidth * 0.92, 300);
       const panelHeightEstimate = 360;
 
-      let left = align === "right" ? rect.width - panelWidth : 0;
+      let left = align === "right" ? rect.right - panelWidth : rect.left;
       // Keep the panel's right edge on-screen...
-      if (rect.left + left + panelWidth + margin > window.innerWidth) {
-        left = window.innerWidth - margin - panelWidth - rect.left;
+      if (left + panelWidth + margin > window.innerWidth) {
+        left = window.innerWidth - margin - panelWidth;
       }
       // ...and its left edge too, without pushing it back off the right.
-      if (rect.left + left < margin) {
-        left = margin - rect.left;
-      }
+      if (left < margin) left = margin;
 
       const openUp = rect.bottom + panelHeightEstimate > window.innerHeight && rect.top > panelHeightEstimate;
+      const top = openUp ? rect.top - panelHeightEstimate - 6 : rect.bottom + 6;
 
-      setPanelPos({ left, openUp });
+      setPanelPos({ top, left });
     };
 
     recompute();
@@ -101,7 +104,11 @@ export default function DatePicker({
   useEffect(() => {
     if (!open) return;
     const handleClick = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        wrapperRef.current && !wrapperRef.current.contains(target) &&
+        panelRef.current && !panelRef.current.contains(target)
+      ) {
         setOpen(false);
       }
     };
@@ -135,51 +142,54 @@ export default function DatePicker({
         {required && !value && <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" aria-hidden />}
       </button>
 
-      {open && (
-        <div
-          className={`absolute z-50 w-[min(92vw,300px)] rounded-[24px] border shadow-xl p-4 ${
-            dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#ddd5ca] bg-white"
-          } ${panelPos.openUp ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"}`}
-          style={{ left: panelPos.left }}
-        >
-          <Calendar
-            value={value}
-            min={min}
-            max={max}
-            dark={dark}
-            onSelect={(iso) => {
-              onChange(iso);
-              setOpen(false);
-            }}
-          />
-          <div className={`flex items-center justify-between mt-3 pt-3 border-t ${dark ? "border-white/10" : "border-gray-100"}`}>
-            <button
-              type="button"
-              onClick={() => {
-                onChange("");
+      {open && panelPos &&
+        createPortal(
+          <div
+            ref={panelRef}
+            style={{ position: "fixed", top: panelPos.top, left: panelPos.left }}
+            className={`z-[9999] w-[min(92vw,300px)] rounded-[24px] border shadow-xl p-4 ${
+              dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#ddd5ca] bg-white"
+            }`}
+          >
+            <Calendar
+              value={value}
+              min={min}
+              max={max}
+              dark={dark}
+              onSelect={(iso) => {
+                onChange(iso);
                 setOpen(false);
               }}
-              className={`inline-flex items-center gap-1 text-xs font-medium transition ${dark ? "text-white/50 hover:text-red-400" : "text-gray-500 hover:text-red-500"}`}
-            >
-              <X className="h-3.5 w-3.5" /> {clearLabel}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const t = todayISO();
-                if ((min && t < min) || (max && t > max)) return;
-                onChange(t);
-                setOpen(false);
-              }}
-              className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
-                dark ? "bg-[#4FBEB0] hover:bg-[#7DD8CB] text-[#08130F]" : "bg-[#005f63] hover:bg-[#004a4d] text-white"
-              }`}
-            >
-              {todayLabel}
-            </button>
-          </div>
-        </div>
-      )}
+            />
+            <div className={`flex items-center justify-between mt-3 pt-3 border-t ${dark ? "border-white/10" : "border-gray-100"}`}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+                className={`inline-flex items-center gap-1 text-xs font-medium transition ${dark ? "text-white/50 hover:text-red-400" : "text-gray-500 hover:text-red-500"}`}
+              >
+                <X className="h-3.5 w-3.5" /> {clearLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const t = todayISO();
+                  if ((min && t < min) || (max && t > max)) return;
+                  onChange(t);
+                  setOpen(false);
+                }}
+                className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
+                  dark ? "bg-[#4FBEB0] hover:bg-[#7DD8CB] text-[#08130F]" : "bg-[#005f63] hover:bg-[#004a4d] text-white"
+                }`}
+              >
+                {todayLabel}
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

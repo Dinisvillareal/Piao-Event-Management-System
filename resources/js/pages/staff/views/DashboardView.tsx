@@ -212,21 +212,30 @@ export default function DashboardView({
     loadDashboard();
   }, [eventsCount]); // ✅ Re-run when eventsCount changes (e.g., after event deletion)
 
-  // Keeps the "Today's Live Snapshot" panel actually live: the clock ticks
-  // every second, and the two data points it summarizes (today's activity
-  // log and overdue borrows) are silently re-fetched every 30s so the
-  // numbers move on their own without a manual page refresh.
+  // Keeps the *whole* Dashboard live, not just the "Today's Live Snapshot"
+  // panel: the clock ticks every second, and every data feed the page shows --
+  // today's activity log, overdue borrows, the headline stat cards
+  // (residents/memberships/events) and the quarterly budget summary -- is
+  // silently re-fetched every 30s, so every number on the page moves on its
+  // own without a manual page refresh or navigating away and back.
   useEffect(() => {
     const clockTimer = setInterval(() => setCurrentTime(new Date()), 1000);
     const dataTimer = setInterval(async () => {
-      await Promise.all([fetchRecentActivities(), fetchOverdueBorrows()]);
+      await Promise.all([
+        fetchRecentActivities(),
+        fetchOverdueBorrows(),
+        fetchAllStats(),
+        fetchBudgetSummary(),
+      ]);
       setLastSyncedAt(new Date());
     }, 30000);
     return () => {
       clearInterval(clockTimer);
       clearInterval(dataTimer);
     };
-  }, []);
+    // Re-armed when eventsCount changes so fetchAllStats' closure never polls
+    // with a stale eventsCount value (e.g. right after an event is deleted).
+  }, [eventsCount]);
 
   // Download itself is unchanged -- only wrapped with a confirm step before
   // it runs and a success popup once the file has actually been written,

@@ -214,7 +214,6 @@ export default function SettingsView({ member }: SettingsViewProps) {
                         {t("cancelLabel")}
                       </button>
                     </div>
-                    {contactError && <p className="mt-1.5 text-xs text-red-400 font-medium px-2">{contactError}</p>}
                   </div>
                 )}
               </div>
@@ -333,7 +332,13 @@ export default function SettingsView({ member }: SettingsViewProps) {
       </div>
 
       {/* Peripheral alert modals -- the shared StatusModal, same as every
-          other page's success/warning/error popups. */}
+          other page's success/warning/error popups. The contact-number save
+          error used to render as raw inline text (including a raw backend
+          exception message when the input was too long for the column) right
+          under the Save/Cancel buttons -- moved to the same popup every other
+          error on this page already uses, for consistency and so a long
+          backend message doesn't run into the buttons above it. */}
+      <StatusModal open={!!contactError} type="error" title={t("errorLabel")} message={contactError} okLabel={t("okLabel")} onClose={() => setContactError("")} />
       <StatusModal open={!!pwError} type="error" title={t("errorLabel")} message={pwError} okLabel={t("okLabel")} onClose={() => setPwError("")} />
       <StatusModal open={!!pwSuccess} type="success" title={t("successTitle")} message={pwSuccess} okLabel={t("okLabel")} onClose={() => setPwSuccess("")} />
 

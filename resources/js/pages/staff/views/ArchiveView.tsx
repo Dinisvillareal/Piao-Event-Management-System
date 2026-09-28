@@ -471,7 +471,7 @@ export default function ArchiveView() {
           positive/undo action here, not the app's usual save/delete. */}
       {restoreItem && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="flex justify-center text-sage-400 mb-3"><RefreshCw size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("restoreItemModalTitle")}</h3>
             <p className="text-white/50 mb-5">

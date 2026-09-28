@@ -170,7 +170,7 @@ export default function IntegrationsView() {
 
       {error && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setError(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{error}</p>
@@ -183,7 +183,7 @@ export default function IntegrationsView() {
 
       {success && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setSuccess(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-[#005f63] flex justify-center"><CheckCircle size={40} /></div>
             <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{success}</p>

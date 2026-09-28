@@ -2101,7 +2101,7 @@ export function EventsView({
       {/* Delete Event Confirm Modal */}
       {eventToDelete !== null && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-lg font-bold text-red-400 mb-2">{t("confirmDeletionTitle")}</h3>
             <p className="text-[15px] text-white/50 mb-6">{t("confirmDeletionBody")}</p>
@@ -2147,7 +2147,7 @@ export function EventsView({
 
       {editingExpense && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4" onClick={() => !savingExpenseEdit && handleCloseEditExpense()}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-bold text-[#1A1A1A]">{t("editExpenseTitle")}</h2>
               <button onClick={handleCloseEditExpense} className="text-[#6B7280] hover:text-[#1A1A1A]"><X size={20} /></button>
@@ -2223,7 +2223,7 @@ export function EventsView({
 
       {showEditExpenseCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[80] px-4" onClick={() => setShowEditExpenseCancelConfirm(false)}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
@@ -2298,7 +2298,7 @@ export function EventsView({
 
       {deleteExpenseTarget && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[80] px-4" onClick={() => !deletingExpense && setDeleteExpenseTarget(null)}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
             <p className="text-[15px] text-white/50 mb-5">{t("deleteExpenseConfirm")} "{deleteExpenseTarget.item}"?</p>

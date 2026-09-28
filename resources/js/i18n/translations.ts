@@ -114,6 +114,7 @@ export const translations: Dict = {
   noUpcomingEvents: { en: "No upcoming events", tl: "Walang paparating na kaganapan", ceb: "Walay umaabot nga kalihokan" },
 
   search: { en: "Search", tl: "Maghanap", ceb: "Pangita" },
+  noMatchesFoundLabel: { en: "No matches found.", tl: "Walang nahanap na tugma.", ceb: "Walay natukiban nga tugma." },
   cancel: { en: "Cancel", tl: "Kanselahin", ceb: "Kanselahon" },
   save: { en: "Save", tl: "I-save", ceb: "I-save" },
   loading: { en: "Loading...", tl: "Naglo-load...", ceb: "Nag-load..." },
@@ -333,11 +334,67 @@ export const translations: Dict = {
   // Staff: Reports
   reportsSubtitle: { en: "Attendance summary, filterable by date, membership and age group.", tl: "Buod ng pagdalo, mapipili ayon sa petsa, membership at age group.", ceb: "Summary sa pagtambong, mapili base sa petsa, membership ug age group." },
   printReport: { en: "Print Report", tl: "I-print ang Ulat", ceb: "I-print ang Report" },
+  printNotSupportedMessage: { en: "Printing isn't available in this browser. Please try again using Chrome or Safari.", tl: "Hindi available ang pag-print sa browser na ito. Pakisubukan gamit ang Chrome o Safari.", ceb: "Dili available ang pag-print niining browser. Palihug sulayi gamit ang Chrome o Safari." },
   reportTypeAttendance: { en: "Attendance", tl: "Pagdalo", ceb: "Pagtambong" },
   reportTypeMembership: { en: "Membership", tl: "Pagiging Miyembro", ceb: "Pagka-miyembro" },
   reportTypeBudget: { en: "Budget", tl: "Badyet", ceb: "Badyet" },
   reportTypeInventory: { en: "Inventory", tl: "Imbentaryo", ceb: "Imbentaryo" },
   reportForLabel: { en: "Report", tl: "Ulat", ceb: "Report" },
+  // Print-only letterhead, footer, and filter-summary strings for the
+  // Reports page's printed/exported output (UC-10). These keys are still
+  // translated like everything else, but ReportsView.tsx deliberately
+  // ignores the language switcher while actually printing or downloading a
+  // report (it always resolves them through translate(key, "en")) -- an
+  // official barangay record needs to read in one consistent language no
+  // matter what the on-screen UI is currently switched to. The entries
+  // stay here (rather than being hardcoded English strings) only so the
+  // *on-screen* letterhead preview, if ever shown outside of print, still
+  // benefits from the same dictionary.
+  reportPrintTitleAttendance: { en: "Attendance Summary Report", tl: "Buod na Ulat ng Pagdalo", ceb: "Summary Report sa Pagtambong" },
+  reportPrintTitleMembership: { en: "Membership Summary Report", tl: "Buod na Ulat ng Membership", ceb: "Summary Report sa Membership" },
+  reportPrintTitleBudget: { en: "Budget Summary Report", tl: "Buod na Ulat ng Badyet", ceb: "Summary Report sa Badyet" },
+  reportPrintTitleInventory: { en: "Inventory Summary Report", tl: "Buod na Ulat ng Imbentaryo", ceb: "Summary Report sa Imbentaryo" },
+  printCountryLabel: { en: "Republic of the Philippines", tl: "Republika ng Pilipinas", ceb: "Republika sa Pilipinas" },
+  printProvinceLabel: { en: "Province of Zamboanga del Norte", tl: "Lalawigan ng Zamboanga del Norte", ceb: "Probinsya sa Zamboanga del Norte" },
+  printMunicipalityLabel: { en: "Municipality of President Manuel A. Roxas", tl: "Bayan ng Presidente Manuel A. Roxas", ceb: "Lungsod sa Presidente Manuel A. Roxas" },
+  printBarangayLabel: { en: "Barangay Piao", tl: "Barangay Piao", ceb: "Barangay Piao" },
+  printAddressLabel: { en: "Piao Barangay Hall, Purok Uno, Barangay Piao, 7104", tl: "Piao Barangay Hall, Purok Uno, Barangay Piao, 7104", ceb: "Piao Barangay Hall, Purok Uno, Barangay Piao, 7104" },
+  printSystemName: { en: "Piao Connect", tl: "Piao Connect", ceb: "Piao Connect" },
+  printPeriodLabel: { en: "Period", tl: "Panahon", ceb: "Panahon" },
+  printGeneratedOnLabel: { en: "Generated on", tl: "Nabuo noong", ceb: "Gihimo niadtong" },
+  printPreparedByLabel: { en: "Prepared by", tl: "Inihanda ni", ceb: "Giandam ni" },
+  printBarangayCaptainLabel: { en: "Barangay Captain", tl: "Punong Barangay", ceb: "Kapitan sa Barangay" },
+  printFooterAttributionLabel: { en: "Generated via Piao Connect — Barangay Information Management System", tl: "Nabuo gamit ang Piao Connect — Sistema ng Impormasyon ng Barangay", ceb: "Gihimo gamit ang Piao Connect — Sistema sa Impormasyon sa Barangay" },
+  printPageWord: { en: "Page", tl: "Pahina", ceb: "Panid" },
+  printOfWord: { en: "of", tl: "ng", ceb: "sa" },
+  // Download-icon dropdown (Word/PDF export) on the Reports & Analytics
+  // page -- these are on-screen UI chrome, so unlike the printed report
+  // itself they DO follow the language switcher as normal.
+  downloadReportLabel: { en: "Download report", tl: "I-download ang ulat", ceb: "I-download ang report" },
+  downloadAsWordLabel: { en: "Download as Word", tl: "I-download bilang Word", ceb: "I-download isip Word" },
+  downloadAsPdfLabel: { en: "Download as PDF", tl: "I-download bilang PDF", ceb: "I-download isip PDF" },
+  confirmDownloadTitle: { en: "Download this report?", tl: "I-download ang ulat na ito?", ceb: "I-download ni nga report?" },
+  confirmDownloadWordBody: { en: "This will download the current report as a Word (.docx) file. The document itself is always in English, regardless of your language setting.", tl: "Ida-download nito ang kasalukuyang ulat bilang Word (.docx) file. Palaging Ingles ang dokumento mismo, kahit ano ang iyong wika sa setting.", ceb: "I-download ni ang karon nga report isip Word (.docx) file. Kanunay Ingles ang dokumento mismo, bisan unsa ang imong pinulongan sa setting." },
+  confirmDownloadPdfBody: { en: "This will download the current report as a PDF file. The document itself is always in English, regardless of your language setting.", tl: "Ida-download nito ang kasalukuyang ulat bilang PDF file. Palaging Ingles ang dokumento mismo, kahit ano ang iyong wika sa setting.", ceb: "I-download ni ang karon nga report isip PDF file. Kanunay Ingles ang dokumento mismo, bisan unsa ang imong pinulongan sa setting." },
+  // downloadLabel ("Download") already exists further down the dictionary
+  // (used by the Budget receipt-file download button) -- reused as-is here
+  // instead of adding a second, identical key.
+  downloadingLabel: { en: "Downloading...", tl: "Nagda-download...", ceb: "Nagdownload..." },
+  downloadFailedMessage: { en: "Could not download the report. Please try again.", tl: "Hindi ma-download ang ulat. Pakisubukang muli.", ceb: "Wala ma-download ang report. Palihug sulayi pag-usab." },
+  // Success confirmation shown right after the browser accepts the file --
+  // same confirm-before/success-after convention as Budget's Add/Update/
+  // Delete Expense flow (ConfirmDialog then a success StatusModal).
+  downloadSuccessTitle: { en: "Download Complete", tl: "Tapos na ang Pag-download", ceb: "Nahuman na ang Pag-download" },
+  downloadSuccessWordMessage: { en: "The report was downloaded successfully as a Word (.docx) file.", tl: "Matagumpay na na-download ang ulat bilang Word (.docx) file.", ceb: "Malampuson nga na-download ang report isip Word (.docx) file." },
+  downloadSuccessPdfMessage: { en: "The report was downloaded successfully as a PDF file.", tl: "Matagumpay na na-download ang ulat bilang PDF file.", ceb: "Malampuson nga na-download ang report isip PDF file." },
+  // Same confirm-before/success-after pattern, for the Budget receipt
+  // viewer's download button.
+  confirmDownloadReceiptTitle: { en: "Download this receipt?", tl: "I-download ang resibong ito?", ceb: "I-download ni nga resibo?" },
+  confirmDownloadReceiptBody: { en: "This will save a copy of the receipt file to your device.", tl: "Ise-save nito ang kopya ng resibo sa iyong device.", ceb: "I-save niini ang kopya sa resibo sa imong device." },
+  downloadReceiptSuccessMessage: { en: "The receipt was downloaded successfully.", tl: "Matagumpay na na-download ang resibo.", ceb: "Malampuson nga na-download ang resibo." },
+  downloadReceiptFailedMessage: { en: "Could not download the receipt. Please try again.", tl: "Hindi ma-download ang resibo. Pakisubukang muli.", ceb: "Wala ma-download ang resibo. Palihug sulayi pag-usab." },
+  printRangeStartLabel: { en: "Start", tl: "Simula", ceb: "Sinugdanan" },
+  printRangePresentLabel: { en: "Present", tl: "Kasalukuyan", ceb: "Karon" },
   allConditionsOption: { en: "All Conditions", tl: "Lahat ng Kondisyon", ceb: "Tanan nga Kondisyon" },
   noDataAvailableForReport: { en: "No data available for this report.", tl: "Walang available na datos para sa ulat na ito.", ceb: "Walay available nga datos para niini nga report." },
   totalMembershipsLabel: { en: "Total Memberships", tl: "Kabuuang Membership", ceb: "Total nga Membership" },

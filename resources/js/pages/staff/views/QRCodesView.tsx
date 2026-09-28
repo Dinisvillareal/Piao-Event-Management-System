@@ -1227,7 +1227,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteBackdropClick}
         >
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center">
               <Trash2 size={36} />
             </div>
@@ -1259,7 +1259,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleAddSuccessBackdropClick}
         >
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-3 text-[#4FBEB0] flex justify-center">
               <CheckCircle size={48} />
             </div>
@@ -1283,7 +1283,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteSuccessBackdropClick}
         >
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-3 text-[#4FBEB0] flex justify-center">
               <CheckCircle size={48} />
             </div>
@@ -1306,7 +1306,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleUpdateSuccessBackdropClick}
         >
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-3 text-[#4FBEB0] flex justify-center">
               <CheckCircle size={48} />
             </div>
@@ -1330,7 +1330,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteFailedBackdropClick}
         >
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center">
               <AlertCircle size={40} />
             </div>
@@ -1354,7 +1354,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleGenericErrorBackdropClick}
         >
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-sm p-6 shadow-2xl relative text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center">
               <AlertCircle size={40} />
             </div>
@@ -1380,7 +1380,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             if (e.target === e.currentTarget) setShowCancelConfirm(null);
           }}
         >
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-3 text-gold-300 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-gold-300 mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>

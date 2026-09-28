@@ -309,9 +309,13 @@ export default function EventsView({
                   { value: "all", label: t("allMembershipsOption") },
                   ...userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
                 ]}
-                className="h-11 pl-10 pr-8 shrink-0"
+                className="h-11 min-w-[220px] pl-10 pr-8 shrink-0"
+                panelWidthPx={280}
                 icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
                 dark
+                searchable
+                searchPlaceholder={t("search")}
+                noResultsLabel={t("noMatchesFoundLabel")}
               />
             </div>
           </div>

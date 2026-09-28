@@ -59,27 +59,45 @@ export function queueLength(): number {
 }
 
 /**
- * Replays every queued scan against the server. Returns how many succeeded
- * vs. failed so the caller (ScanView) can show a sync summary toast.
+ * Replays every queued scan against the server. Returns how many succeeded,
+ * how many hit a genuine network failure (still queued for next time), and
+ * how many were permanently rejected by the server (dropped -- see below) so
+ * the caller (OfflineBanner) can show an accurate sync summary toast.
  */
-export async function flushQueue(): Promise<{ synced: number; failed: number }> {
+export async function flushQueue(): Promise<{ synced: number; failed: number; rejected: number }> {
   const queue = readQueue();
-  if (queue.length === 0) return { synced: 0, failed: 0 };
+  if (queue.length === 0) return { synced: 0, failed: 0, rejected: 0 };
 
   let synced = 0;
   let failed = 0;
+  let rejected = 0;
   const remaining: QueuedAttendance[] = [];
 
   for (const item of queue) {
     try {
       await api.request({ url: item.endpoint, method: item.method, data: item.payload });
       synced++;
-    } catch {
-      failed++;
-      remaining.push(item); // keep it queued, try again on the next reconnect
+    } catch (error: any) {
+      // A genuine server response (error.response set -- 400/403/422/...)
+      // means the server actually evaluated this request and permanently
+      // rejected it: "already signed in/out" (including the case where an
+      // EARLIER attempt of this exact queued item already landed before the
+      // connection dropped, and this replay is now hitting the same
+      // unique-attendance row), "not eligible", or "sign-in/out window
+      // closed". None of those can ever succeed on a retry, so re-queuing
+      // it forever would just silently spam the API on every reconnect
+      // without ever telling anyone why that resident's attendance never
+      // shows up. Only a true network-level failure (no response reached
+      // at all) is worth keeping for the next attempt.
+      if (error?.response) {
+        rejected++;
+      } else {
+        failed++;
+        remaining.push(item); // keep it queued, try again on the next reconnect
+      }
     }
   }
 
   writeQueue(remaining);
-  return { synced, failed };
+  return { synced, failed, rejected };
 }

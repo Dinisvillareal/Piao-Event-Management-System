@@ -31,7 +31,7 @@ export function BarChart({
   const max = Math.max(1, ...data.map((d) => d.value));
 
   if (data.length === 0) {
-    return <p className={`text-sm italic py-8 text-center ${dark ? "text-white/40" : "text-gray-400"}`}>No data for the selected filters.</p>;
+    return <p className={`text-sm italic py-8 text-center ${dark ? "text-white/40 print:text-gray-400" : "text-gray-400"}`}>No data for the selected filters.</p>;
   }
 
   return (
@@ -41,13 +41,17 @@ export function BarChart({
           const barHeight = Math.max(4, (d.value / max) * (height - 40));
           return (
             <div key={i} className="flex flex-col items-center justify-end w-10 sm:w-12 shrink-0" style={{ height }}>
-              <span className={`text-[11px] font-bold mb-1 ${dark ? "text-white" : "text-gray-700"}`}>{d.value}{valueSuffix}</span>
+              {/* dark's white text is invisible once this chart prints on a
+                  white page (Reports, via print:bg-white cards) -- give it
+                  a print-only dark color like every other dark-mode label
+                  in ReportsView already has, instead of vanishing on paper. */}
+              <span className={`text-[11px] font-bold mb-1 ${dark ? "text-white print:text-gray-700" : "text-gray-700"}`}>{d.value}{valueSuffix}</span>
               <div
                 className="w-full rounded-t-lg transition-all duration-300"
                 style={{ height: barHeight, background: color }}
                 title={`${d.label}: ${d.value}${valueSuffix}`}
               />
-              <span className={`mt-2 text-[10px] text-center leading-tight break-words w-full ${dark ? "text-white/45" : "text-gray-500"}`}>{d.label}</span>
+              <span className={`mt-2 text-[10px] text-center leading-tight break-words w-full ${dark ? "text-white/45 print:text-gray-500" : "text-gray-500"}`}>{d.label}</span>
             </div>
           );
         })}
@@ -105,7 +109,11 @@ export function DonutChart({
           <span className="text-2xl font-black" style={{ color }}>{clamped.toFixed(0)}%</span>
         </div>
       </div>
-      {label && <span className={`text-xs font-medium text-center ${dark ? "text-white/60" : "text-gray-600"}`}>{label}</span>}
+      {/* Same print-invisibility issue as BarChart's labels above -- dark's
+          white text disappeared once this donut printed on Reports' white
+          page, which is what made the attendance breakdown look unlabeled
+          on the printed report. */}
+      {label && <span className={`text-xs font-medium text-center ${dark ? "text-white/60 print:text-gray-600" : "text-gray-600"}`}>{label}</span>}
     </div>
   );
 }

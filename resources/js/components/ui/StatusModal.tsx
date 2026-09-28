@@ -41,7 +41,7 @@ export default function StatusModal({ open, type, title, message, okLabel, onClo
       onClick={onClose}
     >
       <div
-        className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center"
+        className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className={`mb-3 flex justify-center ${accent}`}>{icon ?? <Icon size={44} />}</div>

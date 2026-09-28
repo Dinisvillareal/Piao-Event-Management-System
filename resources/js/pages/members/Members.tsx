@@ -93,13 +93,13 @@ export default function MemberDashboard() {
     }
   }, [active]);
 
-  // ─── LIVE NOTIFICATION POLLING ───────────────────────────────────────────────
+  // ─── LIVE NOTIFICATION POLLING (Notifications page) ─────────────────────────
   // Quietly re-checks for new notifications every 20s while the member is on
-  // the Dashboard or Notifications page, the same "keeps itself current"
-  // pattern the staff portal's live dashboards use -- instead of only ever
-  // refreshing on mount or on navigation.
+  // the Notifications page -- the Dashboard's own notification refresh is
+  // folded into the broader "LIVE DASHBOARD POLLING" effect further down, so
+  // it doesn't run twice while the member is on the Dashboard.
   useEffect(() => {
-    if (active !== "dashboard" && active !== "notify") return;
+    if (active !== "notify") return;
     const poll = setInterval(fetchNotifications, 20000);
     return () => clearInterval(poll);
   }, [active]);
@@ -139,44 +139,97 @@ export default function MemberDashboard() {
       });
   }, []);
 
-  // ─── FETCH EVENTS ───────────────────────────────────────────────────────────
-  useEffect(() => {
+  // Fetch events function (reusable -- also re-run by the live dashboard poll below)
+  const fetchEvents = async () => {
     // ✅ NEW: Get portal mode from storage
     const portalMode = localStorage.getItem("portalMode") || sessionStorage.getItem("portalMode") || "member";
 
-    api.get('/events-data', { headers: { 'X-Portal-Mode': portalMode } })
-      .then((res) => {
-        const data = res.data;
-        if (!data?.data) {
-          console.error('No events returned:', data);
-          return;
-        }
+    try {
+      const res = await api.get('/events-data', { headers: { 'X-Portal-Mode': portalMode } });
+      const data = res.data;
+      if (!data?.data) {
+        console.error('No events returned:', data);
+        return;
+      }
 
-        const now = new Date();
+      const now = new Date();
 
-        const formattedEvents = data.data.map((event: any) => ({
-          id: event.id,
-          title: event.name,
-          date: event.event_start,
-          event_start: event.event_start,
-          event_end: event.event_end,
-          location: event.location,
-          description: event.description,
-          membership_ids: Array.isArray(event.membership_ids) ? event.membership_ids : [],
-          memberships: Array.isArray(event.memberships) ? event.memberships : [],
-          notificationMessage: event.notification_message,
-          membershipNames: event.memberships?.map((m: any) => m.name) || [],
-          startDate: event.event_start?.split(" ")[0],
-          startTime: new Date(event.event_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        }));
+      const formattedEvents = data.data.map((event: any) => ({
+        id: event.id,
+        title: event.name,
+        date: event.event_start,
+        event_start: event.event_start,
+        event_end: event.event_end,
+        location: event.location,
+        description: event.description,
+        membership_ids: Array.isArray(event.membership_ids) ? event.membership_ids : [],
+        memberships: Array.isArray(event.memberships) ? event.memberships : [],
+        notificationMessage: event.notification_message,
+        membershipNames: event.memberships?.map((m: any) => m.name) || [],
+        startDate: event.event_start?.split(" ")[0],
+        startTime: new Date(event.event_start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      }));
 
-        const upcoming = formattedEvents.filter((e: any) => parseApiDate(e.date) >= now);
-        const past = formattedEvents.filter((e: any) => parseApiDate(e.date) < now);
+      const upcoming = formattedEvents.filter((e: any) => parseApiDate(e.date) >= now);
+      const past = formattedEvents.filter((e: any) => parseApiDate(e.date) < now);
 
-        setUpcomingEvents(upcoming);
-        setPastEvents(past);
-      })
-      .catch((err) => console.error('Failed to fetch events:', err));
+      setUpcomingEvents(upcoming);
+      setPastEvents(past);
+    } catch (err) {
+      console.error('Failed to fetch events:', err);
+    }
+  };
+
+  // Fetch the signed-in member's own membership count (reusable)
+  const fetchUserMembershipsCount = async (memberId: string) => {
+    try {
+      const res = await api.get(`/membership-residents/${memberId}`, { params: { per_page: 100 } });
+      const data = res.data;
+      setUserMembershipsCount(data.total || data.memberships?.length || 0);
+      setUserMemberships(Array.isArray(data.memberships) ? data.memberships : []);
+    } catch (err) {
+      console.error('Failed to fetch user memberships count:', err);
+    }
+  };
+
+  // Fetch the signed-in member's attendance records (reusable)
+  const fetchAttendanceRecords = async (memberId: string) => {
+    try {
+      const res = await api.get(`/attendance/${memberId}`);
+      const data = res.data;
+      if (!Array.isArray(data)) return;
+
+      const records: AttendanceRecord[] = data.map((item: any) => ({
+        id: item.id,
+        eventId: item.eventId,
+        eventTitle: item.eventTitle ?? '—',      // ✅ Direct property
+        eventDate: item.eventDate ?? '',          // ✅ Direct property
+        location: item.location ?? '—',           // ✅ Direct property
+        timeIn: item.timeIn ?? '',
+        timeOut: item.timeOut ?? '',
+        status: (!item.timeIn && !item.timeOut) ? 'missed' : (item.status?.toLowerCase() ?? 'incomplete'),
+      }));
+
+      const attendedCount = records.filter(r => r.status === 'complete').length;
+      const missedCount = records.filter(r => r.status === 'missed').length;
+
+      setAttendanceRecords(records);
+      setAttended(attendedCount);
+      setMissed(missedCount);
+
+      sessionStorage.setItem(`attendance_cache_${memberId}`, JSON.stringify({
+        records: records,
+        attended: attendedCount,
+        missed: missedCount
+      }));
+    } catch (err) {
+      console.error('Failed to fetch attendance:', err);
+    }
+  };
+
+  // ─── FETCH EVENTS (initial) ──────────────────────────────────────────────────
+  useEffect(() => {
+    fetchEvents();
   }, []);
 
   // ─── FETCH NOTIFICATIONS (initial) ──────────────────────────────────────────
@@ -184,20 +237,13 @@ export default function MemberDashboard() {
     fetchNotifications();
   }, []);
 
-  // ─── FETCH USER'S MEMBERSHIP COUNT ──────────────────────────────────────────
+  // ─── FETCH USER'S MEMBERSHIP COUNT (initial) ────────────────────────────────
   useEffect(() => {
     if (!member.id) return;
-
-    api.get(`/membership-residents/${member.id}`, { params: { per_page: 100 } })
-      .then((res) => {
-        const data = res.data;
-        setUserMembershipsCount(data.total || data.memberships?.length || 0);
-        setUserMemberships(Array.isArray(data.memberships) ? data.memberships : []);
-      })
-      .catch(err => console.error('Failed to fetch user memberships count:', err));
+    fetchUserMembershipsCount(member.id);
   }, [member.id]);
 
-  // ─── FETCH ATTENDANCE RECORDS ────────────────────────────────────────────────
+  // ─── FETCH ATTENDANCE RECORDS (initial, seeded from session cache first) ────
   useEffect(() => {
     if (!member.id) return;
 
@@ -210,37 +256,27 @@ export default function MemberDashboard() {
       setMissed(parsedData.missed);
     }
 
-    api.get(`/attendance/${member.id}`)
-      .then((res) => {
-        const data = res.data;
-        if (!Array.isArray(data)) return;
-
-        const records: AttendanceRecord[] = data.map((item: any) => ({
-          id: item.id,
-          eventId: item.eventId,
-          eventTitle: item.eventTitle ?? '—',      // ✅ Direct property
-          eventDate: item.eventDate ?? '',          // ✅ Direct property
-          location: item.location ?? '—',           // ✅ Direct property
-          timeIn: item.timeIn ?? '',
-          timeOut: item.timeOut ?? '',
-          status: (!item.timeIn && !item.timeOut) ? 'missed' : (item.status?.toLowerCase() ?? 'incomplete'),
-        }));
-
-        const attendedCount = records.filter(r => r.status === 'complete').length;
-        const missedCount = records.filter(r => r.status === 'missed').length;
-
-        setAttendanceRecords(records);
-        setAttended(attendedCount);
-        setMissed(missedCount);
-
-        sessionStorage.setItem(cacheKey, JSON.stringify({
-          records: records,
-          attended: attendedCount,
-          missed: missedCount
-        }));
-      })
-      .catch(err => console.error('Failed to fetch attendance:', err));
+    fetchAttendanceRecords(member.id);
   }, [member.id]);
+
+  // ─── LIVE DASHBOARD POLLING ──────────────────────────────────────────────────
+  // Keeps the *whole* Dashboard live, not just notifications: while the member
+  // is on the Dashboard, notifications, the events list, membership count and
+  // attendance/check-ins are all quietly re-fetched every 20s, so every number
+  // and card on the page moves on its own -- no manual refresh, no need to
+  // leave and come back -- mirroring the staff portal's own live dashboards.
+  useEffect(() => {
+    if (active !== "dashboard") return;
+    const poll = setInterval(() => {
+      fetchNotifications();
+      fetchEvents();
+      if (member.id) {
+        fetchUserMembershipsCount(member.id);
+        fetchAttendanceRecords(member.id);
+      }
+    }, 20000);
+    return () => clearInterval(poll);
+  }, [active, member.id]);
 
   // ─── FETCH MY OWN EVENT FEEDBACK (drives the reviews module on Events) ─────
   useEffect(() => {

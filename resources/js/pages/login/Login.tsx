@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { ArrowRight, Copy, LayoutDashboard, Users, XCircle, CheckCircle, LogOut } from "lucide-react";
+import { ArrowRight, Copy, LayoutDashboard, Users, CheckCircle, LogOut } from "lucide-react";
+import StatusModal from "../../components/ui/StatusModal";
 
 // ─── Password-visibility eye glyph -- a plain closed-eye arc for "tap to
 // hide" (password currently showing), and that same arc with a hollow
@@ -529,40 +530,28 @@ export default function LoginPage() {
         />
       )}
 
-      {showAccountDeletedModal && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-4 text-red-500 flex justify-center"><XCircle size={40} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-3">Account Deleted</h3>
-            <p className="text-[15px] text-gray-600 mb-5">This account has been deleted. You cannot log in.</p>
-            <button
-              onClick={() => { setShowAccountDeletedModal(false); window.location.href = "/login"; }}
-              className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition"
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      )}
+      <StatusModal
+        open={showAccountDeletedModal}
+        type="error"
+        title="Account Deleted"
+        message="This account has been deleted. You cannot log in."
+        okLabel="OK"
+        onClose={() => { setShowAccountDeletedModal(false); window.location.href = "/login"; }}
+      />
 
       {/* Sign-in error -- was an inline banner above the form fields, now a
           popup like every other error in the app (invalid credentials,
-          account not activated, session expired, network error, etc). */}
-      {error && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
-            <div className="mb-4 text-red-500 flex justify-center"><XCircle size={40} /></div>
-            <h3 className="text-xl font-bold text-red-600 mb-3">Sign In Failed</h3>
-            <p className="text-[15px] text-gray-600 mb-5">{error}</p>
-            <button
-              onClick={() => setError("")}
-              className="px-6 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white transition"
-            >
-              OK
-            </button>
-          </div>
-        </div>
-      )}
+          account not activated, session expired, network error, etc), using
+          the same shared dark StatusModal every other screen's errors use
+          (red icon/title, red button) instead of its own bespoke light card. */}
+      <StatusModal
+        open={!!error}
+        type="error"
+        title="Sign In Failed"
+        message={error}
+        okLabel="OK"
+        onClose={() => setError("")}
+      />
 
       {showCopiedToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2 rounded-full bg-[#0A0E1A] text-white text-sm font-medium px-5 py-2.5 shadow-xl animate-in fade-in slide-in-from-bottom-2">

@@ -68,6 +68,13 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   // link, so images preview inline and PDFs render in an embedded viewer
   // rather than dumping the visitor onto a bare file URL.
   const [viewingReceipt, setViewingReceipt] = useState<{ url: string; item: string } | null>(null);
+  // Confirm-before / success-after around the receipt download button
+  // itself, same pattern as the rest of the app (Add/Update/Delete Expense
+  // below, the Reports page's Word/PDF download) instead of the plain
+  // silent <a download> this used to be.
+  const [confirmDownloadReceipt, setConfirmDownloadReceipt] = useState(false);
+  const [downloadingReceipt, setDownloadingReceipt] = useState(false);
+  const [receiptDownloadSuccess, setReceiptDownloadSuccess] = useState(false);
   // One shared success modal for Add/Update/Delete expense -- mirrors the
   // confirm-before / success-after pattern used elsewhere in the app
   // (e.g. Returns), so a completed action is never silent.
@@ -240,6 +247,36 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   };
   const isImageReceipt = (ext: string) => ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
   const isPdfReceipt = (ext: string) => ext === "pdf";
+
+  // Fires only after confirmDownloadReceipt is accepted. Pulls the receipt
+  // as a blob and triggers the save via a throwaway <a download> instead of
+  // just pointing the browser straight at the file URL, the same way
+  // ReportsView's Word/PDF export does -- the fetch actually resolving is
+  // the closest thing the browser gives JS to "the file was downloaded",
+  // so only then do we show the success popup.
+  const handleDownloadReceipt = async () => {
+    if (!viewingReceipt) return;
+    setConfirmDownloadReceipt(false);
+    setDownloadingReceipt(true);
+    try {
+      const response = await fetch(viewingReceipt.url);
+      if (!response.ok) throw new Error("download failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = viewingReceipt.item || "receipt";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      setReceiptDownloadSuccess(true);
+    } catch {
+      setError(t("downloadReceiptFailedMessage"));
+    } finally {
+      setDownloadingReceipt(false);
+    }
+  };
 
   // Group the event picker list by day, "This Week" pulled out on top --
   // same structure as the Events page, so the two lists feel like one
@@ -779,7 +816,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           further below which stay on their original light theme). */}
       {editingExpense && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={() => !savingEdit && handleCloseEditExpense()}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-black text-white">{t("editExpenseTitle")}</h2>
               <button onClick={handleCloseEditExpense} className="text-white/50 hover:text-white"><X size={20} /></button>
@@ -856,7 +893,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       {/* Unsaved-changes guard for the Edit Expense modal */}
       {showEditCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
@@ -901,51 +938,52 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       <StatusModal open={!!expenseSuccessMessage} type="success" title={t("expenseSuccessTitle")} message={expenseSuccessMessage || ""} okLabel={t("okLabel")} onClose={() => setExpenseSuccessMessage(null)} />
 
       {viewingReceipt && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] px-4" onClick={() => setViewingReceipt(null)}>
-          <div className="bg-white rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-[#E6E0D3] flex items-center justify-between gap-3">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[70] px-4" onClick={() => setViewingReceipt(null)}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
-                <span className="inline-flex items-center justify-center h-9 w-9 rounded-full bg-sage-50 text-sage-800 shrink-0">
+                <span className="inline-flex items-center justify-center h-9 w-9 rounded-full bg-white/10 text-[#4FBEB0] shrink-0">
                   <FileText className="h-4 w-4" />
                 </span>
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-[#1A1A1A] truncate">{viewingReceipt.item}</p>
-                  <p className="text-[11px] uppercase tracking-wide text-[#6B7280] font-semibold">
+                  <p className="text-sm font-bold text-white truncate">{viewingReceipt.item}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-white/40 font-semibold">
                     {receiptExt(viewingReceipt.url) || t("fileLabel")}
                   </p>
                 </div>
               </div>
-              <button onClick={() => setViewingReceipt(null)} className="text-[#6B7280] hover:text-[#1A1A1A] p-1 shrink-0">
+              <button onClick={() => setViewingReceipt(null)} className="text-white/40 hover:text-white p-1 shrink-0">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-auto bg-[#FAF9F5] flex items-center justify-center p-4">
+            <div className="flex-1 overflow-auto bg-black/20 flex items-center justify-center p-4">
               {isImageReceipt(receiptExt(viewingReceipt.url)) ? (
                 <img src={viewingReceipt.url} alt={viewingReceipt.item} className="max-w-full max-h-[65vh] rounded-xl shadow-sm" />
               ) : isPdfReceipt(receiptExt(viewingReceipt.url)) ? (
                 <iframe
                   src={viewingReceipt.url}
                   title={viewingReceipt.item}
-                  className="w-full h-[65vh] rounded-xl border border-[#E6E0D3] bg-white"
+                  className="w-full h-[65vh] rounded-xl border border-white/10 bg-white"
                 />
               ) : (
                 <div className="text-center py-10">
-                  <FileText className="h-10 w-10 mx-auto text-[#6B7280] mb-3" />
-                  <p className="text-sm text-[#6B7280]">{t("previewNotAvailableLabel")}</p>
+                  <FileText className="h-10 w-10 mx-auto text-white/40 mb-3" />
+                  <p className="text-sm text-white/40">{t("previewNotAvailableLabel")}</p>
                 </div>
               )}
             </div>
 
-            <div className="px-5 py-4 border-t border-[#E6E0D3] flex justify-end gap-2">
-              <a
-                href={viewingReceipt.url}
-                download
-                className="inline-flex items-center gap-1.5 rounded-full bg-sage-800 hover:bg-sage-900 text-white text-sm font-semibold px-5 py-2.5 transition"
+            <div className="px-5 py-4 border-t border-white/10 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDownloadReceipt(true)}
+                disabled={downloadingReceipt}
+                className="inline-flex items-center gap-1.5 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-semibold px-5 py-2.5 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Download className="h-4 w-4" /> {t("downloadLabel")}
-              </a>
-              <button onClick={() => setViewingReceipt(null)} className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] text-sm hover:bg-sage-50/60 transition">
+                <Download className="h-4 w-4" /> {downloadingReceipt ? t("downloadingLabel") : t("downloadLabel")}
+              </button>
+              <button onClick={() => setViewingReceipt(null)} className="px-5 py-2.5 rounded-full border border-white/15 text-white text-sm hover:bg-white/10 transition">
                 {t("closeLabel")}
               </button>
             </div>
@@ -953,9 +991,34 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
         </div>
       )}
 
+      {/* "Are you sure you want to download?" -- then "Downloaded
+          successfully" -- same confirm-before/success-after pattern as
+          Add/Update/Delete Expense above and the Reports page's Word/PDF
+          download, instead of the receipt silently saving with no feedback. */}
+      <ConfirmDialog
+        open={confirmDownloadReceipt}
+        icon={<Download className="h-9 w-9" />}
+        title={t("confirmDownloadReceiptTitle")}
+        body={t("confirmDownloadReceiptBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={downloadingReceipt ? t("downloadingLabel") : t("downloadLabel")}
+        onCancel={() => setConfirmDownloadReceipt(false)}
+        onConfirm={handleDownloadReceipt}
+        z={80}
+      />
+      <StatusModal
+        open={receiptDownloadSuccess}
+        type="success"
+        title={t("downloadSuccessTitle")}
+        message={t("downloadReceiptSuccessMessage")}
+        okLabel={t("okLabel")}
+        onClose={() => setReceiptDownloadSuccess(false)}
+        z={80}
+      />
+
       {deleteExpense && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => !deletingExpense && setDeleteExpense(null)}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
             <p className="text-[15px] text-white/50 mb-5">{t("deleteExpenseConfirm")} "{deleteExpense.item}"?</p>
