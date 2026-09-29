@@ -10,7 +10,6 @@ use App\Models\InventoryItem;
 use App\Models\Membership;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Settings as PhpWordSettings;
@@ -331,6 +330,27 @@ class ReportController extends Controller
 
         $pdf = Pdf::loadView('reports.export', $payload)->setPaper('a4', 'portrait');
 
+        // "Page X of Y" the same way a browser's own print dialog stamps
+        // one on -- dompdf only fills in {PAGE_NUM}/{PAGE_COUNT} through
+        // this canvas call (the plain text placeholder in the Blade view
+        // is never substituted on its own), so the page has to already be
+        // rendered before this runs, and Pdf::download()/output() below
+        // are written to skip re-rendering once that's done.
+        $pdf->render();
+        $canvas = $pdf->getCanvas();
+        $fontMetrics = $pdf->getFontMetrics();
+        $font = $fontMetrics->getFont('DejaVu Sans');
+        $footerSize = 8;
+        $footerWidth = $fontMetrics->getTextWidth('Page 00 of 00', $font, $footerSize);
+        $canvas->page_text(
+            ($canvas->get_width() - $footerWidth) / 2,
+            $canvas->get_height() - 34,
+            'Page {PAGE_NUM} of {PAGE_COUNT}',
+            $font,
+            $footerSize,
+            [0.55, 0.6, 0.6]
+        );
+
         return $pdf->download(Str::slug($payload['reportTitle']) . '.pdf');
     }
 
@@ -358,79 +378,9 @@ class ReportController extends Controller
         $tempPath = tempnam(sys_get_temp_dir(), 'piao_report_');
         $phpWord->save($tempPath, 'Word2007');
 
-        // PhpWord always writes table borders with w:val="single" even when
-        // the width is set to 0 (its border-style API has no "none"/"nil"
-        // option) -- Word itself treats a 0-width single border as invisible,
-        // but some viewers (notably LibreOffice) still draw a thin hairline
-        // for it. That showed up as unwanted grid lines through the stat
-        // tiles, bar charts, and per-event cards. Rewriting those specific
-        // zero-width borders to w:val="nil" directly in the saved .docx's
-        // XML removes the lines everywhere, without touching real borders.
-        $this->stripZeroWidthTableBorders($tempPath);
-
         return response()->download($tempPath, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ])->deleteFileAfterSend(true);
-    }
-
-    /**
-     * Post-process a saved .docx and turn every table border PhpWord wrote
-     * with width 0 (top/left/right/bottom/insideH/insideV) from
-     * w:val="single" w:sz="0" into w:val="nil", which every Word-compatible
-     * renderer treats as "no border at all" rather than a possible hairline.
-     */
-    private function stripZeroWidthTableBorders(string $docxPath): void
-    {
-        try {
-            if (!class_exists('PclZip', false)) {
-                require_once base_path('vendor/phpoffice/phpword/src/PhpWord/Shared/PCLZip/pclzip.lib.php');
-            }
-
-            $zip = new \PclZip($docxPath);
-            $extracted = $zip->extract(PCLZIP_OPT_EXTRACT_AS_STRING, PCLZIP_OPT_BY_NAME, 'word/document.xml');
-            if (!is_array($extracted) || empty($extracted[0]['content'])) {
-                return;
-            }
-
-            $xml = $extracted[0]['content'];
-            $fixed = preg_replace_callback(
-                '/<w:(top|left|right|bottom|insideH|insideV)\b([^>]*)\/>/',
-                function (array $m): string {
-                    if (strpos($m[2], 'w:sz="0"') === false) {
-                        return $m[0];
-                    }
-
-                    $attrs = preg_replace('/w:val="[^"]*"/', 'w:val="nil"', $m[2]);
-
-                    return '<w:' . $m[1] . $attrs . '/>';
-                },
-                $xml
-            );
-
-            if ($fixed === null || $fixed === $xml) {
-                return;
-            }
-
-            // PCLZip has no in-place "replace" -- delete the old entry then
-            // add the patched XML back under the exact same name.
-            $tmpDir = sys_get_temp_dir() . '/phpword_fix_' . uniqid();
-            mkdir($tmpDir, 0777, true);
-            $tmpFile = $tmpDir . '/document.xml';
-            file_put_contents($tmpFile, $fixed);
-
-            $zip->delete(PCLZIP_OPT_BY_NAME, 'word/document.xml');
-            $zip->add($tmpFile, PCLZIP_OPT_REMOVE_PATH, $tmpDir, PCLZIP_OPT_ADD_PATH, 'word');
-
-            @unlink($tmpFile);
-            @rmdir($tmpDir);
-        } catch (\Throwable $e) {
-            // Purely cosmetic cleanup -- if anything about the zip surgery
-            // fails for any reason, silently keep the original, otherwise-
-            // valid .docx rather than break the download.
-            Log::warning('Could not strip zero-width table borders from exported Word document', [
-                'message' => $e->getMessage(),
-            ]);
-        }
     }
 
     /**
@@ -518,12 +468,34 @@ class ReportController extends Controller
         $center = ['alignment' => 'center'];
         $tiny = ['size' => 8, 'color' => '667777'];
 
-        $section->addText('REPUBLIC OF THE PHILIPPINES', $tiny, $center);
-        $section->addText('Province of Zamboanga del Norte', $tiny, $center);
-        $section->addText('Municipality of President Manuel A. Roxas', $tiny, $center);
-        $section->addText('BARANGAY PIAO', ['bold' => true, 'size' => 16, 'color' => '005F63'], $center);
-        $section->addText('Piao Barangay Hall, Purok Uno, Barangay Piao, 7104', $tiny, $center);
-        $section->addText('PIAO CONNECT', ['bold' => true, 'size' => 8, 'color' => '4FBEB0'], $center);
+        // "Page X of Y" on every page, the same as the PDF export and a
+        // browser's own print dialog -- {PAGE}/{NUMPAGES} are real Word
+        // field codes (not a string dompdf-style placeholder), so Word
+        // computes and keeps them current itself, including across
+        // whatever page count this specific download ends up with.
+        $footer = $section->addFooter();
+        $footer->addPreserveText('Page {PAGE} of {NUMPAGES}', ['size' => 8, 'color' => '999999'], $center);
+
+        // Seal on the left, letterhead text still centered on the page --
+        // the third, empty spacer cell mirrors the logo cell's width so
+        // the center column doesn't drift right, same as the PDF's header
+        // table and the same balance an official letterhead keeps between
+        // a seal and the margin on the other side.
+        $logoPath = public_path('logo-removebg-preview.png');
+        $headerTable = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0]);
+        $headerTable->addRow(null, ['cantSplit' => true]);
+        $logoCell = $headerTable->addCell(1500);
+        if (is_file($logoPath)) {
+            $logoCell->addImage($logoPath, ['width' => 64, 'height' => 64, 'alignment' => 'center']);
+        }
+        $textCell = $headerTable->addCell(6000);
+        $textCell->addText('REPUBLIC OF THE PHILIPPINES', $tiny, $center);
+        $textCell->addText('Province of Zamboanga del Norte', $tiny, $center);
+        $textCell->addText('Municipality of President Manuel A. Roxas', $tiny, $center);
+        $textCell->addText('BARANGAY PIAO', ['bold' => true, 'size' => 16, 'color' => '005F63'], $center);
+        $textCell->addText('Piao Barangay Hall, Purok Uno, Barangay Piao, 7104', $tiny, $center);
+        $textCell->addText('PIAO CONNECT', ['bold' => true, 'size' => 8, 'color' => '4FBEB0'], $center);
+        $headerTable->addCell(1500);
         $section->addTextBreak(1);
         $section->addText(strtoupper($payload['reportTitle']), ['bold' => true, 'size' => 13, 'color' => '005F63'], $center);
         $section->addText($payload['filterSummary'], ['size' => 9, 'color' => '667777'], $center);
@@ -631,12 +603,12 @@ class ReportController extends Controller
                 if (!empty($data['top_expenses'])) {
                     $this->addCardHeading($section, 'Top Expenses');
                     $table2 = $section->addTable('ReportTable');
-                    $table2->addRow();
+                    $table2->addRow(null, ['cantSplit' => true]);
                     foreach (['Item', 'Event', 'Amount'] as $h) {
                         $table2->addCell(3000, $headerCellStyle)->addText($h, $headerFont);
                     }
                     foreach ($data['top_expenses'] as $ex) {
-                        $table2->addRow();
+                        $table2->addRow(null, ['cantSplit' => true]);
                         $table2->addCell(3000)->addText($ex['item'], $cellFont);
                         $table2->addCell(3000)->addText($ex['event_name'] ?? '—', $cellFont);
                         $table2->addCell(3000)->addText('₱' . number_format($ex['amount'], 2), $cellFont);
@@ -653,7 +625,7 @@ class ReportController extends Controller
 
                 $this->addCardHeading($section, 'By Condition');
                 $conditionRow = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'cellSpacing' => 60]);
-                $conditionRow->addRow();
+                $conditionRow->addRow(null, ['cantSplit' => true]);
                 foreach ($data['by_condition'] as $c) {
                     [$bg, $fg] = $this->conditionColors($c['condition']);
                     $conditionRow->addCell(2600, ['bgColor' => $bg])
@@ -666,7 +638,7 @@ class ReportController extends Controller
                     $cell->addText($item['name'], ['bold' => true, 'size' => 9, 'color' => '005F63']);
                     $cell->addText($item['storage_location'] ?? '—', ['size' => 7.5, 'color' => '999999']);
                     $condTable = $cell->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0]);
-                    $condTable->addRow();
+                    $condTable->addRow(null, ['cantSplit' => true]);
                     $condTable->addCell(2200, ['bgColor' => $bg])->addText($item['condition'], ['size' => 7.5, 'bold' => true, 'color' => $fg]);
                     $condTable->addCell(1800)->addText('×' . $item['quantity'], ['bold' => true, 'size' => 9, 'color' => '333333'], ['alignment' => 'right']);
                 });
@@ -681,10 +653,10 @@ class ReportController extends Controller
         // shrink and left-anchor the whole table instead of spanning it
         // edge-to-edge like the on-screen/print signature row does.
         $sigTable = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'alignment' => 'center']);
-        $sigTable->addRow();
+        $sigTable->addRow(null, ['cantSplit' => true]);
         $sigTable->addCell(4500)->addText('_____________________________', [], $center);
         $sigTable->addCell(4500)->addText('_____________________________', [], $center);
-        $sigTable->addRow();
+        $sigTable->addRow(null, ['cantSplit' => true]);
         $sigTable->addCell(4500)->addText('Prepared by', ['size' => 9], $center);
         $sigTable->addCell(4500)->addText('Barangay Captain', ['size' => 9], $center);
 
@@ -711,7 +683,7 @@ class ReportController extends Controller
     {
         $width = (int) floor(9000 / max(1, count($tiles)));
         $table = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'cellSpacing' => 80]);
-        $table->addRow();
+        $table->addRow(null, ['cantSplit' => true]);
         foreach ($tiles as [$value, $label, $color]) {
             $cell = $table->addCell($width, ['bgColor' => $color]);
             $cell->addText($value, ['bold' => true, 'size' => 16, 'color' => 'FFFFFF']);
@@ -764,7 +736,7 @@ class ReportController extends Controller
 
         // Row 0: the value shown above each bar, same as BarChart's own
         // per-bar value label.
-        $table->addRow();
+        $table->addRow(null, ['cantSplit' => true]);
         foreach ($items as $item) {
             $table->addCell($colWidth)->addText((string) $item[$valueKey], ['bold' => true, 'size' => 8], ['alignment' => 'center']);
         }
@@ -772,7 +744,7 @@ class ReportController extends Controller
         // Rows 1..levels: the bar body itself, tallest level first so the
         // shaded cells accumulate toward the bottom row (the baseline).
         for ($level = $levels; $level >= 1; $level--) {
-            $table->addRow($levelHeight, ['exactHeight' => true]);
+            $table->addRow($levelHeight, ['exactHeight' => true, 'cantSplit' => true]);
             foreach ($filledLevels as $filled) {
                 $cell = $table->addCell($colWidth, $level <= $filled ? ['bgColor' => $color] : []);
                 $cell->addText('');
@@ -780,7 +752,7 @@ class ReportController extends Controller
         }
 
         // Final row: the category label under each bar.
-        $table->addRow();
+        $table->addRow(null, ['cantSplit' => true]);
         foreach ($items as $item) {
             $table->addCell($colWidth)->addText((string) ($item[$labelKey] ?? ''), ['size' => 7.5, 'color' => '999999'], ['alignment' => 'center']);
         }
@@ -799,7 +771,7 @@ class ReportController extends Controller
     private function addTwoColumnRow($section, int $leftWidth, int $rightWidth, callable $left, callable $right): void
     {
         $table = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'cellSpacing' => 100]);
-        $table->addRow();
+        $table->addRow(null, ['cantSplit' => true]);
         $left($table->addCell($leftWidth));
         $right($table->addCell($rightWidth));
         $section->addTextBreak(1);
@@ -820,7 +792,7 @@ class ReportController extends Controller
         $remainder = max(0, $trackWidth - $filled);
 
         $table = $cell->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0]);
-        $table->addRow();
+        $table->addRow(null, ['cantSplit' => true]);
         if ($filled > 0) {
             $table->addCell($filled, ['bgColor' => $color])->addText('');
         }
@@ -846,7 +818,7 @@ class ReportController extends Controller
         $filled = (int) round(($clamped / 100) * $trackWidth);
         $remainder = max(0, $trackWidth - $filled);
         $table = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'alignment' => 'center']);
-        $table->addRow();
+        $table->addRow(null, ['cantSplit' => true]);
         if ($filled > 0) {
             $table->addCell($filled, ['bgColor' => $color])->addText('');
         }
@@ -881,7 +853,7 @@ class ReportController extends Controller
 
         foreach ($items->chunk(2) as $pair) {
             $table = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'cellSpacing' => 80]);
-            $table->addRow();
+            $table->addRow(null, ['cantSplit' => true]);
             foreach ($pair as $item) {
                 $bg = $bgColorFor ? $bgColorFor($item) : 'FAFAF7';
                 $cell = $table->addCell(4500, ['bgColor' => $bg]);

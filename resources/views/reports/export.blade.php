@@ -7,8 +7,17 @@
   {{-- DejaVu Sans is bundled with dompdf and reliably renders the Peso
        sign (₱) and other extended glyphs -- Helvetica/Arial (dompdf's
        other built-in defaults) can silently drop it on some builds. --}}
+  {{-- Explicit page margin instead of leaving it to dompdf's own default --
+       this is what guarantees every page, including one a card gets
+       pushed onto by a page break, opens with a proper gutter of white
+       space instead of content butting right up against the paper edge. --}}
+  @page { margin: 16mm 14mm; }
   body { font-family: 'DejaVu Sans', sans-serif; color: #1a1a1a; font-size: 11px; }
   .center { text-align: center; }
+  .hdr-table { width: 100%; border-collapse: collapse; }
+  .hdr-logo-cell { width: 92px; vertical-align: middle; }
+  .hdr-text-cell { vertical-align: middle; }
+  .hdr-logo { width: 76px; height: 76px; }
   .muted { color: #667777; font-size: 9px; }
   .tiny { color: #667777; font-size: 8px; letter-spacing: 1px; text-transform: uppercase; }
   h1.brgy { color: #005F63; font-size: 20px; margin: 4px 0; text-transform: uppercase; }
@@ -28,7 +37,19 @@
   .stat-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; }
 
   .card { border: 1px solid #ddd5ca; border-radius: 16px; padding: 12px 15px 14px; margin-top: 12px; page-break-inside: avoid; }
-  .row-2col { width: 100%; border-collapse: separate; border-spacing: 6px 0; margin-top: 12px; table-layout: fixed; }
+  {{-- "Per-Event Breakdown", "Inventory Items" and the other record-list
+       cards hold an open-ended number of entries, so unlike the fixed-size
+       chart/summary cards above they can legitimately run taller than one
+       page. Forcing page-break-inside:avoid on those (like plain .card)
+       either crams them onto whatever's left of the current page (a big
+       ugly empty gap) or, once they're taller than a full page, forces
+       dompdf to slice straight through a row anyway -- worse than either.
+       This override lets the card itself flow across pages, while each
+       individual entry (.mini-cell/.mini-grid below) still keeps its own
+       protection so a break only ever falls *between* two entries, never
+       through the middle of one. --}}
+  .card.card-list { page-break-inside: auto; }
+  .row-2col { width: 100%; border-collapse: separate; border-spacing: 6px 0; margin-top: 12px; table-layout: fixed; page-break-inside: avoid; }
   .row-2col-cell { vertical-align: top; padding: 0; }
   .card h3 { color: #005F63; font-size: 12px; margin: 0 0 2px; }
   .card .desc { color: #8a8f8f; font-size: 8px; margin: 0 0 8px; }
@@ -47,8 +68,8 @@
   .donut-fill { height: 8px; background: #4FBEB0; border-radius: 4px; }
   .donut-caption { font-size: 8.5px; color: #8a8f8f; margin-top: 6px; }
 
-  .mini-grid { width: 100%; border-collapse: separate; border-spacing: 5px; margin-top: 2px; table-layout: fixed; }
-  .mini-cell { width: 50%; vertical-align: top; border: 1px solid #eee2d3; background: #fafaf7; border-radius: 12px; padding: 9px 11px; }
+  .mini-grid { width: 100%; border-collapse: separate; border-spacing: 5px; margin-top: 2px; table-layout: fixed; page-break-inside: avoid; }
+  .mini-cell { width: 50%; vertical-align: top; border: 1px solid #eee2d3; background: #fafaf7; border-radius: 12px; padding: 9px 11px; page-break-inside: avoid; }
   .mini-cell.over-budget { border-color: #fecaca; background: #fef2f2; }
   .mini-title { font-weight: bold; color: #005F63; font-size: 10px; }
   .mini-sub { color: #999999; font-size: 8px; margin-top: 1px; }
@@ -65,23 +86,69 @@
 
   table.plain { width: 100%; border-collapse: collapse; margin-top: 8px; }
   table.plain th, table.plain td { border: 1px solid #ccc; padding: 5px 7px; font-size: 10px; text-align: left; }
+  table.plain tr { page-break-inside: avoid; }
   table.plain th { background: #005F63; color: #fff; }
+  {{-- The signature block used to carry ~110px of pure top spacing
+       (60px margin + 50px cell padding), sized for trailing a nearly-full
+       page. For a short report -- few events, little data -- that's often
+       *more* space than what's actually left on the page, so dompdf (like
+       any print engine) pushed the whole block to a fresh page rather
+       than split it, leaving a big empty gap at the bottom of the page it
+       left and an almost-blank final page. Trimmed down and wrapped in
+       one page-break-inside:avoid box below so it fits the remaining
+       space in the common case, and still moves as one clean unit on the
+       rare page it doesn't. --}}
+  .sig-wrap { page-break-inside: avoid; margin-top: 28px; }
   .sig-row { width: 100%; border-collapse: collapse; }
-  .sig-row td { border: none; text-align: center; font-size: 10px; padding-top: 50px; }
+  .sig-row td { border: none; text-align: center; font-size: 10px; padding-top: 26px; }
   .sig-line { border-top: 1px solid #667777; padding-top: 4px; margin: 0 30px; }
-  .footer { text-align: center; color: #999; font-size: 8px; margin-top: 20px; }
+  .footer { text-align: center; color: #999; font-size: 8px; margin-top: 10px; }
 </style>
 </head>
 <body>
-  <div class="center" style="border-bottom: 2px solid #005F63; padding-bottom: 8px;">
-    <p class="tiny">Republic of the Philippines</p>
-    <p class="muted">Province of Zamboanga del Norte</p>
-    <p class="muted">Municipality of President Manuel A. Roxas</p>
-    <h1 class="brgy">Barangay Piao</h1>
-    <p class="muted">Piao Barangay Hall, Purok Uno, Barangay Piao, 7104</p>
-    <p class="system">Piao Connect</p>
+  <div style="border-bottom: 2px solid #005F63; padding-bottom: 8px;">
+    {{-- Seal on the left, letterhead text still centered on the page --
+         the third empty cell mirrors the logo cell's width so the
+         center column stays truly centered instead of drifting right,
+         the same way an official government letterhead balances a seal
+         against a matching margin on the other side. --}}
+    @php
+      // dompdf hands PNG embedding off to its bundled Cpdf renderer, which
+      // requires the PHP GD extension to decode it -- a server without GD
+      // (common on a default XAMPP/Laragon install where it isn't enabled
+      // in php.ini) throws the moment it hits a <img src="...png"> and
+      // takes the *entire* report download down with it, not just the
+      // logo. dompdf's JPEG path, by contrast, embeds the file's bytes
+      // directly with no GD involved at all -- so the seal is shipped as
+      // a pre-flattened JPEG (public/logo-removebg-preview.jpg, generated
+      // once from the source PNG) purely to route around that dependency,
+      // and the logo now always renders regardless of the server's GD
+      // setup. Word's own export keeps using the original PNG in
+      // ReportController@buildWordDocument, since PhpWord embeds a local
+      // file's bytes as-is and never needed GD to begin with.
+      $logoPath = public_path('logo-removebg-preview.jpg');
+      $canRenderLogo = is_file($logoPath);
+    @endphp
+    <table class="hdr-table"><tr>
+      <td class="hdr-logo-cell">
+        @if($canRenderLogo)
+          <img src="{{ $logoPath }}" class="hdr-logo">
+        @endif
+      </td>
+      <td class="hdr-text-cell center">
+        <p class="tiny">Republic of the Philippines</p>
+        <p class="muted">Province of Zamboanga del Norte</p>
+        <p class="muted">Municipality of President Manuel A. Roxas</p>
+        <h1 class="brgy">Barangay Piao</h1>
+        <p class="muted">Piao Barangay Hall, Purok Uno, Barangay Piao, 7104</p>
+        <p class="system">Piao Connect</p>
+      </td>
+      <td class="hdr-logo-cell"></td>
+    </tr></table>
+    <div class="center">
     <h2 class="title">{{ $reportTitle }}</h2>
     <p class="muted">{{ $filterSummary }}</p>
+    </div>
   </div>
 
   @php
@@ -192,7 +259,7 @@
       @endif
     </div>
 
-    <div class="card">
+    <div class="card card-list">
       <h3>Per-Event Breakdown</h3>
       @forelse($data['per_event']->chunk(2) as $pair)
         <table class="mini-grid"><tr>
@@ -231,7 +298,7 @@
       </tr>
     </table>
 
-    <div class="card">
+    <div class="card card-list">
       <h3>Enrollment by Membership</h3>
       @forelse($data['per_membership']->chunk(2) as $pair)
         <table class="mini-grid"><tr>
@@ -277,7 +344,7 @@
       </tr>
     </table>
 
-    <div class="card">
+    <div class="card card-list">
       <h3>Budget per Event</h3>
       @forelse($data['per_event']->chunk(2) as $pair)
         <table class="mini-grid"><tr>
@@ -341,7 +408,7 @@
       @endforelse
     </div>
 
-    <div class="card">
+    <div class="card card-list">
       <h3>Inventory Items</h3>
       @forelse($data['items']->chunk(2) as $pair)
         <table class="mini-grid"><tr>
@@ -364,13 +431,14 @@
     </div>
   @endif
 
-  <table class="sig-row" style="border: none; margin-top: 60px;">
-    <tr>
-      <td style="width: 50%;"><div class="sig-line">Prepared by</div></td>
-      <td style="width: 50%;"><div class="sig-line">Barangay Captain</div></td>
-    </tr>
-  </table>
-
-  <p class="footer">Generated via Piao Connect — Barangay Information Management System · {{ $printedOn }}</p>
+  <div class="sig-wrap">
+    <table class="sig-row" style="border: none;">
+      <tr>
+        <td style="width: 50%;"><div class="sig-line">Prepared by</div></td>
+        <td style="width: 50%;"><div class="sig-line">Barangay Captain</div></td>
+      </tr>
+    </table>
+    <p class="footer">Generated via Piao Connect — Barangay Information Management System · {{ $printedOn }}</p>
+  </div>
 </body>
 </html>

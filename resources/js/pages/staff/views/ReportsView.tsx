@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
-import { Filter, Printer, Download, FileText, TrendingUp, Users, CalendarDays, CalendarCheck, Star, Award, Wallet, Package } from "lucide-react";
+import { Filter, Printer, Download, FileText, FileType, TrendingUp, Users, CalendarDays, CalendarCheck, Star, Award, Wallet, Package } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { BarChart, DonutChart } from "../../../components/ui/Charts";
 import DateRangePicker from "../../../components/ui/DateRangePicker";
@@ -419,16 +419,28 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             printed report a self-contained barangay hall record: full
             Republic/Province/Municipality/Barangay address block, the
             report's formal title, the filter it was generated under, and
-            the date it was printed. */}
-        <div className="hidden print:block print:mb-4 border-b-2 border-[#005f63] pb-3 text-center">
-          <p className="text-[10px] uppercase tracking-[0.25em] text-[#667777]">{t("printCountryLabel")}</p>
-          <p className="text-[10px] text-[#667777]">{t("printProvinceLabel")}</p>
-          <p className="text-[10px] text-[#667777]">{t("printMunicipalityLabel")}</p>
-          <p className="mt-1 text-xl font-black uppercase tracking-wide text-[#005f63]">{t("printBarangayLabel")}</p>
-          <p className="mt-0.5 text-[10px] text-[#667777]">{t("printAddressLabel")}</p>
-          <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#4FBEB0]">{t("printSystemName")}</p>
-          <h2 className="mt-3 text-base font-black uppercase tracking-wide text-[#005f63]">{t(REPORT_PRINT_TITLE_KEYS[reportType])}</h2>
-          <p className="mt-0.5 text-[11px] text-[#667777]">{printFilterSummary}</p>
+            the date it was printed. Seal on the left, same as the
+            PDF/Word exports -- a matching empty spacer on the right keeps
+            the address block itself truly centered instead of drifting
+            right, the same balance an official letterhead keeps between a
+            seal and the margin on the other side. */}
+        <div className="hidden print:block print:mb-4 border-b-2 border-[#005f63] pb-3">
+          <div className="flex items-center justify-center gap-3">
+            <div className="w-20 shrink-0 flex justify-center">
+              <img src="/logo-removebg-preview.png" alt="" className="h-20 w-20 object-contain" />
+            </div>
+            <div className="flex-1 text-center">
+              <p className="text-[10px] uppercase tracking-[0.25em] text-[#667777]">{t("printCountryLabel")}</p>
+              <p className="text-[10px] text-[#667777]">{t("printProvinceLabel")}</p>
+              <p className="text-[10px] text-[#667777]">{t("printMunicipalityLabel")}</p>
+              <p className="mt-1 text-xl font-black uppercase tracking-wide text-[#005f63]">{t("printBarangayLabel")}</p>
+              <p className="mt-0.5 text-[10px] text-[#667777]">{t("printAddressLabel")}</p>
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#4FBEB0]">{t("printSystemName")}</p>
+            </div>
+            <div className="w-20 shrink-0" aria-hidden="true" />
+          </div>
+          <h2 className="mt-3 text-base font-black uppercase tracking-wide text-[#005f63] text-center">{t(REPORT_PRINT_TITLE_KEYS[reportType])}</h2>
+          <p className="mt-0.5 text-[11px] text-[#667777] text-center">{printFilterSummary}</p>
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -482,7 +494,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                   onClick={() => { setDownloadMenuOpen(false); setConfirmDownloadFormat("pdf"); }}
                   className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-white hover:bg-white/10"
                 >
-                  <FileText className="h-4 w-4 text-[#E2A088]" /> {tUI("downloadAsPdfLabel")}
+                  <FileType className="h-4 w-4 text-[#E2A088]" /> {tUI("downloadAsPdfLabel")}
                 </button>
               </div>,
               document.body
