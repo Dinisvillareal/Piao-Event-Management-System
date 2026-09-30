@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus } from "lucide-react";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
@@ -15,13 +15,8 @@ interface InventoryItem {
   condition: Condition;
   storage_location: string | null;
   notes: string | null;
-  // How many units are currently lent out to a still-active event (see
-  // InventoryItem::borrows() on the backend). >0 means the item can't be
-  // deleted yet -- it has to be returned to Inventory first.
+  photo_url: string | null;
   borrowed_quantity: number;
-  // Set when this item is on loan to an event whose date has already
-  // passed and nobody has archived it yet -- the item is effectively
-  // stuck, since nothing returns it to Inventory automatically.
   overdue_borrow_event: { id: number; name: string; ended_at: string } | null;
 }
 
@@ -38,7 +33,13 @@ const CONDITION_STYLES: Record<Condition, string> = {
   Lost: "bg-red-500/15 text-red-400",
 };
 
-const emptyForm = { name: "", quantity: 1, condition: "Good" as Condition, storage_location: "", notes: "" };
+const emptyForm = {
+  name: "",
+  quantity: 1,
+  condition: "Good" as Condition,
+  storage_location: "",
+  notes: "",
+};
 
 const CONDITION_LABEL_KEYS: Record<Condition, string> = {
   New: "conditionNew",
@@ -53,8 +54,14 @@ const CONDITION_LABEL_KEYS: Record<Condition, string> = {
  * UC-9: Manage Barangay Inventory. Laid out like a live ops dashboard --
  * a KPI strip up top (total items, units on hand, on loan, needing
  * attention) driven by a quietly self-refreshing dataset, and a dense
- * sortable table below for the actual per-item browsing/editing, instead
- * of the card-grid layout this page used previously.
+ * sortable table below for the actual per-item browsing/editing.
+ *
+ * Photos: each item can optionally have a single photo (added the same
+ * way Resident ID photos and expense receipts are -- a file stored on the
+ * `public` disk, exposed as `photo_url`). The table shows a round
+ * thumbnail (cropped to fit); a small "View" eye button next to it opens
+ * the full, uncropped photo in a modal. The thumbnail itself is NOT
+ * clickable -- only the View button is.
  */
 export default function InventoryView() {
   const { t } = useLanguage();
@@ -75,11 +82,28 @@ export default function InventoryView() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  // ── Photo state for the Add/Edit form ────────────────────────────────
+  // photoFile: a freshly-picked file waiting to be uploaded on save.
+  // photoPreview: what to show in the form right now (base64 data URL of
+  //   the picked file, OR the existing photo_url when editing an item
+  //   that already has one).
+  // removeExistingPhoto: staff clicked Delete on an existing photo --
+  //   tells the backend to null the column on save.
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string>("");
+  const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Full-size photo viewer (shared by the table thumbnails AND the
+  //    form preview) -- one modal, opened from the small "View" eye
+  //    button. Uses the existing design language (white card, rounded
+  //    corners, ink headers) like the receipt viewer on the Budget page. ──
+  const [viewingPhoto, setViewingPhoto] = useState<{ url: string; name: string } | null>(null);
+
   // KPI strip data -- deliberately a SEPARATE, always-unfiltered fetch from
   // the search/condition-filtered `items` list below, so the summary
   // numbers at the top of the page stay stable while someone is typing
-  // into the search box or narrowing the condition filter, and instead
-  // update on their own short interval like a real live dashboard would.
+  // into the search box or narrowing the condition filter.
   const [allItems, setAllItems] = useState<InventoryItem[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
@@ -91,16 +115,11 @@ export default function InventoryView() {
       setLastUpdated(new Date());
     } catch (e) {
       // Silent -- the KPI strip just keeps showing its last good numbers.
-      // The search/filter table below has its own fetchItems, which does
-      // surface a real error modal if the API is actually unreachable.
     }
   };
 
   useEffect(() => {
     fetchStats();
-    // Refreshes itself every 20s, but skips a tick while the Add/Edit or
-    // Delete modal is open so the KPI numbers don't shift under a staff
-    // member who's mid-edit.
     const poll = setInterval(() => {
       if (!showForm && deleteId === null) fetchStats();
     }, 20000);
@@ -146,8 +165,8 @@ export default function InventoryView() {
   };
 
   useEffect(() => {
-    const t = setTimeout(fetchItems, 250);
-    return () => clearTimeout(t);
+    const timer = setTimeout(fetchItems, 250);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, conditionFilter]);
 
@@ -159,28 +178,45 @@ export default function InventoryView() {
   const paginatedItems = items.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Nothing to submit if editing an item and the form still matches its
-  // original values -- keeps a no-op "Update Item" click (and its own
-  // success popup) from firing for a change that never happened.
-  const isFormUnchanged = !!editing && (
-    form.name === editing.name &&
-    Number(form.quantity) === editing.quantity &&
-    form.condition === editing.condition &&
-    form.storage_location === (editing.storage_location ?? "") &&
-    form.notes === (editing.notes ?? "")
-  );
+  // original values, and no photo change was made.
+  const originalFormForCompare = editing
+    ? {
+        name: editing.name,
+        quantity: editing.quantity,
+        condition: editing.condition,
+        storage_location: editing.storage_location ?? "",
+        notes: editing.notes ?? "",
+      }
+    : emptyForm;
 
   const hasFormChanges = editing
-    ? !isFormUnchanged
-    : JSON.stringify(form) !== JSON.stringify(emptyForm);
+    ? JSON.stringify(form) !== JSON.stringify(originalFormForCompare) || photoFile !== null || removeExistingPhoto
+    : JSON.stringify(form) !== JSON.stringify(emptyForm) || photoFile !== null;
+
+  const isFormUnchanged = !!editing && !hasFormChanges;
 
   const handleCloseForm = () => {
     if (hasFormChanges) setShowFormCancelConfirm(true);
-    else setShowForm(false);
+    else closeForm();
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditing(null);
+    setForm(emptyForm);
+    setPhotoFile(null);
+    setPhotoPreview("");
+    setRemoveExistingPhoto(false);
+    if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
   const openAdd = () => {
     setEditing(null);
     setForm(emptyForm);
+    setPhotoFile(null);
+    setPhotoPreview("");
+    setRemoveExistingPhoto(false);
+    if (photoInputRef.current) photoInputRef.current.value = "";
     setError(null);
     setShowForm(true);
   };
@@ -194,16 +230,48 @@ export default function InventoryView() {
       storage_location: item.storage_location ?? "",
       notes: item.notes ?? "",
     });
+    setPhotoFile(null);
+    setPhotoPreview(item.photo_url ?? "");
+    setRemoveExistingPhoto(false);
+    if (photoInputRef.current) photoInputRef.current.value = "";
     setError(null);
     setShowForm(true);
   };
 
-  // Form submit only opens the "are you sure" step -- the actual save
-  // happens in performSave, once the user confirms. The form now carries
-  // noValidate (see below), so this is the ONLY thing standing between a
-  // bad value and the API -- the browser's own "please enter a valid
-  // value" bubble no longer fires, on purpose, in favor of the app's own
-  // error modal below.
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Client-side checks mirror the backend rules (image only, max 5 MB)
+    // so the user gets instant feedback without a round-trip.
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload an image file only.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Photo is too large. Maximum is 5 MB.");
+      e.target.value = "";
+      return;
+    }
+
+    setPhotoFile(file);
+    setRemoveExistingPhoto(false);
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview("");
+    // If there was already a saved photo on the item, flag it for removal
+    // on save. If it was only a pending new pick, just clear the local state.
+    if (editing?.photo_url) setRemoveExistingPhoto(true);
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  };
+
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -224,15 +292,33 @@ export default function InventoryView() {
     setShowConfirm(false);
     setError(null);
     const wasEditing = !!editing;
+
     try {
+      // Multipart FormData -- required because we may be sending a file.
+      const fd = new FormData();
+      fd.append("name", form.name);
+      fd.append("quantity", String(form.quantity));
+      fd.append("condition", form.condition);
+      if (form.storage_location) fd.append("storage_location", form.storage_location);
+      if (form.notes) fd.append("notes", form.notes);
+
+      if (photoFile) {
+        fd.append("photo", photoFile);
+      } else if (removeExistingPhoto) {
+        fd.append("remove_photo", "1");
+      }
+
       let archived = false;
       if (editing) {
-        const res = await api.put(`/inventory/${editing.id}`, form);
+        // Laravel method-spoofing: multipart PUT via _method=PUT.
+        fd.append("_method", "PUT");
+        const res = await api.post(`/inventory/${editing.id}`, fd);
         archived = !!res?.data?.archived;
       } else {
-        await api.post("/inventory", form);
+        await api.post("/inventory", fd);
       }
-      setShowForm(false);
+
+      closeForm();
       setSuccessMessage(
         archived
           ? t("itemArchivedSuccess").replace("{condition}", form.condition)
@@ -244,17 +330,6 @@ export default function InventoryView() {
       fetchStats();
     } catch (e) {
       setError(apiErrorMessage(e, t("saveItemFailed")));
-      // Revert to the item's real values instead of leaving the
-      // rejected edit sitting in the form.
-      if (editing) {
-        setForm({
-          name: editing.name,
-          quantity: editing.quantity,
-          condition: editing.condition,
-          storage_location: editing.storage_location ?? "",
-          notes: editing.notes ?? "",
-        });
-      }
     }
   };
 
@@ -275,21 +350,18 @@ export default function InventoryView() {
   return (
     <>
     {/* Full-bleed dark navy page -- same technique and palette as the
-        Dashboard/Residents/Households/Events pages, so Inventory reads as
-        part of the same system instead of the old light "paper" page.
-        Confirm/success/error/delete modals further below stay on their
-        original light theme, same scoping used on every other staff view. */}
+        Dashboard/Residents/Households/Events pages. No new colors added
+        for the photo feature -- it reuses the existing #0A0E1A / #4FBEB0
+        / gold-400 / sage-* tokens throughout. */}
     <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
+      {/* ── Header ─────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("barangayInventory")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("inventorySubtitle")}</p>
         </div>
         <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0">
-          {/* Genuinely live -- fetchStats() re-polls /inventory every 20s
-              (see effect above), this just renders how long ago that last
-              landed, ticking every second off nowTick. */}
           <div className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-white/50" title={t("liveLabel")}>
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
@@ -309,8 +381,7 @@ export default function InventoryView() {
         </div>
       </div>
 
-      {/* KPI strip -- same gradient-card language as the Dashboard's stat
-          strip, so "at a glance" reads the same way on both pages. */}
+      {/* ── KPI strip ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { value: stats.totalItems, label: t("totalItemsStatLabel"), description: t("totalItemsStatDesc"), icon: Package, gradient: "from-sage-400 to-sage-700" },
@@ -332,6 +403,7 @@ export default function InventoryView() {
         ))}
       </div>
 
+      {/* ── Search + condition filter ───────────────────────────────── */}
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="relative flex-1 min-w-[220px]">
@@ -360,6 +432,7 @@ export default function InventoryView() {
         </div>
       </div>
 
+      {/* ── Table ───────────────────────────────────────────────────── */}
       {loading ? (
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#4FBEB0]"></div>
@@ -389,8 +462,30 @@ export default function InventoryView() {
                   <tr key={item.id} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.05] transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#123A38] border border-white/10 text-[#7DD8CB]">
-                          <Package className="h-4 w-4" />
+                        {/* Round thumbnail shows the actual photo (cropped to
+                            fit the circle via object-cover) when present, or
+                            the existing generic Package icon when not. The
+                            thumbnail itself is NOT a button -- a separate
+                            small eye icon button (bottom-right of the circle)
+                            opens the FULL, uncropped photo in the viewer. */}
+                        <div className="relative shrink-0">
+                          <div className="h-10 w-10 rounded-full bg-[#123A38] border border-white/10 text-[#7DD8CB] overflow-hidden flex items-center justify-center">
+                            {item.photo_url ? (
+                              <img src={item.photo_url} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <Package className="h-4 w-4" />
+                            )}
+                          </div>
+                          {item.photo_url && (
+                            <button
+                              type="button"
+                              onClick={() => setViewingPhoto({ url: item.photo_url as string, name: item.name })}
+                              title={t("viewPhotoLabel")}
+                              className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-[#0A0E1A] border border-white/20 text-white/60 hover:text-[#7DD8CB] hover:border-[#4FBEB0]/50 flex items-center justify-center transition"
+                            >
+                              <Eye className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                         <p className="font-semibold text-white truncate" title={item.name}>{item.name}</p>
                       </div>
@@ -423,13 +518,6 @@ export default function InventoryView() {
                       )}
                     </td>
                     <td className="py-3 px-4">
-                      {/* Neutral with a white hover for Edit, red hover for
-                          Delete -- matches the icon-only Edit/Delete
-                          pairing used elsewhere on the dark pages. Delete
-                          is disabled while any units are out on loan --
-                          deleting an item an active event still points to
-                          would orphan its borrow record (see
-                          InventoryController::destroy). */}
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => openEdit(item)} className="p-1.5 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition" title={t("editLabel")}>
                           <Pencil className="h-4 w-4" />
@@ -486,9 +574,8 @@ export default function InventoryView() {
       </div>
       </div>
 
-      {/* Add/Edit Item modal -- dark navy card, same treatment as the
-          Households Edit modal (centered card rather than a full-page
-          takeover, since this form is small). */}
+      {/* ── Add/Edit Item modal (dark navy card, same treatment as the
+          Households/Budget edit modals) ───────────────────────────────── */}
       {showForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={handleCloseForm}>
           <div className="bg-[#0A0E1A] rounded-[30px] w-full max-w-lg p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -497,10 +584,62 @@ export default function InventoryView() {
               <button onClick={handleCloseForm} className="text-white/50 hover:text-white"><X size={20} /></button>
             </div>
             <form onSubmit={handleFormSubmit} noValidate className="space-y-4">
+              {/* Photo field -- picked file becomes photoFile (uploaded on
+                  save); existing photos show as preview with Replace/Delete;
+                  an existing photo removed sets removeExistingPhoto. */}
+              <div>
+                <label className="block text-sm font-medium text-white/80 mb-1.5">{t("photoOptionalLabel")}</label>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+                <div className="flex items-center gap-3">
+                  <div className="h-16 w-16 rounded-2xl bg-[#123A38] border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                    {photoPreview ? (
+                      <img src={photoPreview} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <ImagePlus className="h-6 w-6 text-white/40" />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition"
+                    >
+                      {photoPreview ? t("replacePhotoLabel") : t("choosePhotoLabel")}
+                    </button>
+                    {photoPreview && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setViewingPhoto({ url: photoPreview, name: form.name || t("itemPhotoFallbackLabel") })}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[#4FBEB0]/40 px-4 py-2 text-sm font-semibold text-[#7DD8CB] hover:bg-[#4FBEB0]/10 transition"
+                        >
+                          <Eye className="h-3.5 w-3.5" /> {t("viewPhotoLabel")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemovePhoto}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> {t("removeLabel")}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-1.5 text-xs text-white/40">JPG, PNG, GIF, or WEBP · Max 5 MB</p>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-1">{t("itemNameRequired")}</label>
-                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder="Plastic chairs" />
+                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("itemNamePlaceholder")} />
               </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-white/80 mb-1">{t("quantityRequired")}</label>
@@ -515,14 +654,17 @@ export default function InventoryView() {
                   </select>
                 </div>
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-1">{t("storageLocationLabel")}</label>
                 <input value={form.storage_location} onChange={(e) => setForm((p) => ({ ...p, storage_location: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("storageLocationPlaceholder")} />
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-white/80 mb-1">{t("notesLabel")}</label>
                 <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={2} />
               </div>
+
               <div className="flex gap-2 pt-2">
                 <button
                   type="submit"
@@ -539,7 +681,7 @@ export default function InventoryView() {
         </div>
       )}
 
-      {/* Unsaved-changes guard for the Add/Edit Item modal */}
+      {/* ── Unsaved-changes guard for the Add/Edit Item modal ─────────── */}
       {showFormCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
@@ -551,7 +693,7 @@ export default function InventoryView() {
               <button
                 onClick={() => {
                   setShowFormCancelConfirm(false);
-                  setShowForm(false);
+                  closeForm();
                 }}
                 className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
               >
@@ -562,12 +704,11 @@ export default function InventoryView() {
         </div>
       )}
 
+      {/* ── Success / error popups (shared StatusModal) ───────────────── */}
       <StatusModal open={!!error} type="error" title={t("errorTitle")} message={error || ""} okLabel={t("okLabel")} onClose={() => setError(null)} z={65} />
-
-      {/* Add / Update / Delete all land here on success, instead of just
-          silently closing the form/confirm dialog. */}
       <StatusModal open={!!successMessage} type="success" title={t("successTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} z={65} />
 
+      {/* ── Delete confirm ────────────────────────────────────────────── */}
       {deleteId !== null && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
@@ -582,9 +723,7 @@ export default function InventoryView() {
         </div>
       )}
 
-      {/* Confirm-before-save step: shown on top of the open form when
-          Add/Update is clicked, so the request only fires once the user
-          confirms -- mirrors the delete-confirm pattern above. */}
+      {/* ── Confirm-before-save step ──────────────────────────────────── */}
       <ConfirmDialog
         open={showConfirm}
         icon={editing ? <Pencil size={32} /> : <Plus size={32} />}
@@ -595,6 +734,41 @@ export default function InventoryView() {
         onCancel={() => setShowConfirm(false)}
         onConfirm={performSave}
       />
+
+      {/* ── Full-size photo viewer modal -- opens from the eye button on
+          each thumbnail (or the form's View button). Shows the FULL,
+          uncropped image instead of the cropped circle thumbnail. Same
+          white-card style used by the receipt viewer on the Budget page,
+          so it matches the rest of the app. ──────────────────────────── */}
+      {viewingPhoto && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[80] px-4" onClick={() => setViewingPhoto(null)}>
+          <div className="bg-white rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-[#E6E0D3] flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-50 text-sage-800 text-[11px] font-bold uppercase tracking-wide px-3 py-1 shrink-0">
+                  <Eye className="h-3 w-3" />
+                  {t("viewPhotoLabel")}
+                </span>
+                <span className="text-sm font-medium text-[#1A1A1A] truncate">{viewingPhoto.name}</span>
+              </div>
+              <button onClick={() => setViewingPhoto(null)} className="text-[#6B7280] hover:text-[#1A1A1A] p-1 shrink-0">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-[#FAF9F5] flex items-center justify-center p-6">
+              <img src={viewingPhoto.url} alt={viewingPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-sm" />
+            </div>
+            <div className="px-5 py-4 border-t border-[#E6E0D3] flex justify-end">
+              <button
+                onClick={() => setViewingPhoto(null)}
+                className="px-5 py-2.5 rounded-full bg-sage-800 hover:bg-sage-900 text-white text-sm font-semibold transition"
+              >
+                {t("closeLabel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
