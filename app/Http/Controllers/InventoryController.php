@@ -5,12 +5,46 @@ namespace App\Http\Controllers;
 use App\Models\InventoryItem;
 use App\Models\ActivityLog;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use App\Http\Requests\StoreInventoryItemRequest;
 use App\Http\Requests\UpdateInventoryItemRequest;
 
 class InventoryController extends Controller
 {
     protected $logModule = 'Inventory';
+
+    // Same upload convention as UserController::localUpload/localDelete
+    // (Resident ID photo) and EventExpenseController::localUpload/localDelete
+    // (expense receipt) -- the photo is optional proof/visual reference for
+    // an inventory item, stored on the public disk so it can be shown via
+    // photo_url (see InventoryItem::getPhotoUrlAttribute).
+    private function localUpload($file): string
+    {
+        $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $ext      = $file->getClientOriginalExtension();
+        $clean    = preg_replace('/[^A-Za-z0-9\-_.]/', '_', $original);
+        $filename = time() . '_' . $clean . '.' . $ext;
+
+        $path = $file->storeAs('inventory_photos', $filename, 'public');
+
+        if (!$path) {
+            throw new \Exception('File upload failed');
+        }
+
+        return $path;
+    }
+
+    private function localDelete(?string $path): void
+    {
+        if (!$path) {
+            return;
+        }
+        try {
+            Storage::disk('public')->delete($path);
+        } catch (\Exception $e) {
+            \Log::warning($e->getMessage());
+        }
+    }
 
     // UC-9: Manage Barangay Inventory
     public function index(Request $request)
@@ -94,7 +128,13 @@ class InventoryController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $item = InventoryItem::create($request->only(['name', 'quantity', 'condition', 'storage_location', 'notes']));
+        $data = $request->only(['name', 'quantity', 'condition', 'storage_location', 'notes']);
+
+        if ($request->hasFile('photo')) {
+            $data['photo_path'] = $this->localUpload($request->file('photo'));
+        }
+
+        $item = InventoryItem::create($data);
         $this->createLog('Create', "Added inventory item: {$item->name}");
 
         return response()->json(['message' => 'Item added', 'item' => $item], 201);
@@ -121,7 +161,21 @@ class InventoryController extends Controller
             return response()->json(['message' => $blockedMessage], 409);
         }
 
-        $item->update($request->only(['name', 'quantity', 'condition', 'storage_location', 'notes']));
+        $data = $request->only(['name', 'quantity', 'condition', 'storage_location', 'notes']);
+
+        // Photo handling:
+        //   - New file picked  -> delete old file, save new one
+        //   - remove_photo=1   -> delete old file, null the column
+        //   - Neither          -> leave photo_path untouched
+        if ($request->hasFile('photo')) {
+            $this->localDelete($item->photo_path);
+            $data['photo_path'] = $this->localUpload($request->file('photo'));
+        } elseif ($request->boolean('remove_photo') && $item->photo_path) {
+            $this->localDelete($item->photo_path);
+            $data['photo_path'] = null;
+        }
+
+        $item->update($data);
         $this->createLog('Update', "Updated inventory item: {$item->name}");
 
         // Disposed/Lost means this item is retired from active inventory --
