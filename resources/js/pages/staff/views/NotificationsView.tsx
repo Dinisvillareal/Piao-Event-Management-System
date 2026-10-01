@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Filter, Users, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, Smartphone, Home } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
+import Skeleton from "../../../components/ui/Skeleton";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -53,6 +54,18 @@ export default function NotificationsView({ memberships = [], highlightText }: N
    const [dateFilter, setDateFilter] = useState<string>("all");
    const [targetFilter, setTargetFilter] = useState<string>("all-residents");
    const [currentPage, setCurrentPage] = useState<number>(1);
+   // Brief skeleton flash on every page switch, same as Activity Logs --
+   // this list paginates client-side so there's nothing to actually wait
+   // on, but the flash keeps page switches feeling consistent app-wide.
+   const [pageSwitching, setPageSwitching] = useState(false);
+   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+   const goToPage = (updater: number | ((p: number) => number)) => {
+       setCurrentPage(updater as any);
+       setPageSwitching(true);
+       if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+       pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+   };
+   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
    const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
    const itemsPerPage = 10;
 
@@ -229,22 +242,34 @@ export default function NotificationsView({ memberships = [], highlightText }: N
    ], [memberships, t]);
 
    if (loading) {
+       // Skeleton shaped like the real page -- title, search/filter row,
+       // then a stack of notification-card placeholders -- instead of a
+       // bare centered spinner.
        return (
-           <div className="flex justify-center items-center h-64">
-               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+           <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 space-y-6">
+               <div className="space-y-2">
+                   <Skeleton className="h-8 w-72" />
+                   <Skeleton className="h-4 w-56" />
+               </div>
+               <Skeleton className="h-11 w-full rounded-xl" />
+               <div className="space-y-3">
+                   {Array.from({ length: 4 }).map((_, i) => (
+                       <Skeleton key={i} className="h-20 rounded-2xl sm:rounded-3xl" />
+                   ))}
+               </div>
            </div>
        );
    }
 
 
    return (
-       <div className="h-full flex flex-col relative">
+       <div className="-m-3 sm:-m-6 h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col relative">
            {/* Fixed Header - Never scrolls */}
-           <div className="flex-shrink-0 bg-[#fcfcf9] pt-2 pb-6 px-1 sm:px-2 shadow-b-sm">
+           <div className="flex-shrink-0 pb-6 px-1 sm:px-2 shadow-b-sm">
                <div className="flex items-center justify-between">
                    <div>
-                       <h1 className="text-2xl sm:text-4xl font-black text-[#005f63]">{t("notificationsAndAnnouncements")}</h1>
-                       <p className="text-xs sm:text-sm text-[#667777] mt-1">{t("staffNotificationsSubtitle")}</p>
+                       <h1 className="text-2xl sm:text-4xl font-black text-white">{t("notificationsAndAnnouncements")}</h1>
+                       <p className="text-xs sm:text-sm text-white/50 mt-1">{t("staffNotificationsSubtitle")}</p>
                    </div>
                </div>
 
@@ -255,6 +280,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                            value={searchQuery}
                            onChange={setSearchQuery}
                            placeholder={t("searchNotificationsPlaceholder")}
+                           dark
                        />
                    </div>
 
@@ -265,11 +291,12 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                            onChange={setDateFilter}
                            options={dateFilterOptions}
                            className="h-full pl-10 pr-8"
-                           icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+                           icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40 pointer-events-none" />}
+                           dark
                        />
 
                        <div className="flex items-center gap-2">
-                           <span className="text-sm font-medium text-gray-700">{t("toColon")}</span>
+                           <span className="text-sm font-medium text-white/60">{t("toColon")}</span>
                            <FilterDropdown
                                value={targetFilter}
                                onChange={setTargetFilter}
@@ -277,14 +304,15 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                align="right"
                                panelWidthPx={256}
                                className="h-full pl-10 pr-8"
-                               icon={<Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#005f63]/70 pointer-events-none" />}
+                               icon={<Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40 pointer-events-none" />}
+                               dark
                            />
                        </div>
                    </div>
                </div>
 
 
-               <p className="mt-2 text-xs text-gray-500">
+               <p className="mt-2 text-xs text-white/40">
                    {filteredNotifications.length} {t("notificationsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
                </p>
 
@@ -294,21 +322,21 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                    {totalPages > 1 && (
                        <div className="flex items-center gap-2">
                            <button
-                               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                               onClick={() => goToPage(p => Math.max(1, p - 1))}
                                disabled={currentPage === 1}
-                               className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                            >
                                ←
                            </button>
-                           
-                           <span className="h-8 w-8 rounded-full bg-[#005f63] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+
+                           <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-semibold">
                                {currentPage}
                            </span>
-                           
+
                            <button
-                               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                               onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
                                disabled={currentPage === totalPages}
-                               className="h-8 w-8 rounded-full border border-gray-300 bg-white text-[#005f63] text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[#005f63] hover:text-white hover:border-[#005f63] transition-all active:scale-95"
+                               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                            >
                                →
                            </button>
@@ -320,9 +348,15 @@ export default function NotificationsView({ memberships = [], highlightText }: N
 
            {/* Scrollable Content Area - Only notifications scroll */}
            <div className="flex-1 overflow-y-auto px-1 sm:px-2 pb-4">
-               {filteredNotifications.length === 0 ? (
-                   <div className="rounded-3xl border border-dashed border-[#005f63]/20 bg-white p-10 text-center text-gray-500">
-                       <Bell size={40} className="mx-auto mb-3 text-[#005f63]/40" />
+               {pageSwitching ? (
+                   <div className="space-y-3">
+                       {Array.from({ length: 4 }).map((_, i) => (
+                           <Skeleton key={i} className="h-20 rounded-2xl sm:rounded-3xl" />
+                       ))}
+                   </div>
+               ) : filteredNotifications.length === 0 ? (
+                   <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
+                       <Bell size={40} className="mx-auto mb-3 text-white/20" />
                        <p>{t("noNotificationsMatch")}</p>
                    </div>
                ) : (
@@ -336,27 +370,27 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                <div
                                    key={n.id}
                                    onClick={() => setSelectedNotification(n)}
-                                   className="cursor-pointer relative rounded-2xl sm:rounded-3xl bg-white px-5 sm:px-6 py-6 sm:py-7 border-l-4 border-l-[#ecd862] border-y border-r border-gray-200 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.18)] hover:-translate-y-1 hover:bg-gray-50"
+                                   className="cursor-pointer relative rounded-2xl sm:rounded-3xl bg-white/[0.04] px-5 sm:px-6 py-6 sm:py-7 border-l-4 border-l-gold-400 border-y border-r border-white/10 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.35)] hover:-translate-y-1 hover:bg-white/[0.07]"
                                >
                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
                                        <div className="flex-1 min-w-0">
                                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs sm:text-sm">
                                                <div className="flex items-center gap-2 flex-wrap">
-                                                   <span className="font-medium text-gray-800 shrink-0 text-xs sm:text-sm">{t("toColon")}</span>
-                                                   <span className="text-gray-700 break-words text-xs sm:text-sm">
+                                                   <span className="font-medium text-white shrink-0 text-xs sm:text-sm">{t("toColon")}</span>
+                                                   <span className="text-white/70 break-words text-xs sm:text-sm">
                                                        {highlightText(targetText, searchQuery)}
                                                    </span>
                                                </div>
-                                               <span className="text-gray-400 hidden sm:block">•</span>
+                                               <span className="text-white/30 hidden sm:block">•</span>
                                                <div className="flex-1 mt-1.5 sm:mt-0">
                                                    <div className="flex flex-wrap items-center gap-1.5">
-                                                       <span className="font-semibold text-[#005f63] text-xs sm:text-sm">
+                                                       <span className="font-semibold text-[#7DD8CB] text-xs sm:text-sm">
                                                            {highlightText(title, searchQuery)}
                                                        </span>
                                                        {actualMessage && (
                                                            <>
-                                                               <span className="text-gray-400">—</span>
-                                                               <span className="text-gray-600 break-words text-xs sm:text-sm">
+                                                               <span className="text-white/30">—</span>
+                                                               <span className="text-white/60 break-words text-xs sm:text-sm">
                                                                    {highlightText(actualMessage, searchQuery)}
                                                                </span>
                                                            </>
@@ -366,7 +400,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                            </div>
                                        </div>
                                        {/* Card date: DD/MM/YYYY */}
-                                       <div className="shrink-0 text-xs text-gray-500 whitespace-nowrap">
+                                       <div className="shrink-0 text-xs text-white/40 whitespace-nowrap">
                                            {formatDateCard(n.created_at)}
                                        </div>
                                    </div>
@@ -379,35 +413,39 @@ export default function NotificationsView({ memberships = [], highlightText }: N
 
            {/* Adviser recommendation: household-head SMS delivery log */}
            <div className="px-1 sm:px-2 pb-6">
-               <div className="rounded-3xl border border-[#ddd5ca] bg-white p-5">
+               <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
                    <div className="flex items-center gap-2 mb-1">
-                       <Smartphone className="h-5 w-5 text-[#005f63]" />
-                       <h2 className="text-lg font-bold text-[#005f63]">{t("householdSmsDeliveries")}</h2>
+                       <Smartphone className="h-5 w-5 text-white/40" />
+                       <h2 className="text-lg font-bold text-white">{t("householdSmsDeliveries")}</h2>
                    </div>
-                   <p className="text-xs text-gray-500 mb-4">
+                   <p className="text-xs text-white/50 mb-4">
                        {t("householdSmsDesc")}
                    </p>
                    {smsLoading ? (
-                       <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+                       <div className="space-y-2">
+                           {Array.from({ length: 3 }).map((_, i) => (
+                               <Skeleton key={i} className="h-[52px] rounded-2xl" />
+                           ))}
+                       </div>
                    ) : smsLogs.length === 0 ? (
-                       <p className="text-sm text-gray-400 italic text-center py-6">{t("noSmsSentYet")}</p>
+                       <p className="text-sm text-white/40 italic text-center py-6">{t("noSmsSentYet")}</p>
                    ) : (
                        <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
                            {smsLogs.map((log: any) => (
-                               <div key={log.id} className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 px-4 py-3">
+                               <div key={log.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white/[0.03] px-4 py-3">
                                    <div className="min-w-0 flex items-center gap-2">
-                                       {log.user?.is_household_head && <span title={t("householdHeadTitle")}><Home className="h-4 w-4 text-orange-500 shrink-0" /></span>}
+                                       {log.user?.is_household_head && <span title={t("householdHeadTitle")}><Home className="h-4 w-4 text-orange-400 shrink-0" /></span>}
                                        <div className="min-w-0">
-                                           <p className="text-sm font-medium text-gray-800 truncate">
+                                           <p className="text-sm font-medium text-white truncate">
                                                {log.user ? `${log.user.first_name} ${log.user.last_name}` : log.to_number} · {log.to_number}
                                            </p>
-                                           <p className="text-xs text-gray-500 truncate">{log.event?.name ?? "—"}</p>
+                                           <p className="text-xs text-white/40 truncate">{log.event?.name ?? "—"}</p>
                                        </div>
                                    </div>
                                    <span className={`px-2 py-1 rounded-full text-[11px] font-semibold shrink-0 ${
                                        log.status === 'sent' ? 'bg-green-100 text-green-800'
-                                       : log.status === 'failed' ? 'bg-red-100 text-red-700'
-                                       : 'bg-gray-100 text-gray-600'
+                                       : log.status === 'failed' ? 'bg-red-500/15 text-red-400'
+                                       : 'bg-white/10 text-white/50'
                                    }`}>
                                        {log.status === 'simulated' ? t("loggedNoGateway") : log.status}
                                    </span>

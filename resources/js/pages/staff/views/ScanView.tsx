@@ -497,22 +497,23 @@ export default function ScanView({ events, residents, memberships }: any) {
   };
 
   return (
+    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#1A1A1A]">{t("scan")}</h1>
-          <p className="mt-1.5 text-sm text-[#6B7280] max-w-xl">{t("scanSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("scan")}</h1>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("scanSubtitle")}</p>
         </div>
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
-        <div className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-[#E6E0D3] p-5">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-white/10 p-5">
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-[#1A1A1A]">
+              <h2 className="text-base font-bold text-white">
                 {checkInMethod === "camera" ? t("cameraScannerLabel") : t("manualPhysicalIdLookupLabel")}
               </h2>
-              <p className="mt-0.5 text-sm text-[#6B7280]">
+              <p className="mt-0.5 text-sm text-white/50">
                 {checkInMethod === "camera" ? t("oneQrPerResident") : t("typeResidentIdOrName")}
               </p>
             </div>
@@ -523,7 +524,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                 disabled={!isDeadlineActive}
                 className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors ${
                   !isDeadlineActive
-                    ? "bg-[#E6E0D3]/70 text-[#6B7280] cursor-not-allowed"
+                    ? "bg-white/10 text-white/40 cursor-not-allowed"
                     : isCameraOn
                     ? "bg-red-500 text-white hover:bg-red-600"
                     : "bg-sage-700 text-white hover:bg-sage-800"
@@ -535,44 +536,44 @@ export default function ScanView({ events, residents, memberships }: any) {
           </div>
 
           <div className="p-5 space-y-5">
-            <div className="space-y-4 rounded-2xl border border-[#E6E0D3] bg-[#FAF9F5] p-5">
+            <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
               <div ref={eventDropdownRef} className="relative">
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("selectEventStep1")}</label>
                 <button
                   type="button"
                   onClick={() => setEventDropdownOpen((v) => !v)}
-                  className="flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-[#E6E0D3] bg-white px-4 text-left text-sm transition hover:border-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-700/20"
+                  className="flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-left text-sm transition hover:border-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-700/20"
                 >
-                  <span className={ev ? "truncate font-medium text-[#1A1A1A]" : "text-[#6B7280]"}>
+                  <span className={ev ? "truncate font-medium text-white" : "text-white/40"}>
                     {ev ? ev.title : t("selectEventStep1")}
                   </span>
-                  <ChevronDown className={`h-4 w-4 shrink-0 text-[#6B7280] transition-transform ${eventDropdownOpen ? "rotate-180" : ""}`} />
+                  <ChevronDown className={`h-4 w-4 shrink-0 text-white/40 transition-transform ${eventDropdownOpen ? "rotate-180" : ""}`} />
                 </button>
 
                 {eventDropdownOpen && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 rounded-2xl border border-[#E6E0D3] bg-white shadow-xl overflow-hidden">
-                    <div className="flex items-center justify-between border-b border-[#E6E0D3] bg-sage-50 px-4 py-2">
+                  <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 rounded-2xl border border-white/10 bg-[#0A0E1A] shadow-2xl overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-white/10 bg-sage-50 px-4 py-2">
                       <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-sage-700/80">
                         <span className="h-1.5 w-1.5 rounded-full bg-sage-600 animate-pulse" />
                         {t("currentDateTimeLabel")}
                       </span>
                       <span className="text-xs font-bold text-sage-800">{currentDateTimeLabel}</span>
                     </div>
-                    <div className="border-b border-[#E6E0D3] p-2">
+                    <div className="border-b border-white/10 p-2">
                       <div className="relative">
-                        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#6B7280]" />
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40" />
                         <input
                           autoFocus
                           value={eventSearchQuery}
                           onChange={(e) => setEventSearchQuery(e.target.value)}
                           placeholder={t("scannerSearchEventPlaceholder")}
-                          className="h-9 w-full rounded-xl border border-[#E6E0D3] bg-white pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                          className="h-9 w-full rounded-xl border border-white/10 bg-white/[0.06] text-white placeholder-white/30 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
                         />
                       </div>
                     </div>
-                    <div className="max-h-[240px] overflow-y-auto">
+                    <div className="max-h-[240px] overflow-y-auto filter-dropdown-scroll-dark">
                       {filteredEventOptions.length === 0 ? (
-                        <p className="px-4 py-6 text-center text-xs italic text-[#6B7280]">
+                        <p className="px-4 py-6 text-center text-xs italic text-white/40">
                           {upcomingEvents.length === 0 ? t("noUpcomingEventsLabel") : t("noEventsMatchSearch")}
                         </p>
                       ) : (
@@ -588,12 +589,12 @@ export default function ScanView({ events, residents, memberships }: any) {
                             className={`w-full text-left px-4 py-2.5 text-sm transition ${
                               String(e.id) === String(eventId)
                                 ? "bg-sage-50 text-sage-800 font-semibold"
-                                : "text-[#1A1A1A] hover:bg-sage-50/60"
+                                : "text-white hover:bg-sage-50/60"
                             }`}
                           >
                             <span className="block truncate">{e.title}</span>
                             {formatEventOptionDateTime(e.event_start) && (
-                              <span className="block text-[11px] font-normal text-[#6B7280] mt-0.5">
+                              <span className="block text-[11px] font-normal text-white/40 mt-0.5">
                                 {formatEventOptionDateTime(e.event_start)}
                               </span>
                             )}
@@ -612,7 +613,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                     type="button"
                     onClick={() => { setCheckInMethod("camera"); setManualQuery(""); }}
                     className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-                      checkInMethod === "camera" ? "bg-sage-700 text-white shadow-sm" : "border border-[#E6E0D3] bg-white text-[#6B7280] hover:bg-sage-50"
+                      checkInMethod === "camera" ? "bg-sage-700 text-white shadow-sm" : "border border-white/10 bg-white/[0.03] text-white/50 hover:bg-sage-50/10"
                     }`}
                   >
                     <ScanLine className="h-4 w-4" /> {t("cameraScanLabel")}
@@ -621,13 +622,13 @@ export default function ScanView({ events, residents, memberships }: any) {
                     type="button"
                     onClick={() => { setCheckInMethod("manual"); setIsCameraOn(false); }}
                     className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-                      checkInMethod === "manual" ? "bg-sage-700 text-white shadow-sm" : "border border-[#E6E0D3] bg-white text-[#6B7280] hover:bg-sage-50"
+                      checkInMethod === "manual" ? "bg-sage-700 text-white shadow-sm" : "border border-white/10 bg-white/[0.03] text-white/50 hover:bg-sage-50/10"
                     }`}
                   >
                     <IdCard className="h-4 w-4" /> {t("manualPhysicalIdLabel")}
                   </button>
                 </div>
-                <p className="mt-1.5 text-[11px] text-[#6B7280]">{t("adviserTwoInOneNote")}</p>
+                <p className="mt-1.5 text-[11px] text-white/40">{t("adviserTwoInOneNote")}</p>
               </div>
 
               <div>
@@ -639,7 +640,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                     className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
                       scanMode === "in"
                         ? "bg-sage-700 text-white shadow-sm hover:bg-sage-800"
-                        : "border border-[#E6E0D3] bg-white text-[#B8B2A2] cursor-not-allowed opacity-60"
+                        : "border border-white/10 bg-white/[0.03] text-white/30 cursor-not-allowed opacity-60"
                     }`}
                   >
                     {t("signInWord")}
@@ -649,8 +650,8 @@ export default function ScanView({ events, residents, memberships }: any) {
                     disabled={scanMode === "in"}
                     className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
                       scanMode === "out"
-                        ? "bg-gold-700 text-white shadow-sm hover:brightness-95"
-                        : "border border-[#E6E0D3] bg-white text-[#B8B2A2] cursor-not-allowed opacity-60"
+                        ? "bg-gold-400 text-[#08130F] shadow-sm hover:bg-gold-500"
+                        : "border border-white/10 bg-white/[0.03] text-white/30 cursor-not-allowed opacity-60"
                     }`}
                   >
                     {t("signOutWord")}
@@ -658,21 +659,21 @@ export default function ScanView({ events, residents, memberships }: any) {
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-[#E6E0D3]">
+              <div className="pt-4 border-t border-white/10">
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">
                   {scanMode === "in" ? t("signInClosingTimeLabel") : t("signOutClosingTimeLabel")}
                 </label>
                 {/* Read-only -- this window comes from the event's own Start
                     Time / Call Time fields (set on the Events screen), not
                     typed in here each session. */}
-                <div className="rounded-xl border border-[#E6E0D3] bg-white px-4 py-2.5 text-sm text-[#1A1A1A]">
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white">
                   {closingTime ? `${t("closesAtLabel")} ${formatEventOptionDateTime(closingTime) || closingTime}` : t("noClosingTimeSet")}
                 </div>
               </div>
             </div>
 
             {checkInMethod === "camera" ? (
-              <div className="relative overflow-hidden rounded-2xl border border-[#E6E0D3] bg-black min-h-[380px]">
+              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black min-h-[380px]">
                 {isCameraOn ? (
                   <div className="absolute inset-0 h-full w-full">
                     <Scanner
@@ -719,39 +720,39 @@ export default function ScanView({ events, residents, memberships }: any) {
               </div>
             ) : (
               // Adviser recommendation: "2 in 1 — Text/physical QR ID" manual lookup
-              <div className="rounded-2xl border border-[#E6E0D3] bg-[#FAF9F5] min-h-[380px] p-5">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.03] min-h-[380px] p-5">
                 <div className="flex items-center gap-2 font-bold text-sage-800 mb-3">
                   <IdCard className="h-5 w-5" /> {t("manualPhysicalIdCheckin")}
                 </div>
                 <div className="relative">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6B7280]" />
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                   <input
                     autoFocus
                     value={manualQuery}
                     onChange={(e: any) => setManualQuery(e.target.value)}
                     placeholder={t("typeResidentIdPlaceholder")}
-                    className="h-11 w-full rounded-xl border border-[#E6E0D3] bg-white pl-11 pr-4 text-sm text-[#1A1A1A] placeholder:text-[#6B7280] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
                   />
                 </div>
                 <div className="mt-3 space-y-2 max-h-[270px] overflow-y-auto">
                   {manualQuery.trim() && manualResults.length === 0 && (
-                    <p className="text-sm text-[#6B7280] italic text-center py-6">{t("noMatchingResidentFound")}</p>
+                    <p className="text-sm text-white/40 italic text-center py-6">{t("noMatchingResidentFound")}</p>
                   )}
                   {manualResults.map((r: any) => (
                     <button
                       key={r.id ?? r.user_id ?? r.real_id}
                       onClick={() => handleManualSelect(r)}
-                      className="w-full flex items-center justify-between rounded-xl bg-white border border-[#E6E0D3] px-4 py-3 text-left hover:border-sage-400 hover:shadow-sm transition"
+                      className="w-full flex items-center justify-between rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-left hover:border-sage-400 hover:shadow-sm transition"
                     >
                       <div>
-                        <p className="font-semibold text-[#1A1A1A] text-sm">{r.first_name} {r.last_name}</p>
-                        <p className="text-xs text-[#6B7280]">{r.user_code}</p>
+                        <p className="font-semibold text-white text-sm">{r.first_name} {r.last_name}</p>
+                        <p className="text-xs text-white/40">{r.user_code}</p>
                       </div>
                       <span className="text-xs font-bold text-sage-700">{t("selectArrowLabel")}</span>
                     </button>
                   ))}
                   {!manualQuery.trim() && (
-                    <p className="text-sm text-[#6B7280] italic text-center py-10">{t("startTypingToFindResident")}</p>
+                    <p className="text-sm text-white/40 italic text-center py-10">{t("startTypingToFindResident")}</p>
                   )}
                 </div>
               </div>
@@ -760,13 +761,13 @@ export default function ScanView({ events, residents, memberships }: any) {
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden">
-            <div className="border-b border-[#E6E0D3] p-5">
-              <h2 className="text-base font-bold text-[#1A1A1A]">{t("scanResultTitle")}</h2>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+            <div className="border-b border-white/10 p-5">
+              <h2 className="text-base font-bold text-white">{t("scanResultTitle")}</h2>
             </div>
             <div className="p-5">
               {!scan ? (
-                <div className="rounded-2xl border border-dashed border-[#E6E0D3] bg-[#FAF9F5] p-8 text-center text-sm text-[#6B7280]">
+                <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-8 text-center text-sm text-white/50">
                   {t("noScanPerformedYet")}
                 </div>
               ) : (
@@ -775,16 +776,16 @@ export default function ScanView({ events, residents, memberships }: any) {
                     scan.hasAccess
                       ? scanMode === "in"
                         ? "border-sage-300 bg-sage-50"
-                        : "border-gold-300 bg-gold-50"
-                      : "border-red-200 bg-red-50"
+                        : "border-gold-400/30 bg-gold-400/10"
+                      : "border-red-500/25 bg-red-500/10"
                   }`}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-white shadow-sm bg-[#E6E0D3]">
+                    <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-white/20 shadow-sm bg-white/10">
                       {scan.photo ? (
                         <img src={scan.photo} alt={scan.residentName} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-[#8A8474] bg-[#F1EEE5] p-2">
+                        <div className="w-full h-full flex flex-col items-center justify-center text-white/40 bg-white/[0.06] p-2">
                           <span className="text-[10px] font-bold uppercase text-center leading-tight">{t("noPhotoShort")}</span>
                         </div>
                       )}
@@ -793,24 +794,24 @@ export default function ScanView({ events, residents, memberships }: any) {
                     <div className="flex-1 pt-1">
                       <div className="flex items-start gap-2">
                         {scan.hasAccess
-                          ? (scanMode === "in" ? <CheckCircle className="text-sage-700 shrink-0 mt-0.5 h-5 w-5" /> : <CheckCircle className="text-gold-700 shrink-0 mt-0.5 h-5 w-5" />)
-                          : <XCircle className="text-red-600 shrink-0 mt-0.5 h-5 w-5" />
+                          ? (scanMode === "in" ? <CheckCircle className="text-sage-700 shrink-0 mt-0.5 h-5 w-5" /> : <CheckCircle className="text-gold-300 shrink-0 mt-0.5 h-5 w-5" />)
+                          : <XCircle className="text-red-400 shrink-0 mt-0.5 h-5 w-5" />
                         }
                         <div className="flex flex-col items-start text-left">
-                          <p className={`text-xl font-bold leading-tight ${scan.hasAccess ? scanMode === "in" ? "text-sage-800" : "text-gold-800" : "text-red-600"}`}>
+                          <p className={`text-xl font-bold leading-tight ${scan.hasAccess ? scanMode === "in" ? "text-sage-800" : "text-gold-300" : "text-red-400"}`}>
                             {scan.hasAccess ? scan.residentName : t("deniedAttendanceLabel")}
                           </p>
                           {scan.hasAccess && (
                             <>
-                              <p className="text-sm font-bold text-[#1A1A1A] mt-1.5 tracking-wide">
+                              <p className="text-sm font-bold text-white mt-1.5 tracking-wide">
                                 {scan.userCode.replace("-", " - ")}
                               </p>
-                              <p className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider mt-0.5">
+                              <p className="text-[11px] font-bold text-white/50 uppercase tracking-wider mt-0.5">
                                 {scan.role}
                               </p>
                             </>
                           )}
-                          <p className="mt-2 text-sm font-medium text-[#1A1A1A]">
+                          <p className="mt-2 text-sm font-medium text-white/80">
                             {scan.reason}
                           </p>
                         </div>
@@ -821,18 +822,18 @@ export default function ScanView({ events, residents, memberships }: any) {
                   {scan.hasAccess && (
                     <>
                       {windowNotYetOpen ? (
-                        <div className="mt-4 p-3 rounded-xl border border-gold-300 bg-gold-50 text-center text-sm font-bold text-gold-800">
+                        <div className="mt-4 p-3 rounded-xl border border-gold-400/30 bg-gold-400/10 text-center text-sm font-bold text-gold-300">
                           {scanMode === "in" ? t("signInOpensAtBanner") : t("signOutOpensAtBanner")} {formatEventOptionDateTime(windowNotYetOpen) || windowNotYetOpen}
                         </div>
                       ) : isPastClosingTime() ? (
-                        <div className="mt-4 p-3 rounded-xl border border-red-200 bg-red-50 text-center text-sm font-bold text-red-700">
+                        <div className="mt-4 p-3 rounded-xl border border-red-500/25 bg-red-500/10 text-center text-sm font-bold text-red-400">
                           {scanMode === "in" ? t("deadlinePassedPrefix") : t("signOutDeadlinePassedPrefix")} ({formatEventOptionDateTime(closingTime) || closingTime}) {scanMode === "in" ? t("signInClosedSuffix") : t("signOutClosedSuffix")}
                         </div>
                       ) : (
                         <button
                           onClick={confirmAttendance}
-                          className={`mt-4 w-full py-3 text-sm font-bold text-white rounded-full transition-colors shadow-sm ${
-                            scanMode === "in" ? "bg-sage-700 hover:bg-sage-800" : "bg-gold-700 hover:brightness-95"
+                          className={`mt-4 w-full py-3 text-sm font-bold rounded-full transition-colors shadow-sm ${
+                            scanMode === "in" ? "text-white bg-sage-700 hover:bg-sage-800" : "text-[#08130F] bg-gold-400 hover:bg-gold-500"
                           }`}
                         >
                           {t("confirmButtonPrefix")} {scanMode === "in" ? t("signInWord") : t("signOutWord")}
@@ -845,26 +846,26 @@ export default function ScanView({ events, residents, memberships }: any) {
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[#E6E0D3] bg-white overflow-hidden">
-            <div className="border-b border-[#E6E0D3] bg-white p-5">
-              <h2 className="text-base font-bold text-[#1A1A1A]">{t("attendanceRosterTitle")}</h2>
-              <p className="mt-0.5 text-sm text-[#6B7280]">{attendance[eventId]?.length ?? 0} {t("recordsForThisEvent")}</p>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+            <div className="border-b border-white/10 p-5">
+              <h2 className="text-base font-bold text-white">{t("attendanceRosterTitle")}</h2>
+              <p className="mt-0.5 text-sm text-white/50">{attendance[eventId]?.length ?? 0} {t("recordsForThisEvent")}</p>
             </div>
             <div className="max-h-[400px] overflow-y-auto p-5">
               {!(attendance[eventId] ?? []).length ? (
-                <p className="rounded-2xl border border-dashed border-[#E6E0D3] bg-[#FAF9F5] p-6 text-center text-sm text-[#6B7280]">{t("noAttendeesYet")}</p>
+                <p className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-center text-sm text-white/50">{t("noAttendeesYet")}</p>
               ) : (
                 <div className="space-y-3">
                   {attendance[eventId]!.map((rec, i) => (
-                    <div key={rec.residentId} className="p-4 rounded-xl border border-[#E6E0D3] bg-[#FAF9F5] flex items-center justify-between transition-colors">
+                    <div key={rec.residentId} className="p-4 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-between transition-colors">
                       <div>
-                        <p className="font-semibold text-[#1A1A1A]">{i + 1}. {rec.residentName}</p>
-                        <div className="flex gap-4 mt-1 text-xs text-[#6B7280] font-medium">
+                        <p className="font-semibold text-white">{i + 1}. {rec.residentName}</p>
+                        <div className="flex gap-4 mt-1 text-xs text-white/50 font-medium">
                           <span className="flex items-center gap-1 text-sage-700"><LogIn className="h-3.5 w-3.5" /> {rec.timeIn || "—"}</span>
-                          <span className="flex items-center gap-1 text-gold-700"><LogOut className="h-3.5 w-3.5" /> {rec.timeOut || "—"}</span>
+                          <span className="flex items-center gap-1 text-gold-300"><LogOut className="h-3.5 w-3.5" /> {rec.timeOut || "—"}</span>
                         </div>
                       </div>
-                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${rec.status === "complete" ? "bg-sage-50 text-sage-800" : "bg-gold-50 text-gold-700"}`}>
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${rec.status === "complete" ? "bg-sage-50 text-sage-800" : "bg-gold-400/15 text-gold-300"}`}>
                         {rec.status === "complete" ? t("completedLabel") : t("statusIncomplete")}
                       </span>
                     </div>
@@ -898,6 +899,7 @@ export default function ScanView({ events, residents, memberships }: any) {
           </div>
         );
       })()}
+    </div>
     </div>
   );
 }

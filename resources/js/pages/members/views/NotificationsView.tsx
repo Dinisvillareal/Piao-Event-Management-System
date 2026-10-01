@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import { Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, AlertTriangle, Filter } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
 
 
 interface Notification {
@@ -43,6 +44,18 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
    const [showCancelledModal, setShowCancelledModal] = useState(false);
    const [currentPage, setCurrentPage] = useState(1);
+   // Brief skeleton flash on every page switch, same as Activity Logs --
+   // this list paginates client-side so there's nothing to actually wait
+   // on, but the flash keeps page switches feeling consistent app-wide.
+   const [pageSwitching, setPageSwitching] = useState(false);
+   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+   const goToPage = (updater: number | ((p: number) => number)) => {
+       setCurrentPage(updater as any);
+       setPageSwitching(true);
+       if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+       pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+   };
+   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
    const itemsPerPage = 10;
 
 
@@ -278,8 +291,17 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
    if (loading) {
        return (
-           <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] flex justify-center items-center h-64">
-               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4FBEB0]"></div>
+           <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 space-y-6">
+               <div className="space-y-2">
+                   <Skeleton className="h-8 w-56" />
+                   <Skeleton className="h-4 w-64" />
+               </div>
+               <Skeleton className="h-11 w-full rounded-xl" />
+               <div className="space-y-3">
+                   {Array.from({ length: 4 }).map((_, i) => (
+                       <Skeleton key={i} className="h-20 rounded-2xl sm:rounded-3xl" />
+                   ))}
+               </div>
            </div>
        );
    }
@@ -360,7 +382,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                    {totalPages > 1 && (
                        <div className="flex items-center gap-2">
                            <button
-                               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                               onClick={() => goToPage(p => Math.max(1, p - 1))}
                                disabled={currentPage === 1}
                                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                            >
@@ -372,7 +394,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                            </span>
 
                            <button
-                               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                               onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
                                disabled={currentPage === totalPages}
                                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                            >
@@ -386,7 +408,13 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
            {/* Scrollable Content Area - Only notifications scroll */}
            <div className="flex-1 overflow-y-auto px-1 sm:px-2 pb-4">
-               {filteredNotifications.length === 0 ? (
+               {pageSwitching ? (
+                   <div className="space-y-3">
+                       {Array.from({ length: 4 }).map((_, i) => (
+                           <Skeleton key={i} className="h-20 rounded-2xl sm:rounded-3xl" />
+                       ))}
+                   </div>
+               ) : filteredNotifications.length === 0 ? (
                    <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.02] p-10 text-center text-white/40">
                        <Bell size={40} className="mx-auto mb-3 text-white/20" />
                        <p>{t("noNotificationsMatch")}</p>

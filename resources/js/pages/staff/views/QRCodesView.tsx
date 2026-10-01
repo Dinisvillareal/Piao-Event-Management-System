@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Users, Plus, Pencil, Trash2, Search, CheckCircle, AlertCircle, AlertTriangle, Layers, ChevronRight, ChevronDown, XCircle, Save } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 
@@ -43,6 +44,18 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   const [allResidents, setAllResidents] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  // Brief skeleton flash on every page switch, same as Activity Logs --
+  // this list paginates client-side so there's nothing to actually wait
+  // on, but the flash keeps page switches feeling consistent app-wide.
+  const [pageSwitching, setPageSwitching] = useState(false);
+  const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const [loading, setLoading] = useState(true);
   const [selectedMembership, setSelectedMembership] = useState<any>(null);
   // Eligibility is only enforced when a resident is first assigned to a
@@ -669,9 +682,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4FBEB0]" />
+      {loading || pageSwitching ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+              <div className="flex items-start justify-between gap-3">
+                <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
+                <Skeleton className="h-6 w-16 rounded-full" />
+              </div>
+              <Skeleton className="mt-4 h-4 w-3/5" />
+              <Skeleton className="mt-2 h-3 w-full" />
+              <Skeleton className="mt-1.5 h-3 w-4/5" />
+            </div>
+          ))}
         </div>
       ) : filteredMemberships.length === 0 ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
@@ -747,7 +770,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                 <button
                   key={p}
-                  onClick={() => setCurrentPage(p)}
+                  onClick={() => goToPage(p)}
                   className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-gold-400 text-[#08130F] font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
                 >
                   {p}

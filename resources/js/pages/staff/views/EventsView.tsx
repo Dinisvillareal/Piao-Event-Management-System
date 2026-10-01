@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Filter, X, LogIn, LogOut, ChevronLeft, Archive, AlertTriangle,
   Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown, Paperclip,
-  FileText, Download, Megaphone, ClipboardList, Users, ArrowLeft, Save,
+  FileText, Download, FileSpreadsheet, Megaphone, ClipboardList, Users, ArrowLeft, Save,
 } from "lucide-react";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
@@ -10,7 +10,10 @@ import DatePicker from "../../../components/ui/DatePicker";
 import TimePicker from "../../../components/ui/TimePicker";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
+import NumberStepper from "../../../components/ui/NumberStepper";
+import Skeleton from "../../../components/ui/Skeleton";
 import api, { apiErrorMessage } from "../../../lib/api";
+import { exportExpenseReportXlsx } from "../../../lib/expenseReportExport";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface MyEvent {
@@ -49,6 +52,7 @@ interface EventExpense {
   item: string;
   amount: string | number;
   notes: string | null;
+  recorded_by?: string | null;
   created_at: string;
   receipt_url: string | null;
 }
@@ -68,6 +72,7 @@ interface EventsViewProps {
   residents?: any[];
   memberships?: any[];
   attendanceRecords?: any[];
+  loading?: boolean;
 }
 
 export function EventsView({
@@ -78,6 +83,7 @@ export function EventsView({
   residents = [],
   memberships = [],
   attendanceRecords = [],
+  loading = false,
 }: EventsViewProps) {
   const { t } = useLanguage();
   const eventStatusLabel = (label: string) => (label === "Upcoming" ? t("upcomingBadge") : label === "Ongoing" ? t("ongoingBadge") : t("pastBadge"));
@@ -169,6 +175,19 @@ export function EventsView({
   // "formOpen" toggle for the persistent side panel this replaced).
   const [formOpen, setFormOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  // Brief skeleton flash whenever the page number is switched, same as the
+  // Activity Logs page (which re-fetches per page). This list paginates
+  // client-side over already-loaded data, so there's nothing to actually
+  // wait on -- the flash is purely so switching pages always feels the same.
+  const [pageSwitching, setPageSwitching] = useState(false);
+  const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPage = (page: number) => {
+    setCurrentPage(page);
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -591,6 +610,13 @@ export function EventsView({
   };
 
   const isEventLocked = (label: "Upcoming" | "Ongoing" | "Past") => label === "Past" || label === "Ongoing";
+
+  // Same lock as the Edit/Delete Event buttons above, re-derived here for
+  // the budget handlers below (add/export/import) since they're defined
+  // outside the render closure that already has `locked` in scope --
+  // backs up the disabled buttons in case a call ever reaches these
+  // handlers some other way.
+  const isEventBudgetLocked = (event: MyEvent | null) => (event ? isEventLocked(getEventStatus(event).label) : false);
 
   const getFilterStatus = (event: MyEvent, filter: string): boolean => {
     const status = getEventStatus(event);
@@ -1025,6 +1051,11 @@ export function EventsView({
   const expenseReceiptInputRef = useRef<HTMLInputElement>(null);
   const [expenseReceiptFile, setExpenseReceiptFile] = useState<File | null>(null);
   const [showAddExpenseConfirm, setShowAddExpenseConfirm] = useState(false);
+  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
+  // Confirm-before / success-after around the CSV export button, same
+  // pattern used for a receipt download on the standalone Budget page.
+  const [confirmExportCsv, setConfirmExportCsv] = useState(false);
+  const [exportCsvSuccess, setExportCsvSuccess] = useState(false);
   const [deleteExpenseTarget, setDeleteExpenseTarget] = useState<{ id: number; item: string } | null>(null);
   const [deletingExpense, setDeletingExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState<{ id: number; item: string } | null>(null);
@@ -1048,7 +1079,7 @@ export function EventsView({
 
   const handleAddExpense = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!viewEv) return;
+    if (!viewEv || isEventBudgetLocked(viewEv)) return;
     setErrorMessage("");
 
     if (!expenseForm.item.trim()) {
@@ -1085,6 +1116,7 @@ export function EventsView({
       setExpenseForm({ item: "", amount: "", notes: "" });
       setExpenseReceiptFile(null);
       if (expenseReceiptInputRef.current) expenseReceiptInputRef.current.value = "";
+      setShowAddExpenseModal(false);
       loadBudgetSummary(viewEv.id);
       if (result?.data?.is_over_budget) {
         setSuccessMessage(
@@ -1096,6 +1128,39 @@ export function EventsView({
       setShowSuccessModal(true);
     } catch (e) {
       setErrorMessage(apiErrorMessage(e, t("recordExpenseFailed")));
+      setShowErrorModal(true);
+    }
+  };
+
+  // Exports a small report, not just a raw row dump -- an events-details
+  // header block (name, status, date, location, budget figures) followed
+  // by a blank line, the expense table, another blank line, and a total,
+  // so the file reads on its own in Excel/Sheets without needing the app
+  // open next to it. Amount columns stay plain decimals (no currency
+  // symbol or thousands separator) so spreadsheet software still treats
+  // them as numbers. Left enabled once an event is locked -- staff still
+  // need to pull a finished event's numbers for reporting, only *adding*
+  // new expenses is what a finished event should block.
+  const performExportExpensesCsv = async () => {
+    setConfirmExportCsv(false);
+    if (!viewEv || !budgetSummary || budgetSummary.expenses.length === 0) return;
+    const status = getEventStatus(viewEv);
+    const approved = budgetSummary.approved_budget !== null ? Number(budgetSummary.approved_budget) : null;
+    const spent = Number(budgetSummary.total_expenses);
+
+    try {
+      await exportExpenseReportXlsx({
+        eventTitle: viewEv.title,
+        statusLabel: eventStatusChipLabel(status.label),
+        dateLabel: `${viewEv.startDate || viewEv.date}${viewEv.startTime ? ` ${formatTime12Hour(viewEv.startTime)}` : ""}`,
+        location: viewEv.location || null,
+        approvedBudget: approved,
+        totalSpent: spent,
+        expenses: budgetSummary.expenses,
+      });
+      setExportCsvSuccess(true);
+    } catch (e) {
+      setErrorMessage(apiErrorMessage(e, t("expenseReportExportFailed")));
       setShowErrorModal(true);
     }
   };
@@ -1451,8 +1516,9 @@ export function EventsView({
               {detailTab === "budget" && (
                 <div className="space-y-4">
                   {budgetLoading || !budgetSummary ? (
-                    <div className="flex justify-center items-center h-40">
-                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#4FBEB0]" />
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 space-y-3">
+                      <Skeleton className="h-4 w-1/2" />
+                      <Skeleton className="h-2.5 w-full rounded-full" />
                     </div>
                   ) : (
                     <>
@@ -1480,73 +1546,38 @@ export function EventsView({
                         )}
                       </div>
 
-                      <form onSubmit={handleAddExpense} noValidate className="grid sm:grid-cols-[1fr_140px_auto_auto] gap-2">
-                        <input
-                          required
-                          value={expenseForm.item}
-                          onChange={(e) => setExpenseForm((p) => ({ ...p, item: e.target.value }))}
-                          placeholder={t("itemExpenseDescPlaceholder")}
-                          className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-                        />
-                        <input
-                          required
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={expenseForm.amount}
-                          onChange={(e) => setExpenseForm((p) => ({ ...p, amount: e.target.value }))}
-                          placeholder={t("amountPlaceholder")}
-                          className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-                        />
-                        <input
-                          ref={expenseReceiptInputRef}
-                          type="file"
-                          accept="image/*,.pdf"
-                          onChange={(e) => setExpenseReceiptFile(e.target.files?.[0] ?? null)}
-                          className="hidden"
-                        />
+                      {locked && (
+                        <p className="text-xs text-gold-300 bg-gold-400/10 border border-gold-400/25 rounded-full px-4 py-2">
+                          {t("expenseAddLockedHint")}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
                         <button
                           type="button"
-                          onClick={() => expenseReceiptInputRef.current?.click()}
-                          title={expenseReceiptFile ? expenseReceiptFile.name : t("attachReceiptRequiredLabel")}
-                          className={`inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-semibold transition ${
-                            expenseReceiptFile ? "border-[#4FBEB0]/50 text-[#7DD8CB] bg-[#4FBEB0]/10" : "border-gold-400/40 text-gold-300 hover:bg-gold-400/10"
-                          }`}
+                          disabled={locked}
+                          title={locked ? t("expenseAddLockedHint") : undefined}
+                          onClick={() => setShowAddExpenseModal(true)}
+                          className="inline-flex items-center justify-center gap-1 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] px-4 py-2 text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gold-400"
                         >
-                          <Paperclip className="h-4 w-4" />
+                          <Plus className="h-4 w-4" /> {t("addExpenseTitle")}
                         </button>
                         <button
-                          type="submit"
-                          className="inline-flex items-center justify-center gap-1 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] px-4 py-2 text-sm font-bold transition"
+                          type="button"
+                          onClick={() => setConfirmExportCsv(true)}
+                          disabled={budgetSummary.expenses.length === 0}
+                          title={t("exportCsvLabel")}
+                          className="inline-flex items-center justify-center gap-1 rounded-full border border-white/15 text-white px-4 py-2 text-sm font-semibold hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          <Plus className="h-4 w-4" /> {t("addLabel")}
+                          <FileSpreadsheet className="h-4 w-4" /> {t("exportCsvLabel")}
                         </button>
-                      </form>
-                      {expenseReceiptFile ? (
-                        <p className="-mt-1 text-xs text-white/50 flex items-center gap-1">
-                          <FileText className="h-3.5 w-3.5 shrink-0" />
-                          <span className="truncate">{expenseReceiptFile.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setExpenseReceiptFile(null);
-                              if (expenseReceiptInputRef.current) expenseReceiptInputRef.current.value = "";
-                            }}
-                            className="text-white/50 hover:text-red-400 shrink-0"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </p>
-                      ) : (
-                        <p className="-mt-1 text-xs text-gold-300">{t("receiptRequiredHint")}</p>
-                      )}
+                      </div>
 
                       <div className="max-h-[40vh] overflow-y-auto space-y-2">
                         {budgetSummary.expenses.length === 0 ? (
                           <p className="text-sm text-white/40 italic py-6 text-center">{t("noExpensesRecorded")}</p>
                         ) : (
                           budgetSummary.expenses.map((exp) => (
-                            <div key={exp.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 group">
+                            <div key={exp.id} className="flex items-start justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 group">
                               <div className="min-w-0">
                                 <div className="flex items-center gap-1.5 min-w-0">
                                   <p className="text-sm font-medium text-white truncate">{exp.item}</p>
@@ -1561,7 +1592,7 @@ export function EventsView({
                                     </button>
                                   )}
                                 </div>
-                                {exp.notes && <p className="text-xs text-white/40 truncate">{exp.notes}</p>}
+                                {exp.notes && <p className="mt-0.5 text-xs text-white/50 whitespace-pre-wrap break-words">{exp.notes}</p>}
                               </div>
                               <div className="flex items-center gap-2 shrink-0 ml-3">
                                 <span className="text-sm font-bold text-[#7DD8CB]">₱{Number(exp.amount).toLocaleString()}</span>
@@ -1733,7 +1764,24 @@ export function EventsView({
             {filteredEvents.length} {t("eventsMatchCount")}
           </p>
 
-          {paginatedEvents.length === 0 ? (
+          {loading || pageSwitching ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-5 w-16 rounded-full shrink-0" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-1/2" />
+                    <Skeleton className="h-3 w-2/5" />
+                    <Skeleton className="h-3 w-1/3" />
+                  </div>
+                  <Skeleton className="h-9 w-full rounded-xl" />
+                </div>
+              ))}
+            </div>
+          ) : paginatedEvents.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
               {t("noEventsMatchStaff")}
             </div>
@@ -1812,7 +1860,7 @@ export function EventsView({
                   {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
                     <button
                       key={p}
-                      onClick={() => setCurrentPage(p)}
+                      onClick={() => goToPage(p)}
                       className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-gold-400 text-[#08130F] font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
                     >
                       {p}
@@ -1968,14 +2016,14 @@ export function EventsView({
                   {/* UC-8: Record Event Budget and Expenses */}
                   <div>
                     <label className="block text-base font-semibold text-white mb-1.5">{t("approvedBudgetOptional")}</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
+                    <NumberStepper
+                      fullWidth
+                      min={0}
+                      step={0.01}
                       value={newEvent.approvedBudget}
-                      onChange={(e) => setNewEvent({ ...newEvent, approvedBudget: e.target.value })}
+                      onChange={(v) => setNewEvent({ ...newEvent, approvedBudget: v })}
                       placeholder={t("approvedBudgetPlaceholder")}
-                      className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                      className="w-full rounded-full border border-white/25 pl-5 pr-8 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                     />
                     <p className="mt-1.5 text-sm text-white/60">{t("trackExpensesHint")}</p>
                   </div>
@@ -1996,17 +2044,15 @@ export function EventsView({
                           return (
                             <div key={row.inventoryItemId} className="flex items-center gap-2 rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2">
                               <span className="flex-1 text-sm text-white truncate">{getBorrowItemName(row.inventoryItemId)}</span>
-                              <input
-                                type="number"
+                              <NumberStepper
                                 min={1}
                                 max={max}
                                 value={row.quantity}
-                                onChange={(e) => {
-                                  const raw = e.target.value;
+                                onChange={(raw) => {
                                   const clamped = raw === "" ? "" : String(Math.max(1, Math.min(max || 1, Math.round(Number(raw)) || 1)));
                                   updateBorrowQuantity(row.inventoryItemId, clamped);
                                 }}
-                                className="w-16 rounded-full border border-white/20 bg-white/10 px-2 py-1 text-sm text-center text-white font-sans"
+                                className="w-16 rounded-full border border-white/20 bg-white/10 pl-2 pr-5 py-1 text-sm text-center text-white font-sans"
                               />
                               <span className="text-xs text-white/50 shrink-0">/ {max} {t("availableStockShortLabel")}</span>
                               <button
@@ -2112,6 +2158,112 @@ export function EventsView({
           </div>
         </div>
       )}
+
+      {showAddExpenseModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4" onClick={() => setShowAddExpenseModal(false)}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold text-white">{t("addExpenseTitle")}</h2>
+              <button onClick={() => setShowAddExpenseModal(false)} className="text-white/50 hover:text-white"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleAddExpense} noValidate className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-white/70 mb-1">{t("itemExpenseDescPlaceholder")}</label>
+                <input
+                  required
+                  value={expenseForm.item}
+                  onChange={(e) => setExpenseForm((p) => ({ ...p, item: e.target.value }))}
+                  placeholder={t("itemExpenseDescPlaceholder")}
+                  className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-white/70 mb-1">{t("amountPlaceholder")}</label>
+                <NumberStepper
+                  required
+                  fullWidth
+                  min={0}
+                  step={0.01}
+                  value={expenseForm.amount}
+                  onChange={(v) => setExpenseForm((p) => ({ ...p, amount: v }))}
+                  placeholder={t("amountPlaceholder")}
+                  className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-4 pr-6 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-white/70 mb-1">{t("notesLabel")}</label>
+                <textarea
+                  value={expenseForm.notes}
+                  onChange={(e) => setExpenseForm((p) => ({ ...p, notes: e.target.value }))}
+                  className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                  rows={2}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-white/70 mb-1">{t("receiptLabel")}</label>
+                <input
+                  ref={expenseReceiptInputRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) => setExpenseReceiptFile(e.target.files?.[0] ?? null)}
+                  className="hidden"
+                />
+                {expenseReceiptFile ? (
+                  <div className="flex items-center gap-2 text-sm text-white/60">
+                    <FileText className="h-4 w-4 text-[#7DD8CB] shrink-0" />
+                    <span className="truncate">{expenseReceiptFile.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setExpenseReceiptFile(null);
+                        if (expenseReceiptInputRef.current) expenseReceiptInputRef.current.value = "";
+                      }}
+                      className="text-white/50 hover:text-red-400 shrink-0"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => expenseReceiptInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-gold-400/40 px-4 py-2 text-sm text-gold-300 hover:bg-gold-400/10 transition"
+                  >
+                    <Paperclip className="h-4 w-4" /> {t("attachReceiptRequiredLabel")}
+                  </button>
+                )}
+                {!expenseReceiptFile && <p className="mt-1 text-xs text-gold-300">{t("receiptRequiredHint")}</p>}
+              </div>
+              <div className="flex gap-2 pt-2">
+                <button type="submit" className="flex-1 py-2.5 rounded-full font-bold bg-gold-400 hover:bg-gold-500 text-[#08130F] transition">{t("addLabel")}</button>
+                <button type="button" onClick={() => setShowAddExpenseModal(false)} className="px-6 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("cancelLabel")}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* "Are you sure you want to download?" -- then "Downloaded
+          successfully" -- same confirm-before/success-after pattern used
+          for a receipt download on the standalone Budget page. */}
+      <ConfirmDialog
+        open={confirmExportCsv}
+        icon={<FileSpreadsheet size={32} />}
+        title={t("confirmExportCsvTitle")}
+        body={t("confirmExportCsvBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("downloadLabel")}
+        onCancel={() => setConfirmExportCsv(false)}
+        onConfirm={performExportExpensesCsv}
+      />
+      <StatusModal
+        open={exportCsvSuccess}
+        type="success"
+        title={t("downloadSuccessTitle")}
+        message={t("csvDownloadSuccessMessage")}
+        okLabel={t("okLabel")}
+        onClose={() => setExportCsvSuccess(false)}
+      />
 
       <StatusModal open={showSuccessModal} type="success" title={t("successTitle")} message={successMessage} okLabel={t("okLabel")} onClose={() => setShowSuccessModal(false)} />
       <StatusModal open={showErrorModal} type="error" title={t("errorTitle")} message={errorMessage} okLabel={t("goBack")} onClose={() => setShowErrorModal(false)} />

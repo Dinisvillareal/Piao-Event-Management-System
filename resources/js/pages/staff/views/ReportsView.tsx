@@ -7,6 +7,7 @@ import DateRangePicker from "../../../components/ui/DateRangePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import StatusModal from "../../../components/ui/StatusModal";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { translate } from "../../../i18n/translations";
 
@@ -644,8 +645,13 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
       </div>
 
       {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4FBEB0]"></div>
+        <div className="space-y-4">
+          <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-[30px]" />
+            ))}
+          </div>
+          <Skeleton className="h-72 rounded-[30px]" />
         </div>
       ) : isEmpty ? (
         // UC-10 extension 4a: no records exist for the selected type/range

@@ -5,11 +5,24 @@ import StatusModal from "../../../components/ui/StatusModal";
 import { QRCodeCanvas } from "qrcode.react";
 import { QrCode, Download } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import Skeleton from "../../../components/ui/Skeleton";
 
 export default function QRCodesView({ highlightText, userId, userCode, fullName }: any) {
   const { t } = useLanguage();
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  // Brief skeleton flash on every page switch, same as Activity Logs --
+  // this list paginates client-side so there's nothing to actually wait
+  // on, but the flash keeps page switches feeling consistent app-wide.
+  const [pageSwitching, setPageSwitching] = useState(false);
+  const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPage = (updater: number | ((p: number) => number)) => {
+    setCurrentPage(updater as any);
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const [allMemberships, setAllMemberships] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -181,8 +194,16 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   // Loading state
   if (loading) {
     return (
-      <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] flex justify-center items-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4FBEB0]"></div>
+      <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 space-y-6">
+        <div className="space-y-2">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-48" />
+        </div>
+        <Skeleton className="h-64 rounded-2xl" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Skeleton className="h-28 rounded-2xl" />
+          <Skeleton className="h-28 rounded-2xl" />
+        </div>
       </div>
     );
   }
@@ -238,7 +259,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
             {totalPages > 1 && (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  onClick={() => goToPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
@@ -250,7 +271,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                 </span>
 
                 <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
@@ -334,7 +355,13 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
             {/* RIGHT COLUMN - MEMBERSHIP CARDS */}
             <div className="w-full lg:flex-1 lg:min-w-0">
-              {allMemberships.length === 0 ? (
+              {pageSwitching ? (
+                <div className="grid gap-4 justify-start grid-cols-1 sm:[grid-template-columns:repeat(auto-fit,minmax(260px,340px))]">
+                  {Array.from({ length: 2 }).map((_, i) => (
+                    <Skeleton key={i} className="h-28 rounded-3xl" />
+                  ))}
+                </div>
+              ) : allMemberships.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-96 bg-white/[0.04] rounded-xl border border-white/10">
                   <svg className="w-24 h-24 text-white/15 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />

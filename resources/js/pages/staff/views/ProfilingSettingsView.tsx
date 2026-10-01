@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Users2, Heart, Tag, Plus, Pencil, Trash2 } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -396,7 +397,11 @@ export default function ProfilingSettingsView() {
           </div>
 
           {loading ? (
-            <div className="mt-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+            <div className="mt-5 space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton dark={false} key={i} className="h-[52px] rounded-2xl" />
+              ))}
+            </div>
           ) : (
             <div className="mt-5 space-y-2">
               {ageBrackets.map((b) => (
@@ -491,7 +496,11 @@ export default function ProfilingSettingsView() {
           </div>
 
           {loading ? (
-            <div className="mt-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+            <div className="mt-5 space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton dark={false} key={i} className="h-[52px] rounded-2xl" />
+              ))}
+            </div>
           ) : (
             <div className="mt-5 space-y-2">
               {civilStatuses.map((s) => (
@@ -566,7 +575,11 @@ export default function ProfilingSettingsView() {
           </div>
 
           {loading ? (
-            <div className="mt-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+            <div className="mt-5 space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton dark={false} key={i} className="h-[52px] rounded-2xl" />
+              ))}
+            </div>
           ) : (
             <div className="mt-5 space-y-2">
               {currentStatuses.map((s) => (

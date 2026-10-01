@@ -5,6 +5,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import { LANGUAGES } from "../../../i18n/translations";
 import StatusModal from "../../../components/ui/StatusModal";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import Skeleton from "../../../components/ui/Skeleton";
 
 interface SettingsViewProps {
   member: {
@@ -159,7 +160,11 @@ export default function SettingsView({ member }: SettingsViewProps) {
           </div>
 
           {!profile ? (
-            <p className="mt-6 text-sm text-white/40">{t("loadingProfile")}</p>
+            <div className="mt-6 space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-11 w-full rounded-full" />
+              ))}
+            </div>
           ) : (
             <div className="mt-6 space-y-3">
               <div className="flex items-center justify-between rounded-full bg-white/[0.04] border border-white/10 px-5 py-3">

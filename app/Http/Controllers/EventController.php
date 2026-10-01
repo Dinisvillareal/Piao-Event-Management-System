@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Notification;
 use App\Models\EventAttendance;
 use App\Models\EventInventoryItem;
+use App\Models\EventInventoryRelease;
 use App\Models\InventoryItem;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -346,7 +347,9 @@ class EventController extends Controller
             // Undo the event's previous borrow (returns quantity to Inventory),
             // then apply whatever the form submitted now -- simplest way to
             // handle add/remove/quantity-change without diffing item-by-item.
-            $this->releaseBorrowedItems($event);
+            // Not a real-world return, so it doesn't go on the Returns
+            // page's release log (see releaseBorrowedItems()'s doc comment).
+            $this->releaseBorrowedItems($event, logRelease: false);
             $this->applyBorrowedItems($event, $request->borrowed_items ?? []);
 
             if ($membershipChanged) {
@@ -646,13 +649,30 @@ public function destroy($id)
      * Inventory and clears its borrow records. Called before re-applying
      * an edited borrow list, and when an event is archived.
      */
-    private function releaseBorrowedItems(Event $event): void
+    /**
+     * @param bool $logRelease Whether this counts as a real "item came
+     * back" release worth logging for the Returns page's Undo trail.
+     * true for archiving an event and for the dashboard's one-click
+     * "release everything" -- both genuinely give items back. false for
+     * the edit flow below, which tears the borrow list down purely to
+     * rebuild it from the submitted form and isn't a real-world return.
+     */
+    private function releaseBorrowedItems(Event $event, bool $logRelease = true): void
     {
         foreach ($event->borrowedItems()->get() as $borrowed) {
             $item = InventoryItem::withTrashed()->find($borrowed->inventory_item_id);
             if ($item) {
                 $item->quantity += $borrowed->quantity;
                 $item->save();
+            }
+
+            if ($logRelease) {
+                EventInventoryRelease::create([
+                    'event_id' => $event->id,
+                    'inventory_item_id' => $borrowed->inventory_item_id,
+                    'quantity' => $borrowed->quantity,
+                    'released_by' => auth()->user()?->user_code,
+                ]);
             }
         }
 
@@ -765,8 +785,152 @@ public function destroy($id)
             $borrow->save();
         }
 
+        $release = EventInventoryRelease::create([
+            'event_id' => $event->id,
+            'inventory_item_id' => $borrow->inventory_item_id,
+            'quantity' => $releaseQty,
+            'released_by' => auth()->user()?->user_code,
+        ]);
+
         $this->createLog('Return Items', 'Inventory', "Returned {$releaseQty}x {$itemName} from event: {$event->name}");
 
-        return response()->json(['message' => 'Item returned to Inventory.', 'released_quantity' => $releaseQty]);
+        return response()->json([
+            'message' => 'Item returned to Inventory.',
+            'released_quantity' => $releaseQty,
+            'release_id' => $release->id,
+        ]);
+    }
+
+    /**
+     * Releases from roughly the last two weeks, across every event, newest
+     * first -- the "Undo" trail for the Returns page. Two weeks is plenty
+     * of room for "wait, I released the wrong amount earlier today/this
+     * week" without turning this into a permanent audit log browser (that
+     * job belongs to Activity Logs). Paginated (like the overdue-borrows
+     * table above it) rather than a flat 30-row cap, so older-but-still-
+     * recent releases stay reachable instead of just falling off the end.
+     */
+    public function recentReleases(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $perPage = 5;
+        $page = max(1, (int) $request->query('page', 1));
+        $search = trim((string) $request->query('search', ''));
+
+        $base = EventInventoryRelease::whereNull('undone_at')
+            ->where('created_at', '>=', now()->subDays(14));
+
+        // Matches the same free-text search the overdue-events table above
+        // uses (event name or item name) -- so typing something like
+        // "folding" finds it here too, even once every matching event has
+        // already been fully released and dropped out of that table.
+        if ($search !== '') {
+            $base->where(function ($query) use ($search) {
+                $query->whereHas('event', fn ($q) => $q->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('inventoryItem', fn ($q) => $q->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        $total = (clone $base)->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $lastPage);
+
+        $releases = $base->with(['event:id,name', 'inventoryItem:id,name'])
+            ->latest()
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
+            ->get()
+            ->map(fn ($r) => [
+                'id' => $r->id,
+                'event_id' => $r->event_id,
+                'event_name' => $r->event?->name ?? 'Deleted event',
+                'item_name' => $r->inventoryItem->name ?? 'Unknown item',
+                'quantity' => $r->quantity,
+                'released_by' => $r->released_by,
+                'released_at' => $r->created_at,
+            ]);
+
+        return response()->json([
+            'data' => $releases,
+            'current_page' => $page,
+            'last_page' => $lastPage,
+            'total' => $total,
+        ]);
+    }
+
+    /**
+     * Reverses a single release: puts the quantity back on the event's
+     * borrow record (re-creating it if the release had zeroed it out and
+     * deleted the row) and takes it back out of Inventory's available
+     * stock. This is the fix for "I released 3 but only meant to release
+     * 2" -- undo the mistaken release of 3, then release 2 properly.
+     */
+    public function undoRelease(Request $request, $releaseId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $release = EventInventoryRelease::whereNull('undone_at')->findOrFail($releaseId);
+        $event = Event::withoutTrashed()->find($release->event_id);
+
+        if (!$event) {
+            return response()->json(['message' => 'That event no longer exists, so this release can\'t be undone.'], 422);
+        }
+
+        // Undo doesn't have to be all-or-nothing -- if only some of what
+        // was released was the actual mistake (released 2, meant 1), the
+        // rest of it can stay released. Defaults to the whole thing when
+        // no quantity is given, and is clamped to what's left on this
+        // release record either way.
+        $requestedQty = (int) $request->input('quantity', $release->quantity);
+        $requestedQty = max(1, min($requestedQty, $release->quantity));
+
+        $item = InventoryItem::withTrashed()->find($release->inventory_item_id);
+
+        // If some of what this release put back into stock has already
+        // been lent out again (to this event or another one) in the
+        // meantime, there may not be enough of it sitting in Inventory
+        // to take back -- undoing anyway would push the count negative.
+        if ($item && $item->quantity < $requestedQty) {
+            return response()->json([
+                'message' => "Can't undo -- only {$item->quantity} of this item is left in Inventory now. Some of it may have already been lent out again since it was released.",
+            ], 422);
+        }
+
+        $borrow = $event->borrowedItems()->where('inventory_item_id', $release->inventory_item_id)->first();
+        if ($borrow) {
+            $borrow->quantity += $requestedQty;
+            $borrow->save();
+        } else {
+            $borrow = $event->borrowedItems()->create([
+                'inventory_item_id' => $release->inventory_item_id,
+                'quantity' => $requestedQty,
+            ]);
+        }
+
+        if ($item) {
+            $item->quantity -= $requestedQty;
+            $item->save();
+        }
+
+        // Shrink this release record by however much of it was just
+        // undone; once nothing is left of it, mark it fully undone so it
+        // drops off the Recently Released list. A partial undo leaves the
+        // record showing the remaining (still genuinely released) amount.
+        $release->quantity -= $requestedQty;
+        if ($release->quantity <= 0) {
+            $release->quantity = 0;
+            $release->undone_at = now();
+        }
+        $release->save();
+
+        $itemName = $item->name ?? 'item';
+        $this->createLog('Undo Return', 'Inventory', "Undid return of {$requestedQty}x {$itemName} for event: {$event->name}");
+
+        return response()->json(['message' => 'Release undone -- the item is marked borrowed again.']);
     }
 }

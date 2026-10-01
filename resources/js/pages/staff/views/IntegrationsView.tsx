@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink, XCircle, CheckCircle } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -105,7 +106,11 @@ export default function IntegrationsView() {
           </div>
 
           {loading ? (
-            <div className="mt-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+            <div className="mt-5 space-y-3">
+              <Skeleton dark={false} className="h-11 w-full rounded-full" />
+              <Skeleton dark={false} className="h-11 w-full rounded-full" />
+              <Skeleton dark={false} className="h-10 w-36 rounded-full" />
+            </div>
           ) : (
             <div className="mt-5">
               {status?.connected ? (

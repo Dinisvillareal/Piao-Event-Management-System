@@ -293,7 +293,7 @@ export default function StaffDashboard() {
           {active === "residents" && <ResidentsView />}
           {active === "households" && <HouseholdsView />}
           {active === "memberships" && <QRCodesView highlightText={highlightText} />}
-          {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
+          {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} loading={loadingEvents} />}
           {active === "notify" && <NotificationsView memberships={membershipOptions} highlightText={highlightText} />}
           {active === "reports" && <ReportsView memberships={membershipOptions} events={allEvents} />}
           {active === "inventory" && <InventoryView />}

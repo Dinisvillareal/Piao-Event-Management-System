@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw } from "lucide-react";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
+import NumberStepper from "../../../components/ui/NumberStepper";
+import Skeleton from "../../../components/ui/Skeleton";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -73,6 +75,18 @@ export default function InventoryView() {
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  // Brief skeleton flash on every page switch, same as Activity Logs --
+  // this list paginates client-side so there's nothing to actually wait
+  // on, but the flash keeps page switches feeling consistent app-wide.
+  const [pageSwitching, setPageSwitching] = useState(false);
+  const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPage = (updater: number | ((p: number) => number)) => {
+    setCurrentPage(updater as any);
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const itemsPerPage = 10;
 
   // KPI strip data -- deliberately a SEPARATE, always-unfiltered fetch from
@@ -360,9 +374,23 @@ export default function InventoryView() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex justify-center items-center h-64">
-          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#4FBEB0]"></div>
+      {loading || pageSwitching ? (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+          <div className="border-b border-white/10 px-4 py-3">
+            <Skeleton className="h-3 w-24" />
+          </div>
+          <div className="divide-y divide-white/[0.06]">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3.5">
+                <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-4 w-16 ml-auto" />
+                <Skeleton className="h-4 w-14" />
+                <Skeleton className="h-4 w-24 hidden sm:block" />
+                <Skeleton className="h-6 w-16 rounded-full" />
+              </div>
+            ))}
+          </div>
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
@@ -461,7 +489,7 @@ export default function InventoryView() {
               </p>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  onClick={() => goToPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                 >
@@ -471,7 +499,7 @@ export default function InventoryView() {
                   {currentPage}
                 </span>
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                 >
@@ -504,7 +532,7 @@ export default function InventoryView() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-white/80 mb-1">{t("quantityRequired")}</label>
-                  <input type="number" min={0} required value={form.quantity} onChange={(e) => setForm((p) => ({ ...p, quantity: Number(e.target.value) }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                  <NumberStepper min={0} required fullWidth value={String(form.quantity)} onChange={(v) => setForm((p) => ({ ...p, quantity: Number(v) || 0 }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-4 pr-6 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-white/80 mb-1">{t("conditionRequired")}</label>

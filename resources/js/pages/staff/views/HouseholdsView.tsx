@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, AlertCircle, AlertTriangle, ChevronDown, Search } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -287,8 +288,16 @@ export default function HouseholdsView() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4FBEB0]" />
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 flex items-center gap-4">
+              <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : households.length === 0 ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">

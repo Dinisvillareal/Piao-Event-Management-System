@@ -482,7 +482,7 @@ class ReportController extends Controller
         // table and the same balance an official letterhead keeps between
         // a seal and the margin on the other side.
         $logoPath = public_path('logo-removebg-preview.png');
-        $headerTable = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0]);
+        $headerTable = $section->addTable($this->noBorderTableStyle());
         $headerTable->addRow(null, ['cantSplit' => true]);
         $logoCell = $headerTable->addCell(1500);
         if (is_file($logoPath)) {
@@ -624,7 +624,7 @@ class ReportController extends Controller
                 ]);
 
                 $this->addCardHeading($section, 'By Condition');
-                $conditionRow = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'cellSpacing' => 60]);
+                $conditionRow = $section->addTable($this->noBorderTableStyle(['cellSpacing' => 60]));
                 $conditionRow->addRow(null, ['cantSplit' => true]);
                 foreach ($data['by_condition'] as $c) {
                     [$bg, $fg] = $this->conditionColors($c['condition']);
@@ -637,7 +637,7 @@ class ReportController extends Controller
                     [$bg, $fg] = $this->conditionColors($item['condition']);
                     $cell->addText($item['name'], ['bold' => true, 'size' => 9, 'color' => '005F63']);
                     $cell->addText($item['storage_location'] ?? '—', ['size' => 7.5, 'color' => '999999']);
-                    $condTable = $cell->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0]);
+                    $condTable = $cell->addTable($this->noBorderTableStyle());
                     $condTable->addRow(null, ['cantSplit' => true]);
                     $condTable->addCell(2200, ['bgColor' => $bg])->addText($item['condition'], ['size' => 7.5, 'bold' => true, 'color' => $fg]);
                     $condTable->addCell(1800)->addText('×' . $item['quantity'], ['bold' => true, 'size' => 9, 'color' => '333333'], ['alignment' => 'right']);
@@ -652,7 +652,7 @@ class ReportController extends Controller
         // wider than the section's usable width, which made Word/LibreOffice
         // shrink and left-anchor the whole table instead of spanning it
         // edge-to-edge like the on-screen/print signature row does.
-        $sigTable = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'alignment' => 'center']);
+        $sigTable = $section->addTable($this->noBorderTableStyle(['alignment' => 'center']));
         $sigTable->addRow(null, ['cantSplit' => true]);
         $sigTable->addCell(4500)->addText('_____________________________', [], $center);
         $sigTable->addCell(4500)->addText('_____________________________', [], $center);
@@ -671,18 +671,47 @@ class ReportController extends Controller
     }
 
     /**
+     * Style for a purely-structural table (a stat-tile row, a bar chart, the
+     * letterhead, etc.) that should look exactly as borderless in the .docx
+     * as its PDF counterpart. Word's own "Table Gridlines" view -- an
+     * editing aid, never printed -- kicks in for ANY table whose border is
+     * zero-width or undefined, regardless of the individual cells' own
+     * bgColor fill, which is what made every one of these layout tables
+     * show up outlined in a plain gray grid the moment the .docx was opened
+     * in Word (compare that to the PDF, which never draws a line these
+     * tables don't ask for). Giving the table a real, non-zero border in a
+     * color that matches the white page background hands Word an actual
+     * border to render instead of falling back to that aid grid, so it
+     * reads as border-free on screen exactly as it does on paper.
+     *
+     * @param array $extra Additional table style options to merge in (cellSpacing, alignment, cellMargin, etc.)
+     */
+    private function noBorderTableStyle(array $extra = []): array
+    {
+        return array_merge([
+            'borderSize' => 2,
+            'borderColor' => 'FFFFFF',
+            'borderInsideHSize' => 2,
+            'borderInsideHColor' => 'FFFFFF',
+            'borderInsideVSize' => 2,
+            'borderInsideVColor' => 'FFFFFF',
+        ], $extra);
+    }
+
+    /**
      * Colored stat tiles -- the .docx equivalent of the on-screen/PDF
      * gradient stat cards. PhpWord's Cell style has no border properties in
      * the installed version (only bgColor/shading), so the "tile" look comes
      * entirely from a solid fill color with white bold text, spaced apart
-     * with the table's own cellSpacing instead of a border.
+     * with the table's own cellSpacing instead of a border -- same as the
+     * PDF's own borderless `.stat-box`.
      *
      * @param array<int, array{0: string, 1: string, 2: string}> $tiles [value, label, hexColor]
      */
     private function addStatTiles($section, array $tiles): void
     {
         $width = (int) floor(9000 / max(1, count($tiles)));
-        $table = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'cellSpacing' => 80]);
+        $table = $section->addTable($this->noBorderTableStyle(['cellSpacing' => 80]));
         $table->addRow(null, ['cantSplit' => true]);
         foreach ($tiles as [$value, $label, $color]) {
             $cell = $table->addCell($width, ['bgColor' => $color]);
@@ -732,7 +761,7 @@ class ReportController extends Controller
             $filledLevels[] = $value > 0 ? max(1, (int) round(($value / $max) * $levels)) : 0;
         }
 
-        $table = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'cellMargin' => 20]);
+        $table = $section->addTable($this->noBorderTableStyle(['cellMargin' => 20]));
 
         // Row 0: the value shown above each bar, same as BarChart's own
         // per-bar value label.
@@ -770,7 +799,7 @@ class ReportController extends Controller
      */
     private function addTwoColumnRow($section, int $leftWidth, int $rightWidth, callable $left, callable $right): void
     {
-        $table = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'cellSpacing' => 100]);
+        $table = $section->addTable($this->noBorderTableStyle(['cellSpacing' => 100]));
         $table->addRow(null, ['cantSplit' => true]);
         $left($table->addCell($leftWidth));
         $right($table->addCell($rightWidth));
@@ -791,7 +820,7 @@ class ReportController extends Controller
         $filled = (int) round(($clamped / 100) * $trackWidth);
         $remainder = max(0, $trackWidth - $filled);
 
-        $table = $cell->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0]);
+        $table = $cell->addTable($this->noBorderTableStyle());
         $table->addRow(null, ['cantSplit' => true]);
         if ($filled > 0) {
             $table->addCell($filled, ['bgColor' => $color])->addText('');
@@ -817,7 +846,7 @@ class ReportController extends Controller
         $trackWidth = 6000;
         $filled = (int) round(($clamped / 100) * $trackWidth);
         $remainder = max(0, $trackWidth - $filled);
-        $table = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'alignment' => 'center']);
+        $table = $section->addTable($this->noBorderTableStyle(['alignment' => 'center']));
         $table->addRow(null, ['cantSplit' => true]);
         if ($filled > 0) {
             $table->addCell($filled, ['bgColor' => $color])->addText('');
@@ -837,6 +866,15 @@ class ReportController extends Controller
      * supports -- no per-cell borders) so each record still reads as a
      * distinct tile instead of a plain table row.
      *
+     * The pair's own table *does* get a real, visible border (light tan,
+     * the same color as the PDF's `.mini-cell` border) instead of the
+     * invisible-white treatment every other structural table in this
+     * document uses. Combined with `cellSpacing`, Word renders that border
+     * around each of the pair's two cells individually rather than as one
+     * box around the whole row -- the closest this PhpWord version can get
+     * to the PDF's actually-bordered per-card look, short of true per-cell
+     * borders.
+     *
      * @param iterable<mixed> $items
      * @param callable(mixed, mixed): void $fillCell receives (Cell, item) and adds its content
      * @param (callable(mixed): string)|null $bgColorFor optional per-item bgColor override (defaults to a light neutral)
@@ -851,16 +889,27 @@ class ReportController extends Controller
             return;
         }
 
+        $cardBorder = [
+            'borderSize' => 4,
+            'borderColor' => 'EEE2D3',
+            'borderInsideHSize' => 4,
+            'borderInsideHColor' => 'EEE2D3',
+            'borderInsideVSize' => 4,
+            'borderInsideVColor' => 'EEE2D3',
+            'cellSpacing' => 80,
+        ];
         foreach ($items->chunk(2) as $pair) {
-            $table = $section->addTable(['borderSize' => 0, 'borderInsideHSize' => 0, 'borderInsideVSize' => 0, 'cellSpacing' => 80]);
+            $table = $section->addTable($cardBorder);
             $table->addRow(null, ['cantSplit' => true]);
+            // A trailing odd item spans both columns instead of sitting next
+            // to an empty filler cell -- with the card border above now
+            // real (not invisible), a filler cell would otherwise show up
+            // as an empty bordered box for no reason.
+            $gridSpan = $pair->count() < 2 ? 2 : 1;
             foreach ($pair as $item) {
                 $bg = $bgColorFor ? $bgColorFor($item) : 'FAFAF7';
-                $cell = $table->addCell(4500, ['bgColor' => $bg]);
+                $cell = $table->addCell(4500, ['bgColor' => $bg, 'gridSpan' => $gridSpan]);
                 $fillCell($cell, $item);
-            }
-            if ($pair->count() < 2) {
-                $table->addCell(4500)->addText('');
             }
         }
         $section->addTextBreak(1);

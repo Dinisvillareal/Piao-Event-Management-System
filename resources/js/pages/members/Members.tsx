@@ -9,6 +9,7 @@ import NotificationsView from "./views/NotificationsView";
 import EventsView from "./views/EventsView";
 import OfflineBanner from "../../components/ui/OfflineBanner";
 import FeedbackPrompt from "../../components/ui/FeedbackPrompt";
+import Skeleton from "../../components/ui/Skeleton";
 import api from "../../lib/api";
 
 export default function MemberDashboard() {
@@ -310,11 +311,26 @@ export default function MemberDashboard() {
 
   // ─── LOADING SCREEN ───────────────────────────────────────────────────────────
   if (loading) {
+    // Generic dashboard-shell skeleton (header + a KPI strip + a content
+    // block) -- the actual layout isn't known yet at this point (still
+    // waiting to hear back who's signed in), so this is a reasonable
+    // stand-in shape rather than an exact match of any one page.
     return (
-      <div className="flex items-center justify-center h-screen bg-[#0A0E1A]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4FBEB0] mx-auto"></div>
-          <p className="mt-4 text-white/50">Loading dashboard...</p>
+      <div className="min-h-screen bg-[#0A0E1A] p-6 sm:p-10">
+        <div className="mx-auto max-w-5xl space-y-8">
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-12 w-12 rounded-full" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-3 w-28" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-2xl" />
+            ))}
+          </div>
+          <Skeleton className="h-64 rounded-2xl" />
         </div>
       </div>
     );
