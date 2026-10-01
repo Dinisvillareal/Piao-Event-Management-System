@@ -143,13 +143,31 @@ export default function ScanView({ events, residents, memberships }: any) {
   // an event with no end info at all is treated as "ends at its own
   // start" instead of "never ends".
   const upcomingEvents = useMemo(() => {
+    // This week's events first, then everything else -- both groups
+    // ordered newest-to-oldest by their own event date/time (descending).
+    const now = new Date();
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+    const endOfWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + 7);
+    const getSortDate = (e: any): Date | null => {
+      const raw = e.event_start || e.date;
+      if (!raw) return null;
+      const d = new Date(String(raw).replace(" ", "T"));
+      return isNaN(d.getTime()) ? null : d;
+    };
     return (events ?? [])
       .filter((e: any) => {
         const effectiveEnd = e.call_time_end || e.event_end || e.event_start || e.date;
         if (!effectiveEnd) return true;
         return nowDateTimeStr <= effectiveEnd;
       })
-      .sort((a: any, b: any) => (a.title ?? "").localeCompare(b.title ?? ""));
+      .sort((a: any, b: any) => {
+        const da = getSortDate(a);
+        const db = getSortDate(b);
+        const aThisWeek = !!da && da >= startOfWeek && da < endOfWeek;
+        const bThisWeek = !!db && db >= startOfWeek && db < endOfWeek;
+        if (aThisWeek !== bThisWeek) return aThisWeek ? -1 : 1;
+        return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, currentHHMM]);
 
@@ -594,7 +612,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                           >
                             <span className="block truncate">{e.title}</span>
                             {formatEventOptionDateTime(e.event_start) && (
-                              <span className="block text-[11px] font-normal text-white/40 mt-0.5">
+                              <span className={`block text-[11px] font-normal mt-0.5 ${String(e.id) === String(eventId) ? "text-gray-500" : "text-white/40"}`}>
                                 {formatEventOptionDateTime(e.event_start)}
                               </span>
                             )}
@@ -781,11 +799,11 @@ export default function ScanView({ events, residents, memberships }: any) {
                   }`}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-white/20 shadow-sm bg-white/10">
+                    <div className={`w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 shadow-sm ${scan.hasAccess && scanMode === "in" ? "border-gray-200 bg-gray-100" : "border-white/20 bg-white/10"}`}>
                       {scan.photo ? (
                         <img src={scan.photo} alt={scan.residentName} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center text-white/40 bg-white/[0.06] p-2">
+                        <div className={`w-full h-full flex flex-col items-center justify-center p-2 ${scan.hasAccess && scanMode === "in" ? "text-gray-400 bg-gray-100" : "text-white/40 bg-white/[0.06]"}`}>
                           <span className="text-[10px] font-bold uppercase text-center leading-tight">{t("noPhotoShort")}</span>
                         </div>
                       )}
@@ -803,15 +821,15 @@ export default function ScanView({ events, residents, memberships }: any) {
                           </p>
                           {scan.hasAccess && (
                             <>
-                              <p className="text-sm font-bold text-white mt-1.5 tracking-wide">
+                              <p className={`text-sm font-bold mt-1.5 tracking-wide ${scan.hasAccess && scanMode === "in" ? "text-gray-700" : "text-white"}`}>
                                 {scan.userCode.replace("-", " - ")}
                               </p>
-                              <p className="text-[11px] font-bold text-white/50 uppercase tracking-wider mt-0.5">
+                              <p className={`text-[11px] font-bold uppercase tracking-wider mt-0.5 ${scan.hasAccess && scanMode === "in" ? "text-gray-500" : "text-white/50"}`}>
                                 {scan.role}
                               </p>
                             </>
                           )}
-                          <p className="mt-2 text-sm font-medium text-white/80">
+                          <p className={`mt-2 text-sm font-medium ${scan.hasAccess && scanMode === "in" ? "text-gray-600" : "text-white/80"}`}>
                             {scan.reason}
                           </p>
                         </div>

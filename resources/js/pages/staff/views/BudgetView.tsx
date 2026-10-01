@@ -39,6 +39,18 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   const { t } = useLanguage();
   const [search, setSearch] = useState("");
   const [eventListPage, setEventListPage] = useState(1);
+  // Brief skeleton flash on every page switch, same as Activity Logs --
+  // this list paginates client-side so there's nothing to actually wait
+  // on, but the flash keeps page switches feeling consistent app-wide.
+  const [eventListPageSwitching, setEventListPageSwitching] = useState(false);
+  const eventListPageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToEventListPage = (updater: number | ((p: number) => number)) => {
+    setEventListPage(updater as any);
+    setEventListPageSwitching(true);
+    if (eventListPageSwitchTimer.current) clearTimeout(eventListPageSwitchTimer.current);
+    eventListPageSwitchTimer.current = setTimeout(() => setEventListPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (eventListPageSwitchTimer.current) clearTimeout(eventListPageSwitchTimer.current); }, []);
   const eventListPerPage = 8;
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [summary, setSummary] = useState<ExpenseSummary | null>(null);
@@ -616,7 +628,17 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
             />
           </div>
           <div className="mt-3 max-h-[55vh] overflow-y-auto space-y-2 pr-1">
-            {filteredEvents.length === 0 ? (
+            {eventListPageSwitching ? (
+              <div className="space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 space-y-2">
+                    <Skeleton className="h-4 w-3/5" />
+                    <Skeleton className="h-3 w-1/4" />
+                    <Skeleton className="h-1.5 w-full rounded-full" />
+                  </div>
+                ))}
+              </div>
+            ) : filteredEvents.length === 0 ? (
               <p className="text-sm text-white/40 italic py-6 text-center">{t("noEventsFound")}</p>
             ) : (
               groupedEvents.map(([dateLabel, eventsInGroup]) => (
@@ -673,7 +695,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               </p>
               <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => setEventListPage(1)}
+                  onClick={() => goToEventListPage(1)}
                   disabled={eventListPage === 1}
                   title={t("firstPageLabel")}
                   className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
@@ -681,7 +703,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                   «
                 </button>
                 <button
-                  onClick={() => setEventListPage((p) => Math.max(1, p - 1))}
+                  onClick={() => goToEventListPage((p) => Math.max(1, p - 1))}
                   disabled={eventListPage === 1}
                   title={t("previousPageLabel")}
                   className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
@@ -692,7 +714,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                   {eventListPage}
                 </span>
                 <button
-                  onClick={() => setEventListPage((p) => Math.min(eventListTotalPages, p + 1))}
+                  onClick={() => goToEventListPage((p) => Math.min(eventListTotalPages, p + 1))}
                   disabled={eventListPage === eventListTotalPages}
                   title={t("nextPageLabel")}
                   className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
@@ -700,7 +722,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                   →
                 </button>
                 <button
-                  onClick={() => setEventListPage(eventListTotalPages)}
+                  onClick={() => goToEventListPage(eventListTotalPages)}
                   disabled={eventListPage === eventListTotalPages}
                   title={t("lastPageLabel")}
                   className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
