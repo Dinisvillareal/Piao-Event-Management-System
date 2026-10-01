@@ -19,6 +19,9 @@ class StoreInventoryItemRequest extends FormRequest
             'condition'        => 'required|in:New,Good,Fair,Poor,Disposed,Lost',
             'storage_location' => 'nullable|string|max:150',
             'notes'            => 'nullable|string|max:255',
+            // Optional photo -- same conventions as Resident ID photos /
+            // expense receipts (image file, up to 5 MB).
+            'photo'            => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:5120',
         ];
     }
 }

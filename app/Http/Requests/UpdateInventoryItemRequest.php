@@ -19,6 +19,11 @@ class UpdateInventoryItemRequest extends FormRequest
             'condition'        => 'sometimes|in:New,Good,Fair,Poor,Disposed,Lost',
             'storage_location' => 'nullable|string|max:150',
             'notes'            => 'nullable|string|max:255',
+            // Optional photo -- a new file replaces whatever was there
+            // before. Remove the photo outright by sending `remove_photo=1`
+            // with no new file.
+            'photo'            => 'nullable|file|mimes:jpg,jpeg,png,gif,webp|max:5120',
+            'remove_photo'     => 'nullable|boolean',
         ];
     }
 }
