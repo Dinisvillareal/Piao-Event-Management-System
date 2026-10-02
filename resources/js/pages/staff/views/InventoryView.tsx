@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw } from "lucide-react";
+import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus } from "lucide-react";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
@@ -17,6 +17,7 @@ interface InventoryItem {
   condition: Condition;
   storage_location: string | null;
   notes: string | null;
+  photo_url: string | null;
   // How many units are currently lent out to a still-active event (see
   // InventoryItem::borrows() on the backend). >0 means the item can't be
   // deleted yet -- it has to be returned to Inventory first.
@@ -88,6 +89,15 @@ export default function InventoryView() {
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const itemsPerPage = 10;
+
+  // Photo state for the Add/Edit form
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string>("");
+  const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  // Full-size photo viewer (dark themed, matching the rest of the app).
+  const [viewingPhoto, setViewingPhoto] = useState<{ url: string; name: string } | null>(null);
 
   // KPI strip data -- deliberately a SEPARATE, always-unfiltered fetch from
   // the search/condition-filtered `items` list below, so the summary
@@ -174,27 +184,44 @@ export default function InventoryView() {
 
   // Nothing to submit if editing an item and the form still matches its
   // original values -- keeps a no-op "Update Item" click (and its own
-  // success popup) from firing for a change that never happened.
+  // success popup) from firing for a change that never happened. A chosen
+  // or removed photo counts as a change too.
   const isFormUnchanged = !!editing && (
     form.name === editing.name &&
     Number(form.quantity) === editing.quantity &&
     form.condition === editing.condition &&
     form.storage_location === (editing.storage_location ?? "") &&
-    form.notes === (editing.notes ?? "")
+    form.notes === (editing.notes ?? "") &&
+    photoFile === null &&
+    !removeExistingPhoto
   );
 
   const hasFormChanges = editing
     ? !isFormUnchanged
-    : JSON.stringify(form) !== JSON.stringify(emptyForm);
+    : JSON.stringify(form) !== JSON.stringify(emptyForm) || photoFile !== null;
 
   const handleCloseForm = () => {
     if (hasFormChanges) setShowFormCancelConfirm(true);
-    else setShowForm(false);
+    else closeForm();
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditing(null);
+    setForm(emptyForm);
+    setPhotoFile(null);
+    setPhotoPreview("");
+    setRemoveExistingPhoto(false);
+    if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
   const openAdd = () => {
     setEditing(null);
     setForm(emptyForm);
+    setPhotoFile(null);
+    setPhotoPreview("");
+    setRemoveExistingPhoto(false);
+    if (photoInputRef.current) photoInputRef.current.value = "";
     setError(null);
     setShowForm(true);
   };
@@ -208,8 +235,42 @@ export default function InventoryView() {
       storage_location: item.storage_location ?? "",
       notes: item.notes ?? "",
     });
+    setPhotoFile(null);
+    setPhotoPreview(item.photo_url ?? "");
+    setRemoveExistingPhoto(false);
+    if (photoInputRef.current) photoInputRef.current.value = "";
     setError(null);
     setShowForm(true);
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Please upload an image file only.");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Photo is too large. Maximum is 5 MB.");
+      e.target.value = "";
+      return;
+    }
+
+    setPhotoFile(file);
+    setRemoveExistingPhoto(false);
+    const reader = new FileReader();
+    reader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoFile(null);
+    setPhotoPreview("");
+    if (editing?.photo_url) setRemoveExistingPhoto(true);
+    if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
   // Form submit only opens the "are you sure" step -- the actual save
@@ -222,6 +283,14 @@ export default function InventoryView() {
     e.preventDefault();
     setError(null);
 
+    // photoPreview is "" whenever the item would end up with no photo --
+    // a brand-new item with nothing chosen yet, or an existing item whose
+    // photo was removed and never replaced -- so this one check covers
+    // both the Add and Edit forms.
+    if (!photoPreview) {
+      setError(t("photoRequiredError"));
+      return;
+    }
     if (!form.name.trim()) {
       setError(t("itemNameRequiredError"));
       return;
@@ -238,15 +307,31 @@ export default function InventoryView() {
     setShowConfirm(false);
     setError(null);
     const wasEditing = !!editing;
+
     try {
+      const fd = new FormData();
+      fd.append("name", form.name);
+      fd.append("quantity", String(form.quantity));
+      fd.append("condition", form.condition);
+      if (form.storage_location) fd.append("storage_location", form.storage_location);
+      if (form.notes) fd.append("notes", form.notes);
+
+      if (photoFile) {
+        fd.append("photo", photoFile);
+      } else if (removeExistingPhoto) {
+        fd.append("remove_photo", "1");
+      }
+
       let archived = false;
       if (editing) {
-        const res = await api.put(`/inventory/${editing.id}`, form);
+        fd.append("_method", "PUT");
+        const res = await api.post(`/inventory/${editing.id}`, fd);
         archived = !!res?.data?.archived;
       } else {
-        await api.post("/inventory", form);
+        await api.post("/inventory", fd);
       }
-      setShowForm(false);
+
+      closeForm();
       setSuccessMessage(
         archived
           ? t("itemArchivedSuccess").replace("{condition}", form.condition)
@@ -409,6 +494,7 @@ export default function InventoryView() {
                   <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("quantityColumn")}</th>
                   <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("storageLocationLabel")}</th>
                   <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("statusColumn")}</th>
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("notesLabel")}</th>
                   <th className="py-3 px-4 text-right text-[11px] font-bold uppercase tracking-wide text-white">{t("actionsColumn")}</th>
                 </tr>
               </thead>
@@ -417,8 +503,24 @@ export default function InventoryView() {
                   <tr key={item.id} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.05] transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#123A38] border border-white/10 text-[#7DD8CB]">
-                          <Package className="h-4 w-4" />
+                        <div className="relative shrink-0">
+                          <div className="h-9 w-9 rounded-full bg-[#123A38] border border-white/10 text-[#7DD8CB] overflow-hidden flex items-center justify-center">
+                            {item.photo_url ? (
+                              <img src={item.photo_url} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <Package className="h-4 w-4" />
+                            )}
+                          </div>
+                          {item.photo_url && (
+                            <button
+                              type="button"
+                              onClick={() => setViewingPhoto({ url: item.photo_url as string, name: item.name })}
+                              title={t("viewPhotoLabel")}
+                              className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-[#0A0E1A] border border-white/20 text-white/60 hover:text-[#7DD8CB] hover:border-[#4FBEB0]/50 flex items-center justify-center transition"
+                            >
+                              <Eye className="h-2.5 w-2.5" />
+                            </button>
+                          )}
                         </div>
                         <p className="font-semibold text-white truncate" title={item.name}>{item.name}</p>
                       </div>
@@ -446,6 +548,13 @@ export default function InventoryView() {
                         </span>
                       ) : item.borrowed_quantity > 0 ? (
                         <span className="px-2 py-1 rounded-full text-[11px] font-semibold border border-white/10 bg-white/[0.04] text-white/50 whitespace-nowrap">{t("onLoanBadge")}</span>
+                      ) : (
+                        <span className="text-white/25">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-white/50 max-w-[220px]">
+                      {item.notes ? (
+                        <span className="block truncate" title={item.notes}>{item.notes}</span>
                       ) : (
                         <span className="text-white/25">—</span>
                       )}
@@ -526,6 +635,54 @@ export default function InventoryView() {
             </div>
             <form onSubmit={handleFormSubmit} noValidate className="space-y-4">
               <div>
+                <label className="block text-sm font-medium text-white/80 mb-1.5">{t("photoRequiredLabel")}</label>
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoChange}
+                  className="hidden"
+                />
+                <div className="flex items-center gap-3">
+                  <div className="h-16 w-16 rounded-2xl bg-[#123A38] border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                    {photoPreview ? (
+                      <img src={photoPreview} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      <ImagePlus className="h-6 w-6 text-white/40" />
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => photoInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition"
+                    >
+                      {photoPreview ? t("replacePhotoLabel") : t("choosePhotoLabel")}
+                    </button>
+                    {photoPreview && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setViewingPhoto({ url: photoPreview, name: form.name || t("itemPhotoFallbackLabel") })}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-[#4FBEB0]/40 px-4 py-2 text-sm font-semibold text-[#7DD8CB] hover:bg-[#4FBEB0]/10 transition"
+                        >
+                          <Eye className="h-3.5 w-3.5" /> {t("viewPhotoLabel")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemovePhoto}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" /> {t("removeLabel")}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <p className="mt-1.5 text-xs text-white/40">JPG, PNG, GIF, or WEBP · Max 5 MB</p>
+              </div>
+
+              <div>
                 <label className="block text-sm font-medium text-white/80 mb-1">{t("itemNameRequired")}</label>
                 <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder="Plastic chairs" />
               </div>
@@ -579,7 +736,7 @@ export default function InventoryView() {
               <button
                 onClick={() => {
                   setShowFormCancelConfirm(false);
-                  setShowForm(false);
+                  closeForm();
                 }}
                 className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
               >
@@ -623,6 +780,39 @@ export default function InventoryView() {
         onCancel={() => setShowConfirm(false)}
         onConfirm={performSave}
       />
+
+      {/* Full-size photo viewer -- dark themed, matching the rest of the
+          app (same treatment as the Delete-confirm and Unsaved-changes
+          modals: bg-[#0A0E1A] card, white/10 border, teal accents). */}
+      {viewingPhoto && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] px-4" onClick={() => setViewingPhoto(null)}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] text-[11px] font-bold uppercase tracking-wide px-3 py-1 shrink-0">
+                  <Eye className="h-3 w-3" />
+                  {t("viewPhotoLabel")}
+                </span>
+                <span className="text-sm font-medium text-white truncate">{viewingPhoto.name}</span>
+              </div>
+              <button onClick={() => setViewingPhoto(null)} className="text-white/50 hover:text-white p-1 shrink-0">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
+              <img src={viewingPhoto.url} alt={viewingPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-2xl" />
+            </div>
+            <div className="px-5 py-4 border-t border-white/10 flex justify-end">
+              <button
+                onClick={() => setViewingPhoto(null)}
+                className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] text-sm font-bold transition"
+              >
+                {t("closeLabel")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

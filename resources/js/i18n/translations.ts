@@ -504,6 +504,12 @@ export const translations: Dict = {
   conditionRequired: { en: "Condition *", tl: "Kondisyon *", ceb: "Kondisyon *" },
   storageLocationLabel: { en: "Storage Location", tl: "Lokasyon ng Imbakan", ceb: "Lokasyon sa Gitipigan" },
   storageLocationPlaceholder: { en: "Barangay Hall storage room", tl: "Storage room ng Barangay Hall", ceb: "Storage room sa Barangay Hall" },
+  photoOptionalLabel: { en: "Photo (optional)", tl: "Larawan (opsyonal)", ceb: "Hulagway (opsyonal)" },
+  photoRequiredLabel: { en: "Photo *", tl: "Larawan *", ceb: "Hulagway *" },
+  choosePhotoLabel: { en: "Choose photo", tl: "Pumili ng larawan", ceb: "Pagpili og hulagway" },
+  replacePhotoLabel: { en: "Replace photo", tl: "Palitan ang larawan", ceb: "Ilisi ang hulagway" },
+  viewPhotoLabel: { en: "View photo", tl: "Tingnan ang larawan", ceb: "Tan-awa ang hulagway" },
+  itemPhotoFallbackLabel: { en: "Item photo", tl: "Larawan ng item", ceb: "Hulagway sa item" },
   notesLabel: { en: "Notes", tl: "Mga Tala", ceb: "Mga Nota" },
   receiptLabel: { en: "Receipt", tl: "Resibo", ceb: "Resibo" },
   attachReceiptLabel: { en: "Attach receipt", tl: "Mag-attach ng resibo", ceb: "Ipunit ang resibo" },
@@ -1031,6 +1037,7 @@ export const translations: Dict = {
   // own check (see noValidate on each form) and shows one of these
   // instead of that native bubble.
   itemNameRequiredError: { en: "Please enter an item name.", tl: "Maglagay ng pangalan ng item.", ceb: "Pagbutang og ngalan sa item." },
+  photoRequiredError: { en: "Please add a photo of the item.", tl: "Maglagay ng larawan ng item.", ceb: "Pagbutang og hulagway sa item." },
   invalidQuantityError: { en: "Quantity must be a whole number of 0 or more.", tl: "Ang dami ay dapat buong numero na 0 o higit pa.", ceb: "Ang kantidad kinahanglan usa ka tibuok numero nga 0 o mas taas." },
   bracketLabelRequiredError: { en: "Please enter a label for this age bracket.", tl: "Maglagay ng label para sa age bracket na ito.", ceb: "Pagbutang og label niini nga age bracket." },
   invalidMinAgeError: { en: "Minimum age must be a whole number of 0 or more.", tl: "Ang pinakamababang edad ay dapat buong numero na 0 o higit pa.", ceb: "Ang pinakaubos nga edad kinahanglan usa ka tibuok numero nga 0 o mas taas." },
