@@ -160,11 +160,16 @@ Route::middleware('auth')->group(function () {
     */
     Route::get('/events-data', [EventController::class, 'data']);
     Route::get('/events/overdue-borrows', [EventController::class, 'overdueBorrows']);
+    // Declared before the /events/{id} routes below (same reason as
+    // overdue-borrows above) so "borrowed-items" is never swallowed as an
+    // {id} value.
+    Route::get('/events/borrowed-items/releases/recent', [EventController::class, 'recentReleases']);
+    Route::post('/events/borrowed-items/releases/{releaseId}/undo', [EventController::class, 'undoRelease']);
     Route::post('/events', [EventController::class, 'store']);
     Route::put('/events/{id}', [EventController::class, 'update']);
     Route::delete('/events/{id}', [EventController::class, 'destroy']);  // Now soft deletes
     Route::get('/events/{id}', [EventController::class, 'show']);
-    
+
     // 🆕 SOFT DELETE ROUTES (ADDED)
     Route::post('/events/{id}/restore', [EventController::class, 'restore']);        // Restore soft-deleted event
     Route::post('/events/{id}/release-borrowed-items', [EventController::class, 'returnBorrowedItems']);
@@ -230,6 +235,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/reports/membership-summary', [ReportController::class, 'membershipSummary']);
     Route::get('/reports/budget-summary', [ReportController::class, 'budgetSummary']);
     Route::get('/reports/inventory-summary', [ReportController::class, 'inventorySummary']);
+    // Official-record downloads (always English -- see ReportController::buildExportPayload)
+    Route::get('/reports/export/pdf', [ReportController::class, 'exportPdf']);
+    Route::get('/reports/export/word', [ReportController::class, 'exportWord']);
 
     /*
     |--------------------------------------------------------------------------

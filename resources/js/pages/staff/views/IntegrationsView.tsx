@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink, XCircle, CheckCircle } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -105,7 +106,11 @@ export default function IntegrationsView() {
           </div>
 
           {loading ? (
-            <div className="mt-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+            <div className="mt-5 space-y-3">
+              <Skeleton dark={false} className="h-11 w-full rounded-full" />
+              <Skeleton dark={false} className="h-11 w-full rounded-full" />
+              <Skeleton dark={false} className="h-10 w-36 rounded-full" />
+            </div>
           ) : (
             <div className="mt-5">
               {status?.connected ? (
@@ -170,7 +175,7 @@ export default function IntegrationsView() {
 
       {error && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setError(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-red-500 flex justify-center"><XCircle size={40} /></div>
             <h3 className="text-xl font-bold text-red-600 mb-2">{t("errorTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{error}</p>
@@ -183,7 +188,7 @@ export default function IntegrationsView() {
 
       {success && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => setSuccess(null)}>
-          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-[#005f63] flex justify-center"><CheckCircle size={40} /></div>
             <h3 className="text-xl font-bold text-[#005f63] mb-2">{t("successTitle")}</h3>
             <p className="text-[15px] text-gray-600 mb-6">{success}</p>

@@ -12,6 +12,16 @@ html, body {
   color: #1A1A1A;
 }
 
+/* Defaults for the print-only "Page X of Y" footer's two words (see the
+   @page rule below). ReportsView.tsx overwrites these on <html> to match
+   whichever language is selected -- these English defaults are what a
+   print preview would show before that effect has run, or for any future
+   page that prints without setting them. */
+:root {
+  --print-page-word: "Page";
+  --print-of-word: "of";
+}
+
 /* Tailwind's Preflight resets font-family to `inherit` on <select>,
    <input>, <button>, <textarea> -- but it can't reach into a file input's
    native "Choose File" button, which lives in a browser shadow root
@@ -32,4 +42,65 @@ input[type="file"]::-webkit-file-upload-button {
    actually visible on the dark background. */
 input[type="password"]::-ms-reveal {
   filter: invert(1);
+}
+
+/* Browsers skip background colors/gradients when printing by default (an
+   ink-saving default called "Background graphics" in the print dialog),
+   which is why the Reports stat cards' sage/gold/teal/terracotta gradients
+   were coming out flat gray on a printed page even though every other
+   print: style worked fine. Forcing exact color adjustment app-wide makes
+   printed pages render backgrounds exactly as designed, without asking
+   every user to dig up their browser's "Background graphics" checkbox. */
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* The warm-paper canvas above (#F8F5EF) is a screen-only touch. Forcing
+     exact color adjustment for print (so the Reports gradients show up)
+     also means this app-wide background would otherwise print too --
+     filling the page, and any leftover forced-height space past the
+     content, with a beige wash instead of plain white paper. */
+  html, body {
+    background-color: #fff !important;
+  }
+
+  /* A bordered/rounded card that's too tall to fit the rest of a page
+     still has to break somewhere, even with break-inside-avoid on it and
+     on each item inside it (that only protects individual pieces, not an
+     overall section once it's genuinely longer than one page). Left alone,
+     the browser's default box-decoration-break: slice treats a split box
+     as one shape sliced in two -- so the fragment on the first page has no
+     bottom border/rounded corner, and the one that continues on the next
+     page has no top border/rounded corner, reading as an "open" cut. Clone
+     gives EVERY fragment its own complete border and rounded corners, so
+     a page break always lands on a closed-off box rather than an open one.
+     Reports is the only screen that prints, so scoping this to the border
+     radii its cards use is safe app-wide. */
+  .rounded-\[30px\],
+  .rounded-2xl,
+  .rounded-xl {
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+}
+
+/* "Page X of Y" printed on every physical sheet, in the page's own bottom
+   margin (not part of the report content, so it never collides with a
+   card or gets caught by a break-inside-avoid rule). This is the browser's
+   native CSS Paged Media margin-box feature -- no PDF library, no JS
+   pagination polyfill, just an @page rule, consistent with the rest of
+   this app's printing being plain window.print(). Reports is the only
+   screen that calls window.print(), so this is scoped safely at the
+   stylesheet root without needing a page-specific class. */
+@page {
+  margin: 14mm 12mm 18mm 12mm;
+  @bottom-right {
+    content: var(--print-page-word) " " counter(page) " " var(--print-of-word) " " counter(pages);
+    font-family: "Public Sans", sans-serif;
+    font-size: 9px;
+    color: #667777;
+  }
 }

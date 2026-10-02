@@ -20,6 +20,7 @@ import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -253,6 +254,18 @@ export default function ResidentsView() {
   // Categories / Archive pages.
   const [membershipFilter, setMembershipFilter] = useState<"all" | "members" | "not-members">("all");
   const [currentPage, setCurrentPage] = useState(1);
+  // Brief skeleton flash on every page switch, same as Activity Logs --
+  // this list paginates client-side so there's nothing to actually wait
+  // on, but the flash keeps page switches feeling consistent app-wide.
+  const [pageSwitching, setPageSwitching] = useState(false);
+  const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPage = (updater: number | ((p: number) => number)) => {
+    setCurrentPage(updater as any);
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   // High enough that every real barangay resident list renders on one
   // page -- the table itself scrolls, so there's no real ceiling here.
   const itemsPerPage = 5000;
@@ -1343,10 +1356,22 @@ const handleDeleteResident = async () => {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="py-8 text-center text-white/40 italic">{t("loading")}</td>
-                </tr>
+              {loading || pageSwitching ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i} className="border-b border-white/5">
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+                        <Skeleton className="h-3.5 w-32" />
+                      </div>
+                    </td>
+                    <td className="py-3 px-4"><Skeleton className="h-3.5 w-10" /></td>
+                    <td className="py-3 px-4"><Skeleton className="h-3.5 w-24" /></td>
+                    <td className="py-3 px-4"><Skeleton className="h-3.5 w-28" /></td>
+                    <td className="py-3 px-4"><Skeleton className="h-5 w-20 rounded-full" /></td>
+                    <td className="py-3 px-4" />
+                  </tr>
+                ))
               ) : paginatedResidents.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-8 text-center text-white/40 italic">{t("noRecordsMatchFilter")}</td>
@@ -1398,7 +1423,7 @@ const handleDeleteResident = async () => {
         {totalPages > 1 && (
           <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/10">
             <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              onClick={() => goToPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
             >
@@ -1408,7 +1433,7 @@ const handleDeleteResident = async () => {
               {currentPage}
             </span>
             <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
             >
@@ -1573,7 +1598,17 @@ const handleDeleteResident = async () => {
                     Attendance History
                   </h2>
                   {attendanceLoading ? (
-                    <p className="text-sm text-white/40 italic">{t("loading")}</p>
+                    <div className="space-y-2">
+                      {Array.from({ length: 3 }).map((_, i) => (
+                        <div key={i} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <Skeleton className="h-3.5 w-32" />
+                            <Skeleton className="h-3 w-20" />
+                          </div>
+                          <Skeleton className="h-5 w-16 rounded-full shrink-0" />
+                        </div>
+                      ))}
+                    </div>
                   ) : attendanceHistory.length === 0 ? (
                     <p className="text-sm text-white/40 italic">No attendance recorded yet.</p>
                   ) : (
@@ -2342,7 +2377,7 @@ const handleDeleteResident = async () => {
           onClick={() => !addHouseholdSaving && setShowAddHousehold(false)}
         >
           <div
-            className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl"
+            className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-1">
@@ -2411,7 +2446,7 @@ const handleDeleteResident = async () => {
 
       {deleteRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
              <div className="mb-4 text-red-400 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
             <p className="text-[15px] text-white/50 mb-5">{t("moveToTrashConfirm")}</p>
@@ -2443,7 +2478,7 @@ const handleDeleteResident = async () => {
       {/* ─── Cancel Unsaved Changes Confirm Modal ─────────────────────────────── */}
       {showCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>

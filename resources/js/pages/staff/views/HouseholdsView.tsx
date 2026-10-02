@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, AlertCircle, AlertTriangle, ChevronDown, Search } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -287,8 +288,16 @@ export default function HouseholdsView() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4FBEB0]" />
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 flex items-center gap-4">
+              <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : households.length === 0 ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
@@ -471,7 +480,7 @@ export default function HouseholdsView() {
           <form
             onSubmit={submitEdit}
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-lg p-8 shadow-2xl space-y-5"
+            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-lg p-8 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto"
           >
             <h3 className="text-2xl font-bold text-white">{t("editHouseholdLabel")} -- {editRecord.code}</h3>
             <input
@@ -506,7 +515,7 @@ export default function HouseholdsView() {
       {/* Unsaved-changes guard for the Edit Household modal */}
       {showEditCancelConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
@@ -552,7 +561,7 @@ export default function HouseholdsView() {
       {/* Delete confirm modal */}
       {deleteRecord && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
             <p className="text-[15px] text-white/50 mb-5">{t("deleteHouseholdConfirm")}</p>

@@ -5,6 +5,7 @@ import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
 
 interface DashboardViewProps {
   setActive: (route: string) => void;
@@ -212,21 +213,30 @@ export default function DashboardView({
     loadDashboard();
   }, [eventsCount]); // ✅ Re-run when eventsCount changes (e.g., after event deletion)
 
-  // Keeps the "Today's Live Snapshot" panel actually live: the clock ticks
-  // every second, and the two data points it summarizes (today's activity
-  // log and overdue borrows) are silently re-fetched every 30s so the
-  // numbers move on their own without a manual page refresh.
+  // Keeps the *whole* Dashboard live, not just the "Today's Live Snapshot"
+  // panel: the clock ticks every second, and every data feed the page shows --
+  // today's activity log, overdue borrows, the headline stat cards
+  // (residents/memberships/events) and the quarterly budget summary -- is
+  // silently re-fetched every 30s, so every number on the page moves on its
+  // own without a manual page refresh or navigating away and back.
   useEffect(() => {
     const clockTimer = setInterval(() => setCurrentTime(new Date()), 1000);
     const dataTimer = setInterval(async () => {
-      await Promise.all([fetchRecentActivities(), fetchOverdueBorrows()]);
+      await Promise.all([
+        fetchRecentActivities(),
+        fetchOverdueBorrows(),
+        fetchAllStats(),
+        fetchBudgetSummary(),
+      ]);
       setLastSyncedAt(new Date());
     }, 30000);
     return () => {
       clearInterval(clockTimer);
       clearInterval(dataTimer);
     };
-  }, []);
+    // Re-armed when eventsCount changes so fetchAllStats' closure never polls
+    // with a stale eventsCount value (e.g. right after an event is deleted).
+  }, [eventsCount]);
 
   // Download itself is unchanged -- only wrapped with a confirm step before
   // it runs and a success popup once the file has actually been written,
@@ -317,9 +327,36 @@ export default function DashboardView({
   ];
 
   if (loading) {
+    // Skeleton shaped like the real page below -- hero (avatar + two text
+    // lines, two action cards) then the 4-card stat strip -- instead of a
+    // bare spinner, so the page's actual layout is visible immediately and
+    // nothing jumps around once the real numbers arrive.
     return (
-      <div className="-m-3 sm:-m-6 flex h-[calc(100vh-73px)] items-center justify-center bg-[#0A0E1A]">
-        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-[#4FBEB0]"></div>
+      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] px-6 py-10 sm:px-10 sm:py-14">
+        <div className="w-full space-y-10">
+          <div className="relative flex flex-col gap-6 py-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-5">
+              <Skeleton className="h-16 w-16 shrink-0 rounded-full" />
+              <div className="space-y-2.5">
+                <Skeleton className="h-7 w-56" />
+                <Skeleton className="h-4 w-72" />
+              </div>
+            </div>
+            <div className="flex w-full flex-col gap-4 sm:flex-row lg:w-auto">
+              <Skeleton className="h-[76px] flex-1 rounded-2xl lg:w-72" />
+              <Skeleton className="h-[76px] flex-1 rounded-2xl lg:w-72" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-2xl" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Skeleton className="h-72 rounded-2xl" />
+            <Skeleton className="h-72 rounded-2xl" />
+          </div>
+        </div>
       </div>
     );
   }

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Search, ChevronDown, Plus } from "lucide-react";
 
 export interface SearchableSelectOption {
@@ -45,6 +46,15 @@ export default function SearchableSelect({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  // Portaled to document.body and positioned with `position: fixed` from
+  // the trigger's own getBoundingClientRect (same fix as FilterDropdown,
+  // DatePicker and TimePicker), instead of a plain `absolute` panel living
+  // inside the trigger's own DOM subtree. A plain absolute panel gets
+  // silently clipped by any scrollable/overflow-y-auto ancestor -- exactly
+  // what a tall Add/Edit form modal is, which is where this component is
+  // used most (picking a household/resident/item from a long list).
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -60,9 +70,43 @@ export default function SearchableSelect({
     setHighlightedIndex(0);
   }, [query, isOpen]);
 
+  useLayoutEffect(() => {
+    if (!isOpen || !containerRef.current) return;
+
+    const recompute = () => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const margin = 8;
+      const panelHeightEstimate = Math.min(filtered.length * 36 + 16, 272);
+
+      const openUp = rect.bottom + panelHeightEstimate > window.innerHeight && rect.top > panelHeightEstimate;
+      const top = openUp ? rect.top - panelHeightEstimate - 6 : rect.bottom + 6;
+
+      let left = rect.left;
+      if (left + rect.width + margin > window.innerWidth) {
+        left = window.innerWidth - margin - rect.width;
+      }
+      if (left < margin) left = margin;
+
+      setPanelPos({ top, left, width: rect.width });
+    };
+
+    recompute();
+    window.addEventListener("resize", recompute);
+    window.addEventListener("scroll", recompute, true);
+    return () => {
+      window.removeEventListener("resize", recompute);
+      window.removeEventListener("scroll", recompute, true);
+    };
+  }, [isOpen, filtered.length]);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        panelRef.current && !panelRef.current.contains(target)
+      ) {
         setIsOpen(false);
       }
     };
@@ -127,55 +171,59 @@ export default function SearchableSelect({
         <ChevronDown className={`pointer-events-none absolute top-1/2 -translate-y-1/2 transition-transform ${dark ? "right-4 h-5 w-5 text-white/50" : "right-3.5 h-4 w-4 text-gray-400"} ${isOpen ? "rotate-180" : ""}`} />
       </div>
 
-      {isOpen && !disabled && (
-        <div
-          className={`absolute z-20 mt-1.5 w-full max-h-64 overflow-y-auto rounded-2xl border shadow-lg py-1.5 ${
-            dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-gray-200 bg-white"
-          }`}
-        >
-          {filtered.length === 0 ? (
-            <p className={`px-4 py-2.5 text-sm italic ${dark ? "text-white/40" : "text-gray-400"}`}>{noResultsLabel}</p>
-          ) : (
-            filtered.map((opt, i) => (
+      {isOpen && !disabled && panelPos &&
+        createPortal(
+          <div
+            ref={panelRef}
+            style={{ position: "fixed", top: panelPos.top, left: panelPos.left, width: panelPos.width }}
+            className={`z-[9999] max-h-64 overflow-y-auto rounded-2xl border shadow-lg py-1.5 ${
+              dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-gray-200 bg-white"
+            }`}
+          >
+            {filtered.length === 0 ? (
+              <p className={`px-4 py-2.5 text-sm italic ${dark ? "text-white/40" : "text-gray-400"}`}>{noResultsLabel}</p>
+            ) : (
+              filtered.map((opt, i) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => choose(opt)}
+                  onMouseEnter={() => setHighlightedIndex(i)}
+                  className={`block w-full text-left px-4 py-2 text-sm truncate ${
+                    dark
+                      ? i === highlightedIndex
+                        ? "bg-[#4FBEB0]/10 text-[#7DD8CB]"
+                        : "text-white"
+                      : i === highlightedIndex
+                        ? "bg-teal-50 text-[#005f63]"
+                        : "text-gray-700"
+                  }`}
+                >
+                  {opt.label}
+                  {opt.hint && <span className={`ml-1.5 text-xs ${dark ? "text-white/40" : "text-gray-400"}`}>{opt.hint}</span>}
+                </button>
+              ))
+            )}
+            {onFooterClick && (
               <button
-                key={opt.value}
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={() => choose(opt)}
-                onMouseEnter={() => setHighlightedIndex(i)}
-                className={`block w-full text-left px-4 py-2 text-sm truncate ${
-                  dark
-                    ? i === highlightedIndex
-                      ? "bg-[#4FBEB0]/10 text-[#7DD8CB]"
-                      : "text-white"
-                    : i === highlightedIndex
-                      ? "bg-teal-50 text-[#005f63]"
-                      : "text-gray-700"
+                onClick={() => {
+                  setIsOpen(false);
+                  inputRef.current?.blur();
+                  onFooterClick();
+                }}
+                className={`mt-1 flex w-full items-center gap-1.5 border-t px-4 py-2.5 text-left text-sm font-semibold ${
+                  dark ? "border-white/10 text-[#7DD8CB] hover:bg-white/10" : "border-gray-100 text-[#005f63] hover:bg-teal-50"
                 }`}
               >
-                {opt.label}
-                {opt.hint && <span className={`ml-1.5 text-xs ${dark ? "text-white/40" : "text-gray-400"}`}>{opt.hint}</span>}
+                <Plus className="h-3.5 w-3.5" /> {footerLabel ?? "Add new"}
               </button>
-            ))
-          )}
-          {onFooterClick && (
-            <button
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                setIsOpen(false);
-                inputRef.current?.blur();
-                onFooterClick();
-              }}
-              className={`mt-1 flex w-full items-center gap-1.5 border-t px-4 py-2.5 text-left text-sm font-semibold ${
-                dark ? "border-white/10 text-[#7DD8CB] hover:bg-white/10" : "border-gray-100 text-[#005f63] hover:bg-teal-50"
-              }`}
-            >
-              <Plus className="h-3.5 w-3.5" /> {footerLabel ?? "Add new"}
-            </button>
-          )}
-        </div>
-      )}
+            )}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

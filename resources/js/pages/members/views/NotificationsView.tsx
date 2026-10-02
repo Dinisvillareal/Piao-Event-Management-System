@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import { Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, AlertTriangle, Filter } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
 
 
 interface Notification {
@@ -43,6 +44,18 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
    const [showCancelledModal, setShowCancelledModal] = useState(false);
    const [currentPage, setCurrentPage] = useState(1);
+   // Brief skeleton flash on every page switch, same as Activity Logs --
+   // this list paginates client-side so there's nothing to actually wait
+   // on, but the flash keeps page switches feeling consistent app-wide.
+   const [pageSwitching, setPageSwitching] = useState(false);
+   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+   const goToPage = (updater: number | ((p: number) => number)) => {
+       setCurrentPage(updater as any);
+       setPageSwitching(true);
+       if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+       pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+   };
+   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
    const itemsPerPage = 10;
 
 
@@ -278,8 +291,17 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
    if (loading) {
        return (
-           <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] flex justify-center items-center h-64">
-               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#4FBEB0]"></div>
+           <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 space-y-6">
+               <div className="space-y-2">
+                   <Skeleton className="h-8 w-56" />
+                   <Skeleton className="h-4 w-64" />
+               </div>
+               <Skeleton className="h-11 w-full rounded-xl" />
+               <div className="space-y-3">
+                   {Array.from({ length: 4 }).map((_, i) => (
+                       <Skeleton key={i} className="h-20 rounded-2xl sm:rounded-3xl" />
+                   ))}
+               </div>
            </div>
        );
    }
@@ -360,7 +382,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                    {totalPages > 1 && (
                        <div className="flex items-center gap-2">
                            <button
-                               onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                               onClick={() => goToPage(p => Math.max(1, p - 1))}
                                disabled={currentPage === 1}
                                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                            >
@@ -372,7 +394,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                            </span>
 
                            <button
-                               onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                               onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
                                disabled={currentPage === totalPages}
                                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                            >
@@ -386,7 +408,13 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
            {/* Scrollable Content Area - Only notifications scroll */}
            <div className="flex-1 overflow-y-auto px-1 sm:px-2 pb-4">
-               {filteredNotifications.length === 0 ? (
+               {pageSwitching ? (
+                   <div className="space-y-3">
+                       {Array.from({ length: 4 }).map((_, i) => (
+                           <Skeleton key={i} className="h-20 rounded-2xl sm:rounded-3xl" />
+                       ))}
+                   </div>
+               ) : filteredNotifications.length === 0 ? (
                    <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.02] p-10 text-center text-white/40">
                        <Bell size={40} className="mx-auto mb-3 text-white/20" />
                        <p>{t("noNotificationsMatch")}</p>
@@ -470,17 +498,19 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
            </div>
 
 
-           {/* Notification Detail Modal — with same styling as NotificationView */}
+           {/* Notification Detail Modal — dark navy card matching the rest of
+               the app's popups (StatusModal / ConfirmDialog) instead of the
+               white card this used to be. */}
            {selectedNotification && selectedNotification.event && !selectedNotification.event.deleted_at && (
                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                   <div className="bg-white rounded-3xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl transform transition-all">
-                       <div className="sticky top-0 bg-white px-6 py-4 border-b border-gray-100 flex items-center justify-between rounded-t-3xl z-10">
-                           <h3 className="text-lg font-bold text-[#005f63]">{t("notificationDetails")}</h3>
+                   <div className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl transform transition-all">
+                       <div className="sticky top-0 bg-[#0A0E1A] px-6 py-4 border-b border-white/10 flex items-center justify-between rounded-t-3xl z-10">
+                           <h3 className="text-lg font-bold text-white">{t("notificationDetails")}</h3>
                            <button
                                onClick={closeModal}
-                               className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                               className="p-2 rounded-full hover:bg-white/10 transition-colors"
                            >
-                               <X size={18} className="text-gray-500" />
+                               <X size={18} className="text-white/50" />
                            </button>
                        </div>
 
@@ -488,10 +518,10 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                        <div className="px-6 py-5 space-y-4">
                            {/* Staff and Sent Info */}
                            <div className="flex items-center justify-between w-full">
-                               <span className="text-sm text-gray-800">
+                               <span className="text-sm text-white/70">
                                    {parseMessage(selectedNotification.message).staffName || t("barangayStaffFallback")}
                                </span>
-                               <div className="flex items-center gap-2 text-gray-600">
+                               <div className="flex items-center gap-2 text-white/50">
                                    <Send size={16} />
                                    <span className="text-sm">{formatDateModal(selectedNotification.created_at)}</span>
                                </div>
@@ -500,31 +530,31 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
                            {/* Event Details - Date, Time, Location, and Description */}
                            {selectedNotification.event && (
-                               <div className="space-y-3 pt-2 border-t border-gray-100">
+                               <div className="space-y-3 pt-2 border-t border-white/10">
                                    {/* Date */}
-                                   <div className="flex items-start gap-3 text-gray-700">
-                                       <Calendar size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
+                                   <div className="flex items-start gap-3 text-white/70">
+                                       <Calendar size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
                                        <div className="text-sm">
-                                           <span className="font-medium">{t("dateColon")}</span>{' '}
+                                           <span className="font-medium text-white">{t("dateColon")}</span>{' '}
                                            <span>{formatEventDate(selectedNotification.event.event_start)}</span>
                                        </div>
                                    </div>
 
                                    {/* Time */}
-                                   <div className="flex items-start gap-3 text-gray-700">
-                                       <Clock size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
+                                   <div className="flex items-start gap-3 text-white/70">
+                                       <Clock size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
                                        <div className="text-sm">
-                                           <span className="font-medium">{t("timeColon")}</span>{' '}
+                                           <span className="font-medium text-white">{t("timeColon")}</span>{' '}
                                            <span>{formatEventTime(selectedNotification.event.event_start)}</span>
                                        </div>
                                    </div>
 
                                    {/* Location */}
                                    {selectedNotification.event.location && (
-                                       <div className="flex items-start gap-3 text-gray-700">
-                                           <MapPin size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
+                                       <div className="flex items-start gap-3 text-white/70">
+                                           <MapPin size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
                                            <div className="text-sm">
-                                               <span className="font-medium">{t("locationColon")}</span>{' '}
+                                               <span className="font-medium text-white">{t("locationColon")}</span>{' '}
                                                <span>{selectedNotification.event.location}</span>
                                            </div>
                                        </div>
@@ -532,11 +562,11 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
                                    {/* Event Description */}
                                    {selectedNotification.event.description && (
-                                       <div className="flex items-start gap-3 text-gray-700">
-                                           <FileText size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
+                                       <div className="flex items-start gap-3 text-white/70">
+                                           <FileText size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
                                            <div className="text-sm">
-                                               <span className="font-medium">{t("eventDetailsColon")}</span>
-                                               <p className="text-gray-600 mt-1">{selectedNotification.event.description}</p>
+                                               <span className="font-medium text-white">{t("eventDetailsColon")}</span>
+                                               <p className="text-white/50 mt-1">{selectedNotification.event.description}</p>
                                            </div>
                                        </div>
                                    )}
@@ -545,12 +575,12 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
 
                            {/* Message Content */}
-                           <div className="space-y-2 pt-2 border-t border-gray-100">
-                               <div className="flex items-start gap-3 text-gray-700">
-                                   <MessageSquare size={16} className="text-[#005f63] mt-0.5 flex-shrink-0" />
+                           <div className="space-y-2 pt-2 border-t border-white/10">
+                               <div className="flex items-start gap-3 text-white/70">
+                                   <MessageSquare size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
                                    <div className="text-sm">
-                                       <span className="font-medium">{t("messageColon")}</span>
-                                       <p className="text-gray-700 mt-1">
+                                       <span className="font-medium text-white">{t("messageColon")}</span>
+                                       <p className="text-white/70 mt-1">
                                            {parseMessage(selectedNotification.message).actualMessage || selectedNotification.message}
                                        </p>
                                    </div>

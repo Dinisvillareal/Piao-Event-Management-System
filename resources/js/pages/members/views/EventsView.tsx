@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Filter, Star, Pencil, CheckCircle } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import api, { apiErrorMessage } from "../../../lib/api";
 
@@ -54,6 +55,18 @@ export default function EventsView({
   const [eventFilter, setEventFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
+  // Brief skeleton flash on every page switch, same as Activity Logs --
+  // this list paginates client-side so there's nothing to actually wait
+  // on, but the flash keeps page switches feeling consistent app-wide.
+  const [pageSwitching, setPageSwitching] = useState(false);
+  const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPage = (updater: number | ((p: number) => number)) => {
+    setCurrentPage(updater as any);
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const itemsPerPage = 6;
 
   // ─── Reviews module (Past events only) ───────────────────────────────────
@@ -309,9 +322,13 @@ export default function EventsView({
                   { value: "all", label: t("allMembershipsOption") },
                   ...userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
                 ]}
-                className="h-11 pl-10 pr-8 shrink-0"
+                className="h-11 min-w-[220px] pl-10 pr-8 shrink-0"
+                panelWidthPx={280}
                 icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
                 dark
+                searchable
+                searchPlaceholder={t("search")}
+                noResultsLabel={t("noMatchesFoundLabel")}
               />
             </div>
           </div>
@@ -325,7 +342,7 @@ export default function EventsView({
             <div className="flex justify-end mt-4">
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  onClick={() => goToPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
@@ -337,7 +354,7 @@ export default function EventsView({
                 </span>
 
                 <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
@@ -350,7 +367,17 @@ export default function EventsView({
       </div>
 
       <div className="pl-1">
-        {filteredEvents.length === 0 ? (
+        {pageSwitching ? (
+          <div className="grid gap-5 md:grid-cols-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-3 w-1/3" />
+              </div>
+            ))}
+          </div>
+        ) : filteredEvents.length === 0 ? (
           <p className="text-white/40 italic">{t("noEventsMatch")}</p>
         ) : (
           <div className="space-y-8">

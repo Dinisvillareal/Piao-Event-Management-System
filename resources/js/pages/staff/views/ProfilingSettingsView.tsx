@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Users2, Heart, Tag, Plus, Pencil, Trash2 } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 /**
@@ -396,7 +397,11 @@ export default function ProfilingSettingsView() {
           </div>
 
           {loading ? (
-            <div className="mt-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+            <div className="mt-5 space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton dark={false} key={i} className="h-[52px] rounded-2xl" />
+              ))}
+            </div>
           ) : (
             <div className="mt-5 space-y-2">
               {ageBrackets.map((b) => (
@@ -491,7 +496,11 @@ export default function ProfilingSettingsView() {
           </div>
 
           {loading ? (
-            <div className="mt-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+            <div className="mt-5 space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton dark={false} key={i} className="h-[52px] rounded-2xl" />
+              ))}
+            </div>
           ) : (
             <div className="mt-5 space-y-2">
               {civilStatuses.map((s) => (
@@ -566,7 +575,11 @@ export default function ProfilingSettingsView() {
           </div>
 
           {loading ? (
-            <div className="mt-6 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div></div>
+            <div className="mt-5 space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton dark={false} key={i} className="h-[52px] rounded-2xl" />
+              ))}
+            </div>
           ) : (
             <div className="mt-5 space-y-2">
               {currentStatuses.map((s) => (
@@ -664,7 +677,7 @@ export default function ProfilingSettingsView() {
 
       {pendingDelete && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
             <p className="text-[15px] text-white/50 mb-5">{t("moveToTrashConfirm")}</p>

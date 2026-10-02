@@ -37,6 +37,7 @@ import ReactDOM from "react-dom/client";
 import MemberDashboard from "./pages/members/Members";
 import StaffDashboard from "./pages/staff/Staff";
 import LoginPage from "./pages/login/Login";
+import SplashScreen from "./components/ui/SplashScreen";
 import { LanguageProvider } from "./i18n/LanguageContext";
 
 const rootElement = document.getElementById("app");
@@ -99,6 +100,39 @@ export default function App() {
 
   const [loading, setLoading] = useState(true);
   const authCalledRef = useRef(false);
+
+  // Branded splash, shown for every full page load/refresh of the app
+  // (login, staff dashboard, member dashboard -- wherever the browser
+  // reloads) while the auth check above is in flight, instead of just a
+  // blank navy screen. Two-stage like Login.tsx's own portal-transition
+  // splash: `splashVisible` drives the fade, `splashMounted` keeps the
+  // overlay in the DOM a little longer so the 700ms fade-out actually gets
+  // to play over the real page (which is already mounted underneath by the
+  // time it starts) instead of vanishing instantly.
+  //
+  // The splash's own build-in animation (logo assembling, then three lines
+  // of text staggering in) takes about 1.55s to finish playing -- see
+  // SplashScreen.tsx's keyframes. `loading` can resolve much faster than
+  // that (an unauthenticated visit skips the `/me` network call entirely),
+  // so the fade is never started before MIN_SPLASH_MS has actually elapsed
+  // since the splash first appeared, however quickly `loading` itself
+  // settles. The auth check can still take *longer* than that with no
+  // issue -- the splash simply keeps showing until it's done either way.
+  const MIN_SPLASH_MS = 1800;
+  const [splashVisible, setSplashVisible] = useState(true);
+  const [splashMounted, setSplashMounted] = useState(true);
+  const splashStartRef = useRef(Date.now());
+
+  useEffect(() => {
+    if (loading) return;
+    const remaining = Math.max(0, MIN_SPLASH_MS - (Date.now() - splashStartRef.current));
+    const startFade = setTimeout(() => setSplashVisible(false), remaining);
+    const unmount = setTimeout(() => setSplashMounted(false), remaining + 700);
+    return () => {
+      clearTimeout(startFade);
+      clearTimeout(unmount);
+    };
+  }, [loading]);
 
   const checkAuth = useCallback(async () => {
     if (authCalledRef.current) return;
@@ -194,34 +228,37 @@ export default function App() {
     }
   }, [loading, userRole, portalMode]);
 
-  // ── Loading ────────────────────────────────────────────────────────────
+  // ── Decide what's underneath the splash ───────────────────────────────────
   // Auth check happens on every full page load (including right after the
   // staff/member portal transition redirects here, right after the dark
-  // branded splash screen). Keep this the same dark background so there is
-  // no white/paper-colored flash in between -- no spinner, no visible UI,
-  // just a hold on the same color already on screen.
-  if (loading) {
-    return <div style={{ position: "fixed", inset: 0, background: "#0A0E1A" }} />;
+  // branded splash screen). While it's in flight there's nothing to decide
+  // yet, so the splash overlay below is the only thing on screen; once it
+  // resolves, the real page underneath is already mounted and ready by the
+  // time the splash finishes fading out.
+  let content: React.ReactNode = null;
+  if (!loading) {
+    if (!userRole) {
+      // ── Not authenticated → Login ──────────────────────────────────────
+      content = <LoginPage />;
+    } else if (userRole !== "Staff") {
+      // ── Non-staff users always see the Member dashboard ────────────────
+      content = <MemberDashboard />;
+    } else if (portalMode === "member") {
+      // ── Staff: route based on persisted portalMode, not the URL ────────
+      // If a Staff member chose "Member Portal" from the login modal,
+      // portalMode will be "member" and will remain "member" across
+      // refreshes until they explicitly switch back or log out.
+      content = <MemberDashboard />;
+    } else {
+      // Default for Staff: Staff dashboard.
+      content = <StaffDashboard />;
+    }
   }
 
-  // ── Not authenticated → Login ────────────────────────────────────────────
-  if (!userRole) {
-    return <LoginPage />;
-  }
-
-  // ── Non-staff users always see the Member dashboard ──────────────────────
-  if (userRole !== "Staff") {
-    return <MemberDashboard />;
-  }
-
-  // ── Staff: route based on persisted portalMode, not the URL ──────────────
-  // If a Staff member chose "Member Portal" from the login modal, portalMode
-  // will be "member" and will remain "member" across refreshes until they
-  // explicitly switch back or log out.
-  if (portalMode === "member") {
-    return <MemberDashboard />;
-  }
-
-  // Default for Staff: Staff dashboard.
-  return <StaffDashboard />;
+  return (
+    <>
+      {content}
+      {splashMounted && <SplashScreen visible={splashVisible} />}
+    </>
+  );
 }

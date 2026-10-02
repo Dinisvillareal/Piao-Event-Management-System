@@ -19,7 +19,7 @@ export default function TopHeader({ memberName, role, onMenuClick, userId }: Top
     .join("") || "S";
 
   return (
-    <div className="flex items-center justify-between border-b border-white/10 bg-[#0A0E1A] px-3 sm:px-6 py-3 sm:py-4 gap-2">
+    <div className="print:hidden flex items-center justify-between border-b border-white/10 bg-[#0A0E1A] px-3 sm:px-6 py-3 sm:py-4 gap-2">
       <div className="flex items-center gap-2 min-w-0">
         <button onClick={onMenuClick} className="md:hidden shrink-0 text-white/60 p-1 -ml-1">
           <Menu className="h-5 w-5" />

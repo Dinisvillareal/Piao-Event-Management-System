@@ -262,7 +262,7 @@ export default function StaffDashboard() {
     : staff.name;
 
   return (
-    <div className="flex min-h-screen bg-white text-gray-900">
+    <div className="flex min-h-screen bg-white text-gray-900 print:min-h-0">
       <Sidebar
         active={active}
         setActive={setActive}
@@ -279,7 +279,7 @@ export default function StaffDashboard() {
         />
         <OfflineBanner />
 
-        <div className="h-[calc(100vh-73px)] overflow-y-auto p-3 sm:p-6 smooth-scroll">
+        <div className="h-[calc(100vh-73px)] overflow-y-auto p-3 sm:p-6 smooth-scroll print:h-auto print:overflow-visible print:p-0">
           {active === "dashboard" && (
             <DashboardView
               membershipsCount={membershipOptions.length}
@@ -293,9 +293,9 @@ export default function StaffDashboard() {
           {active === "residents" && <ResidentsView />}
           {active === "households" && <HouseholdsView />}
           {active === "memberships" && <QRCodesView highlightText={highlightText} />}
-          {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} />}
+          {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} loading={loadingEvents} />}
           {active === "notify" && <NotificationsView memberships={membershipOptions} highlightText={highlightText} />}
-          {active === "reports" && <ReportsView memberships={membershipOptions} />}
+          {active === "reports" && <ReportsView memberships={membershipOptions} events={allEvents} />}
           {active === "inventory" && <InventoryView />}
           {active === "returns" && <ReturnsView />}
           {active === "budget" && <BudgetView allEvents={allEvents} />}

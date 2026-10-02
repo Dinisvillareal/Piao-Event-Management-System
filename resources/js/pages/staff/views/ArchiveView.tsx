@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RefreshCw, Filter, Search, Trash2, Layers, Clock, AlertTriangle } from 'lucide-react';
 import FilterDropdown from '../../../components/ui/FilterDropdown';
 import StatusModal from '../../../components/ui/StatusModal';
@@ -53,6 +53,18 @@ export default function ArchiveView() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [currentPage, setCurrentPage] = useState(1);
+  // Brief skeleton flash on every page switch, same as Activity Logs --
+  // this list paginates client-side so there's nothing to actually wait
+  // on, but the flash keeps page switches feeling consistent app-wide.
+  const [pageSwitching, setPageSwitching] = useState(false);
+  const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPage = (updater: number | ((p: number) => number)) => {
+    setCurrentPage(updater as any);
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const itemsPerPage = 20;
 
   // State for modals
@@ -405,7 +417,7 @@ export default function ArchiveView() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {loading || pageSwitching ? (
                   Array(8).fill(0).map((_, i) => <SkeletonRow key={i} />)
                 ) : (
                   paginatedItems.map((item, index) => (
@@ -448,7 +460,7 @@ export default function ArchiveView() {
           </p>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              onClick={() => goToPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >←</button>
@@ -456,7 +468,7 @@ export default function ArchiveView() {
               {currentPage}
             </span>
             <button
-              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >→</button>
@@ -471,7 +483,7 @@ export default function ArchiveView() {
           positive/undo action here, not the app's usual save/delete. */}
       {restoreItem && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center">
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="flex justify-center text-sage-400 mb-3"><RefreshCw size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("restoreItemModalTitle")}</h3>
             <p className="text-white/50 mb-5">

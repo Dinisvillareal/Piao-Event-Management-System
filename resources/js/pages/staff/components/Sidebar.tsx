@@ -194,11 +194,11 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   return (
     <>
       {mobileOpen && (
-        <div className="fixed inset-0 bg-black/40 z-30 md:hidden" onClick={onCloseMobile} />
+        <div className="print:hidden fixed inset-0 bg-black/40 z-30 md:hidden" onClick={onCloseMobile} />
       )}
 
       <aside
-        className={`w-[340px] flex-col bg-[#0A0E1A] h-screen fixed md:sticky top-0 z-40 flex overflow-hidden ${
+        className={`print:hidden w-[340px] flex-col bg-[#0A0E1A] h-screen fixed md:sticky top-0 z-40 flex overflow-hidden ${
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >

@@ -34,6 +34,8 @@ export const translations: Dict = {
   returnsSubtitle: { en: "Ended events that are still holding borrowed inventory -- release what they no longer need.", tl: "Mga tapos nang kaganapan na may hawak pa ring hiniram na imbentaryo -- ibalik ang mga hindi na nila kailangan.", ceb: "Mga nahuman nga kalihokan nga naa pay gihuwam nga imbentaryo -- ibalik ang dili na nila kinahanglan." },
   noOverdueReturns: { en: "Nothing to return", tl: "Walang dapat ibalik", ceb: "Walay angay ibalik" },
   noOverdueReturnsHint: { en: "Every ended event has already returned what it borrowed.", tl: "Naibalik na ng bawat tapos na kaganapan ang kanilang hiniram.", ceb: "Nabalik na sa matag nahuman nga kalihokan ang ilang gihuwam." },
+  pendingReturnsTitle: { en: "Pending Returns", tl: "Hinihintay na Isauli", ceb: "Gipaabot nga Ibalik" },
+  pendingReturnsHint: { en: "Ended events still holding borrowed inventory -- review each one to release its items.", tl: "Mga tapos nang kaganapan na may hawak pa ring hiniram -- suriin ang bawat isa para i-release ang mga item.", ceb: "Mga nahuman nga kalihokan nga naa pay gihuwam -- susiha ang matag usa aron i-release ang mga item." },
   endedOnLabel: { en: "Ended", tl: "Natapos", ceb: "Nahuman" },
   loadReturnsFailed: { en: "Could not load overdue returns. Please try again.", tl: "Hindi ma-load ang mga overdue na isasauli. Pakisubukang muli.", ceb: "Wala ma-load ang mga overdue nga ibalik. Palihug sulayi pag-usab." },
   filterFromDateLabel: { en: "Ended from", tl: "Natapos mula", ceb: "Nahuman gikan" },
@@ -47,11 +49,32 @@ export const translations: Dict = {
   searchReturnsPlaceholder: { en: "Search by event or item name", tl: "Maghanap gamit ang pangalan ng kaganapan o item", ceb: "Pangita gamit ang ngalan sa kalihokan o item" },
   qtyLabel: { en: "Qty", tl: "Dami", ceb: "Kadaghan" },
   confirmReturnTitle: { en: "Return this to Inventory?", tl: "Ibalik ito sa Imbentaryo?", ceb: "Ibalik ni sa Imbentaryo?" },
-  confirmReturnBody: { en: "Return {qty}x {item} to Inventory? This can't be undone.", tl: "Ibalik ang {qty}x {item} sa Imbentaryo? Hindi na ito maaaring bawiin.", ceb: "Ibalik ang {qty}x {item} sa Imbentaryo? Dili na kini mabawi." },
+  confirmReturnBody: { en: "Return {qty}x {item} to Inventory?", tl: "Ibalik ang {qty}x {item} sa Imbentaryo?", ceb: "Ibalik ang {qty}x {item} sa Imbentaryo?" },
   confirmReturnLabel: { en: "Yes, Return It", tl: "Oo, Ibalik Ito", ceb: "Oo, Ibalik Kini" },
   returnSuccessTitle: { en: "Returned to Inventory", tl: "Naibalik na sa Imbentaryo", ceb: "Nabalik na sa Imbentaryo" },
   returnSuccessMessage: { en: "{qty}x {item} is back in Inventory.", tl: "Ang {qty}x {item} ay nasa Imbentaryo na muli.", ceb: "Ang {qty}x {item} naa na usab sa Imbentaryo." },
   releaseItemsFailed: { en: "Could not release these items. Please try again.", tl: "Hindi na-release ang mga item na ito. Pakisubukang muli.", ceb: "Wala ma-release kining mga item. Palihug sulayi pag-usab." },
+  selectAllLabel: { en: "Select All", tl: "Piliin Lahat", ceb: "Pilia Tanan" },
+  releaseSelectedLabel: { en: "Release Selected", tl: "I-release ang Napili", ceb: "I-release ang Napili" },
+  releasingSelectedLabel: { en: "Releasing...", tl: "Nire-release...", ceb: "Gi-release..." },
+  confirmReleaseSelectedTitle: { en: "Release selected items?", tl: "I-release ang napiling mga item?", ceb: "I-release ang napiling mga item?" },
+  confirmReleaseSelectedBody: { en: "Release the {n} selected item(s) from \"{event}\" back to Inventory, using the quantities set for each?", tl: "I-release ang {n} napiling item mula sa \"{event}\" pabalik sa Imbentaryo, gamit ang mga dami na naka-set sa bawat isa?", ceb: "I-release ang {n} napiling item gikan sa \"{event}\" balik sa Imbentaryo, gamit ang mga kadaghan nga naka-set sa matag usa?" },
+  confirmReleaseSelectedLabel: { en: "Yes, Release Selected", tl: "Oo, I-release ang Napili", ceb: "Oo, I-release ang Napili" },
+  bulkReleaseSuccessTitle: { en: "Items Released", tl: "Na-release ang mga Item", ceb: "Na-release ang mga Item" },
+  bulkReleaseSuccessMessage: { en: "The selected items from \"{event}\" were released back to Inventory.", tl: "Ang napiling mga item mula sa \"{event}\" ay na-release na pabalik sa Imbentaryo.", ceb: "Ang napiling mga item gikan sa \"{event}\" na-release na balik sa Imbentaryo." },
+  bulkReleasePartialFailureMessage: { en: "Some items couldn't be released -- please try releasing the remaining ones again.", tl: "May mga item na hindi na-release -- pakisubukang i-release muli ang mga natitira.", ceb: "Adunay mga item nga wala ma-release -- palihug sulayi ug release ang nabilin." },
+  recentlyReleasedTitle: { en: "Recently Released", tl: "Kamakailang Na-release", ceb: "Bag-ohay Na-release" },
+  recentlyReleasedHint: { en: "Released the wrong quantity? Undo it here, then release the correct amount.", tl: "Mali ang na-release mong dami? I-undo ito dito, tapos i-release ang tamang dami.", ceb: "Sayop ang gi-release nimo nga kadaghan? I-undo diri, dayon i-release ang husto nga kadaghan." },
+  noRecentReleasesLabel: { en: "No releases in the last two weeks.", tl: "Walang na-release sa nakaraang dalawang linggo.", ceb: "Walay na-release sa milabay nga duha ka semana." },
+  undoLabel: { en: "Undo", tl: "I-undo", ceb: "I-undo" },
+  undoingLabel: { en: "Undoing...", tl: "Ina-undo...", ceb: "Gi-undo..." },
+  confirmUndoReleaseTitle: { en: "Undo this release?", tl: "I-undo ang release na ito?", ceb: "I-undo ni nga release?" },
+  confirmUndoReleaseBody: { en: "This puts {qty}x {item} back as borrowed by \"{event}\", and takes it back out of Inventory's available stock.", tl: "Ibabalik nito ang {qty}x {item} bilang hiniram ng \"{event}\", at aalisin ito muli sa available na stock sa Imbentaryo.", ceb: "Kini mobalik sa {qty}x {item} isip gihulam sa \"{event}\", ug kuhaon kini balik sa available nga stock sa Imbentaryo." },
+  undoReleaseLabel: { en: "Yes, Undo It", tl: "Oo, I-undo Ito", ceb: "Oo, I-undo Kini" },
+  undoReleaseSuccessTitle: { en: "Release Undone", tl: "Na-undo ang Release", ceb: "Na-undo ang Release" },
+  undoReleaseSuccessMessage: { en: "{qty}x {item} is marked borrowed again by \"{event}\".", tl: "Ang {qty}x {item} ay minarkahan bilang hiniram na muli ng \"{event}\".", ceb: "Ang {qty}x {item} gimarkahan nga gihulam na usab sa \"{event}\"." },
+  undoReleaseFailedMessage: { en: "Could not undo this release. Please try again.", tl: "Hindi na-undo ang release na ito. Pakisubukang muli.", ceb: "Wala ma-undo ni nga release. Palihug sulayi pag-usab." },
+  releasedByPrefixLabel: { en: "Released by", tl: "In-release ni", ceb: "Gi-release ni" },
   overdueEventsStatLabel: { en: "Overdue Events", tl: "Mga Overdue na Kaganapan", ceb: "Mga Overdue nga Kalihokan" },
   overdueEventsStatDesc: { en: "Ended events still holding items", tl: "Mga tapos nang kaganapan na may hawak pa ring mga item", ceb: "Mga nahuman nga kalihokan nga naa pay gihuptan nga mga item" },
   itemsStillOutStatLabel: { en: "Items Still Out", tl: "Mga Item na Nasa Labas Pa", ceb: "Mga Item nga Naa Pa sa Gawas" },
@@ -114,6 +137,7 @@ export const translations: Dict = {
   noUpcomingEvents: { en: "No upcoming events", tl: "Walang paparating na kaganapan", ceb: "Walay umaabot nga kalihokan" },
 
   search: { en: "Search", tl: "Maghanap", ceb: "Pangita" },
+  noMatchesFoundLabel: { en: "No matches found.", tl: "Walang nahanap na tugma.", ceb: "Walay natukiban nga tugma." },
   cancel: { en: "Cancel", tl: "Kanselahin", ceb: "Kanselahon" },
   save: { en: "Save", tl: "I-save", ceb: "I-save" },
   loading: { en: "Loading...", tl: "Naglo-load...", ceb: "Nag-load..." },
@@ -310,6 +334,12 @@ export const translations: Dict = {
   itemExpenseDescPlaceholder: { en: "Item / expense description", tl: "Item / paglalarawan ng gastos", ceb: "Item / paghulagway sa gasto" },
   amountPlaceholder: { en: "Amount", tl: "Halaga", ceb: "Kantidad" },
   addLabel: { en: "Add", tl: "Idagdag", ceb: "Idugang" },
+  addExpenseTitle: { en: "Add Expense", tl: "Magdagdag ng Gastos", ceb: "Pagdugang og Gasto" },
+  exportCsvLabel: { en: "Export to Excel", tl: "I-export sa Excel", ceb: "I-export sa Excel" },
+  confirmExportCsvTitle: { en: "Download this expense report?", tl: "I-download ang ulat ng gastos na ito?", ceb: "I-download ni nga taho sa gasto?" },
+  confirmExportCsvBody: { en: "This will save a formatted Excel (.xlsx) copy of this event's expenses to your device.", tl: "Ise-save nito ang naka-format na kopya ng Excel (.xlsx) ng mga gastos ng kaganapang ito sa iyong device.", ceb: "I-save niini ang naka-format nga kopya sa Excel (.xlsx) sa mga gasto niini nga kalihokan sa imong device." },
+  csvDownloadSuccessMessage: { en: "The expense report was downloaded successfully.", tl: "Matagumpay na na-download ang ulat ng gastos.", ceb: "Malampuson nga na-download ang taho sa gasto." },
+  expenseReportExportFailed: { en: "Failed to export the expense report. Please try again.", tl: "Nabigong i-export ang ulat ng gastos. Pakisubukang muli.", ceb: "Napakyas ang pag-export sa taho sa gasto. Palihug sulayi pag-usab." },
   noExpensesRecorded: { en: "No expenses recorded yet.", tl: "Wala pang naitalang gastos.", ceb: "Wala pay narekord nga gasto." },
   loadBudgetFailed: { en: "Failed to load budget.", tl: "Nabigong i-load ang badyet.", ceb: "Napakyas i-load ang badyet." },
   recordExpenseFailed: { en: "Failed to record expense.", tl: "Nabigong itala ang gastos.", ceb: "Napakyas irekord ang gasto." },
@@ -333,11 +363,67 @@ export const translations: Dict = {
   // Staff: Reports
   reportsSubtitle: { en: "Attendance summary, filterable by date, membership and age group.", tl: "Buod ng pagdalo, mapipili ayon sa petsa, membership at age group.", ceb: "Summary sa pagtambong, mapili base sa petsa, membership ug age group." },
   printReport: { en: "Print Report", tl: "I-print ang Ulat", ceb: "I-print ang Report" },
+  printNotSupportedMessage: { en: "Printing isn't available in this browser. Please try again using Chrome or Safari.", tl: "Hindi available ang pag-print sa browser na ito. Pakisubukan gamit ang Chrome o Safari.", ceb: "Dili available ang pag-print niining browser. Palihug sulayi gamit ang Chrome o Safari." },
   reportTypeAttendance: { en: "Attendance", tl: "Pagdalo", ceb: "Pagtambong" },
   reportTypeMembership: { en: "Membership", tl: "Pagiging Miyembro", ceb: "Pagka-miyembro" },
   reportTypeBudget: { en: "Budget", tl: "Badyet", ceb: "Badyet" },
   reportTypeInventory: { en: "Inventory", tl: "Imbentaryo", ceb: "Imbentaryo" },
   reportForLabel: { en: "Report", tl: "Ulat", ceb: "Report" },
+  // Print-only letterhead, footer, and filter-summary strings for the
+  // Reports page's printed/exported output (UC-10). These keys are still
+  // translated like everything else, but ReportsView.tsx deliberately
+  // ignores the language switcher while actually printing or downloading a
+  // report (it always resolves them through translate(key, "en")) -- an
+  // official barangay record needs to read in one consistent language no
+  // matter what the on-screen UI is currently switched to. The entries
+  // stay here (rather than being hardcoded English strings) only so the
+  // *on-screen* letterhead preview, if ever shown outside of print, still
+  // benefits from the same dictionary.
+  reportPrintTitleAttendance: { en: "Attendance Summary Report", tl: "Buod na Ulat ng Pagdalo", ceb: "Summary Report sa Pagtambong" },
+  reportPrintTitleMembership: { en: "Membership Summary Report", tl: "Buod na Ulat ng Membership", ceb: "Summary Report sa Membership" },
+  reportPrintTitleBudget: { en: "Budget Summary Report", tl: "Buod na Ulat ng Badyet", ceb: "Summary Report sa Badyet" },
+  reportPrintTitleInventory: { en: "Inventory Summary Report", tl: "Buod na Ulat ng Imbentaryo", ceb: "Summary Report sa Imbentaryo" },
+  printCountryLabel: { en: "Republic of the Philippines", tl: "Republika ng Pilipinas", ceb: "Republika sa Pilipinas" },
+  printProvinceLabel: { en: "Province of Zamboanga del Norte", tl: "Lalawigan ng Zamboanga del Norte", ceb: "Probinsya sa Zamboanga del Norte" },
+  printMunicipalityLabel: { en: "Municipality of President Manuel A. Roxas", tl: "Bayan ng Presidente Manuel A. Roxas", ceb: "Lungsod sa Presidente Manuel A. Roxas" },
+  printBarangayLabel: { en: "Barangay Piao", tl: "Barangay Piao", ceb: "Barangay Piao" },
+  printAddressLabel: { en: "Piao Barangay Hall, Purok Uno, Barangay Piao, 7104", tl: "Piao Barangay Hall, Purok Uno, Barangay Piao, 7104", ceb: "Piao Barangay Hall, Purok Uno, Barangay Piao, 7104" },
+  printSystemName: { en: "Piao Connect", tl: "Piao Connect", ceb: "Piao Connect" },
+  printPeriodLabel: { en: "Period", tl: "Panahon", ceb: "Panahon" },
+  printGeneratedOnLabel: { en: "Generated on", tl: "Nabuo noong", ceb: "Gihimo niadtong" },
+  printPreparedByLabel: { en: "Prepared by", tl: "Inihanda ni", ceb: "Giandam ni" },
+  printBarangayCaptainLabel: { en: "Barangay Captain", tl: "Punong Barangay", ceb: "Kapitan sa Barangay" },
+  printFooterAttributionLabel: { en: "Generated via Piao Connect — Barangay Information Management System", tl: "Nabuo gamit ang Piao Connect — Sistema ng Impormasyon ng Barangay", ceb: "Gihimo gamit ang Piao Connect — Sistema sa Impormasyon sa Barangay" },
+  printPageWord: { en: "Page", tl: "Pahina", ceb: "Panid" },
+  printOfWord: { en: "of", tl: "ng", ceb: "sa" },
+  // Download-icon dropdown (Word/PDF export) on the Reports & Analytics
+  // page -- these are on-screen UI chrome, so unlike the printed report
+  // itself they DO follow the language switcher as normal.
+  downloadReportLabel: { en: "Download report", tl: "I-download ang ulat", ceb: "I-download ang report" },
+  downloadAsWordLabel: { en: "Download as Word", tl: "I-download bilang Word", ceb: "I-download isip Word" },
+  downloadAsPdfLabel: { en: "Download as PDF", tl: "I-download bilang PDF", ceb: "I-download isip PDF" },
+  confirmDownloadTitle: { en: "Download this report?", tl: "I-download ang ulat na ito?", ceb: "I-download ni nga report?" },
+  confirmDownloadWordBody: { en: "This will download the current report as a Word (.docx) file. The document itself is always in English, regardless of your language setting.", tl: "Ida-download nito ang kasalukuyang ulat bilang Word (.docx) file. Palaging Ingles ang dokumento mismo, kahit ano ang iyong wika sa setting.", ceb: "I-download ni ang karon nga report isip Word (.docx) file. Kanunay Ingles ang dokumento mismo, bisan unsa ang imong pinulongan sa setting." },
+  confirmDownloadPdfBody: { en: "This will download the current report as a PDF file. The document itself is always in English, regardless of your language setting.", tl: "Ida-download nito ang kasalukuyang ulat bilang PDF file. Palaging Ingles ang dokumento mismo, kahit ano ang iyong wika sa setting.", ceb: "I-download ni ang karon nga report isip PDF file. Kanunay Ingles ang dokumento mismo, bisan unsa ang imong pinulongan sa setting." },
+  // downloadLabel ("Download") already exists further down the dictionary
+  // (used by the Budget receipt-file download button) -- reused as-is here
+  // instead of adding a second, identical key.
+  downloadingLabel: { en: "Downloading...", tl: "Nagda-download...", ceb: "Nagdownload..." },
+  downloadFailedMessage: { en: "Could not download the report. Please try again.", tl: "Hindi ma-download ang ulat. Pakisubukang muli.", ceb: "Wala ma-download ang report. Palihug sulayi pag-usab." },
+  // Success confirmation shown right after the browser accepts the file --
+  // same confirm-before/success-after convention as Budget's Add/Update/
+  // Delete Expense flow (ConfirmDialog then a success StatusModal).
+  downloadSuccessTitle: { en: "Download Complete", tl: "Tapos na ang Pag-download", ceb: "Nahuman na ang Pag-download" },
+  downloadSuccessWordMessage: { en: "The report was downloaded successfully as a Word (.docx) file.", tl: "Matagumpay na na-download ang ulat bilang Word (.docx) file.", ceb: "Malampuson nga na-download ang report isip Word (.docx) file." },
+  downloadSuccessPdfMessage: { en: "The report was downloaded successfully as a PDF file.", tl: "Matagumpay na na-download ang ulat bilang PDF file.", ceb: "Malampuson nga na-download ang report isip PDF file." },
+  // Same confirm-before/success-after pattern, for the Budget receipt
+  // viewer's download button.
+  confirmDownloadReceiptTitle: { en: "Download this receipt?", tl: "I-download ang resibong ito?", ceb: "I-download ni nga resibo?" },
+  confirmDownloadReceiptBody: { en: "This will save a copy of the receipt file to your device.", tl: "Ise-save nito ang kopya ng resibo sa iyong device.", ceb: "I-save niini ang kopya sa resibo sa imong device." },
+  downloadReceiptSuccessMessage: { en: "The receipt was downloaded successfully.", tl: "Matagumpay na na-download ang resibo.", ceb: "Malampuson nga na-download ang resibo." },
+  downloadReceiptFailedMessage: { en: "Could not download the receipt. Please try again.", tl: "Hindi ma-download ang resibo. Pakisubukang muli.", ceb: "Wala ma-download ang resibo. Palihug sulayi pag-usab." },
+  printRangeStartLabel: { en: "Start", tl: "Simula", ceb: "Sinugdanan" },
+  printRangePresentLabel: { en: "Present", tl: "Kasalukuyan", ceb: "Karon" },
   allConditionsOption: { en: "All Conditions", tl: "Lahat ng Kondisyon", ceb: "Tanan nga Kondisyon" },
   noDataAvailableForReport: { en: "No data available for this report.", tl: "Walang available na datos para sa ulat na ito.", ceb: "Walay available nga datos para niini nga report." },
   totalMembershipsLabel: { en: "Total Memberships", tl: "Kabuuang Membership", ceb: "Total nga Membership" },
@@ -418,6 +504,12 @@ export const translations: Dict = {
   conditionRequired: { en: "Condition *", tl: "Kondisyon *", ceb: "Kondisyon *" },
   storageLocationLabel: { en: "Storage Location", tl: "Lokasyon ng Imbakan", ceb: "Lokasyon sa Gitipigan" },
   storageLocationPlaceholder: { en: "Barangay Hall storage room", tl: "Storage room ng Barangay Hall", ceb: "Storage room sa Barangay Hall" },
+  photoOptionalLabel: { en: "Photo (optional)", tl: "Larawan (opsyonal)", ceb: "Hulagway (opsyonal)" },
+  photoRequiredLabel: { en: "Photo *", tl: "Larawan *", ceb: "Hulagway *" },
+  choosePhotoLabel: { en: "Choose photo", tl: "Pumili ng larawan", ceb: "Pagpili og hulagway" },
+  replacePhotoLabel: { en: "Replace photo", tl: "Palitan ang larawan", ceb: "Ilisi ang hulagway" },
+  viewPhotoLabel: { en: "View photo", tl: "Tingnan ang larawan", ceb: "Tan-awa ang hulagway" },
+  itemPhotoFallbackLabel: { en: "Item photo", tl: "Larawan ng item", ceb: "Hulagway sa item" },
   notesLabel: { en: "Notes", tl: "Mga Tala", ceb: "Mga Nota" },
   receiptLabel: { en: "Receipt", tl: "Resibo", ceb: "Resibo" },
   attachReceiptLabel: { en: "Attach receipt", tl: "Mag-attach ng resibo", ceb: "Ipunit ang resibo" },
@@ -945,6 +1037,7 @@ export const translations: Dict = {
   // own check (see noValidate on each form) and shows one of these
   // instead of that native bubble.
   itemNameRequiredError: { en: "Please enter an item name.", tl: "Maglagay ng pangalan ng item.", ceb: "Pagbutang og ngalan sa item." },
+  photoRequiredError: { en: "Please add a photo of the item.", tl: "Maglagay ng larawan ng item.", ceb: "Pagbutang og hulagway sa item." },
   invalidQuantityError: { en: "Quantity must be a whole number of 0 or more.", tl: "Ang dami ay dapat buong numero na 0 o higit pa.", ceb: "Ang kantidad kinahanglan usa ka tibuok numero nga 0 o mas taas." },
   bracketLabelRequiredError: { en: "Please enter a label for this age bracket.", tl: "Maglagay ng label para sa age bracket na ito.", ceb: "Pagbutang og label niini nga age bracket." },
   invalidMinAgeError: { en: "Minimum age must be a whole number of 0 or more.", tl: "Ang pinakamababang edad ay dapat buong numero na 0 o higit pa.", ceb: "Ang pinakaubos nga edad kinahanglan usa ka tibuok numero nga 0 o mas taas." },

@@ -1,10 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Undo2, CheckCircle2, PackageX, X, RotateCcw, Search, Package, Clock } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Undo2, CheckCircle2, PackageX, X, RotateCcw, Search, Package, Clock, History } from "lucide-react";
 import { createPortal } from "react-dom";
-import api from "../../../lib/api";
+import api, { apiErrorMessage } from "../../../lib/api";
 import DatePicker from "../../../components/ui/DatePicker";
+import NumberStepper from "../../../components/ui/NumberStepper";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 interface OverdueEventItem {
@@ -20,7 +22,18 @@ interface OverdueEvent {
   items: OverdueEventItem[];
 }
 
+interface RecentRelease {
+  id: number;
+  event_id: number;
+  event_name: string;
+  item_name: string;
+  quantity: number;
+  released_by: string | null;
+  released_at: string;
+}
+
 const ITEMS_PER_PAGE = 6;
+const RELEASES_PER_PAGE = 5;
 
 // Events that have already ended but still hold borrowed inventory --
 // nothing in the system releases these on its own (see
@@ -36,6 +49,25 @@ export default function ReturnsView() {
   const [search, setSearch] = useState("");
   const [endedDate, setEndedDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  // Brief skeleton flash on every page switch, same as Activity Logs --
+  // this table paginates client-side so there's nothing to actually wait
+  // on, but the flash keeps page switches feeling consistent app-wide.
+  const [pageSwitching, setPageSwitching] = useState(false);
+  const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPage = (updater: number | ((p: number) => number)) => {
+    setCurrentPage(updater as any);
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
+  // Which of the two panels below is showing -- Pending Returns and
+  // Recently Released are two unrelated queues (overdue items waiting to
+  // come back vs. a log of what was just released) that used to just sit
+  // stacked on the page. They're now switched between with their own
+  // pill buttons instead, so the separation is the buttons themselves,
+  // not just spacing.
+  const [activeTab, setActiveTab] = useState<"pending" | "released">("pending");
   // How many units to release per item, keyed by borrow-record id --
   // staff can give back fewer than the full borrowed quantity.
   const [releaseQty, setReleaseQty] = useState<Record<number, number>>({});
@@ -44,6 +76,31 @@ export default function ReturnsView() {
   const [releasingItemId, setReleasingItemId] = useState<number | null>(null);
   const [confirmRelease, setConfirmRelease] = useState<{ eventId: number; item: OverdueEventItem; qty: number } | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [successTitle, setSuccessTitle] = useState<string | null>(null);
+
+  // Bulk release -- a checkbox per item (checked by default) plus one
+  // "Release Selected" action, instead of making staff click "Release"
+  // once per line for an event with many borrowed item types. Unchecking
+  // an item leaves it out of the batch entirely (still borrowed, released
+  // individually later) rather than forcing an all-or-nothing release.
+  const [selectedItemIds, setSelectedItemIds] = useState<Record<number, boolean>>({});
+  const [confirmReleaseAll, setConfirmReleaseAll] = useState(false);
+  const [bulkReleasing, setBulkReleasing] = useState(false);
+
+  // Recent releases -- lets staff catch and fix a mis-entered quantity
+  // ("I meant to release 2, not 3") without touching Inventory's raw
+  // stock count by hand. See EventController::recentReleases()/undoRelease().
+  const [recentReleases, setRecentReleases] = useState<RecentRelease[]>([]);
+  const [recentReleasesLoading, setRecentReleasesLoading] = useState(true);
+  const [recentReleasesPage, setRecentReleasesPage] = useState(1);
+  const [recentReleasesTotalPages, setRecentReleasesTotalPages] = useState(1);
+  const [recentReleasesTotal, setRecentReleasesTotal] = useState(0);
+  const [undoingReleaseId, setUndoingReleaseId] = useState<number | null>(null);
+  const [confirmUndo, setConfirmUndo] = useState<{ release: RecentRelease; qty: number } | null>(null);
+  // How many units to put back per release record, keyed by release id --
+  // a release of 2 doesn't have to be undone as a whole (e.g. it was 1
+  // genuine release and 1 mistaken extra unit).
+  const [undoQty, setUndoQty] = useState<Record<number, number>>({});
 
   // Real-time refresh -- the overdue-borrows queue can change any time
   // another staff member releases an item, so this polls quietly in the
@@ -66,14 +123,54 @@ export default function ReturnsView() {
     }
   };
 
+  const fetchRecentReleases = async (page = recentReleasesPage, background = false, searchTerm = search) => {
+    if (!background) setRecentReleasesLoading(true);
+    try {
+      const params = new URLSearchParams({ page: String(page) });
+      if (searchTerm.trim()) params.set("search", searchTerm.trim());
+      const response = await api.get(`/events/borrowed-items/releases/recent?${params.toString()}`);
+      const payload = response.data;
+      setRecentReleases(Array.isArray(payload?.data) ? payload.data : []);
+      setRecentReleasesPage(payload?.current_page ?? 1);
+      setRecentReleasesTotalPages(Math.max(1, payload?.last_page ?? 1));
+      setRecentReleasesTotal(payload?.total ?? 0);
+    } catch {
+      // Silent -- this panel is a convenience, not the page's core data;
+      // a failed refresh just leaves the previous list showing.
+    } finally {
+      if (!background) setRecentReleasesLoading(false);
+    }
+  };
+
+  // The background poll needs to know, on every tick, whether a modal is
+  // currently open (so it can skip refreshing under someone's feet) and
+  // which release-panel page is showing -- but reading those directly
+  // would mean re-running this whole effect (and its foreground,
+  // spinner-showing fetches) every time the modal opens or closes, which
+  // is exactly the "loading flashes every time I open/close the modal"
+  // annoyance this replaced. A ref sidesteps that: it's kept up to date
+  // every render without ever forcing the effect below to re-subscribe.
+  const pollGateRef = useRef({ selectedEventId, confirmRelease, confirmUndo, recentReleasesPage, search });
   useEffect(() => {
+    pollGateRef.current = { selectedEventId, confirmRelease, confirmUndo, recentReleasesPage, search };
+  });
+
+  useEffect(() => {
+    // Foreground (spinner-showing) fetch -- intentionally only ever runs
+    // once, on mount, not on every modal open/close. The Recently Released
+    // panel's own first load is handled by the debounced search effect
+    // below (it fires on mount too, since `search` starts out defined).
     fetchOverdue();
     const poll = setInterval(() => {
-      if (selectedEventId === null && confirmRelease === null) fetchOverdue(true);
+      const gate = pollGateRef.current;
+      if (gate.selectedEventId === null && gate.confirmRelease === null && gate.confirmUndo === null) {
+        fetchOverdue(true);
+        fetchRecentReleases(gate.recentReleasesPage, true, gate.search);
+      }
     }, 20000);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEventId, confirmRelease]);
+  }, []);
 
   useEffect(() => {
     const tick = setInterval(() => setNowTick(Date.now()), 1000);
@@ -138,10 +235,18 @@ export default function ReturnsView() {
     setCurrentPage(1);
   }, [search, endedDate]);
 
-  const clearFilters = () => {
-    setSearch("");
-    setEndedDate("");
-  };
+  // The same search box also searches Recently Released (by event or item
+  // name), same as it does for the table above -- debounced so typing
+  // doesn't fire a request per keystroke, and since that panel is fetched
+  // page-by-page from the server (unlike the table's in-memory filter), a
+  // new search always jumps back to its page 1.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchRecentReleases(1, false, search);
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const modalEvent = events.find((ev) => ev.id === selectedEventId) ?? null;
 
@@ -150,6 +255,37 @@ export default function ReturnsView() {
   const setQtyFor = (item: OverdueEventItem, value: number) => {
     const clamped = Math.max(1, Math.min(item.quantity, Math.floor(value) || 1));
     setReleaseQty((prev) => ({ ...prev, [item.id]: clamped }));
+  };
+
+  // Checked by default -- an event with a handful of items is usually
+  // released in full, so the common case (release everything) takes zero
+  // clicks on the checkboxes themselves.
+  const isItemSelected = (item: OverdueEventItem) => selectedItemIds[item.id] ?? true;
+
+  const toggleItemSelected = (item: OverdueEventItem) => {
+    setSelectedItemIds((prev) => ({ ...prev, [item.id]: !isItemSelected(item) }));
+  };
+
+  const selectedCount = modalEvent ? modalEvent.items.filter(isItemSelected).length : 0;
+  const allItemsSelected = modalEvent ? modalEvent.items.length > 0 && modalEvent.items.every(isItemSelected) : false;
+
+  const toggleSelectAll = () => {
+    if (!modalEvent) return;
+    const next = !allItemsSelected;
+    setSelectedItemIds((prev) => {
+      const copy = { ...prev };
+      modalEvent.items.forEach((it) => {
+        copy[it.id] = next;
+      });
+      return copy;
+    });
+  };
+
+  const undoQtyFor = (release: RecentRelease) => undoQty[release.id] ?? release.quantity;
+
+  const setUndoQtyFor = (release: RecentRelease, value: number) => {
+    const clamped = Math.max(1, Math.min(release.quantity, Math.floor(value) || 1));
+    setUndoQty((prev) => ({ ...prev, [release.id]: clamped }));
   };
 
   const releaseOneItem = async (eventId: number, item: OverdueEventItem, qty: number) => {
@@ -176,11 +312,115 @@ export default function ReturnsView() {
         delete next[item.id];
         return next;
       });
+      setSuccessTitle(t("returnSuccessTitle"));
       setSuccessMessage(t("returnSuccessMessage").replace("{qty}", String(qty)).replace("{item}", item.name));
+      // The new release is always the newest, so it belongs on page 1
+      // regardless of which page of the panel was showing before.
+      fetchRecentReleases(1);
     } catch {
       setError(t("releaseItemsFailed"));
     } finally {
       setReleasingItemId(null);
+    }
+  };
+
+  const releaseSelectedItems = async (event: OverdueEvent) => {
+    setConfirmReleaseAll(false);
+    // Snapshot which items are checked and their current Qty-field values
+    // up front -- the in-flight requests below will progressively mutate
+    // `events` (and therefore modalEvent.items) as each one resolves.
+    const jobs = event.items.filter(isItemSelected).map((item) => ({ item, qty: qtyFor(item) }));
+    if (jobs.length === 0) return;
+    setBulkReleasing(true);
+    try {
+      const results = await Promise.allSettled(
+        jobs.map(({ item, qty }) => api.post(`/events/${event.id}/borrowed-items/${item.id}/release`, { quantity: qty }))
+      );
+      const succeededIds = new Set(jobs.filter((_, i) => results[i].status === "fulfilled").map(({ item }) => item.id));
+      const anyFailed = results.some((r) => r.status === "rejected");
+
+      setEvents((prev) =>
+        prev
+          .map((ev) =>
+            ev.id === event.id
+              ? {
+                  ...ev,
+                  items: ev.items
+                    .map((it) => {
+                      const job = jobs.find((j) => j.item.id === it.id);
+                      return job && succeededIds.has(it.id) ? { ...it, quantity: it.quantity - job.qty } : it;
+                    })
+                    .filter((it) => it.quantity > 0),
+                }
+              : ev
+          )
+          .filter((ev) => ev.items.length > 0)
+      );
+      setReleaseQty((prev) => {
+        const next = { ...prev };
+        succeededIds.forEach((id) => delete next[id]);
+        return next;
+      });
+      setSelectedItemIds((prev) => {
+        const next = { ...prev };
+        succeededIds.forEach((id) => delete next[id]);
+        return next;
+      });
+
+      if (succeededIds.size > 0) {
+        setSuccessTitle(t("bulkReleaseSuccessTitle"));
+        setSuccessMessage(
+          anyFailed
+            ? t("bulkReleasePartialFailureMessage")
+            : t("bulkReleaseSuccessMessage").replace("{event}", event.name)
+        );
+        fetchRecentReleases(1);
+      } else {
+        setError(t("releaseItemsFailed"));
+      }
+    } catch {
+      setError(t("releaseItemsFailed"));
+    } finally {
+      setBulkReleasing(false);
+    }
+  };
+
+  const undoReleaseAction = async (release: RecentRelease, qty: number) => {
+    setConfirmUndo(null);
+    setUndoingReleaseId(release.id);
+    try {
+      await api.post(`/events/borrowed-items/releases/${release.id}/undo`, { quantity: qty });
+      setUndoQty((prev) => {
+        const next = { ...prev };
+        delete next[release.id];
+        return next;
+      });
+      setSuccessTitle(t("undoReleaseSuccessTitle"));
+      setSuccessMessage(
+        t("undoReleaseSuccessMessage")
+          .replace("{qty}", String(qty))
+          .replace("{item}", release.item_name)
+          .replace("{event}", release.event_name)
+      );
+      // The event may need to reappear in the overdue list (if this
+      // release had fully closed it out) or show an updated remaining
+      // quantity -- either way, the main table needs a fresh copy. This
+      // one is a real, user-triggered update (not the quiet 20s poll), so
+      // it shows the same loading spinner as the very first page load
+      // instead of silently swapping the table underneath them.
+      fetchOverdue();
+      // Re-fetch this page from the server rather than filtering locally,
+      // since the panel is server-paginated now. A partial undo (qty less
+      // than the full release) leaves the row in place with a smaller
+      // number, so only step back a page when the row was fully undone
+      // and it was the only one left on this page.
+      const wasFullUndo = qty >= release.quantity;
+      const nextPage = wasFullUndo && recentReleases.length <= 1 && recentReleasesPage > 1 ? recentReleasesPage - 1 : recentReleasesPage;
+      fetchRecentReleases(nextPage);
+    } catch (err) {
+      setError(apiErrorMessage(err, t("undoReleaseFailedMessage")));
+    } finally {
+      setUndoingReleaseId(null);
     }
   };
 
@@ -190,6 +430,20 @@ export default function ReturnsView() {
     } catch {
       return value;
     }
+  };
+
+  const relativeTimeLabel = (dateString?: string) => {
+    if (!dateString) return "--";
+    const then = new Date(dateString).getTime();
+    if (isNaN(then)) return "--";
+    const diffSec = Math.max(0, Math.floor((nowTick - then) / 1000));
+    if (diffSec < 60) return t("justNowLabel");
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return t("minutesAgoShortLabel").replace("{n}", String(diffMin));
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return t("hoursAgoShortLabel").replace("{n}", String(diffHr));
+    const diffDay = Math.floor(diffHr / 24);
+    return t("daysAgoShortLabel").replace("{n}", String(diffDay));
   };
 
   const statCards = [
@@ -289,14 +543,6 @@ export default function ReturnsView() {
             <p className="text-xs font-semibold text-white/50 mb-1">{t("filterEndedDateLabel")}</p>
             <DatePicker value={endedDate} onChange={setEndedDate} className="h-11 px-4" dark />
           </div>
-          {(search || endedDate) && (
-            <button
-              onClick={clearFilters}
-              className="h-11 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-4 text-sm text-white hover:bg-white/10 transition"
-            >
-              <RotateCcw className="h-3.5 w-3.5" /> {t("clearFiltersLabel")}
-            </button>
-          )}
         </div>
       </div>
 
@@ -304,23 +550,94 @@ export default function ReturnsView() {
         <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-400">{error}</div>
       )}
 
-      {loading ? (
-        <div className="flex justify-center py-16">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#4FBEB0]" />
+      {/* Section switcher -- two standalone pill buttons, not a single
+          segmented control, so each one reads as its own distinct button
+          the way "buttons for the first table and button for the recently
+          released" asked for. Only one panel is shown at a time, so the
+          separation is the buttons themselves rather than stacking both
+          cards and hoping spacing alone reads as separate sections. */}
+      <div className="flex flex-wrap gap-2.5">
+        <button
+          type="button"
+          onClick={() => setActiveTab("pending")}
+          className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
+            activeTab === "pending"
+              ? "bg-gold-400 text-[#08130F] shadow-sm"
+              : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+          }`}
+        >
+          <PackageX className="h-4 w-4" />
+          {t("pendingReturnsTitle")}
+          {filteredEvents.length > 0 && (
+            <span
+              className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                activeTab === "pending" ? "bg-[#08130F]/15 text-[#08130F]" : "bg-white/10 text-white/70"
+              }`}
+            >
+              {filteredEvents.length}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("released")}
+          className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
+            activeTab === "released"
+              ? "bg-gold-400 text-[#08130F] shadow-sm"
+              : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+          }`}
+        >
+          <History className="h-4 w-4" />
+          {t("recentlyReleasedTitle")}
+          {recentReleasesTotal > 0 && (
+            <span
+              className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+                activeTab === "released" ? "bg-[#08130F]/15 text-[#08130F]" : "bg-white/10 text-white/70"
+              }`}
+            >
+              {recentReleasesTotal}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Pending Returns -- its own bordered card with a persistent header
+          (icon + title + hint), only rendered while its pill button above
+          is the active one. */}
+      {activeTab === "pending" && (
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+        <div className="px-4 sm:px-5 py-3.5 border-b border-white/10 flex items-center gap-2.5">
+          <PackageX className="h-4 w-4 text-white/40" />
+          <div>
+            <p className="text-sm font-bold text-white">{t("pendingReturnsTitle")}</p>
+            <p className="text-xs text-white/40">{t("pendingReturnsHint")}</p>
+          </div>
         </div>
-      ) : events.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-12 text-center">
-          <CheckCircle2 className="h-10 w-10 mx-auto text-[#4FBEB0] mb-3" />
-          <p className="text-white font-semibold">{t("noOverdueReturns")}</p>
-          <p className="text-sm text-white/45 mt-1">{t("noOverdueReturnsHint")}</p>
-        </div>
-      ) : filteredEvents.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-12 text-center">
-          <p className="text-white font-semibold">{t("noResultsForFilterLabel")}</p>
-        </div>
-      ) : (
-        <>
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+
+        {loading || pageSwitching ? (
+          <div className="divide-y divide-white/[0.06]">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 px-4 py-3.5">
+                <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-4 w-20 ml-auto hidden sm:block" />
+                <Skeleton className="h-6 w-20 rounded-full" />
+                <Skeleton className="h-8 w-20 rounded-full" />
+              </div>
+            ))}
+          </div>
+        ) : events.length === 0 ? (
+          <div className="p-12 text-center">
+            <CheckCircle2 className="h-10 w-10 mx-auto text-[#4FBEB0] mb-3" />
+            <p className="text-white font-semibold">{t("noOverdueReturns")}</p>
+            <p className="text-sm text-white/45 mt-1">{t("noOverdueReturnsHint")}</p>
+          </div>
+        ) : filteredEvents.length === 0 ? (
+          <div className="p-12 text-center">
+            <p className="text-white font-semibold">{t("noResultsForFilterLabel")}</p>
+          </div>
+        ) : (
+          <>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -373,35 +690,151 @@ export default function ReturnsView() {
                 </tbody>
               </table>
             </div>
-          </div>
 
-          {totalPages > 1 && (
-            <div className="flex flex-col sm:flex-row gap-3 justify-between items-center mt-6">
-              <p className="text-sm text-white/45 text-center sm:text-left">
-                {t("pageOfLabel")} {safePage} {t("ofPagesLabel")} {totalPages} &bull; {filteredEvents.length} {t("recordsShownLabel")}
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={safePage === 1}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
-                >
-                  &larr;
-                </button>
-                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
-                  {safePage}
-                </span>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={safePage === totalPages}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
-                >
-                  &rarr;
-                </button>
+            {totalPages > 1 && (
+              <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 sm:px-5 py-3.5 border-t border-white/10">
+                <p className="text-sm text-white/45 text-center sm:text-left">
+                  {t("pageOfLabel")} {safePage} {t("ofPagesLabel")} {totalPages} &bull; {filteredEvents.length} {t("recordsShownLabel")}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => goToPage((p) => Math.max(1, p - 1))}
+                    disabled={safePage === 1}
+                    className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                  >
+                    &larr;
+                  </button>
+                  <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+                    {safePage}
+                  </span>
+                  <button
+                    onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={safePage === totalPages}
+                    className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                  >
+                    &rarr;
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
-        </>
+            )}
+          </>
+        )}
+      </div>
+      )}
+
+      {/* Recently Released -- the "undo a mis-entered quantity" surface.
+          Shown regardless of whether the source event still has other
+          items outstanding (an event that's fully released drops off the
+          table above entirely, so this can't live nested inside that
+          event's own modal -- it has to stand on its own). Only rendered
+          while its pill button above is the active one, same as Pending
+          Returns, so the two never appear stacked together. */}
+      {activeTab === "released" && (
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+        <div className="px-4 sm:px-5 py-3.5 border-b border-white/10 flex items-center gap-2.5">
+          <History className="h-4 w-4 text-white/40" />
+          <div>
+            <p className="text-sm font-bold text-white">{t("recentlyReleasedTitle")}</p>
+            <p className="text-xs text-white/40">{t("recentlyReleasedHint")}</p>
+          </div>
+        </div>
+        {recentReleasesLoading ? (
+          <div className="divide-y divide-white/[0.06]">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 sm:px-5 py-3">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Skeleton className="h-4 w-3/5" />
+                  <Skeleton className="h-3 w-2/5" />
+                </div>
+                <Skeleton className="h-8 w-20 rounded-full shrink-0" />
+              </div>
+            ))}
+          </div>
+        ) : recentReleases.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-white/40 text-center">
+            {search.trim() ? t("noResultsForFilterLabel") : t("noRecentReleasesLabel")}
+          </p>
+        ) : (
+          <>
+            <ul className="divide-y divide-white/[0.06]">
+              {recentReleases.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-sm text-white truncate">
+                      {r.quantity}&times; {r.item_name} <span className="text-white/40">&bull;</span> {r.event_name}
+                    </p>
+                    <p className="text-xs text-white/40 mt-0.5">
+                      {relativeTimeLabel(r.released_at)}
+                      {r.released_by && <> &bull; {t("releasedByPrefixLabel")} {r.released_by}</>}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-auto">
+                    {r.quantity > 1 && (
+                      <>
+                        <label className="text-xs text-white/50">{t("qtyLabel")}</label>
+                        {/* Only shown when more than 1 unit is on this release
+                            record -- lets staff undo just the mistaken portion
+                            (e.g. released 2, undo 1) instead of reversing the
+                            whole release. Numeric up/down bounded 1..r.quantity;
+                            setUndoQtyFor() clamps every change. Uses our own
+                            stepper buttons rather than the browser's native
+                            spinner -- see NumberStepper.tsx for why. */}
+                        <NumberStepper
+                          min={1}
+                          max={r.quantity}
+                          value={String(undoQtyFor(r))}
+                          onChange={(v) => setUndoQtyFor(r, Number(v))}
+                          className="w-14 rounded-lg border border-white/10 bg-white/[0.03] pl-2 pr-5 py-1.5 text-sm text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
+                        />
+                      </>
+                    )}
+                    <button
+                      onClick={() => setConfirmUndo({ release: r, qty: undoQtyFor(r) })}
+                      disabled={undoingReleaseId === r.id}
+                      // Same pill size as the modal's Close button (rounded-full,
+                      // px-5 py-2, text-sm), but filled solid with the page's own
+                      // teal accent (used elsewhere for the live indicator and
+                      // focus rings) and dark text -- same filled-pill treatment
+                      // as the gold Release/Release Selected buttons, just in teal
+                      // so Undo reads as its own distinct action.
+                      className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0] hover:bg-[#3FA89B] disabled:opacity-50 text-[#08130F] text-sm font-bold px-5 py-2 transition"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {undoingReleaseId === r.id ? t("undoingLabel") : t("undoLabel")}
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {recentReleasesTotalPages > 1 && (
+              <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 sm:px-5 py-3.5 border-t border-white/10">
+                <p className="text-sm text-white/45 text-center sm:text-left">
+                  {t("pageOfLabel")} {recentReleasesPage} {t("ofPagesLabel")} {recentReleasesTotalPages} &bull; {recentReleasesTotal} {t("recordsShownLabel")}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => fetchRecentReleases(Math.max(1, recentReleasesPage - 1))}
+                    disabled={recentReleasesPage === 1}
+                    className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                  >
+                    &larr;
+                  </button>
+                  <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+                    {recentReleasesPage}
+                  </span>
+                  <button
+                    onClick={() => fetchRecentReleases(Math.min(recentReleasesTotalPages, recentReleasesPage + 1))}
+                    disabled={recentReleasesPage === recentReleasesTotalPages}
+                    className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                  >
+                    &rarr;
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
       )}
       </div>
       </div>
@@ -430,19 +863,48 @@ export default function ReturnsView() {
             </div>
 
             <div className="p-5 overflow-y-auto space-y-2">
-              <p className="text-xs text-white/50 mb-2">{t("releaseEachItemHint")}</p>
+              <div className="flex items-center justify-between gap-3 mb-1">
+                <p className="text-xs text-white/50">{t("releaseEachItemHint")}</p>
+                {modalEvent.items.length > 1 && (
+                  <label className="shrink-0 flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={allItemsSelected}
+                      onChange={toggleSelectAll}
+                      className="h-3.5 w-3.5 rounded border-white/25 bg-white/[0.03] accent-[#4FBEB0]"
+                    />
+                    {t("selectAllLabel")}
+                  </label>
+                )}
+              </div>
               {modalEvent.items.map((it) => (
                 <div key={it.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/[0.03] border border-white/10 px-4 py-3 flex-wrap">
-                  <p className="text-sm text-white">{it.quantity}&times; {it.name}</p>
+                  <label className="flex items-center gap-3 min-w-0 cursor-pointer select-none">
+                    {/* Unchecked items are simply left out of "Release
+                        Selected" below -- the item itself, and its own
+                        Release button, are unaffected either way. */}
+                    <input
+                      type="checkbox"
+                      checked={isItemSelected(it)}
+                      onChange={() => toggleItemSelected(it)}
+                      className="h-4 w-4 shrink-0 rounded border-white/25 bg-white/[0.03] accent-[#4FBEB0]"
+                    />
+                    <span className="text-sm text-white truncate">{it.quantity}&times; {it.name}</span>
+                  </label>
                   <div className="flex items-center gap-2 ml-auto">
                     <label className="text-xs text-white/50">{t("qtyLabel")}</label>
-                    <input
-                      type="number"
+                    {/* Numeric up/down bounded to 1..borrowed-quantity --
+                        setQtyFor() clamps every change, so typing or
+                        stepping past either end just snaps back instead of
+                        accepting a bad number. Our own stepper buttons
+                        rather than the browser's native spinner -- see
+                        NumberStepper.tsx for why. */}
+                    <NumberStepper
                       min={1}
                       max={it.quantity}
-                      value={qtyFor(it)}
-                      onChange={(e) => setQtyFor(it, Number(e.target.value))}
-                      className="w-16 rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1.5 text-sm text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
+                      value={String(qtyFor(it))}
+                      onChange={(v) => setQtyFor(it, Number(v))}
+                      className="w-16 rounded-lg border border-white/10 bg-white/[0.03] pl-2.5 pr-5 py-1.5 text-sm text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
                     />
                     <button
                       onClick={() => setConfirmRelease({ eventId: modalEvent.id, item: it, qty: qtyFor(it) })}
@@ -457,7 +919,19 @@ export default function ReturnsView() {
               ))}
             </div>
 
-            <div className="px-5 py-4 border-t border-white/10 flex justify-end">
+            <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
+              {modalEvent.items.length > 1 ? (
+                <button
+                  onClick={() => setConfirmReleaseAll(true)}
+                  disabled={selectedCount === 0 || bulkReleasing}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-gold-400 hover:bg-gold-500 disabled:opacity-40 disabled:cursor-not-allowed text-[#08130F] text-xs font-bold px-4 py-2 transition"
+                >
+                  <Undo2 className="h-3.5 w-3.5" />
+                  {bulkReleasing ? t("releasingSelectedLabel") : `${t("releaseSelectedLabel")} (${selectedCount})`}
+                </button>
+              ) : (
+                <span />
+              )}
               <button onClick={() => setSelectedEventId(null)} className="px-5 py-2 rounded-full border border-white/15 text-white text-sm hover:bg-white/10 transition">
                 {t("closeLabel")}
               </button>
@@ -484,7 +958,44 @@ export default function ReturnsView() {
         z={10000}
       />
 
-      <StatusModal open={!!successMessage} type="success" title={t("returnSuccessTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} z={10000} />
+      <ConfirmDialog
+        open={confirmReleaseAll}
+        icon={<Undo2 size={32} />}
+        title={t("confirmReleaseSelectedTitle")}
+        body={
+          modalEvent
+            ? t("confirmReleaseSelectedBody").replace("{n}", String(selectedCount)).replace("{event}", modalEvent.name)
+            : ""
+        }
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("confirmReleaseSelectedLabel")}
+        onCancel={() => setConfirmReleaseAll(false)}
+        onConfirm={() => modalEvent && releaseSelectedItems(modalEvent)}
+        tone="danger"
+        z={10000}
+      />
+
+      <ConfirmDialog
+        open={confirmUndo !== null}
+        icon={<RotateCcw size={32} />}
+        title={t("confirmUndoReleaseTitle")}
+        body={
+          confirmUndo
+            ? t("confirmUndoReleaseBody")
+                .replace("{qty}", String(confirmUndo.qty))
+                .replace("{item}", confirmUndo.release.item_name)
+                .replace("{event}", confirmUndo.release.event_name)
+            : ""
+        }
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("undoReleaseLabel")}
+        onCancel={() => setConfirmUndo(null)}
+        onConfirm={() => confirmUndo && undoReleaseAction(confirmUndo.release, confirmUndo.qty)}
+        tone="danger"
+        z={10000}
+      />
+
+      <StatusModal open={!!successMessage} type="success" title={successTitle || t("returnSuccessTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} z={10000} />
     </>
   );
 }

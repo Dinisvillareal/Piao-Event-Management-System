@@ -159,15 +159,47 @@ export default function DateRangePicker({
     },
   ];
 
-  const formatDisplay = (value: string) => {
-    if (!value) return null;
-    const d = new Date(`${value}T00:00:00`);
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  // The trigger's own label reads like a person would say the range out
+  // loud rather than always spelling out "Mon D, YYYY" on both ends -- but
+  // every case keeps the actual day number (never just a bare month/year),
+  // and every month is the short abbreviation ("Sep", not "September")
+  // consistently across all three cases: a same-month range only needs the
+  // month/year once ("Sep 1–2, 2026"), a same-year range only needs the
+  // year once ("Jul 1 – Sep 2, 2026"), and a range crossing years spells
+  // out each side in full ("Sep 1, 2026 – Mar 2, 2027").
+  const parseISO = (value: string) => (value ? new Date(`${value}T00:00:00`) : null);
+
+  const formatSingleDate = (d: Date) =>
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const formatShortMonth = (d: Date) => d.toLocaleDateString("en-US", { month: "short" });
+
+  const formatRange = (fromValue: string, toValue: string): string => {
+    const fromDate = parseISO(fromValue);
+    const toDate = parseISO(toValue);
+
+    // One (or both) ends still unset -- keep the previous "MMM D, YYYY – …"
+    // placeholder behavior instead of guessing at a same-month/year shortcut.
+    if (!fromDate || !toDate) {
+      return `${fromDate ? formatSingleDate(fromDate) : "…"} – ${toDate ? formatSingleDate(toDate) : "…"}`;
+    }
+
+    if (fromDate.getTime() === toDate.getTime()) {
+      return formatSingleDate(fromDate);
+    }
+
+    const sameYear = fromDate.getFullYear() === toDate.getFullYear();
+    const sameMonth = sameYear && fromDate.getMonth() === toDate.getMonth();
+
+    if (sameMonth) {
+      return `${formatShortMonth(fromDate)} ${fromDate.getDate()}–${toDate.getDate()}, ${fromDate.getFullYear()}`;
+    }
+    if (sameYear) {
+      return `${formatShortMonth(fromDate)} ${fromDate.getDate()} – ${formatShortMonth(toDate)} ${toDate.getDate()}, ${fromDate.getFullYear()}`;
+    }
+    return `${formatSingleDate(fromDate)} – ${formatSingleDate(toDate)}`;
   };
 
-  const displayLabel = from || to
-    ? `${formatDisplay(from) ?? "…"} – ${formatDisplay(to) ?? "…"}`
-    : allDatesLabel;
+  const displayLabel = from || to ? formatRange(from, to) : allDatesLabel;
 
   const handleApply = () => {
     onChange(draftFrom, draftTo);

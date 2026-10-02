@@ -1,7 +1,8 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Filter } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 // ✅ Exported so Members.tsx can import and reuse it
@@ -43,6 +44,18 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   const [attendanceFilter, setAttendanceFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
+  // Brief skeleton flash on every page switch, same as Activity Logs --
+  // this list paginates client-side so there's nothing to actually wait
+  // on, but the flash keeps page switches feeling consistent app-wide.
+  const [pageSwitching, setPageSwitching] = useState(false);
+  const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPage = (updater: number | ((p: number) => number)) => {
+    setCurrentPage(updater as any);
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const itemsPerPage = 10;
 
   // Only show the membership filter when the member actually has more
@@ -175,9 +188,13 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                     { value: "all", label: t("allMembershipsOption") },
                     ...userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
                   ]}
-                  className="h-11 pl-10 pr-8 shrink-0"
+                  className="h-11 min-w-[220px] pl-10 pr-8 shrink-0"
+                  panelWidthPx={280}
                   icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
                   dark
+                  searchable
+                  searchPlaceholder={t("search")}
+                  noResultsLabel={t("noMatchesFoundLabel")}
                 />
               )}
             </div>
@@ -192,7 +209,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
             <div className="flex justify-end mt-4">
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  onClick={() => goToPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
@@ -204,7 +221,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                 </span>
 
                 <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
@@ -218,7 +235,17 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
 
       {/* ATTENDANCE LIST */}
       <div className="pl-1 space-y-3">
-        {filteredAttendance.length === 0 ? (
+        {pageSwitching ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-3.5 w-40" />
+                <Skeleton className="h-3 w-28" />
+              </div>
+              <Skeleton className="h-6 w-20 rounded-full shrink-0" />
+            </div>
+          ))
+        ) : filteredAttendance.length === 0 ? (
           <p className="text-white/40 italic">{t("noAttendanceMatch")}</p>
         ) : (
           <>
