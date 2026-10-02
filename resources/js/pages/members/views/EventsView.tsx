@@ -711,8 +711,7 @@ export default function EventsView({
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12;
     if (hours === 0) hours = 12;
-    const minutesStr = minutes.toString().padStart(2, '0');
-    return `${hours}:${minutesStr} ${ampm}`;
+    return `${hours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
   };
 
   const formatDateOnly = (dateTimeStr: string): string => {
@@ -738,12 +737,8 @@ export default function EventsView({
   const filteredEvents = useMemo(() => {
     const today = new Date();
     let result = [...allEvents];
-
-    if (eventFilter === "upcoming") {
-      result = result.filter((e) => new Date(e.date) >= today);
-    } else if (eventFilter === "past") {
-      result = result.filter((e) => new Date(e.date) < today);
-    }
+    if (eventFilter === "upcoming") result = result.filter((e) => new Date(e.date) >= today);
+    else if (eventFilter === "past") result = result.filter((e) => new Date(e.date) < today);
 
     if (membershipFilter !== "all") {
       const selectedId = Number(membershipFilter);
@@ -752,12 +747,11 @@ export default function EventsView({
 
     if (eventSearch.trim()) {
       const q = eventSearch.toLowerCase();
-      result = result.filter(
-        (e) =>
-          e.title.toLowerCase().includes(q) ||
-          e.date.toLowerCase().includes(q) ||
-          e.location.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q)
+      result = result.filter((e) =>
+        e.title.toLowerCase().includes(q) ||
+        e.date.toLowerCase().includes(q) ||
+        e.location.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q)
       );
     }
 
@@ -786,19 +780,9 @@ export default function EventsView({
       const eventDate = new Date(e.date);
       eventDate.setHours(0, 0, 0, 0);
       const dateOnly = e.date.split(" ")[0];
-
       let sectionKey: string;
-      if (eventDate >= weekStart && eventDate <= weekEnd) {
-        sectionKey = THIS_WEEK_KEY;
-      } else {
-        sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        });
-      }
-
+      if (eventDate >= weekStart && eventDate <= weekEnd) sectionKey = THIS_WEEK_KEY;
+      else sectionKey = new Date(dateOnly).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
       if (!groups[sectionKey]) groups[sectionKey] = [];
       groups[sectionKey].push(e);
     });
@@ -813,10 +797,8 @@ export default function EventsView({
   }, [paginatedEvents]);
 
   return (
-    // Same fixed-header / scrollable-body structure as NotificationsView --
-    // title + search + filters + pagination stay put; event cards scroll under.
-    <div className="-m-3 sm:-m-5 h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col relative">
-      {/* Fixed Header - Never scrolls */}
+    <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col">
+      {/* Fixed Header */}
       <div className="flex-shrink-0 px-1 pt-2 pb-4">
         <div className="w-full">
           <h1 className="text-4xl font-black text-white">{t("eventsAndAttendance")}</h1>
@@ -825,14 +807,8 @@ export default function EventsView({
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex-1 min-w-[220px]">
-                <SearchBar
-                  value={eventSearch}
-                  onChange={setEventSearch}
-                  placeholder={t("searchEventsPlaceholder")}
-                  dark
-                />
+                <SearchBar value={eventSearch} onChange={setEventSearch} placeholder={t("searchEventsPlaceholder")} dark />
               </div>
-
               <FilterDropdown
                 value={eventFilter}
                 onChange={setEventFilter}
@@ -845,7 +821,6 @@ export default function EventsView({
                 icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
                 dark
               />
-
               <FilterDropdown
                 value={membershipFilter}
                 onChange={setMembershipFilter}
@@ -868,37 +843,23 @@ export default function EventsView({
             {filteredEvents.length} of {allEvents.length} {t("eventsMatchCount")}
           </p>
 
-          {/* PAGINATION - ← 1 → in the fixed header, so it stays put while scrolling */}
+          {/* PAGINATION — stays pinned in the fixed header */}
           {totalPages > 1 && (
             <div className="flex justify-end mt-4">
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => goToPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
-                >
-                  ←
-                </button>
-
-                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
-                  {currentPage}
-                </span>
-
-                <button
-                  onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
-                >
-                  →
-                </button>
+                <button onClick={() => goToPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
+                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">{currentPage}</span>
+                <button onClick={() => goToPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">→</button>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Scrollable Content Area - Only event cards scroll */}
-      <div className="flex-1 overflow-y-auto px-1 pb-4">
+      {/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
+      <div className="flex-1 overflow-y-auto min-h-0 px-1 pb-4">
         {pageSwitching ? (
           <div className="grid gap-5 md:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -927,37 +888,20 @@ export default function EventsView({
                       : Array.isArray(e.membership_ids)
                         ? e.membership_ids.map((id) => allMemberships.find((m) => m.id === id)?.name).filter(Boolean) as string[]
                         : [];
-
                     const dateOnly = formatDateOnly(e.date);
                     const timeOnly = formatTime(e.date);
 
                     return (
-                      <div
-                        key={e.id}
-                        className="relative rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] p-5 hover:bg-white/[0.06] transition-all duration-200"
-                      >
+                      <div key={e.id} className="relative rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] p-5 hover:bg-white/[0.06] transition-all duration-200">
                         <div className="absolute top-4 right-4 flex items-center gap-1.5">
                           <span className={`w-2.5 h-2.5 rounded-full ${isUpcoming ? "bg-gold-400" : "bg-[#4FBEB0]"}`} />
-                          <span className="text-xs font-medium text-white/50">
-                            {isUpcoming ? t("upcomingBadge") : t("pastBadge")}
-                          </span>
+                          <span className="text-xs font-medium text-white/50">{isUpcoming ? t("upcomingBadge") : t("pastBadge")}</span>
                         </div>
 
-                        <h2 className="pr-20 text-base font-bold text-white">
-                          {highlightText(e.title, eventSearch)}
-                        </h2>
-
-                        <p className="mt-1 text-sm text-white/40">
-                          {highlightText(dateOnly, eventSearch)} · {timeOnly}
-                        </p>
-
-                        <p className="mt-1 text-sm text-white/40">
-                          {highlightText(e.location, eventSearch)}
-                        </p>
-
-                        <p className="mt-3 text-sm text-white/70">
-                          {highlightText(e.description, eventSearch)}
-                        </p>
+                        <h2 className="pr-20 text-base font-bold text-white">{highlightText(e.title, eventSearch)}</h2>
+                        <p className="mt-1 text-sm text-white/40">{highlightText(dateOnly, eventSearch)} · {timeOnly}</p>
+                        <p className="mt-1 text-sm text-white/40">{highlightText(e.location, eventSearch)}</p>
+                        <p className="mt-3 text-sm text-white/70">{highlightText(e.description, eventSearch)}</p>
 
                         <div className="mt-4 flex flex-wrap items-center gap-2">
                           {memNames.length > 0 ? (
@@ -986,36 +930,25 @@ export default function EventsView({
                                   <p className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">{t("rateThisEventLabel")}</p>
                                   <div className="flex items-center gap-1">
                                     {[1, 2, 3, 4, 5].map((n) => (
-                                      <button
-                                        key={n}
-                                        type="button"
+                                      <button key={n} type="button"
                                         onMouseEnter={() => setReviewHoverRating(n)}
                                         onMouseLeave={() => setReviewHoverRating(0)}
-                                        onClick={() => setReviewRating(n)}
-                                        className="p-0.5"
-                                      >
+                                        onClick={() => setReviewRating(n)} className="p-0.5">
                                         <Star size={22} className={(reviewHoverRating || reviewRating) >= n ? "text-gold-400 fill-gold-400" : "text-white/20"} />
                                       </button>
                                     ))}
                                   </div>
-                                  <textarea
-                                    value={reviewComment}
-                                    onChange={(ev) => setReviewComment(ev.target.value)}
-                                    placeholder={t("optionalCommentPlaceholder")}
-                                    rows={2}
-                                    className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                                  />
+                                  <textarea value={reviewComment} onChange={(ev) => setReviewComment(ev.target.value)}
+                                    placeholder={t("optionalCommentPlaceholder")} rows={2}
+                                    className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70" />
                                   {reviewError && <p className="mt-1 text-xs text-red-400">{reviewError}</p>}
                                   <div className="mt-2 flex gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => submitReview(e.id)}
-                                      disabled={reviewRating < 1 || submittingReview}
-                                      className="flex-1 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-bold py-2 disabled:opacity-50 transition"
-                                    >
+                                    <button type="button" onClick={() => submitReview(e.id)} disabled={reviewRating < 1 || submittingReview}
+                                      className="flex-1 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-bold py-2 disabled:opacity-50 transition">
                                       {submittingReview ? t("submittingLabel") : t("submitReviewButton")}
                                     </button>
-                                    <button type="button" onClick={cancelReview} disabled={submittingReview} className="rounded-full border border-white/15 text-white/60 hover:bg-white/5 text-sm font-medium px-4 disabled:opacity-50 transition">
+                                    <button type="button" onClick={cancelReview} disabled={submittingReview}
+                                      className="rounded-full border border-white/15 text-white/60 hover:bg-white/5 text-sm font-medium px-4 disabled:opacity-50 transition">
                                       {t("cancelLabel")}
                                     </button>
                                   </div>
@@ -1032,12 +965,8 @@ export default function EventsView({
                                       </div>
                                       {feedback.comment && <p className="mt-1 text-xs text-white/40 truncate">"{feedback.comment}"</p>}
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => startReview(e.id)}
-                                      title={t("editReviewTitle")}
-                                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 text-white/70 text-xs font-semibold px-3 py-1.5 hover:bg-white/10 transition"
-                                    >
+                                    <button type="button" onClick={() => startReview(e.id)} title={t("editReviewTitle")}
+                                      className="shrink-0 inline-flex items-center gap-1 rounded-full border border-white/15 text-white/70 text-xs font-semibold px-3 py-1.5 hover:bg-white/10 transition">
                                       <Pencil className="h-3 w-3" /> {t("editLabel")}
                                     </button>
                                   </div>
@@ -1048,11 +977,8 @@ export default function EventsView({
                                   )}
                                 </div>
                               ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => startReview(e.id)}
-                                  className="inline-flex items-center gap-1.5 rounded-full border border-white/15 text-white/70 text-sm font-semibold px-4 py-2 hover:bg-white/10 transition"
-                                >
+                                <button type="button" onClick={() => startReview(e.id)}
+                                  className="inline-flex items-center gap-1.5 rounded-full border border-white/15 text-white/70 text-sm font-semibold px-4 py-2 hover:bg-white/10 transition">
                                   <Star className="h-4 w-4" /> {t("rateThisEventButton")}
                                 </button>
                               )}

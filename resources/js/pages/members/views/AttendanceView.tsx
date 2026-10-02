@@ -312,7 +312,6 @@ import FilterDropdown from "../../../components/ui/FilterDropdown";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
-// ✅ Exported so Members.tsx can import and reuse it
 export interface AttendanceRecord {
   id: number;
   eventId?: number;
@@ -368,14 +367,12 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
-    const formattedDate = `${year}-${month}-${day}`;
     let hours = date.getHours();
     const minutes = String(date.getMinutes()).padStart(2, '0');
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12;
     if (hours === 0) hours = 12;
-    const formattedTime = `${hours}:${minutes} ${ampm}`;
-    return `${formattedDate} · ${formattedTime}`;
+    return `${year}-${month}-${day} · ${hours}:${minutes} ${ampm}`;
   };
 
   const formatTimeOnly = (datetimeStr: string): string => {
@@ -392,11 +389,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
 
   const filteredAttendance = useMemo(() => {
     let result = attendanceRecords;
-
-    if (attendanceFilter !== "all") {
-      result = result.filter((rec) => rec.status === attendanceFilter);
-    }
-
+    if (attendanceFilter !== "all") result = result.filter((rec) => rec.status === attendanceFilter);
     if (showMembershipFilter && membershipFilter !== "all") {
       const selectedId = Number(membershipFilter);
       result = result.filter((rec) => {
@@ -404,7 +397,6 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
         return event?.membership_ids?.includes(selectedId);
       });
     }
-
     if (attendanceSearch.trim()) {
       const q = attendanceSearch.toLowerCase();
       result = result.filter((rec) =>
@@ -415,9 +407,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
         rec.timeOut?.toLowerCase().includes(q)
       );
     }
-
-    result = [...result].sort((a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime());
-    return result;
+    return [...result].sort((a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime());
   }, [attendanceRecords, attendanceFilter, membershipFilter, showMembershipFilter, allEvents, attendanceSearch]);
 
   const totalPages = Math.ceil(filteredAttendance.length / itemsPerPage);
@@ -431,10 +421,10 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   }, [attendanceSearch, attendanceFilter, membershipFilter]);
 
   return (
-    // Same fixed-header / scrollable-body structure as NotificationsView --
-    // pagination stays put while the list scrolls underneath.
-    <div className="-m-3 sm:-m-5 h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col relative">
-      {/* Fixed Header - Never scrolls */}
+    // h-full inherits from Members.tsx's h-full wrapper; flex flex-col
+    // lets the header stay fixed and the list scroll independently.
+    <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col">
+      {/* Fixed Header */}
       <div className="flex-shrink-0 pt-2 pb-4 px-1 sm:px-2">
         <div className="w-full pr-4">
           <h1 className="text-4xl font-black text-white">{t("attendanceRecords")}</h1>
@@ -443,12 +433,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
               <div className="flex-1 min-w-[220px]">
-                <SearchBar
-                  value={attendanceSearch}
-                  onChange={setAttendanceSearch}
-                  placeholder={t("searchAttendancePlaceholder")}
-                  dark
-                />
+                <SearchBar value={attendanceSearch} onChange={setAttendanceSearch} placeholder={t("searchAttendancePlaceholder")} dark />
               </div>
               <FilterDropdown
                 value={attendanceFilter}
@@ -463,7 +448,6 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                 icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
                 dark
               />
-
               {showMembershipFilter && (
                 <FilterDropdown
                   value={membershipFilter}
@@ -488,37 +472,23 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
             {filteredAttendance.length} of {attendanceRecords.length} {t("recordsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
           </p>
 
-          {/* PAGINATION - ← 1 → in the fixed header, so it stays put while scrolling */}
+          {/* PAGINATION — stays pinned in the fixed header */}
           {totalPages > 1 && (
             <div className="flex justify-end mt-4">
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => goToPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
-                >
-                  ←
-                </button>
-
-                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
-                  {currentPage}
-                </span>
-
-                <button
-                  onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
-                >
-                  →
-                </button>
+                <button onClick={() => goToPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
+                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">{currentPage}</span>
+                <button onClick={() => goToPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">→</button>
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Scrollable Content Area - Only attendance records scroll */}
-      <div className="flex-1 overflow-y-auto px-1 sm:px-2 pb-4">
+      {/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
+      <div className="flex-1 overflow-y-auto min-h-0 px-1 sm:px-2 pb-4">
         <div className="space-y-3">
           {pageSwitching ? (
             Array.from({ length: 4 }).map((_, i) => (
@@ -533,55 +503,35 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
           ) : filteredAttendance.length === 0 ? (
             <p className="text-white/40 italic">{t("noAttendanceMatch")}</p>
           ) : (
-            <>
-              {paginatedAttendance.map((rec) => {
-                const formattedEventDateTime = formatEventDateTime(rec.eventDate);
-                const formattedTimeIn = formatTimeOnly(rec.timeIn);
-                const formattedTimeOut = formatTimeOnly(rec.timeOut);
-
-                return (
-                  <div
-                    key={rec.id}
-                    className="rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] px-6 py-4 hover:bg-white/[0.06] transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                  >
-                    <div className="flex-1">
-                      <h3 className="text-base font-bold text-white">{highlightText(rec.eventTitle, attendanceSearch)}</h3>
-                      <p className="text-[13px] text-white/40 mt-1">
-                        {formattedEventDateTime} · {rec.location}
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-6">
-                      <div className="text-right">
-                        <span className="text-[13px] text-white/40">{t("timeInLabel")}</span>
-                        <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${
-                          rec.timeIn ? 'text-[#7DD8CB] bg-[#4FBEB0]/15' : 'text-white/30 bg-white/[0.05] italic'
-                        }`}>
-                          {formattedTimeIn || '—'}
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-[13px] text-white/40">{t("timeOutLabel")}</span>
-                        <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${
-                          rec.timeOut ? 'text-gold-300 bg-gold-400/15' : 'text-white/30 bg-white/[0.05] italic'
-                        }`}>
-                          {formattedTimeOut || '—'}
-                        </span>
-                      </div>
-                      <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
-                        rec.status === 'complete'
-                          ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
-                          : rec.status === 'incomplete'
-                          ? 'bg-gold-400/15 text-gold-300'
-                          : 'bg-red-500/15 text-red-400'
-                      }`}>
-                        {statusLabel(rec.status)}
-                      </span>
-                    </div>
+            paginatedAttendance.map((rec) => (
+              <div key={rec.id}
+                className="rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] px-6 py-4 hover:bg-white/[0.06] transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex-1">
+                  <h3 className="text-base font-bold text-white">{highlightText(rec.eventTitle, attendanceSearch)}</h3>
+                  <p className="text-[13px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)} · {rec.location}</p>
+                </div>
+                <div className="flex items-center gap-6">
+                  <div className="text-right">
+                    <span className="text-[13px] text-white/40">{t("timeInLabel")}</span>
+                    <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${rec.timeIn ? 'text-[#7DD8CB] bg-[#4FBEB0]/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
+                      {formatTimeOnly(rec.timeIn) || '—'}
+                    </span>
                   </div>
-                );
-              })}
-            </>
+                  <div className="text-right">
+                    <span className="text-[13px] text-white/40">{t("timeOutLabel")}</span>
+                    <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${rec.timeOut ? 'text-gold-300 bg-gold-400/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
+                      {formatTimeOnly(rec.timeOut) || '—'}
+                    </span>
+                  </div>
+                  <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                    rec.status === 'complete' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
+                    : rec.status === 'incomplete' ? 'bg-gold-400/15 text-gold-300'
+                    : 'bg-red-500/15 text-red-400'}`}>
+                    {statusLabel(rec.status)}
+                  </span>
+                </div>
+              </div>
+            ))
           )}
         </div>
       </div>
