@@ -494,7 +494,6 @@ export default function InventoryView() {
                   <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("quantityColumn")}</th>
                   <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("storageLocationLabel")}</th>
                   <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("statusColumn")}</th>
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("notesLabel")}</th>
                   <th className="py-3 px-4 text-right text-[11px] font-bold uppercase tracking-wide text-white">{t("actionsColumn")}</th>
                 </tr>
               </thead>
@@ -522,7 +521,12 @@ export default function InventoryView() {
                             </button>
                           )}
                         </div>
-                        <p className="font-semibold text-white truncate" title={item.name}>{item.name}</p>
+                        <div className="min-w-0 max-w-[280px]">
+                          <p className="font-semibold text-white truncate" title={item.name}>{item.name}</p>
+                          {item.notes && (
+                            <p className="text-xs text-white/40 leading-snug mt-0.5 line-clamp-2" title={item.notes}>{item.notes}</p>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className="py-3 px-4">
@@ -548,13 +552,6 @@ export default function InventoryView() {
                         </span>
                       ) : item.borrowed_quantity > 0 ? (
                         <span className="px-2 py-1 rounded-full text-[11px] font-semibold border border-white/10 bg-white/[0.04] text-white/50 whitespace-nowrap">{t("onLoanBadge")}</span>
-                      ) : (
-                        <span className="text-white/25">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-white/50 max-w-[220px]">
-                      {item.notes ? (
-                        <span className="block truncate" title={item.notes}>{item.notes}</span>
                       ) : (
                         <span className="text-white/25">—</span>
                       )}

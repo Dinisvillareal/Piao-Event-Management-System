@@ -77,6 +77,15 @@ export default function ActivityLogsView() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
+  // Anchor at the very top of the page -- scrolled into view on every
+  // pagination click so switching pages always lands the user back at the
+  // top of the feed instead of leaving them wherever they'd scrolled to
+  // on the previous page.
+  const topRef = useRef<HTMLDivElement>(null);
+  const goToPage = (updater: number | ((p: number) => number)) => {
+    setCurrentPage(updater as any);
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   // Real-time refresh -- other staff generate activity constantly, so this
   // polls quietly in the background rather than relying on a manual
@@ -345,7 +354,7 @@ export default function ActivityLogsView() {
         pages, so Activity Logs reads as part of the same system instead
         of the old light "paper" page. This page has no add/edit modal of
         its own, just the feed below. */}
-    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div ref={topRef} className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -504,7 +513,7 @@ export default function ActivityLogsView() {
           </p>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              onClick={() => goToPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >
@@ -514,7 +523,7 @@ export default function ActivityLogsView() {
               {currentPage}
             </span>
             <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >

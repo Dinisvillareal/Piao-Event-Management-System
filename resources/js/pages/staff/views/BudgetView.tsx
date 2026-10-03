@@ -455,12 +455,17 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     const approved = summary.approved_budget !== null ? Number(summary.approved_budget) : null;
     const spent = Number(summary.total_expenses);
     const timeLabel = formatTimeFriendly(selectedEvent.event_start || selectedEvent.date);
+    // event_start/date is a full "YYYY-MM-DD HH:MM:SS" timestamp -- take
+    // just the date portion here, since timeLabel above already carries
+    // the time. Appending the raw value and the formatted time was
+    // showing both ("2026-07-28 09:00:00 9:00 AM").
+    const datePart = (selectedEvent.event_start || selectedEvent.date || "").split(" ")[0].split("T")[0];
 
     try {
       await exportExpenseReportXlsx({
         eventTitle: selectedEvent.title,
         statusLabel: selectedEventStatus ? eventStatusLabel(selectedEventStatus.label) : "",
-        dateLabel: `${selectedEvent.event_start || selectedEvent.date || ""}${timeLabel ? ` ${timeLabel}` : ""}`,
+        dateLabel: `${datePart}${timeLabel ? ` ${timeLabel}` : ""}`,
         approvedBudget: approved,
         totalSpent: spent,
         expenses: summary.expenses,
@@ -870,8 +875,8 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       </div>
       </div>
 
-      <StatusModal open={!!error} type="error" title={t("errorTitle")} message={error || ""} okLabel={t("okLabel")} onClose={() => setError(null)} />
-      <StatusModal open={!!budgetWarning} type="warning" title={t("overBudgetTitle")} message={budgetWarning || ""} okLabel={t("okLabel")} onClose={() => setBudgetWarning(null)} />
+      <StatusModal open={!!error} type="error" title={t("errorTitle")} message={error || ""} okLabel={t("okLabel")} onClose={() => setError(null)} z={60} />
+      <StatusModal open={!!budgetWarning} type="warning" title={t("overBudgetTitle")} message={budgetWarning || ""} okLabel={t("okLabel")} onClose={() => setBudgetWarning(null)} z={60} />
 
       {/* Add Expense modal -- same dark navy card treatment as Edit Expense
           below, replacing the old always-visible inline row so the form

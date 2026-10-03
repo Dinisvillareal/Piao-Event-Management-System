@@ -58,11 +58,17 @@ export default function ArchiveView() {
   // on, but the flash keeps page switches feeling consistent app-wide.
   const [pageSwitching, setPageSwitching] = useState(false);
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Anchor at the very top of the page -- scrolled into view on every
+  // pagination click, same as Activity Logs, so switching pages always
+  // lands back at the top instead of staying wherever the list had been
+  // scrolled to.
+  const topRef = useRef<HTMLDivElement>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const itemsPerPage = 20;
@@ -329,7 +335,7 @@ export default function ArchiveView() {
         modals further below stay on their original light theme, same
         scoping used everywhere else -- there's no core edit form on this
         page to darken along with it. */}
-    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div ref={topRef} className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
