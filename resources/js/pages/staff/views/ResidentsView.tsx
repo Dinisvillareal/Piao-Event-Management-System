@@ -22,6 +22,7 @@ import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Membership {
@@ -227,7 +228,7 @@ const normalizeName = (s: string) =>
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ResidentsView() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [residentsData, setResidentsData] = useState<ResidentRow[]>([]);
   const [availableMemberships, setAvailableMemberships] = useState<Membership[]>([]);
   const [householdOptions, setHouseholdOptions] = useState<HouseholdOption[]>([]);
@@ -1074,7 +1075,7 @@ const handleDeleteResident = async () => {
                   onChange={() => toggle(cs.id)}
                   className="w-5 h-5 text-[#4FBEB0]"
                 />
-                <span>{cs.label}</span>
+                <span>{tc(cs.label, language as any)}</span>
               </label>
             ))}
           </div>
@@ -1117,7 +1118,7 @@ const handleDeleteResident = async () => {
                 key={mem.id}
                 className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/20 text-[#7DD8CB] pl-4 pr-2 py-2 text-base font-medium shadow-sm"
               >
-                {mem.name}
+                {tc(mem.name, language as any)}
                 <button
                   type="button"
                   onClick={() => toggleMembership(mem.id, isEdit)}
@@ -1160,7 +1161,7 @@ const handleDeleteResident = async () => {
                 className="inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-base font-medium text-white hover:bg-white/20 hover:border-white/30 transition-colors"
               >
                 <Plus className="h-3.5 w-3.5 text-[#4FBEB0]" />
-                {mem.name}
+                {tc(mem.name, language as any)}
               </button>
             ))}
           </div>
@@ -1467,7 +1468,7 @@ const handleDeleteResident = async () => {
         ];
         if (r.age !== null) infoRows.push(["Age", `${r.age}${r.ageGroup ? ` · ${r.ageGroup}` : ""}`]);
         if (r.gender) infoRows.push(["Gender", r.gender === "Male" ? t("maleOption") : t("femaleOption")]);
-        if (r.civilStatus) infoRows.push(["Civil status", r.civilStatus]);
+        if (r.civilStatus) infoRows.push(["Civil status", tc(r.civilStatus, language as any)]);
         infoRows.push(["Household size", size > 0 ? `${size} member${size === 1 ? "" : "s"}` : "—"]);
         infoRows.push(["Role", r.role]);
 
@@ -1563,7 +1564,7 @@ const handleDeleteResident = async () => {
                         <div className="flex flex-wrap justify-end gap-1.5">
                           {r.currentStatuses.map((cs) => (
                             <span key={cs.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#4FBEB0]/10 text-[#7DD8CB]">
-                              {cs.label}
+                              {tc(cs.label, language as any)}
                             </span>
                           ))}
                         </div>
@@ -1580,7 +1581,7 @@ const handleDeleteResident = async () => {
                     <div className="flex flex-wrap gap-1.5">
                       {allMems.map((m, i) => (
                         <span key={i} className={`px-2 py-1 rounded-full text-xs font-medium ${getMembershipBadgeStyle(i)}`}>
-                          {m}
+                          {tc(m, language as any)}
                         </span>
                       ))}
                     </div>
@@ -1883,7 +1884,7 @@ const handleDeleteResident = async () => {
                         >
                           <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                           {civilStatuses.map((cs) => (
-                            <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
+                            <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{tc(cs.label, language as any)}</option>
                           ))}
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />

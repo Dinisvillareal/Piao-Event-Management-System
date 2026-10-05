@@ -567,6 +567,7 @@ import SearchBar from "../../../components/ui/SearchBar";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 import api, { apiErrorMessage } from "../../../lib/api";
 
 const THIS_WEEK_KEY = "__THIS_WEEK__";
@@ -613,7 +614,7 @@ export default function EventsView({
   myFeedback = [],
   onFeedbackSubmitted,
 }: EventsViewProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
@@ -797,7 +798,8 @@ export default function EventsView({
   }, [paginatedEvents]);
 
   return (
-    <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col">
+    // <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> e rollback ni if dili mugana just below ani
+    <div className="h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-hidden">
       {/* Fixed Header */}
       <div className="flex-shrink-0 px-1 pt-2 pb-4">
         <div className="w-full">
@@ -898,10 +900,10 @@ export default function EventsView({
                           <span className="text-xs font-medium text-white/50">{isUpcoming ? t("upcomingBadge") : t("pastBadge")}</span>
                         </div>
 
-                        <h2 className="pr-20 text-base font-bold text-white">{highlightText(e.title, eventSearch)}</h2>
+                        <h2 className="pr-20 text-base font-bold text-white">{highlightText(tc(e.title, language as any), eventSearch)}</h2>
                         <p className="mt-1 text-sm text-white/40">{highlightText(dateOnly, eventSearch)} · {timeOnly}</p>
-                        <p className="mt-1 text-sm text-white/40">{highlightText(e.location, eventSearch)}</p>
-                        <p className="mt-3 text-sm text-white/70">{highlightText(e.description, eventSearch)}</p>
+                        <p className="mt-1 text-sm text-white/40">{highlightText(tc(e.location, language as any), eventSearch)}</p>
+                        <p className="mt-3 text-sm text-white/70">{highlightText(tc(e.description, language as any), eventSearch)}</p>
 
                         <div className="mt-4 flex flex-wrap items-center gap-2">
                           {memNames.length > 0 ? (

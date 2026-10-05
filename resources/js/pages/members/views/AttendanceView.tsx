@@ -311,6 +311,8 @@ import SearchBar from "../../../components/ui/SearchBar";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
+
 
 export interface AttendanceRecord {
   id: number;
@@ -336,7 +338,7 @@ interface AttendanceViewProps {
 }
 
 export default function AttendanceView({ attendanceRecords, highlightText, allEvents = [], userMemberships = [] }: AttendanceViewProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const statusLabel = (status: string) => {
     if (status === "complete") return t("statusComplete");
     if (status === "incomplete") return t("statusIncomplete");
@@ -423,7 +425,8 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   return (
     // h-full inherits from Members.tsx's h-full wrapper; flex flex-col
     // lets the header stay fixed and the list scroll independently.
-    <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col">
+    // <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> if dili mugana ang right ubos ani ibalik ni
+    <div className="h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-hidden">
       {/* Fixed Header */}
       <div className="flex-shrink-0 pt-2 pb-4 px-1 sm:px-2">
         <div className="w-full pr-4">
@@ -507,8 +510,8 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
               <div key={rec.id}
                 className="rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] px-6 py-4 hover:bg-white/[0.06] transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex-1">
-                  <h3 className="text-base font-bold text-white">{highlightText(rec.eventTitle, attendanceSearch)}</h3>
-                  <p className="text-[13px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)} · {rec.location}</p>
+                  <h3 className="text-base font-bold text-white">{highlightText(tc(rec.eventTitle, language as any), attendanceSearch)}</h3>
+                  <p className="text-[13px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)} · {tc(rec.location, language as any)}</p>
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-right">

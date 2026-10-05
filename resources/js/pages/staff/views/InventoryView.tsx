@@ -7,6 +7,7 @@ import NumberStepper from "../../../components/ui/NumberStepper";
 import Skeleton from "../../../components/ui/Skeleton";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 
 type Condition = "New" | "Good" | "Fair" | "Poor" | "Disposed" | "Lost";
 
@@ -60,7 +61,7 @@ const CONDITION_LABEL_KEYS: Record<Condition, string> = {
  * of the card-grid layout this page used previously.
  */
 export default function InventoryView() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -522,7 +523,7 @@ export default function InventoryView() {
                             </button>
                           )}
                         </div>
-                        <p className="font-semibold text-white truncate" title={item.name}>{item.name}</p>
+                        <p className="font-semibold text-white truncate" title={tc(item.name, language as any)}>{tc(item.name, language as any)}</p>
                       </div>
                     </td>
                     <td className="py-3 px-4">
@@ -534,7 +535,7 @@ export default function InventoryView() {
                     <td className="py-3 px-4 text-white/50">
                       {item.storage_location ? (
                         <span className="flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5 shrink-0 text-[#4FBEB0]" /> {item.storage_location}
+                          <MapPin className="h-3.5 w-3.5 shrink-0 text-[#4FBEB0]" /> {tc(item.storage_location, language as any)}
                         </span>
                       ) : "—"}
                     </td>
@@ -554,7 +555,7 @@ export default function InventoryView() {
                     </td>
                     <td className="py-3 px-4 text-white/50 max-w-[220px]">
                       {item.notes ? (
-                        <span className="block truncate" title={item.notes}>{item.notes}</span>
+                        <span className="block truncate" title={tc(item.notes, language as any)}>{tc(item.notes, language as any)}</span>
                       ) : (
                         <span className="text-white/25">—</span>
                       )}
@@ -793,7 +794,7 @@ export default function InventoryView() {
                   <Eye className="h-3 w-3" />
                   {t("viewPhotoLabel")}
                 </span>
-                <span className="text-sm font-medium text-white truncate">{viewingPhoto.name}</span>
+                <span className="text-sm font-medium text-white truncate">{tc(viewingPhoto.name, language as any)}</span>
               </div>
               <button onClick={() => setViewingPhoto(null)} className="text-white/50 hover:text-white p-1 shrink-0">
                 <X className="h-5 w-5" />

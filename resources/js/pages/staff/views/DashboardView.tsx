@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { UserPlus, CalendarPlus, ScanLine, Bell, BarChart3, Users, Award, CalendarDays, Undo2, LayoutDashboard, Download, Activity, Clock } from "lucide-react";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
@@ -23,7 +24,7 @@ export default function DashboardView({
   upcomingEvents = [],
   pastEventsCount = 0
 }: DashboardViewProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [stats, setStats] = useState({
     residents: 0,
     memberships: 0,
@@ -677,7 +678,7 @@ export default function DashboardView({
                     return (
                       <div key={ev.id}>
                         <div className="mb-1.5 flex justify-between gap-3 text-[13px]">
-                          <span className="truncate font-semibold text-white/85">{ev.name}</span>
+                          <span className="truncate font-semibold text-white/85">{tc(ev.name, language as any)}</span>
                           <span className="shrink-0 text-white/40">{pct}%</span>
                         </div>
                         <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
@@ -734,8 +735,8 @@ export default function DashboardView({
                             <span className="text-[11px] font-semibold text-[#6B6558]">{year}</span>
                           </span>
                         </div>
-                        <p className="mt-2 truncate text-[13px] font-semibold text-[#1A1A1A]">{ev.name ?? ev.title}</p>
-                        <p className="mt-0.5 truncate text-[11px] text-[#9B9484]">{ev.location}</p>
+                        <p className="mt-2 truncate text-[13px] font-semibold text-[#1A1A1A]">{tc(ev.name ?? ev.title, language as any)}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-[#9B9484]">{tc(ev.location, language as any)}</p>
                       </button>
                     );
                   })}

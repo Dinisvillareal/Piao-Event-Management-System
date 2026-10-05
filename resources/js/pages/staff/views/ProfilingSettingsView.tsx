@@ -4,6 +4,7 @@ import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 
 /**
  * Adviser example (Senior Citizen eligibility) — extended to Youth and
@@ -43,7 +44,7 @@ const csrfToken = () =>
   );
 
 export default function ProfilingSettingsView() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   const [ageBrackets, setAgeBrackets] = useState<AgeBracket[]>([]);
   const [civilStatuses, setCivilStatuses] = useState<CivilStatus[]>([]);
@@ -407,7 +408,7 @@ export default function ProfilingSettingsView() {
               {ageBrackets.map((b) => (
                 <div key={b.id} className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 border border-gray-100 px-4 py-2.5">
                   <div>
-                    <p className="text-sm font-semibold text-gray-800">{b.label}</p>
+                    <p className="text-sm font-semibold text-gray-800">{tc(b.label, language as any)}</p>
                     <p className="text-xs text-gray-500">{b.min_age} - {b.max_age ?? "∞"} {t("yearsOldSuffix")}</p>
                   </div>
                   <div className="flex gap-1">
@@ -505,7 +506,7 @@ export default function ProfilingSettingsView() {
             <div className="mt-5 space-y-2">
               {civilStatuses.map((s) => (
                 <div key={s.id} className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 border border-gray-100 px-4 py-2.5">
-                  <p className="text-sm font-semibold text-gray-800">{s.label}</p>
+                  <p className="text-sm font-semibold text-gray-800">{tc(s.label, language as any)}</p>
                   <div className="flex gap-1">
                     <button
                       type="button"
@@ -584,7 +585,7 @@ export default function ProfilingSettingsView() {
             <div className="mt-5 space-y-2">
               {currentStatuses.map((s) => (
                 <div key={s.id} className="flex items-center justify-between gap-3 rounded-2xl bg-gray-50 border border-gray-100 px-4 py-2.5">
-                  <p className="text-sm font-semibold text-gray-800">{s.label}</p>
+                  <p className="text-sm font-semibold text-gray-800">{tc(s.label, language as any)}</p>
                   <div className="flex gap-1">
                     <button
                       type="button"

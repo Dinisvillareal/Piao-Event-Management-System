@@ -7,6 +7,7 @@ import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import NumberStepper from "../../../components/ui/NumberStepper";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 
 const THIS_WEEK_KEY = "📅 This Week";
 const UNKNOWN_DATE_KEY = "__UNKNOWN_DATE__";
@@ -36,7 +37,7 @@ interface ExpenseSummary {
  * before drilling into any one event's ledger.
  */
 export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption[] }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [search, setSearch] = useState("");
   const [eventListPage, setEventListPage] = useState(1);
   // Brief skeleton flash on every page switch, same as Activity Logs --
@@ -670,7 +671,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                               : "bg-white/[0.03] border border-white/10 text-white hover:bg-white/[0.06]"
                           }`}
                         >
-                          <p className="font-semibold text-sm truncate">{e.title}</p>
+                          <p className="font-semibold text-sm truncate">{tc(e.title, language as any)}</p>
                           {timeLabel && <p className={`text-xs ${isSelected ? "text-[#08130F]/70" : "text-white/45"}`}>{timeLabel}</p>}
                           {rowPct !== null && (
                             <div className={`mt-2 h-1.5 rounded-full overflow-hidden ${isSelected ? "bg-[#08130F]/20" : "bg-white/10"}`}>
@@ -824,7 +825,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                     <div key={exp.id} className="flex items-start justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 group">
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <p className="text-sm font-medium text-white truncate">{exp.item}</p>
+                          <p className="text-sm font-medium text-white truncate">{tc(exp.item, language as any)}</p>
                           {exp.receipt_url && (
                             <button
                               type="button"
@@ -836,7 +837,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                             </button>
                           )}
                         </div>
-                        {exp.notes && <p className="mt-0.5 text-xs text-white/50 whitespace-pre-wrap break-words">{exp.notes}</p>}
+                        {exp.notes && <p className="mt-0.5 text-xs text-white/50 whitespace-pre-wrap break-words">{tc(exp.notes, language as any)}</p>}
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-3">
                         <span className="text-sm font-bold text-[#7DD8CB]">₱{Number(exp.amount).toLocaleString()}</span>

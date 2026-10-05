@@ -39,6 +39,10 @@ import StaffDashboard from "./pages/staff/Staff";
 import LoginPage from "./pages/login/Login";
 import SplashScreen from "./components/ui/SplashScreen";
 import { LanguageProvider } from "./i18n/LanguageContext";
+import { loadContentTranslations } from "./lib/contentTranslations";
+
+// Fire-and-forget; components will show English until it resolves.
+loadContentTranslations();
 
 const rootElement = document.getElementById("app");
 

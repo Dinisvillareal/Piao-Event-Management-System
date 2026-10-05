@@ -136,6 +136,20 @@ export const translations: Dict = {
   checkBackLater: { en: "Check back later for updates", tl: "Bumalik mamaya para sa mga update", ceb: "Balik-i unya para sa mga update" },
   noUpcomingEvents: { en: "No upcoming events", tl: "Walang paparating na kaganapan", ceb: "Walay umaabot nga kalihokan" },
 
+
+
+  myActivityTitle: { en: "My Activity", tl: "Aking Aktibidad", ceb: "Akong Kalihokan" },
+  unreadNotificationsTile: { en: "Unread Notifications", tl: "Mga Hindi pa Nabasa", ceb: "Mga Wala pa Nabasa" },
+  nextEventInTile: { en: "Next Event In", tl: "Susunod na Kaganapan Sa", ceb: "Sunod nga Kalihokan Sa" },
+  lastCheckInTile: { en: "Last Check-in", tl: "Huling Pag-check In", ceb: "Kataposang Pag-check In" },
+  missedCheckInsTile: { en: "Missed Check-ins", tl: "Mga Hindi Nadaluhan", ceb: "Mga Wala Matambongi" },
+  showQrToStaffCaption: { en: "Show this to staff when checking in at events.", tl: "Ipakita ito sa kawani kapag nag-check in sa mga kaganapan.", ceb: "Ipakita kini sa kawani kung mag-check-in sa mga kalihokan." },
+  viewFullQrCode: { en: "View Full QR Code", tl: "Tingnan ang Buong QR Code", ceb: "Tan-awa ang Tibuok QR Code" },
+
+
+
+
+
   search: { en: "Search", tl: "Maghanap", ceb: "Pangita" },
   noMatchesFoundLabel: { en: "No matches found.", tl: "Walang nahanap na tugma.", ceb: "Walay natukiban nga tugma." },
   cancel: { en: "Cancel", tl: "Kanselahin", ceb: "Kanselahon" },

@@ -15,6 +15,7 @@ import Skeleton from "../../../components/ui/Skeleton";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { exportExpenseReportXlsx } from "../../../lib/expenseReportExport";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 
 interface MyEvent {
   id: number | string;
@@ -85,7 +86,7 @@ export function EventsView({
   attendanceRecords = [],
   loading = false,
 }: EventsViewProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const eventStatusLabel = (label: string) => (label === "Upcoming" ? t("upcomingBadge") : label === "Ongoing" ? t("ongoingBadge") : t("pastBadge"));
   // The card/detail-view chip reads "Completed" for a finished event instead
   // of "Past" -- "Past" stays as-is everywhere else (filter dropdown option,
@@ -1830,11 +1831,11 @@ export function EventsView({
                       </div>
 
                       <h2 className="mt-4 text-base font-bold text-white break-words">
-                        {highlightText(e.title, eventSearch)}
+                        {highlightText(tc(e.title, language as any), eventSearch)}
                       </h2>
                       <p className="mt-1.5 text-sm text-white/50 flex items-center gap-1.5">
                         <MapPin className="h-3.5 w-3.5 text-gold-300 shrink-0" />
-                        <span className="truncate">{highlightText(e.location, eventSearch)}</span>
+                        <span className="truncate">{highlightText(tc(e.location, language as any), eventSearch)}</span>
                       </p>
                       <p className="mt-1 text-sm text-white/50 flex items-center gap-1.5">
                         <Clock className="h-3.5 w-3.5 text-gold-300 shrink-0" />
@@ -1843,7 +1844,7 @@ export function EventsView({
                         </span>
                       </p>
                       <p className="mt-2 text-sm text-white/50 break-words line-clamp-2">
-                        {highlightText(e.description || t("noDescription"), eventSearch)}
+                        {highlightText(tc(e.description || t("noDescription"), language as any), eventSearch)}
                       </p>
 
                       <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-2 text-xs text-white/50">

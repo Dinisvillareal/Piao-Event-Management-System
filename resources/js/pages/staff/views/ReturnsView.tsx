@@ -8,6 +8,7 @@ import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 
 interface OverdueEventItem {
   id: number;
@@ -41,7 +42,7 @@ const RELEASES_PER_PAGE = 5;
 // the dedicated home for that queue; the Dashboard only shows a short
 // summary that links back here.
 export default function ReturnsView() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [events, setEvents] = useState<OverdueEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -313,7 +314,7 @@ export default function ReturnsView() {
         return next;
       });
       setSuccessTitle(t("returnSuccessTitle"));
-      setSuccessMessage(t("returnSuccessMessage").replace("{qty}", String(qty)).replace("{item}", item.name));
+      setSuccessMessage(t("returnSuccessMessage").replace("{qty}", String(qty)).replace("{item}", tc(item.name, language as any)));
       // The new release is always the newest, so it belongs on page 1
       // regardless of which page of the panel was showing before.
       fetchRecentReleases(1);
@@ -372,7 +373,7 @@ export default function ReturnsView() {
         setSuccessMessage(
           anyFailed
             ? t("bulkReleasePartialFailureMessage")
-            : t("bulkReleaseSuccessMessage").replace("{event}", event.name)
+            : t("bulkReleaseSuccessMessage").replace("{event}", tc(event.name, language as any))
         );
         fetchRecentReleases(1);
       } else {
@@ -399,8 +400,8 @@ export default function ReturnsView() {
       setSuccessMessage(
         t("undoReleaseSuccessMessage")
           .replace("{qty}", String(qty))
-          .replace("{item}", release.item_name)
-          .replace("{event}", release.event_name)
+          .replace("{item}", tc(release.item_name, language as any))
+          .replace("{event}", tc(release.event_name, language as any))
       );
       // The event may need to reappear in the overdue list (if this
       // release had fully closed it out) or show an updated remaining
@@ -659,7 +660,7 @@ export default function ReturnsView() {
                             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#8A3D2C]/25 shrink-0">
                               <PackageX className="h-4 w-4 text-[#E2A088]" />
                             </div>
-                            <p className="font-semibold text-white truncate">{ev.name}</p>
+                            <p className="font-semibold text-white truncate">{tc(ev.name, language as any)}</p>
                           </div>
                         </td>
                         <td className="py-3.5 px-4 text-white/60 whitespace-nowrap">{formatEndedAt(ev.ended_at)}</td>
@@ -671,7 +672,7 @@ export default function ReturnsView() {
                         <td className="py-3.5 px-4 text-white/50">
                           <ul className="space-y-0.5">
                             {ev.items.map((it) => (
-                              <li key={it.id} className="text-xs">{it.quantity}&times; {it.name}</li>
+                              <li key={it.id} className="text-xs">{it.quantity}&times; {tc(it.name, language as any)}</li>
                             ))}
                           </ul>
                         </td>
@@ -761,7 +762,7 @@ export default function ReturnsView() {
                 <li key={r.id} className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3 flex-wrap">
                   <div className="min-w-0">
                     <p className="text-sm text-white truncate">
-                      {r.quantity}&times; {r.item_name} <span className="text-white/40">&bull;</span> {r.event_name}
+                      {r.quantity}&times; {tc(r.item_name, language as any)} <span className="text-white/40">&bull;</span> {tc(r.event_name, language as any)}
                     </p>
                     <p className="text-xs text-white/40 mt-0.5">
                       {relativeTimeLabel(r.released_at)}
@@ -854,7 +855,7 @@ export default function ReturnsView() {
           >
             <div className="px-5 py-4 border-b border-white/10 flex items-start justify-between gap-3">
               <div>
-                <h2 className="font-display text-lg font-bold text-white">{modalEvent.name}</h2>
+                <h2 className="font-display text-lg font-bold text-white">{tc(modalEvent.name, language as any)}</h2>
                 <p className="text-xs text-[#E2A088] mt-0.5">{t("endedOnLabel")} {formatEndedAt(modalEvent.ended_at)}</p>
               </div>
               <button onClick={() => setSelectedEventId(null)} className="text-white/50 hover:text-white p-1">
@@ -889,7 +890,7 @@ export default function ReturnsView() {
                       onChange={() => toggleItemSelected(it)}
                       className="h-4 w-4 shrink-0 rounded border-white/25 bg-white/[0.03] accent-[#4FBEB0]"
                     />
-                    <span className="text-sm text-white truncate">{it.quantity}&times; {it.name}</span>
+                    <span className="text-sm text-white truncate">{it.quantity}&times; {tc(it.name, language as any)}</span>
                   </label>
                   <div className="flex items-center gap-2 ml-auto">
                     <label className="text-xs text-white/50">{t("qtyLabel")}</label>
