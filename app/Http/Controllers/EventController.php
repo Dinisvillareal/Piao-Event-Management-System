@@ -210,11 +210,28 @@ class EventController extends Controller
             $this->applyBorrowedItems($event, $request->borrowed_items ?? []);
             $this->sendEventNotifications($event, false);
 
+            // // Adviser recommendation: "2 in 1 — Facebook Page" second announcement channel
+            // if (filter_var($request->post_to_facebook, FILTER_VALIDATE_BOOLEAN)) {
+            //     app(FacebookService::class)->postEvent(
+            //         'New Event: ' . $event->name,
+            //         $event->notification_message ?? $event->description
+            //     );
+            // }
+
             // Adviser recommendation: "2 in 1 — Facebook Page" second announcement channel
             if (filter_var($request->post_to_facebook, FILTER_VALIDATE_BOOLEAN)) {
+                // Build the Facebook post body: Description first (the "what is
+                // this event" context), then the short Message reminder underneath
+                // (the call to action). Both are optional, so this only includes
+                // whichever ones actually have content.
+                $facebookBody = trim(
+                    ($event->description ? $event->description : '') .
+                    ($event->notification_message ? "\n\n" . $event->notification_message : '')
+                );
+
                 app(FacebookService::class)->postEvent(
                     'New Event: ' . $event->name,
-                    $event->notification_message ?? $event->description
+                    $facebookBody
                 );
             }
 
