@@ -9,6 +9,7 @@ import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { translate } from "../../../i18n/translations";
+import { buildReportMessage, dateRangeScope } from "../../../lib/reportMessage";
 import ReportOptionsModal, { type AttendeeFilter, type SectionDef } from "./ReportOptionsModal";
 
 interface Membership {
@@ -507,6 +508,37 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
   const dateLocale = isPrinting ? "en-PH" : locale;
   const printedOn = new Date().toLocaleDateString(dateLocale, { year: "numeric", month: "long", day: "numeric" });
 
+  // "Message" printed under the letterhead: what the report is and exactly
+  // what this printout includes (follows the Print & Export Options picks).
+  const printMessage = useMemo(() => {
+    const scope =
+      reportType === "attendance"
+        ? dateRangeScope(dateFrom, dateTo)
+        : reportType === "budget"
+        ? eventId
+          ? `the event "${(() => { const ev = events.find((x) => String(x.id) === eventId); return ev?.title || ev?.name || ""; })()}"`
+          : dateRangeScope(dateFrom, dateTo)
+        : reportType === "membership"
+        ? (() => { const m = memberships.find((x) => String(x.id) === membershipId); return m ? `the "${m.name}" membership` : "all memberships"; })()
+        : conditionFilter
+        ? conditionFilter === "Lost"
+          ? "inventory items with lost units"
+          : conditionFilter === "Disposed"
+          ? "inventory items with disposed units"
+          : `inventory items in ${conditionFilter} condition`
+        : "all inventory items";
+    return buildReportMessage({
+      type: reportType,
+      title: translate(REPORT_PRINT_TITLE_KEYS[reportType], "en"),
+      data,
+      sections: selectedSections[reportType],
+      scope,
+      printedOn: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+      recordEventCount: effectiveRecordIds.length,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reportType, data, selectedSections, dateFrom, dateTo, eventId, membershipId, conditionFilter, events, memberships, recordEventIds]);
+
   // The native "Page X of Y" footer (app.css's @page rule) is plain CSS,
   // outside React's render tree -- it can't call t() directly. Instead it
   // reads two CSS custom properties, which this keeps in sync with the
@@ -570,7 +602,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
     return (
       <div className={screen ? "overflow-x-auto rounded-xl border border-white/10" : ""}>
         <table className={`w-full border-collapse text-left ${screen ? "text-sm" : "text-[10px]"}`}>
-          <thead className={screen ? "bg-white/[0.06] text-[11px] uppercase tracking-wide text-white/55" : "bg-gradient-to-r from-sage-800 to-[#1C2E2B] text-white [display:table-header-group]"}>
+          <thead className={screen ? "bg-white/[0.06] text-[11px] uppercase tracking-wide text-white/55" : "bg-[#17365D] text-white [display:table-header-group]"}>
             <tr>
               {cols.map((c) => (
                 <th key={c} className={`${cell} font-semibold whitespace-nowrap ${screen ? "" : "text-[9px] uppercase tracking-wide"}`}>{t(c)}</th>
@@ -581,10 +613,10 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             {rows.map((a: any, i: number) => (
               <tr
                 key={a.id ?? i}
-                className={screen ? "border-t border-white/[0.06] text-white/80 hover:bg-white/[0.03]" : "break-inside-avoid border-b border-[#e5ded3] text-[#222] even:bg-[#f7f4ee]"}
+                className={screen ? "border-t border-white/[0.06] text-white/80 hover:bg-white/[0.03]" : "break-inside-avoid border-b border-[#DCEAE5] text-[#222] even:bg-[#EEF4F1]"}
               >
-                <td className={`${cell} ${screen ? "text-white/40" : "text-gray-500"}`}>{i + 1}</td>
-                <td className={`${cell} font-semibold ${screen ? "text-white" : "text-[#005f63]"}`}>{a.name}</td>
+                <td className={`${cell} ${screen ? "text-white/40" : "text-[#222]"}`}>{i + 1}</td>
+                <td className={`${cell} ${screen ? "font-semibold text-white" : "font-bold text-[#222]"}`}>{a.name}</td>
                 <td className={`${cell} whitespace-nowrap`}>{a.user_code ?? "—"}</td>
                 <td className={cell}>{a.age ?? "—"}</td>
                 <td className={cell}>{a.gender ?? "—"}</td>
@@ -593,7 +625,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                   {screen ? (
                     <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${ATTENDANCE_PILL[a.attendance] ?? ATTENDANCE_PILL.Absent}`}>{t(`rptRow${a.attendance}`)}</span>
                   ) : (
-                    <span className={`font-semibold ${a.attendance === "Present" ? "text-emerald-700" : a.attendance === "Absent" ? "text-red-600" : "text-sky-700"}`}>{t(`rptRow${a.attendance}`)}</span>
+                    <span>{t(`rptRow${a.attendance}`)}</span>
                   )}
                 </td>
                 <td className={`${cell} whitespace-nowrap`}>{a.time_in ?? "—"}</td>
@@ -617,7 +649,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
     return (
       <div className={screen ? "overflow-x-auto rounded-xl border border-white/10" : ""}>
         <table className={`w-full border-collapse text-left ${screen ? "text-sm" : "text-[10px]"}`}>
-          <thead className={screen ? "bg-white/[0.06] text-[11px] uppercase tracking-wide text-white/55" : "bg-gradient-to-r from-sage-800 to-[#1C2E2B] text-white [display:table-header-group]"}>
+          <thead className={screen ? "bg-white/[0.06] text-[11px] uppercase tracking-wide text-white/55" : "bg-[#17365D] text-white [display:table-header-group]"}>
             <tr>
               {cols.map(([c, right]) => (
                 <th key={c} className={`${cell} font-semibold whitespace-nowrap ${right ? "text-right" : ""} ${screen ? "" : "text-[9px] uppercase tracking-wide"}`}>{t(c)}</th>
@@ -626,7 +658,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           </thead>
           <tbody>
             {rows.map((x: any, i: number) => (
-              <tr key={i} className={screen ? "border-t border-white/[0.06] text-white/80 hover:bg-white/[0.03]" : "break-inside-avoid border-b border-[#e5ded3] text-[#222] even:bg-[#f7f4ee]"}>
+              <tr key={i} className={screen ? "border-t border-white/[0.06] text-white/80 hover:bg-white/[0.03]" : "break-inside-avoid border-b border-[#DCEAE5] text-[#222] even:bg-[#EEF4F1]"}>
                 <td className={`${cell} ${screen ? "text-white/40" : "text-gray-500"}`}>{i + 1}</td>
                 <td className={`${cell} font-semibold ${screen ? "text-white" : "text-[#005f63]"}`}>{x.item}</td>
                 <td className={`${cell} text-right font-semibold whitespace-nowrap`}>{peso(x.amount)}</td>
@@ -637,7 +669,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             ))}
           </tbody>
           <tfoot>
-            <tr className={screen ? "border-t border-white/15 bg-white/[0.05] text-white" : "bg-[#EEF4F1] text-[#005f63]"}>
+            <tr className={screen ? "border-t border-white/15 bg-white/[0.05] text-white" : "bg-[#DCEAE5] text-[#005f63]"}>
               <td className={cell}></td>
               <td className={`${cell} font-bold`}>{t("rptTotalLabel")}</td>
               <td className={`${cell} text-right font-black whitespace-nowrap`}>{peso(total)}</td>
@@ -665,7 +697,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           while scrolling. A sticky header here fought with the full-bleed
           dark page wrapper's own top padding and let content peek through
           above it while scrolling. */}
-      <div className="pt-2 pb-4 px-1">
+      <div className="pt-2 pb-4 px-1 print:pb-0">
         {/* Official letterhead -- print only (hidden on screen). Makes a
             printed report a self-contained barangay hall record: full
             Republic/Province/Municipality/Barangay address block, the
@@ -675,15 +707,17 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             the address block itself truly centered instead of drifting
             right, the same balance an official letterhead keeps between a
             seal and the margin on the other side. */}
-        <div className="hidden print:block print:mb-4">
+        <div className="hidden print:block print:mb-0">
           <div className="flex items-start justify-between gap-6">
             <div className="flex items-center gap-4">
               <img src="/logo-removebg-preview.png" alt="" className="h-[72px] w-[72px] shrink-0 object-contain" />
               <div className="text-left leading-tight">
-                <p className="text-[9px] uppercase tracking-[0.2em] text-[#667777]">{t("printCountryLabel")}</p>
-                <p className="mt-0.5 text-[9px] text-[#667777]">{t("printProvinceLabel")} · {t("printMunicipalityLabel")}</p>
-                <p className="mt-1.5 text-2xl font-black uppercase leading-none tracking-wide text-[#005f63]">{t("printBarangayLabel")}</p>
-                <p className="mt-1.5 text-[9px] text-[#667777]">{t("printAddressLabel")}</p>
+                <p className="text-[9.5px] font-bold uppercase tracking-[0.2em] text-[#222]">{t("printCountryLabel")}</p>
+                <p className="mt-0.5 text-[10px] text-[#222]">{t("printRegionLabel")}</p>
+                <p className="text-[10px] text-[#222]">{t("printProvinceLabel")}</p>
+                <p className="text-[10px] text-[#222]">{t("printMunicipalityLabel")}</p>
+                <p className="mt-1.5 text-[13px] font-extrabold uppercase leading-none tracking-wide text-black">{t("printBarangayLabel")}</p>
+                <p className="mt-1.5 text-[10px] text-[#222]">{t("printAddressLabel")}</p>
               </div>
             </div>
             <div className="shrink-0 text-right leading-tight">
@@ -698,9 +732,19 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             <p className="text-right text-[10px] text-[#667777]">{printFilterSummary}</p>
           </div>
           <div className="mt-2 h-px bg-[#ddd5ca]" />
+
+          {/* Message -- opens the printed report (like the "I. MESSAGE" of an
+              annual report): what it is and what it includes. */}
+          <div className="mt-4">
+            <h3 className="text-[13px] font-black tracking-wide text-black">I.&nbsp;&nbsp;&nbsp;MESSAGE</h3>
+            {printMessage.map((para, i) => (
+              <p key={i} className="mt-2 text-justify text-[11.5px] leading-relaxed text-[#1a1a1a] indent-8">{para}</p>
+            ))}
+            <h3 className="mt-8 text-[13px] font-black tracking-wide text-black">II.&nbsp;&nbsp;&nbsp;REPORT DETAILS</h3>
+          </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden">
           {/* On-screen page title only -- the letterhead above already
               carries the report's own formal title for print, so this
               stays hidden on the printed page instead of duplicating it. */}
@@ -1052,12 +1096,12 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                   <div key={ev.id} className="mt-5">
                     <div className="mb-1.5 flex items-end justify-between gap-4 border-b-2 border-[#4FBEB0] pb-1.5 print:break-after-avoid">
                       <div className="min-w-0">
-                        <p className="text-sm font-black text-[#005f63]">{ev.name}</p>
-                        <p className="text-[10px] text-[#667777]">
+                        <p className="text-sm font-black text-black">{ev.name}</p>
+                        <p className="text-[10px] text-[#222]">
                           {ev.date}{ev.start_time ? ` · ${ev.start_time}${ev.end_time ? ` – ${ev.end_time}` : ""}` : ""}{ev.location ? ` · ${ev.location}` : ""}
                         </p>
                       </div>
-                      <p className="shrink-0 text-[10px] font-semibold text-[#005f63]">
+                      <p className="shrink-0 text-[10px] font-semibold text-[#111]">
                         {t(`rptStatus${ev.status ?? "Past"}`)} · {ev.eligible} {t("rptStatRegistered")} · {ev.attended} {t("rptStatPresent")} · {ev.absent ?? Math.max(0, ev.eligible - ev.attended)} {t("rptStatAbsent")}
                       </p>
                     </div>
@@ -1395,13 +1439,15 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
       {/* Certification footer -- print only. Standard "prepared by / noted
           by" signature lines so the printed report can double as a signed
           barangay hall record, plus a system attribution/print-date line. */}
-      <div className="hidden print:block print:mt-6 pt-4 border-t border-[#ddd5ca]">
-        <div className="flex justify-between gap-16 px-6">
-          <div className="flex-1 text-center">
-            <div className="mt-8 border-t border-[#667777] pt-1 text-[11px] text-[#333]">{t("printPreparedByLabel")}</div>
+      <div className="hidden print:block print:mt-10 pt-4 border-t border-[#ddd5ca] [break-inside:avoid]">
+        <div className="mt-6 grid grid-cols-2 gap-16 px-2">
+          <div>
+            <p className="text-[12px] font-bold text-[#1a1a1a]">{t("rbPreparedBy")}</p>
+            <div className="mt-12 mx-8 border-t border-[#667777] pt-1 text-center text-[12px] font-bold text-[#1a1a1a]">{t("rbBrgySecretary")}</div>
           </div>
-          <div className="flex-1 text-center">
-            <div className="mt-8 border-t border-[#667777] pt-1 text-[11px] text-[#333]">{t("printBarangayCaptainLabel")}</div>
+          <div>
+            <p className="text-[12px] font-bold text-[#1a1a1a]">{t("rbNoted")}</p>
+            <div className="mt-12 mx-8 border-t border-[#667777] pt-1 text-center text-[12px] font-bold text-[#1a1a1a]">{t("printBarangayCaptainLabel")}</div>
           </div>
         </div>
         <p className="mt-6 text-center text-[9px] text-[#999]">{t("printFooterAttributionLabel")} · {printedOn}</p>

@@ -81,13 +81,23 @@ interface SidebarProps {
   setActive: (key: string, path?: string) => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
+  /** Signed-in staff member, shown in the account card above "Sign out". */
+  userName?: string;
+  userRole?: string;
 }
 
-export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile }: SidebarProps) {
+export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile, userName, userRole }: SidebarProps) {
   const { t } = useLanguage();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [navQuery, setNavQuery] = useState("");
+  const accountName = (userName ?? "").trim();
+  const accountInitials = accountName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "S";
 
   // Every real destination in the sidebar, flattened once, so the search
   // box below can filter across standalone links, every module's items,
@@ -208,7 +218,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
         >
           <XIcon size={20} />
         </button>
-        <div className="border-b border-white/10 px-4 py-5 shrink-0 flex items-center gap-3">
+        <div className="border-b border-white/10 px-4 h-[73px] box-border shrink-0 flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 border border-white/15 font-black shrink-0 overflow-hidden">
             <img
               src="/logo-removebg-preview.png"
@@ -343,13 +353,22 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
             </>
           )}
         </div>
-        <div className="border-t border-white/10 p-2 shrink-0">
+        <div className="border-t border-white/10 p-3 shrink-0 flex items-center gap-2.5">
+          {/* Signed-in staff avatar, beside Sign out. Name and role are in the tooltip
+              (and in the top header), so the sidebar footer stays a single clean row. */}
+          <div
+            title={`${accountName || t("staffPortal")}${userRole ? ` · ${userRole}` : ""}`}
+            aria-label={accountName}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-400 text-[12px] font-bold text-[#08130F]"
+          >
+            {accountInitials}
+          </div>
           <button
-            className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all ${inactiveNav}`}
+            className="flex min-w-0 flex-1 items-center justify-start gap-3 rounded-xl border border-white/10 px-3 py-2.5 text-[13.5px] font-semibold text-white/70 transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
             onClick={() => setShowLogoutConfirm(true)}
           >
             <LogOut className="h-5 w-5 shrink-0" />
-            <span className="truncate flex-1 min-w-0 text-left">{t("signOut")}</span>
+            <span className="truncate">{t("signOut")}</span>
           </button>
         </div>
       </aside>

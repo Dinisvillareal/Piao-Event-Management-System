@@ -74,11 +74,11 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
         aria-haspopup="listbox"
         aria-expanded={open}
         title="Change interface language"
-        className="flex h-8 items-center gap-1.5 rounded-full border border-[#005f63]/20 bg-white pl-2.5 pr-2 text-xs font-medium text-[#005f63] shadow-sm transition-colors hover:bg-[#005f63]/5 focus:outline-none focus:ring-1 focus:ring-[#005f63]/30"
+        className="flex h-8 items-center gap-1.5 rounded-full border border-white/15 bg-[#0A0E1A] pl-2.5 pr-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-white/10 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/60"
       >
-        <Languages className="h-3.5 w-3.5 text-[#005f63]/60" />
+        <Languages className="h-3.5 w-3.5 text-white/70" />
         <span>{current.label}</span>
-        <ChevronDown className={`h-3.5 w-3.5 text-[#005f63]/60 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-3.5 w-3.5 text-white/70 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
@@ -87,7 +87,7 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
           aria-label="Interface language"
           tabIndex={-1}
           onKeyDown={handleListKeyDown}
-          className="absolute right-0 z-50 mt-1.5 min-w-[9rem] overflow-hidden rounded-2xl border border-gray-100 bg-white py-1 shadow-lg"
+          className="absolute right-0 z-50 mt-1.5 min-w-[9rem] overflow-hidden rounded-2xl border border-white/10 bg-[#0A0E1A] py-1 shadow-xl"
         >
           {LANGUAGES.map((l, i) => {
             const selected = l.code === language;
@@ -101,14 +101,14 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
                   onClick={() => choose(l.code)}
                   className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
                     selected
-                      ? "bg-[#005f63]/10 font-semibold text-[#005f63]"
+                      ? "bg-[#4FBEB0]/15 font-semibold text-white"
                       : i === activeIndex
-                      ? "bg-gray-50 text-gray-700"
-                      : "text-gray-700"
+                      ? "bg-white/[0.06] text-white"
+                      : "text-white/80"
                   }`}
                 >
                   <span>{l.label}</span>
-                  {selected && <Check className="h-3.5 w-3.5 text-[#005f63]" />}
+                  {selected && <Check className="h-3.5 w-3.5 text-[#4FBEB0]" />}
                 </button>
               </li>
             );

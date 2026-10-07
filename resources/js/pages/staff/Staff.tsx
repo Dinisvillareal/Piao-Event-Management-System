@@ -268,6 +268,8 @@ export default function StaffDashboard() {
       <Sidebar
         active={active}
         setActive={setActive}
+        userName={displayName}
+        userRole={staff.role}
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />

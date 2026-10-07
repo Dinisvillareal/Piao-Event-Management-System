@@ -579,14 +579,159 @@ class ReportController extends Controller
             default => $this->buildAttendanceData($request),
         };
 
+        $printedOn = now()->format('F j, Y');
+
         return [
             'type' => $type,
             'sections' => $sections,
             'reportTitle' => $titles[$type],
             'filterSummary' => $this->buildFilterSummaryLine($type, $request),
-            'printedOn' => now()->format('F j, Y'),
+            'printedOn' => $printedOn,
+            'message' => $this->buildReportMessage($type, $titles[$type], $data, $sections, $this->buildScopeText($type, $request), $printedOn),
             'data' => $data,
         ];
+    }
+
+    /** Plain-English description of what the filters cover, for the report's opening message. */
+    private function buildScopeText(string $type, Request $request): string
+    {
+        $fmt = fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('F j, Y');
+        $range = function () use ($request, $fmt) {
+            $from = $request->filled('date_from') ? $fmt($request->date_from) : null;
+            $to = $request->filled('date_to') ? $fmt($request->date_to) : null;
+            if ($from && $to) {
+                return $from === $to ? "events held on {$from}" : "events held from {$from} to {$to}";
+            }
+            if ($from) {
+                return "events held from {$from} onward";
+            }
+            if ($to) {
+                return "events held up to {$to}";
+            }
+
+            return 'all recorded events';
+        };
+
+        if ($type === 'budget' && $request->filled('event_id')) {
+            $event = Event::find((int) $request->event_id);
+
+            return $event ? "the event \"{$event->name}\"" : $range();
+        }
+        if ($type === 'attendance' || $type === 'budget') {
+            return $range();
+        }
+        if ($type === 'membership') {
+            if ($request->filled('membership_id')) {
+                $m = Membership::find((int) $request->membership_id);
+
+                return $m ? "the \"{$m->name}\" membership" : 'all memberships';
+            }
+
+            return 'all memberships';
+        }
+        if ($request->filled('condition')) {
+            return match ($request->condition) {
+                'Lost' => 'inventory items with lost units',
+                'Disposed' => 'inventory items with disposed units',
+                default => "inventory items in {$request->condition} condition",
+            };
+        }
+
+        return 'all inventory items';
+    }
+
+    /**
+     * The "Message" that opens the printed / PDF / Word report: what the
+     * report is, the headline figures, and -- only -- the parts that are
+     * actually included in this printout. Mirrors resources/js/lib/reportMessage.ts
+     * (used by the browser print layout), so keep the two in step.
+     *
+     * @return string[] paragraphs
+     */
+    private function buildReportMessage(string $type, string $title, array $data, ?array $sections, string $scope, string $printedOn): array
+    {
+        $peso = fn ($n) => '₱' . number_format((float) $n, 2);
+        $count = fn ($n, $one, $many) => number_format((float) $n) . ' ' . ((float) $n === 1.0 ? $one : $many);
+        $s = $data['summary'] ?? [];
+
+        $topic = [
+            'attendance' => "the attendance of residents in the events and activities of the barangay",
+            'membership' => "the enrollment of residents in the membership programs of the barangay",
+            'budget' => "the approved budgets and the recorded expenses of the barangay's events",
+            'inventory' => "the barangay's inventory of equipment and supplies and the condition of each item",
+        ][$type];
+
+        // Same defaults as the export: everything, except the (opt-in) attendee lists.
+        $all = [
+            'attendance' => ['summary', 'charts', 'age', 'events'],
+            'membership' => ['summary', 'memberships'],
+            'budget' => ['summary', 'overBudget', 'perEvent', 'expenses', 'topExpenses', 'noBudget'],
+            'inventory' => ['summary', 'condition', 'items'],
+        ][$type];
+        $order = [
+            'attendance' => ['summary', 'charts', 'age', 'events', 'records'],
+            'membership' => ['summary', 'memberships'],
+            'budget' => ['summary', 'overBudget', 'perEvent', 'expenses', 'topExpenses', 'noBudget'],
+            'inventory' => ['summary', 'condition', 'items'],
+        ][$type];
+        $included = array_values(array_filter($order, fn ($k) => $sections === null ? in_array($k, $all, true) : in_array($k, $sections, true)));
+
+        $paragraphs = [
+            "This {$title} is prepared by the Barangay Piao office through the Piao Connect system to present {$topic}. It covers {$scope}.",
+        ];
+
+        if (in_array('summary', $included, true)) {
+            $paragraphs[] = match ($type) {
+                'attendance' => $count($s['total_events'] ?? 0, 'event was', 'events were') . ' held in this period, with ' . $count($s['total_attended'] ?? 0, 'recorded attendance', 'recorded attendances')
+                    . ' out of ' . $count($s['total_eligible'] ?? 0, 'eligible resident', 'eligible residents') . ', an overall attendance rate of ' . ($s['attendance_percentage'] ?? 0) . '%.'
+                    . (isset($s['average_feedback_rating']) && $s['average_feedback_rating'] !== null ? ' Residents rated the events ' . $s['average_feedback_rating'] . ' out of 5 on average.' : ''),
+                'membership' => 'The barangay maintains ' . $count($s['total_memberships'] ?? 0, 'membership program', 'membership programs') . ' with a total of ' . $count($s['total_assignments'] ?? 0, 'enrolled resident', 'enrolled residents') . '.',
+                'budget' => 'The approved budget of the covered events totals ' . $peso($s['total_approved_budget'] ?? 0) . ', against recorded expenses of ' . $peso($s['total_expenses'] ?? 0)
+                    . ' (' . ($s['utilization_percentage'] ?? 0) . '% used), leaving ' . $peso($s['total_remaining'] ?? 0) . ' unspent. '
+                    . (($s['events_over_budget'] ?? 0) > 0
+                        ? $count($s['events_over_budget'], 'event went', 'events went') . ' over budget by a combined ' . $peso($s['total_over_amount'] ?? 0) . '.'
+                        : 'No event went over its approved budget.'),
+                default => 'The inventory holds ' . $count($s['total_items'] ?? 0, 'item', 'items') . ' with a total of ' . $count($s['total_quantity'] ?? 0, 'unit', 'units') . ' in stock.',
+            };
+        }
+
+        $recordEvents = collect($data['per_event'] ?? [])->filter(fn ($e) => is_array($e) && array_key_exists('attendees', $e))->count();
+        $phrases = [
+            'attendance' => [
+                'summary' => 'a summary of the key attendance figures',
+                'charts' => 'the number of events per month and the overall attendance rate',
+                'age' => 'attendance by age group',
+                'events' => 'a per-event breakdown of attendance',
+                'records' => 'the attendance list of every resident for ' . ($recordEvents === 1 ? 'the event' : "each of the {$recordEvents} events") . ', showing who was present or absent and the time in and time out',
+            ],
+            'membership' => [
+                'summary' => 'the total number of memberships and enrolled residents',
+                'memberships' => 'the number of enrolled residents and the eligibility requirements of each membership',
+            ],
+            'budget' => [
+                'summary' => 'the budget summary totals',
+                'overBudget' => 'the list of events that went over budget',
+                'perEvent' => 'the approved budget, spending and remaining balance of every event',
+                'expenses' => 'the itemized expenses recorded for each event',
+                'topExpenses' => 'the largest expenses',
+                'noBudget' => 'the events that have no approved budget',
+            ],
+            'inventory' => [
+                'summary' => 'the total number of items and units',
+                'condition' => 'a breakdown of the items by condition',
+                'items' => 'the complete list of inventory items with their condition and quantity',
+            ],
+        ][$type];
+        $parts = array_map(fn ($k) => $phrases[$k], $included);
+        if ($parts) {
+            $last = array_pop($parts);
+            $list = !$parts ? $last : (count($parts) === 1 ? $parts[0] . ' and ' . $last : implode(', ', $parts) . ', and ' . $last);
+            $paragraphs[] = 'This report contains ' . $list . '.';
+        }
+
+        $paragraphs[] = "All figures are taken directly from the records encoded in Piao Connect as of {$printedOn} and are respectfully submitted for the information and guidance of the Barangay Council.";
+
+        return $paragraphs;
     }
 
     private function buildFilterSummaryLine(string $type, Request $request): string
@@ -643,6 +788,7 @@ class ReportController extends Controller
 
         $this->addWordFooter($phpWord, $section);
         $this->addLetterhead($section, $payload);
+        $this->addWordMessage($section, $payload['message'] ?? []);
 
         $data = $payload['data'];
         $sections = $payload['sections'] ?? null;
@@ -722,10 +868,9 @@ class ReportController extends Controller
                         }
                         $rows = [];
                         foreach ($ev['attendees'] as $n => $a) {
-                            $color = $a['attendance'] === 'Present' ? '047857' : ($a['attendance'] === 'Absent' ? 'DC2626' : '667777');
                             $rows[] = [
-                                (string) ($n + 1), $a['name'], $a['user_code'] ?? '—', isset($a['age']) ? (string) $a['age'] : '—', $a['gender'] ?? '—',
-                                ['t' => $a['attendance'], 'color' => $color, 'bold' => true], $a['time_in'] ?? '—', $a['time_out'] ?? '—',
+                                (string) ($n + 1), ['t' => $a['name'], 'bold' => true], $a['user_code'] ?? '—', isset($a['age']) ? (string) $a['age'] : '—', $a['gender'] ?? '—',
+                                $a['attendance'], $a['time_in'] ?? '—', $a['time_out'] ?? '—',
                             ];
                         }
                         $this->addDataTable($section, ['#', 'Name', 'ID', 'Age', 'Gender', 'Status', 'Time In', 'Time Out'], [24, 230, 62, 30, 46, 54, 54, 54], $rows, ['size' => 8.5]);
@@ -881,18 +1026,27 @@ class ReportController extends Controller
                 break;
         }
 
-        // Signature block + footer line -- kept together, like the PDF's .sig-wrap.
+        // Signature block (Prepared by -> Brgy. Secretary, Noted -> Barangay Captain) + footer line,
+        // kept together like the PDF's .sig-wrap.
+        $section->addTextBreak(1, ['size' => 14]);
         $section->addTextBreak(1, ['size' => 14]);
         $sig = $section->addTable($this->noBorderTableStyle(['width' => $W, 'unit' => 'dxa', 'layout' => 'fixed']));
-        $sig->addRow(560, ['cantSplit' => true, 'exactHeight' => false]);
-        foreach ([4600, 1346, 4600] as $w) {
-            $sig->addCell($w)->addText('', [], ['keepNext' => true, 'spaceAfter' => 0]);
+        $half = (int) ($W / 2);
+        $sig->addRow(null, ['cantSplit' => true]);
+        foreach (['Prepared by:', 'Noted:'] as $label) {
+            $sig->addCell($half, ['gridSpan' => 3])->addText($label, ['bold' => true, 'size' => 10], ['keepNext' => true, 'spaceAfter' => 0]);
+        }
+        $sig->addRow(760, ['cantSplit' => true]);
+        foreach ([0, 1] as $i) {
+            $sig->addCell($half, ['gridSpan' => 3])->addText('', [], ['keepNext' => true, 'spaceAfter' => 0]);
         }
         $sig->addRow(null, ['cantSplit' => true]);
         $line = ['borderTopSize' => 6, 'borderTopColor' => '667777'];
-        $sig->addCell(4600, $line)->addText('Prepared by', ['size' => 9.5, 'color' => '444444'], ['alignment' => 'center', 'keepNext' => true]);
-        $sig->addCell(1346)->addText('', [], ['spaceAfter' => 0]);
-        $sig->addCell(4600, $line)->addText('Barangay Captain', ['size' => 9.5, 'color' => '444444'], ['alignment' => 'center', 'keepNext' => true]);
+        foreach (['Brgy. Secretary', 'Barangay Captain'] as $title) {
+            $sig->addCell(700)->addText('', ['size' => 2], ['spaceAfter' => 0]);
+            $sig->addCell($half - 1400, $line)->addText($title, ['bold' => true, 'size' => 10], ['alignment' => 'center', 'keepNext' => true, 'spaceAfter' => 0]);
+            $sig->addCell(700)->addText('', ['size' => 2], ['spaceAfter' => 0]);
+        }
         $section->addText(
             'Generated via Piao Connect — Barangay Information Management System · ' . $payload['printedOn'],
             ['size' => 7.5, 'color' => '999999'],
@@ -932,6 +1086,7 @@ class ReportController extends Controller
     {
         $W = self::WORD_WIDTH;
         $muted = ['size' => 8.5, 'color' => '667777'];
+        $dark = ['size' => 9, 'color' => '222222'];
         $tight = ['spaceAfter' => 0, 'spaceBefore' => 0];
 
         $head = $section->addTable($this->noBorderTableStyle(['width' => $W, 'unit' => 'dxa', 'layout' => 'fixed']));
@@ -944,10 +1099,12 @@ class ReportController extends Controller
         }
 
         $text = $head->addCell($W - 1400 - 2300, ['valign' => 'center']);
-        $text->addText('REPUBLIC OF THE PHILIPPINES', ['size' => 7.5, 'color' => '667777', 'spacing' => 20], $tight);
-        $text->addText('Province of Zamboanga del Norte · Municipality of President Manuel A. Roxas', $muted, ['spaceAfter' => 20]);
-        $text->addText('BARANGAY PIAO', ['bold' => true, 'size' => 20, 'color' => '005F63'], ['spaceAfter' => 20]);
-        $text->addText('Piao Barangay Hall, Purok Uno, Barangay Piao, 7102', $muted, $tight);
+        $text->addText('REPUBLIC OF THE PHILIPPINES', ['bold' => true, 'size' => 8, 'color' => '222222', 'spacing' => 20], $tight);
+        $text->addText('Western Mindanao, Region IX', $dark, $tight);
+        $text->addText('Province of Zamboanga del Norte', $dark, $tight);
+        $text->addText('Municipality of President Manuel A. Roxas', $dark, ['spaceAfter' => 20]);
+        $text->addText('BARANGAY PIAO', ['bold' => true, 'size' => 13, 'color' => '000000'], ['spaceAfter' => 20]);
+        $text->addText('Purok Uno — Barangay Hall, Piao, Roxas, Zamboanga del Norte, 7102', $dark, $tight);
 
         $right = $head->addCell(2300, ['valign' => 'top']);
         $right->addText('PIAO CONNECT', ['bold' => true, 'size' => 9.5, 'color' => '4FBEB0', 'spacing' => 30], ['alignment' => 'right', 'spaceAfter' => 80]);
@@ -964,6 +1121,23 @@ class ReportController extends Controller
 
         // Thin rule + breathing room.
         $section->addText('', ['size' => 2], ['spaceAfter' => 120, 'borderBottomSize' => 6, 'borderBottomColor' => 'DDD5CA']);
+    }
+
+    /** "I. MESSAGE" (justified, first-line indented paragraphs) followed by the "II. REPORT DETAILS" heading. */
+    private function addWordMessage($section, array $paragraphs): void
+    {
+        if ($paragraphs === []) {
+            return;
+        }
+        $heading = ['bold' => true, 'size' => 11.5, 'color' => '000000'];
+        $section->addText('I.   MESSAGE', $heading, ['spaceBefore' => 60, 'spaceAfter' => 100, 'keepNext' => true]);
+        foreach ($paragraphs as $p) {
+            $section->addText($p, ['size' => 10.5, 'color' => '1A1A1A'], [
+                'alignment' => 'both', 'spaceAfter' => 110, 'lineHeight' => 1.2,
+                'indentation' => ['firstLine' => 567],
+            ]);
+        }
+        $section->addText('II.   REPORT DETAILS', $heading, ['spaceBefore' => 360, 'spaceAfter' => 100, 'keepNext' => true]);
     }
 
     /** Footer: system line on the left, "Page X of Y" (real Word fields) on the right, hairline above. */
@@ -1063,8 +1237,8 @@ class ReportController extends Controller
         $table->addRow(null, ['cantSplit' => true]);
         $cell = $table->addCell(self::WORD_WIDTH, $warn ? $this->frameStyle('FECACA', 'FEF2F2') : $this->frameStyle('DCEAE5', 'EEF4F1'));
         $keep = ['keepNext' => true, 'spaceAfter' => 0];
-        $cell->addText($name, ['bold' => true, 'size' => 11, 'color' => '005F63'], $keep);
-        $cell->addText($meta, ['size' => 8.5, 'color' => '667777'], $keep);
+        $cell->addText($name, ['bold' => true, 'size' => 11, 'color' => '000000'], $keep);
+        $cell->addText($meta, ['size' => 8.5, 'color' => '222222'], $keep);
         $run = $cell->addTextRun(['keepNext' => true, 'spaceAfter' => 0, 'spaceBefore' => 20]);
         foreach ($statRuns as [$text, $font]) {
             $run->addText($text, array_merge(['size' => 9, 'color' => '333333'], $font ?? []));
@@ -1075,7 +1249,7 @@ class ReportController extends Controller
     }
 
     /**
-     * Ruled table with the report's teal header row (repeats on every page),
+     * Ruled table with the report's navy header row (repeats on every page),
      * zebra striping and optional right-aligned columns / total row.
      * $weights are relative column widths scaled to the page width; a cell
      * value is a string or ['t' => text, 'color' => hex, 'bold' => bool].
@@ -1096,12 +1270,12 @@ class ReportController extends Controller
 
         $table->addRow(null, ['cantSplit' => true, 'tblHeader' => true]);
         foreach ($headers as $i => $h) {
-            $table->addCell($widths[$i], ['bgColor' => '005F63'])
+            $table->addCell($widths[$i], ['bgColor' => '17365D'])
                 ->addText($h, ['bold' => true, 'color' => 'FFFFFF', 'size' => $size], $align($i));
         }
         foreach ($rows as $r => $row) {
             $table->addRow(null, ['cantSplit' => true]);
-            $bg = $r % 2 === 1 ? ['bgColor' => 'F5F9F8'] : [];
+            $bg = $r % 2 === 1 ? ['bgColor' => 'EEF4F1'] : [];
             foreach ($row as $i => $val) {
                 $font = ['size' => $size, 'color' => '222222'];
                 if (is_array($val)) {
@@ -1114,7 +1288,7 @@ class ReportController extends Controller
         if ($totalRow) {
             $table->addRow(null, ['cantSplit' => true]);
             foreach ($totalRow as $i => $val) {
-                $table->addCell($widths[$i], ['bgColor' => 'EEF4F1'])->addText((string) $val, ['bold' => true, 'size' => $size], $align($i));
+                $table->addCell($widths[$i], ['bgColor' => 'DCEAE5'])->addText((string) $val, ['bold' => true, 'size' => $size], $align($i));
             }
         }
     }

@@ -46,6 +46,7 @@ const GOLD_LINE = argb("#C6953C");
 const GOLD_DARK = argb("#8A6A1F");
 const TEAL = argb("#005F63");
 const TEAL_LIGHT = argb("#4FBEB0");
+const TABLE_HEAD = NAVY; // title band + table header: the original near-black
 const SAGE_DARK = argb("#33534E");
 const SAGE_TINT = argb("#EEF4F1");
 const GREEN_TINT = argb("#E6F5F3");
@@ -115,7 +116,7 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
   });
   ws.columns = WIDTHS.map((width) => ({ width }));
 
-  // ── Letterhead (rows 1-5): seal in the gutter, address block left,
+  // ── Letterhead (rows 1-7): seal in the gutter, address block left,
   //    system name + generated date on the right, heavy teal rule under.
   const generatedLong = new Date().toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
   const generatedFull = new Date().toLocaleString();
@@ -123,15 +124,18 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
     band(ws, row, 2, 4, left, { alignment: { vertical: "middle", horizontal: "left" }, ...leftStyle });
     band(ws, row, 5, 7, right, { alignment: { vertical: "middle", horizontal: "right" }, ...rightStyle });
   };
-  lh(1, "REPUBLIC OF THE PHILIPPINES", "PIAO CONNECT", { font: { name: FONT, size: 8, color: { argb: MUTED } } }, { font: { name: FONT, size: 9, bold: true, color: { argb: TEAL_LIGHT } } });
-  lh(2, "Province of Zamboanga del Norte · Municipality of President Manuel A. Roxas", "Generated on", { font: { name: FONT, size: 9, color: { argb: MUTED } } }, { font: { name: FONT, size: 8, color: { argb: MUTED } } });
-  lh(3, "BARANGAY PIAO", generatedLong, { font: { name: FONT, size: 22, bold: true, color: { argb: TEAL } } }, { font: { name: FONT, size: 10, bold: true, color: { argb: TEAL } } });
-  lh(4, "Piao Barangay Hall, Purok Uno, Barangay Piao, 7102", null, { font: { name: FONT, size: 9, color: { argb: MUTED } } });
-  [18, 14, 32, 16, 6].forEach((h, i) => (ws.getRow(i + 1).height = h));
+  lh(1, "REPUBLIC OF THE PHILIPPINES", "PIAO CONNECT", { font: { name: FONT, size: 8, bold: true, color: { argb: "FF222222" } } }, { font: { name: FONT, size: 9, bold: true, color: { argb: TEAL_LIGHT } } });
+  const dk = { name: FONT, size: 9, color: { argb: "FF222222" } };
+  lh(2, "Western Mindanao, Region IX", "Generated on", { font: dk }, { font: { name: FONT, size: 8, color: { argb: MUTED } } });
+  lh(3, "Province of Zamboanga del Norte", generatedLong, { font: dk }, { font: { name: FONT, size: 10, bold: true, color: { argb: TEAL } } });
+  lh(4, "Municipality of President Manuel A. Roxas", null, { font: dk });
+  lh(5, "BARANGAY PIAO", null, { font: { name: FONT, size: 13, bold: true, color: { argb: "FF000000" } } });
+  lh(6, "Purok Uno — Barangay Hall, Piao, Roxas, Zamboanga del Norte, 7102", null, { font: dk });
+  [18, 13, 13, 13, 22, 16, 6].forEach((h, i) => (ws.getRow(i + 1).height = h));
   for (let c = FIRST_COL; c <= LAST_COL; c++) {
-    ws.getCell(5, c).border = { bottom: { style: "thick", color: { argb: TEAL } } };
+    ws.getCell(7, c).border = { bottom: { style: "thick", color: { argb: TEAL } } };
   }
-  ws.getRow(6).height = 8;
+  ws.getRow(8).height = 8;
 
   // Seal -- embedded image, anchored in the gutter beside the address block.
   const seal = await loadSeal();
@@ -141,10 +145,10 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
   }
 
   // ── Title band
-  let r = 7;
+  let r = 9;
   band(ws, r, FIRST_COL, LAST_COL, "EVENT EXPENSE REPORT", {
     font: { name: FONT, size: 16, bold: true, color: { argb: GOLD_TEXT } },
-    fill: { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } },
+    fill: { type: "pattern", pattern: "solid", fgColor: { argb: TABLE_HEAD } },
     alignment: { vertical: "middle", horizontal: "left", indent: 1 },
   });
   ws.getRow(r).height = 30;
@@ -158,6 +162,46 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
   ws.getRow(r).height = 26;
   r++;
   ws.getRow(r).height = 10;
+  r++;
+
+  // ── "I. MESSAGE": says only what this report contains, like the printed report.
+  const receiptsCount = expenses.filter((e) => !!e.receipt_url).length;
+  const eventBits = [dateLabel, location].filter(Boolean).join(", at ");
+  const budgetSentence =
+    approvedBudget !== null
+      ? `The approved budget is ${money(approvedBudget)}, of which ${money(totalSpent)} (${(usedPct ?? 0).toFixed(1)}%) has been spent, ${
+          isOver ? `leaving the event over budget by ${money(totalSpent - approvedBudget)}` : `leaving ${money(approvedBudget - totalSpent)} remaining`
+        }.`
+      : `No approved budget has been set for this event; ${money(totalSpent)} has been spent so far.`;
+  const contents = expenses.length
+    ? `This report contains the event details, a summary of the approved budget, total spent and remaining balance, and an itemized list of the ${expenses.length} recorded expense${expenses.length === 1 ? "" : "s"} with their amounts, notes, the person who recorded each, the date recorded and whether a receipt is attached (${receiptsCount} of ${expenses.length} attached).`
+    : "This report contains the event details and a summary of the approved budget, total spent and remaining balance. No expenses have been recorded for this event yet.";
+  const messageParagraphs = [
+    `This Event Expense Report is prepared by the Barangay Piao office through the Piao Connect system to present the expenses recorded for "${eventTitle}"${eventBits ? `, held ${eventBits}` : ""}.`,
+    budgetSentence,
+    contents,
+    `All figures are taken directly from the records encoded in Piao Connect as of ${generatedLong} and are respectfully submitted for the information and guidance of the Barangay Council.`,
+  ];
+  const sectionHeading = (text: string, before: number) => {
+    ws.getRow(r).height = before;
+    band(ws, r, FIRST_COL, LAST_COL, text, {
+      font: { name: FONT, size: 11.5, bold: true, color: { argb: "FF000000" } },
+      alignment: { vertical: "bottom", horizontal: "left", indent: 1 },
+    });
+    r++;
+  };
+  sectionHeading("I.   MESSAGE", 22);
+  messageParagraphs.forEach((para) => {
+    band(ws, r, FIRST_COL, LAST_COL, "      " + para, {
+      font: { name: FONT, size: 10.5, color: { argb: argb("#1A1A1A") } },
+      alignment: { vertical: "top", horizontal: "justify", indent: 1, wrapText: true },
+    });
+    const lines = Math.max(1, Math.ceil((para.length + 6) / 125));
+    ws.getRow(r).height = lines * 14.5 + 6;
+    r++;
+  });
+  sectionHeading("II.   REPORT DETAILS", 34);
+  ws.getRow(r).height = 6;
   r++;
 
   // ── Event details: two label/value pairs per row.
@@ -243,9 +287,9 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
     const cell = ws.getCell(r, FIRST_COL + i);
     cell.value = label;
     cell.font = { name: FONT, size: 10, bold: true, color: { argb: WHITE } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: TABLE_HEAD } };
     cell.alignment = { vertical: "middle", horizontal: label === "Amount" ? "right" : label === "Receipt" || label === "No." ? "center" : "left", indent: label === "Amount" || label === "Receipt" || label === "No." ? 0 : 1 };
-    cell.border = { top: thin(NAVY), bottom: thin(NAVY), left: thin(NAVY), right: thin(NAVY) };
+    cell.border = { top: thin(TABLE_HEAD), bottom: thin(TABLE_HEAD), left: thin(TABLE_HEAD), right: thin(TABLE_HEAD) };
   });
   ws.getRow(r).height = 24;
   r++;
@@ -289,13 +333,18 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
   ws.getRow(r).height = 24;
   r++;
 
-  // ── Certification: signature lines, same as the printed reports.
+  // ── Certification: "Prepared by" -> Brgy. Secretary, "Noted" -> Barangay Captain, same as the printed reports.
   r += 2;
-  ws.getRow(r).height = 30; // room to sign above the lines
+  const signLabel = { font: { name: FONT, size: 10.5, bold: true, color: { argb: argb("#1A1A1A") } }, alignment: { horizontal: "left", vertical: "middle", indent: 1 } };
+  band(ws, r, 1, 3, "Prepared by:", signLabel);
+  band(ws, r, 5, 7, "Noted:", signLabel);
+  r++;
+  ws.getRow(r).height = 48; // room to sign above the lines
   r++;
   const signLine = { border: { top: thin(MUTED) } };
-  band(ws, r, 1, 3, "Prepared by", { ...signLine, font: { name: FONT, size: 10, color: { argb: argb("#333333") } }, alignment: { horizontal: "center", vertical: "top" } });
-  band(ws, r, 5, 7, "Barangay Captain", { ...signLine, font: { name: FONT, size: 10, color: { argb: argb("#333333") } }, alignment: { horizontal: "center", vertical: "top" } });
+  const signTitle = { ...signLine, font: { name: FONT, size: 10.5, bold: true, color: { argb: argb("#1A1A1A") } }, alignment: { horizontal: "center", vertical: "top" } };
+  band(ws, r, 1, 3, "Brgy. Secretary", signTitle);
+  band(ws, r, 5, 7, "Barangay Captain", signTitle);
   r += 2;
   band(ws, r, FIRST_COL, LAST_COL, `Generated via Piao Connect — Barangay Information Management System · ${generatedFull}`, {
     font: { name: FONT, size: 8, color: { argb: FAINT } },

@@ -1075,17 +1075,17 @@ export function EventsView({
                     onClick={() => startEditEvent(viewEv)}
                     disabled={isSubmitting || locked}
                     title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-5 py-2.5 text-[15px] font-semibold text-white hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <Pencil className="h-3.5 w-3.5" /> {t("editTitle")}
+                    <Pencil className="h-4 w-4" /> {t("editTitle")}
                   </button>
                   <button
                     onClick={() => setEventToDelete(viewEv.id)}
                     disabled={locked}
                     title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 rounded-full border border-red-500/25 bg-white/[0.04] px-5 py-2.5 text-[15px] font-semibold text-red-400 hover:bg-red-500/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <Archive className="h-3.5 w-3.5" /> {t("deleteTitle")}
+                    <Archive className="h-4 w-4" /> {t("deleteTitle")}
                   </button>
                 </div>
               </div>
@@ -1095,7 +1095,7 @@ export function EventsView({
                   <button
                     key={tab.key}
                     onClick={() => setDetailTab(tab.key)}
-                    className={`pb-3 px-1 text-sm font-semibold border-b-2 whitespace-nowrap transition ${
+                    className={`pb-3 px-1 text-[15px] font-semibold border-b-2 whitespace-nowrap transition ${
                       detailTab === tab.key ? "border-[#4FBEB0] text-[#4FBEB0]" : "border-transparent text-white/50 hover:text-white"
                     }`}
                   >
@@ -1107,12 +1107,12 @@ export function EventsView({
               {detailTab === "overview" && (
                 <div className="space-y-5">
                   <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-                    <h3 className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">{t("descriptionLabel")}</h3>
-                    <p className="text-sm text-white leading-relaxed whitespace-pre-wrap">{viewEv.description || t("noDescription")}</p>
+                    <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">{t("descriptionLabel")}</h3>
+                    <p className="text-[15px] text-white leading-relaxed whitespace-pre-wrap">{viewEv.description || t("noDescription")}</p>
                     {viewEv.notificationMessage && (
                       <div className="mt-4 pt-4 border-t border-white/10">
-                        <h4 className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB] mb-1.5">{t("notificationPreview")}</h4>
-                        <p className="text-sm text-[#7DD8CB] bg-[#4FBEB0]/10 rounded-xl p-3">{viewEv.notificationMessage}</p>
+                        <h4 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-1.5">{t("notificationPreview")}</h4>
+                        <p className="text-[15px] text-[#7DD8CB] bg-[#4FBEB0]/10 rounded-xl p-3">{viewEv.notificationMessage}</p>
                       </div>
                     )}
                   </div>
@@ -1124,8 +1124,8 @@ export function EventsView({
                       surrounding surfaces needed to change. */}
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="rounded-2xl bg-sage-700 p-4 text-center">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-white/70">{t("coverageStatLabel")}</p>
-                      <p className="mt-1.5 text-sm font-bold text-white break-words">{coverageDisplay}</p>
+                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/70">{t("coverageStatLabel")}</p>
+                      <p className="mt-1.5 text-base font-bold text-white break-words">{coverageDisplay}</p>
                     </div>
                     <button
                       type="button"
@@ -1133,14 +1133,14 @@ export function EventsView({
                       title={t("budgetTabLabel")}
                       className="rounded-2xl bg-gold-700 p-4 text-center transition hover:brightness-110 active:scale-[0.99]"
                     >
-                      <p className="text-xs font-semibold uppercase tracking-wide text-white/70">{t("approvedBudgetStatLabel")}</p>
-                      <p className="mt-1.5 text-sm font-bold text-white">
+                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/70">{t("approvedBudgetStatLabel")}</p>
+                      <p className="mt-1.5 text-base font-bold text-white">
                         {viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined ? `₱${Number(viewEv.approvedBudget).toLocaleString()}` : "—"}
                       </p>
                     </button>
                     <div className="rounded-2xl bg-[#5C2A1E] p-4 text-center">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-white/70">{t("attendeesStatLabel")}</p>
-                      <p className="mt-1.5 text-sm font-bold text-white">{signedInCount}</p>
+                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/70">{t("attendeesStatLabel")}</p>
+                      <p className="mt-1.5 text-base font-bold text-white">{signedInCount}</p>
                     </div>
                   </div>
 
@@ -1149,7 +1149,7 @@ export function EventsView({
                       type="button"
                       disabled
                       title={t("featureComingSoonHint")}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] text-white/40 px-4 py-2.5 text-sm font-semibold opacity-70 cursor-not-allowed"
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] text-white/40 px-4 py-2.5 text-[15px] font-semibold opacity-70 cursor-not-allowed"
                     >
                       <Megaphone className="h-4 w-4" /> {t("broadcastSmsButton")}
                     </button>
@@ -1157,7 +1157,7 @@ export function EventsView({
                       type="button"
                       disabled
                       title={t("featureComingSoonHint")}
-                      className="inline-flex items-center gap-2 rounded-full bg-white/10 text-white/60 px-4 py-2.5 text-sm font-semibold opacity-70 cursor-not-allowed"
+                      className="inline-flex items-center gap-2 rounded-full bg-white/10 text-white/60 px-4 py-2.5 text-[15px] font-semibold opacity-70 cursor-not-allowed"
                     >
                       <ClipboardList className="h-4 w-4" /> {t("generateReportButton")}
                     </button>

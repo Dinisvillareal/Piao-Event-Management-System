@@ -20,7 +20,7 @@
   .hdr-logo { width: 70px; height: 70px; }
   .muted { color: #667777; font-size: 9px; }
   .tiny { color: #667777; font-size: 8px; letter-spacing: 1px; text-transform: uppercase; }
-  h1.brgy { color: #005F63; font-size: 20px; margin: 4px 0; text-transform: uppercase; }
+  h1.brgy { color: #000000; font-size: 12.5px; margin: 4px 0; text-transform: uppercase; letter-spacing: 0.5px; }
   .system { color: #4FBEB0; font-size: 9px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
   h2.title { color: #005F63; font-size: 15px; text-transform: uppercase; margin-top: 14px; margin-bottom: 2px; }
 
@@ -85,9 +85,9 @@
   .chip { display: inline-block; border-radius: 16px; padding: 3px 9px; font-size: 8px; font-weight: bold; margin: 0 4px 4px 0; }
 
   table.plain { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  table.plain th, table.plain td { border: 1px solid #ccc; padding: 5px 7px; font-size: 10px; text-align: left; }
+  table.plain th, table.plain td { border: 1px solid #DCEAE5; padding: 5px 7px; font-size: 10px; text-align: left; }
   table.plain tr { page-break-inside: avoid; }
-  table.plain th { background: #005F63; color: #fff; }
+  table.plain th { background: #17365D; color: #fff; }
   {{-- The signature block used to carry ~110px of pure top spacing
        (60px margin + 50px cell padding), sized for trailing a nearly-full
        page. For a short report -- few events, little data -- that's often
@@ -101,16 +101,21 @@
   .rec-title h3 { color: #005F63; font-size: 13px; margin: 14px 0 2px; }
   .rec-newpage { page-break-before: always; }
   .rec-head { background: #EEF4F1; border: 1px solid #DCEAE5; padding: 7px 10px; margin-top: 10px; page-break-after: avoid; page-break-inside: avoid; }
-  .rec-name { color: #005F63; font-size: 11px; font-weight: bold; }
-  .rec-meta { color: #667777; font-size: 9px; margin-top: 2px; }
+  .rec-name { color: #000000; font-size: 11px; font-weight: bold; }
+  .rec-meta { color: #222222; font-size: 9px; margin-top: 2px; }
   .rec-stats { color: #333333; font-size: 9px; margin-top: 3px; }
   table.rec-table { width: 100%; border-collapse: collapse; margin-top: 0; }
   table.rec-table thead { display: table-header-group; }
   table.rec-table th, table.rec-table td { font-size: 9px; padding: 3px 5px; }
-  .sig-wrap { page-break-inside: avoid; margin-top: 28px; }
+  .sig-wrap { page-break-inside: avoid; margin-top: 52px; }
   .sig-row { width: 100%; border-collapse: collapse; }
-  .sig-row td { border: none; text-align: center; font-size: 10px; padding-top: 26px; }
-  .sig-line { border-top: 1px solid #667777; padding-top: 4px; margin: 0 30px; }
+  .sig-row td { border: none; text-align: center; font-size: 10px; padding: 0; }
+  .sig-row td.sig-label { text-align: left; font-weight: bold; font-size: 10.5px; color: #1a1a1a; }
+  .sig-row td.sig-space { height: 46px; }
+  .sig-line { border-top: 1px solid #667777; padding-top: 4px; margin: 0 40px; font-weight: bold; font-size: 10.5px; color: #1a1a1a; }
+  .msg { margin-top: 4px; }
+  .msg h4 { color: #000000; font-size: 12px; margin: 10px 0 6px; letter-spacing: 0.5px; }
+  .msg p { font-size: 10.5px; line-height: 1.55; text-align: justify; text-indent: 26px; margin: 0 0 7px; color: #1a1a1a; }
   .footer { text-align: center; color: #999; font-size: 8px; margin-top: 10px; }
 </style>
 </head>
@@ -142,10 +147,12 @@
         @endif
       </td>
       <td class="hdr-text-cell">
-        <p class="tiny" style="margin:0;">Republic of the Philippines</p>
-        <p class="muted" style="margin:2px 0 0 0;">Province of Zamboanga del Norte &middot; Municipality of President Manuel A. Roxas</p>
+        <p class="tiny" style="margin:0; color:#222222; font-weight:bold;">Republic of the Philippines</p>
+        <p class="muted" style="margin:2px 0 0 0; color:#222222; font-size:9.5px;">Western Mindanao, Region IX</p>
+        <p class="muted" style="margin:0; color:#222222; font-size:9.5px;">Province of Zamboanga del Norte</p>
+        <p class="muted" style="margin:0; color:#222222; font-size:9.5px;">Municipality of President Manuel A. Roxas</p>
         <h1 class="brgy" style="margin:6px 0 4px 0;">Barangay Piao</h1>
-        <p class="muted" style="margin:0;">Piao Barangay Hall, Purok Uno, Barangay Piao, 7102</p>
+        <p class="muted" style="margin:0; color:#222222; font-size:9.5px;">Purok Uno — Barangay Hall, Piao, Roxas, Zamboanga del Norte, 7102</p>
       </td>
       <td style="width:130px; text-align:right; vertical-align:top;">
         <p class="system" style="margin:0;">Piao Connect</p>
@@ -160,6 +167,16 @@
     </tr></table>
     <div style="border-top: 1px solid #ddd5ca; margin-top: 6px;"></div>
   </div>
+
+  @if(!empty($message))
+  <div class="msg">
+    <h4>I.&nbsp;&nbsp;&nbsp;MESSAGE</h4>
+    @foreach($message as $para)
+      <p>{{ $para }}</p>
+    @endforeach
+    <h4 style="margin-top: 26px;">II.&nbsp;&nbsp;&nbsp;REPORT DETAILS</h4>
+  </div>
+  @endif
 
   @php
     // Turns a Collection of {label,value} rows into dompdf-safe vertical
@@ -193,6 +210,8 @@
     $showRecords = is_array($sections) && in_array('records', $sections, true);
     $chipColor = fn ($condition) => $conditionColors[$condition] ?? ['bg' => '#F3F4F6', 'text' => '#6B7280'];
 
+    // (Page 1 now also carries the opening Message, so the first-page counts are
+    // small; 0 means "start the list on a fresh page".)
     // [rows that fit on the page the list starts on, rows per later page],
     // one "row" being a 2-up pair of entries. Tuned against real dompdf
     // output for A4 with the @page margins above -- each list's entries are
@@ -201,10 +220,10 @@
     // space above the bottom margin, while one row too many would push the
     // whole card to the next page.
     $rowCaps = [
-        'Per-Event Breakdown' => [1, 7],
-        'Enrollment by Membership' => [4, 7],
+        'Per-Event Breakdown' => [0, 7],
+        'Enrollment by Membership' => [2, 7],
         'Budget per Event' => [4, 8],
-        'Inventory Items' => [4, 9],
+        'Inventory Items' => [3, 9],
     ];
     // Entries are clipped to one line so a long name can't wrap, grow its row
     // and push a page-sized card past the bottom margin.
@@ -215,7 +234,7 @@
         $rows = $items->chunk(2)->values();
         $groups = [];
         $i = 0;
-        $cap = max(1, $firstCap);
+        $cap = $firstCap > 0 ? $firstCap : max(1, $perPage);
         while ($i < $rows->count()) {
             $groups[] = $rows->slice($i, $cap)->values();
             $i += $cap;
@@ -369,11 +388,11 @@
             @foreach($ev['attendees'] as $i => $a)
               <tr>
                 <td>{{ $i + 1 }}</td>
-                <td>{{ $a['name'] }}</td>
+                <td style="font-weight:bold;">{{ $a['name'] }}</td>
                 <td>{{ $a['user_code'] ?? '—' }}</td>
                 <td>{{ $a['age'] ?? '—' }}</td>
                 <td>{{ $a['gender'] ?? '—' }}</td>
-                <td style="font-weight:bold; color:{{ $a['attendance'] === 'Present' ? '#047857' : ($a['attendance'] === 'Absent' ? '#DC2626' : '#667777') }};">{{ $a['attendance'] }}</td>
+                <td>{{ $a['attendance'] }}</td>
                 <td>{{ $a['time_in'] ?? '—' }}</td>
                 <td>{{ $a['time_out'] ?? '—' }}</td>
               </tr>
@@ -504,7 +523,7 @@
     @endif
 
     @if($show('perEvent'))
-    @php $groups = $pageRows(collect($data['per_event']), 3, 7); @endphp
+    @php $groups = $pageRows(collect($data['per_event']), 1, 7); @endphp
     @forelse($groups as $gi => $rowGroup)
     <div class="card card-list">
       <h3>Budget per Event @if($gi > 0) <span class="cont">(continued)</span>@endif</h3>
@@ -681,8 +700,13 @@
   <div class="sig-wrap">
     <table class="sig-row" style="border: none;">
       <tr>
-        <td style="width: 50%;"><div class="sig-line">Prepared by</div></td>
-        <td style="width: 50%;"><div class="sig-line">Barangay Captain</div></td>
+        <td class="sig-label" style="width: 50%;">Prepared by:</td>
+        <td class="sig-label" style="width: 50%;">Noted:</td>
+      </tr>
+      <tr><td class="sig-space"></td><td class="sig-space"></td></tr>
+      <tr>
+        <td><div class="sig-line">Brgy. Secretary</div></td>
+        <td><div class="sig-line">Barangay Captain</div></td>
       </tr>
     </table>
     <p class="footer">Generated via Piao Connect — Barangay Information Management System · {{ $printedOn }}</p>

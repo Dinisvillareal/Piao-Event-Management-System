@@ -26,6 +26,7 @@ import SearchableSelect from "../../../components/ui/SearchableSelect";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
+import DefaultAvatar from "../../../components/ui/DefaultAvatar";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -1752,7 +1753,7 @@ const handleDeleteResident = async () => {
                     {r.photo ? (
                       <img src={r.photo} alt="" className="h-full w-full object-cover" />
                     ) : (
-                      initialsFor(r.firstName, r.lastName)
+                      <DefaultAvatar className="h-16 w-16" title={`${r.firstName} ${r.lastName}`} />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">

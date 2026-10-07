@@ -332,7 +332,7 @@ export default function DashboardView({
     // bare spinner, so the page's actual layout is visible immediately and
     // nothing jumps around once the real numbers arrive.
     return (
-      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] px-6 py-10 sm:px-10 sm:py-14">
+      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] px-6 py-8 sm:px-10 sm:py-9">
         <div className="w-full space-y-10">
           <div className="relative flex flex-col gap-6 py-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-5">
@@ -367,7 +367,7 @@ export default function DashboardView({
     // the reference), while every other staff view keeps its untouched
     // light "paper" background.
     <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A]">
-      <div className="w-full space-y-10 px-6 py-10 sm:px-10 sm:py-14">
+      <div className="w-full space-y-10 px-6 py-8 sm:px-10 sm:py-9">
         {/* Hero -- icon badge + headline pinned left, a pair of real action
             cards pinned right, so the row fills the full page width
             instead of sitting as a narrow centered block. */}
