@@ -14,6 +14,7 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 
@@ -67,16 +68,27 @@ const MODULE_ICONS: Record<string, typeof ActivityIcon> = {
 const DEFAULT_MODULE_ICON = ActivityIcon;
 
 export default function ActivityLogsView() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
+  const statsLoading = usePageOpenSkeleton(loading);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
+  // Anchor at the very top of the page -- scrolled into view on every
+  // pagination click so switching pages always lands the user back at the
+  // top of the feed instead of leaving them wherever they'd scrolled to
+  // on the previous page.
+  const topRef = useRef<HTMLDivElement>(null);
+  const goToPage = (updater: number | ((p: number) => number)) => {
+    setCurrentPage(updater as any);
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   // Real-time refresh -- other staff generate activity constantly, so this
   // polls quietly in the background rather than relying on a manual
@@ -254,7 +266,7 @@ export default function ActivityLogsView() {
       if (key === "unknown") label = t("unknownDateLabel");
       else if (key === todayKey) label = t("todayLabel");
       else if (key === yesterdayKey) label = t("yesterdayLabel");
-      else label = new Date(key).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+      else label = new Date(key).toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
       return { key, label, items: map.get(key)! };
     });
   }, [filteredActivities, t]);
@@ -345,7 +357,7 @@ export default function ActivityLogsView() {
         pages, so Activity Logs reads as part of the same system instead
         of the old light "paper" page. This page has no add/edit modal of
         its own, just the feed below. */}
-    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div ref={topRef} className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -364,6 +376,7 @@ export default function ActivityLogsView() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {statCards.map((card) => {
+          if (statsLoading) return <StatCardSkeleton key={card.key} />;
           const Icon = card.icon;
           return (
             <div key={card.key} className={`rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white`}>
@@ -384,38 +397,51 @@ export default function ActivityLogsView() {
         })}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("searchActivitiesPlaceholder")}
-              className="h-11 w-full rounded-xl border border-transparent bg-transparent pl-10 pr-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+                title="Clear"
+                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+              >
+                {t("clearLabel")}
+              </button>
+            )}
           </div>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
           <FilterDropdown
             value={filterType}
             onChange={setFilterType}
             options={typeOptions}
-            className="h-11 pl-10 pr-8"
+            className="h-11 pl-10 pr-8 shrink-0"
             icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
             dark
+            searchable
+            searchPlaceholder={t("search")}
+            noResultsLabel={t("noMatchesFoundLabel")}
           />
           <FilterDropdown
             value={sortOrder}
             onChange={(v) => setSortOrder(v as "desc" | "asc")}
             options={sortOptions}
-            className="h-11 pl-10 pr-8"
+            className="h-11 pl-10 pr-8 shrink-0"
             icon={<ArrowUpDown className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
             dark
           />
-          <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 px-4" dark />
+          <div className="h-11 shrink-0">
+            <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 px-4" dark />
+          </div>
         </div>
       </div>
 
@@ -449,7 +475,7 @@ export default function ActivityLogsView() {
                   const iconWrap = MODULE_ICON_WRAP[act.type ?? ""] ?? DEFAULT_ICON_WRAP;
                   const secondsAgo = Math.max(0, Math.floor((nowTick - new Date(act.created_at).getTime()) / 1000));
                   const isFresh = !isNaN(secondsAgo) && secondsAgo < 60;
-                  const timeOfDay = new Date(act.created_at).toLocaleTimeString("en-PH", {
+                  const timeOfDay = new Date(act.created_at).toLocaleTimeString(locale, {
                     hour: "2-digit",
                     minute: "2-digit",
                     hour12: true,
@@ -504,17 +530,17 @@ export default function ActivityLogsView() {
           </p>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              onClick={() => goToPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >
               ←
             </button>
-            <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+            <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
               {currentPage}
             </span>
             <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >

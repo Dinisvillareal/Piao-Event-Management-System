@@ -1,4 +1,5 @@
 import React from "react";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 /**
  * Small dependency-free SVG chart primitives for the Reports & Analytics
@@ -28,10 +29,11 @@ export function BarChart({
   // `color` the caller passes.
   dark?: boolean;
 }) {
+  const { t } = useLanguage();
   const max = Math.max(1, ...data.map((d) => d.value));
 
   if (data.length === 0) {
-    return <p className={`text-sm italic py-8 text-center ${dark ? "text-white/40 print:text-gray-400" : "text-gray-400"}`}>No data for the selected filters.</p>;
+    return <p className={`text-sm italic py-8 text-center ${dark ? "text-white/40 print:text-gray-400" : "text-gray-400"}`}>{t("uiNoDataForFilters")}</p>;
   }
 
   return (

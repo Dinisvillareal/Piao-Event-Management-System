@@ -2,6 +2,7 @@ import { WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import { flushQueue, queueLength } from "../../lib/offlineQueue";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 /**
  * Adviser recommendation: "Piao has slow/limited connectivity — include
@@ -10,6 +11,7 @@ import { flushQueue, queueLength } from "../../lib/offlineQueue";
  * many QR scans are queued locally waiting to sync once back online.
  */
 export default function OfflineBanner() {
+  const { t } = useLanguage();
   const isOnline = useOnlineStatus();
   const [pending, setPending] = useState(0);
   const [syncing, setSyncing] = useState(false);
@@ -54,8 +56,8 @@ export default function OfflineBanner() {
       <div className="print:hidden flex items-center gap-2 bg-orange-500 text-white text-xs sm:text-sm font-medium px-4 py-2 justify-center">
         <WifiOff className="h-4 w-4 shrink-0" />
         <span>
-          You're offline — QR scans keep working and will sync automatically once you're back online
-          {pending > 0 ? ` (${pending} pending)` : ""}.
+          {t("uiOfflineBanner")}
+          {pending > 0 ? ` (${t("uiPendingCount").replace("{n}", String(pending))})` : ""}.
         </span>
       </div>
     );
@@ -65,7 +67,7 @@ export default function OfflineBanner() {
     return (
       <div className="print:hidden flex items-center gap-2 bg-[#005f63] text-white text-xs sm:text-sm font-medium px-4 py-2 justify-center">
         <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
-        <span>Back online — syncing {pending} queued scan(s)...</span>
+        <span>{t("uiSyncing").replace("{n}", String(pending))}</span>
       </div>
     );
   }
@@ -79,8 +81,8 @@ export default function OfflineBanner() {
       <div className="print:hidden flex items-center gap-2 bg-amber-600 text-white text-xs sm:text-sm font-medium px-4 py-2 justify-center">
         <AlertTriangle className="h-4 w-4 shrink-0" />
         <span>
-          {justRejected} queued scan{justRejected > 1 ? "s" : ""} couldn't be synced (already recorded, or no longer eligible for that event) — check the event's attendance roster.
-          {justSynced ? ` ${justSynced} other scan${justSynced > 1 ? "s" : ""} synced successfully.` : ""}
+          {t("uiScansRejected").replace("{n}", String(justRejected))}
+          {justSynced ? ` ${t("uiOtherScansSynced").replace("{n}", String(justSynced))}` : ""}
         </span>
       </div>
     );
@@ -90,7 +92,7 @@ export default function OfflineBanner() {
     return (
       <div className="print:hidden flex items-center gap-2 bg-teal-600 text-white text-xs sm:text-sm font-medium px-4 py-2 justify-center">
         <RefreshCw className="h-4 w-4 shrink-0" />
-        <span>Synced {justSynced} queued scan(s) successfully.</span>
+        <span>{t("uiSynced").replace("{n}", String(justSynced))}</span>
       </div>
     );
   }

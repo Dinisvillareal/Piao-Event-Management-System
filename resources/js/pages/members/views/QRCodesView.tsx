@@ -393,7 +393,7 @@
 //                       <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]"></div>
 //                       <div className="p-8">
 //                         <div>
-//                           <h2 className="text-base font-bold text-white break-words">
+//                           <h2 className="text-lg font-bold text-white break-words">
 //                             {highlightText(m.name, searchQuery)}
 //                           </h2>
 //                           {m.description && (
@@ -869,9 +869,15 @@ import { QrCode, Download } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import Skeleton from "../../../components/ui/Skeleton";
 import { tc } from "../../../lib/contentTranslations";
+import { renderMemberIdCard, renderMemberIdCardSides } from "../../../lib/memberIdCard";
+import IdCardFlip from "../../../components/ui/IdCardFlip";
+import { useBarangayOfficials } from "../../../lib/barangayOfficials";
+import { matchesSearch } from "../../../lib/search";
 
 export default function QRCodesView({ highlightText, userId, userCode, fullName }: any) {
   const { t, language } = useLanguage();
+  // Barangay Captain printed on the back of the ID card (set under Residents -> Barangay Position).
+  const captainName = useBarangayOfficials().captain?.name ?? "";
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSwitching, setPageSwitching] = useState(false);
@@ -888,9 +894,12 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   const [error, setError] = useState<string | null>(null);
   const itemsPerPage = 6;
   const qrCodeRef = useRef<HTMLDivElement>(null);
+  const hiResQrRef = useRef<HTMLDivElement>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
+  // Member's own contact number -- printed on the back of the ID card.
+  const [contactNumber, setContactNumber] = useState("");
 
   useEffect(() => {
     if (!userId) return;
@@ -903,6 +912,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
         });
         if (!membershipRes.ok) throw new Error(`HTTP ${membershipRes.status}`);
         const membershipData = await membershipRes.json();
+        setContactNumber(membershipData.contact_number || "");
         const membershipIds = (membershipData.memberships || []).map((m: any) => m.id);
         if (membershipIds.length === 0) { setAllMemberships([]); setLoading(false); return; }
 
@@ -915,7 +925,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
         setAllMemberships(allMembershipsList.filter((m: any) => membershipIds.includes(m.id)));
       } catch (err) {
         console.error('Failed to fetch memberships:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load memberships');
+        setError(err instanceof Error ? err.message : t("memErrLoadMemberships"));
       } finally { setLoading(false); }
     };
     fetchMemberships();
@@ -923,8 +933,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
   const filteredMemberships = useMemo(() => {
     if (!searchQuery.trim()) return allMemberships;
-    const q = searchQuery.toLowerCase();
-    return allMemberships.filter(m => m.name?.toLowerCase().includes(q));
+    return allMemberships.filter(m => matchesSearch(searchQuery, m.name, m.description));
   }, [allMemberships, searchQuery]);
 
   const totalItems = filteredMemberships.length;
@@ -936,116 +945,27 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
   useEffect(() => { setCurrentPage(1); }, [searchQuery]);
 
-  const performDownloadQRCode = useCallback(() => {
+  const performDownloadQRCode = useCallback(async () => {
     setShowDownloadConfirm(false);
 
-    const qrCanvasEl = qrCodeRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
+    // Prefer the hidden hi-res QR so the printed card stays razor sharp;
+    // fall back to the on-screen one.
+    const qrCanvasEl = (hiResQrRef.current?.querySelector("canvas") ||
+      qrCodeRef.current?.querySelector("canvas")) as HTMLCanvasElement | null;
     if (!qrCanvasEl) {
       setDownloadError("QR code not ready. Please try again.");
       return;
     }
 
-    const CARD_W = 720;
-    const CARD_H = 300;
-    const PADDING = 28;
-    const BORDER_R = 24;
-
-    const out = document.createElement("canvas");
-    out.width = CARD_W;
-    out.height = CARD_H;
-    const ctx = out.getContext("2d");
-    if (!ctx) {
+    const out = await renderMemberIdCard(qrCanvasEl, fullName || "—", userCode || "—", contactNumber, captainName);
+    if (!out) {
       setDownloadError("Could not create the image.");
       return;
     }
 
-    ctx.fillStyle = "#0A0E1A";
-    ctx.fillRect(0, 0, CARD_W, CARD_H);
-
-    ctx.strokeStyle = "rgba(255,255,255,0.18)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(BORDER_R, 1);
-    ctx.lineTo(CARD_W - BORDER_R, 1);
-    ctx.quadraticCurveTo(CARD_W - 1, 1, CARD_W - 1, BORDER_R);
-    ctx.lineTo(CARD_W - 1, CARD_H - BORDER_R);
-    ctx.quadraticCurveTo(CARD_W - 1, CARD_H - 1, CARD_W - BORDER_R, CARD_H - 1);
-    ctx.lineTo(BORDER_R, CARD_H - 1);
-    ctx.quadraticCurveTo(1, CARD_H - 1, 1, CARD_H - BORDER_R);
-    ctx.lineTo(1, BORDER_R);
-    ctx.quadraticCurveTo(1, 1, BORDER_R, 1);
-    ctx.closePath();
-    ctx.stroke();
-
-    const QR_BOX = 220;
-    const QR_INNER_PAD = 12;
-    const qrBoxX = PADDING;
-    const qrBoxY = (CARD_H - QR_BOX) / 2;
-
-    const boxR = 18;
-    ctx.fillStyle = "#FFFFFF";
-    ctx.beginPath();
-    ctx.moveTo(qrBoxX + boxR, qrBoxY);
-    ctx.lineTo(qrBoxX + QR_BOX - boxR, qrBoxY);
-    ctx.quadraticCurveTo(qrBoxX + QR_BOX, qrBoxY, qrBoxX + QR_BOX, qrBoxY + boxR);
-    ctx.lineTo(qrBoxX + QR_BOX, qrBoxY + QR_BOX - boxR);
-    ctx.quadraticCurveTo(qrBoxX + QR_BOX, qrBoxY + QR_BOX, qrBoxX + QR_BOX - boxR, qrBoxY + QR_BOX);
-    ctx.lineTo(qrBoxX + boxR, qrBoxY + QR_BOX);
-    ctx.quadraticCurveTo(qrBoxX, qrBoxY + QR_BOX, qrBoxX, qrBoxY + QR_BOX - boxR);
-    ctx.lineTo(qrBoxX, qrBoxY + boxR);
-    ctx.quadraticCurveTo(qrBoxX, qrBoxY, qrBoxX + boxR, qrBoxY);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.drawImage(
-      qrCanvasEl,
-      qrBoxX + QR_INNER_PAD,
-      qrBoxY + QR_INNER_PAD,
-      QR_BOX - QR_INNER_PAD * 2,
-      QR_BOX - QR_INNER_PAD * 2
-    );
-
-    const textX = qrBoxX + QR_BOX + 32;
-    const textMaxW = CARD_W - textX - PADDING;
-
-    ctx.fillStyle = "rgba(255,255,255,0.45)";
-    ctx.font = "700 12px sans-serif";
-    ctx.textBaseline = "top";
-    ctx.fillText("MEMBER", textX, 62);
-
-    ctx.fillStyle = "#FFFFFF";
-    ctx.font = "800 30px sans-serif";
-    let displayName = fullName || "—";
-    while (ctx.measureText(displayName).width > textMaxW && displayName.length > 3) {
-      displayName = displayName.slice(0, -2) + "…";
-    }
-    ctx.fillText(displayName, textX, 84);
-
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.font = "600 18px monospace";
-    ctx.fillText(userCode || "—", textX, 130);
-
-    ctx.strokeStyle = "rgba(232,184,74,0.6)";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(textX, 168);
-    ctx.lineTo(textX + 44, 168);
-    ctx.stroke();
-
-    ctx.fillStyle = "rgba(255,255,255,0.4)";
-    ctx.font = "500 13px sans-serif";
-    ctx.fillText("Scan this QR code at barangay", textX, 186);
-    ctx.fillText("events to check in.", textX, 206);
-
-    ctx.fillStyle = "rgba(125,216,203,0.7)";
-    ctx.font = "700 11px sans-serif";
-    const brandText = "PIAO CONNECT";
-    const brandW = ctx.measureText(brandText).width;
-    ctx.fillText(brandText, CARD_W - PADDING - brandW, CARD_H - 34);
-
     try {
       const link = document.createElement("a");
-      link.download = `qr-id-${userCode || "member"}.png`;
+      link.download = `member-id-${userCode || "member"}.png`;
       link.href = out.toDataURL("image/png", 1.0);
       link.click();
       setDownloadSuccess(true);
@@ -1053,7 +973,35 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
       console.error("Download failed:", err);
       setDownloadError("Failed to download QR ID. Please try again.");
     }
-  }, [userCode, fullName]);
+  }, [userCode, fullName, contactNumber, captainName]);
+
+  // Live ID-card preview shown in the left panel.
+  const [cardSides, setCardSides] = useState<{ front: string; back: string } | null>(null);
+  const [showCardViewer, setShowCardViewer] = useState(false);
+  useEffect(() => {
+    if (!showCardViewer) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setShowCardViewer(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showCardViewer]);
+  useEffect(() => {
+    if (!userId || !userCode || !fullName) { setCardSides(null); return; }
+    let cancelled = false;
+    // wait a frame so the hidden hi-res QR canvas has been painted
+    const id = requestAnimationFrame(() => {
+      const canvas = hiResQrRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
+      if (!canvas) return;
+      renderMemberIdCardSides(canvas, fullName, userCode, contactNumber, captainName).then((out) => {
+        if (!cancelled && out) {
+          setCardSides({
+            front: out.front.toDataURL("image/png", 1.0),
+            back: out.back.toDataURL("image/png", 1.0),
+          });
+        }
+      });
+    });
+    return () => { cancelled = true; cancelAnimationFrame(id); };
+  }, [userId, userCode, fullName, loading, contactNumber, captainName]);
 
   const qrData = useMemo(() => {
     if (!userId || !userCode || !fullName) return null;
@@ -1122,57 +1070,96 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
               `performDownloadQRCode` paints on an offscreen canvas.
               `qrCodeRef` wraps ONLY the QR tile so the download has a
               clean <canvas> to pull from. */}
-          <div className="w-full lg:w-[280px] lg:shrink-0 lg:sticky lg:top-4">
-            <div className="flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40 self-start">
-                {t("memberRole")}
-              </p>
-              <p className="text-base font-bold text-white self-start truncate max-w-full">
-                {fullName || "—"}
-              </p>
-              <p className="text-xs text-white/45 font-mono self-start">
-                {userCode || "—"}
-              </p>
+          {showCardViewer && cardSides && (
+            <div
+              className="fixed inset-0 z-[80] flex flex-col items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
+              onClick={() => setShowCardViewer(false)}
+            >
+              <div onClick={(e) => e.stopPropagation()} className="w-full" style={{ maxWidth: "min(42rem, calc((100vh - 170px) * 1.585))" }}>
+                {/* Click the card to turn it over (front <-> back). */}
+                <IdCardFlip
+                  frontUrl={cardSides.front}
+                  backUrl={cardSides.back}
+                  alt={fullName || "Member ID"}
+                  title="Click to flip"
+                  className="w-full"
+                />
+              </div>
+              <div className="mt-6 flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={() => { setShowCardViewer(false); setShowDownloadConfirm(true); }}
+                  className="group inline-flex min-w-[260px] items-center justify-center gap-4 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-1.5 py-1.5 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md"
+                >
+                  {t("downloadQrCode")}
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+                    <Download className="h-4 w-4 text-white" />
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowCardViewer(false)}
+                  className="rounded-full bg-sage-700 hover:bg-sage-800 px-8 py-[11px] text-base font-bold text-white transition-colors"
+                >
+                  {t("closeLabel")}
+                </button>
+              </div>
+            </div>
+          )}
 
-              {/* QR -- clean, square tile with the standard quiet zone
-                  (includeMargin) so it scans reliably. Fixed size so the
-                  layout never shifts. */}
-              <div ref={qrCodeRef} className="mt-5 rounded-xl bg-white p-2 overflow-hidden shrink-0">
-                {qrData ? (
-                  <QRCodeCanvas
-                    value={qrData}
-                    size={200}
-                    level="H"
-                    bgColor="#ffffff"
-                    fgColor="#052e16"
-                    includeMargin={true}
+          <div className="w-full lg:w-[460px] lg:shrink-0 lg:sticky lg:top-4">
+            <div className="flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+              {/* Hi-res QR, off-screen, used only to paint the ID card */}
+              {qrData && (
+                <div ref={hiResQrRef} aria-hidden="true" style={{ position: "absolute", left: -99999, top: 0, pointerEvents: "none" }}>
+                  <QRCodeCanvas value={qrData} size={720} level="H" bgColor="#ffffff" fgColor="#052e16" includeMargin={true} />
+                </div>
+              )}
+
+              {/* ID card preview -- the same image the Download button saves */}
+              {qrData ? (
+                cardSides ? (
+                  /* Shows the front, turns to the back every 10s; click opens the pop-up. */
+                  <IdCardFlip
+                    frontUrl={cardSides.front}
+                    backUrl={cardSides.back}
+                    alt={fullName || "Member ID"}
+                    autoFlip
+                    intervalMs={10000}
+                    onClick={() => setShowCardViewer(true)}
+                    title="Click to view full size"
+                    className="w-full"
                   />
                 ) : (
-                  <div
-                    className="flex flex-col items-center justify-center"
-                    style={{ width: 200, height: 200 }}
-                  >
-                    <QrCode className="text-gray-300" size={32} />
-                    <p className="text-gray-400 text-[10px] mt-1 text-center px-2">{t("unableToGenerateQr")}</p>
-                  </div>
-                )}
-              </div>
+                  <div className="w-full rounded-2xl bg-white/5 animate-pulse" style={{ aspectRatio: "1011 / 638" }} />
+                )
+              ) : (
+                <div
+                  className="flex w-full flex-col items-center justify-center rounded-2xl bg-white/5"
+                  style={{ aspectRatio: "1011 / 638" }}
+                >
+                  <QrCode className="text-white/30" size={32} />
+                  <p className="text-white/40 text-xs mt-1 text-center px-2">{t("unableToGenerateQr")}</p>
+                </div>
+              )}
 
-              <p className="mt-3 text-[11px] text-white/40 text-center">
+              <p className="mt-4 text-xs text-white/45 text-center">
                 {t("scanAtEvents")}
               </p>
 
               <button
                 onClick={() => setShowDownloadConfirm(true)}
                 disabled={!qrData}
-                className={`mt-4 inline-flex w-full items-center justify-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors ${
+                className={`group mt-4 inline-flex w-full items-center justify-center gap-3 rounded-full border pl-5 pr-1.5 py-1.5 text-[15px] font-semibold shadow-sm transition-all duration-500 ease-out ${
                   qrData
-                    ? 'bg-gold-400 hover:bg-gold-300 text-[#08130F] cursor-pointer'
-                    : 'bg-white/10 text-white/30 cursor-not-allowed'
+                    ? 'border-white/15 bg-white/[0.04] text-white hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md cursor-pointer'
+                    : 'border-white/10 bg-white/10 text-white/30 cursor-not-allowed'
                 }`}
               >
-                <Download className="h-4 w-4" />
                 {t("downloadQrCode")}
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+                  <Download className="h-4 w-4 text-white" />
+                </span>
               </button>
             </div>
           </div>
@@ -1200,7 +1187,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                     <div className="flex items-center gap-2">
                       <button onClick={() => goToPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
                         className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
-                      <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">{currentPage}</span>
+                      <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">{currentPage}</span>
                       <button onClick={() => goToPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
                         className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">→</button>
                     </div>

@@ -50,8 +50,10 @@ public function index()
                 'first_name' => $user->first_name,
                 'middle_name' => $user->middle_name,
                 'last_name' => $user->last_name,
+                'suffix' => $user->suffix,
                 'contact_number' => $user->contact_number,
                 'role' => $user->role,
+                'barangay_position' => $user->barangay_position,
                 'has_account' => $user->has_account,
 
                 // Always null in practice -- see note above the index()
@@ -110,6 +112,7 @@ public function index()
                 'users.first_name',
                 'users.middle_name',
                 'users.last_name',
+                'users.suffix',
                 'users.contact_number',
                 'users.has_account',
                 'users.role', // ✅ ADDED ROLE HERE
@@ -135,6 +138,7 @@ public function index()
             'first_name' => $first->first_name,
             'middle_name' => $first->middle_name,
             'last_name' => $first->last_name,
+            'suffix' => $first->suffix,
             'contact_number' => $first->contact_number,
             'has_account' => $first->has_account,
             'role' => $first->role, // ✅ RETURN ROLE IN RESPONSE

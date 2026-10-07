@@ -1,3 +1,4 @@
+import { matchesSearch } from "../../../lib/search";
 import React, { useEffect, useMemo, useState } from "react";
 import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, AlertCircle, AlertTriangle, ChevronDown, Search } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
@@ -121,11 +122,8 @@ export default function HouseholdsView() {
   }, [page]);
 
   const filteredUnassigned = useMemo(() => {
-    const q = memberSearch.trim().toLowerCase();
-    if (!q) return unassigned;
-    return unassigned.filter((m) =>
-      `${fullName(m)} ${m.user_code}`.toLowerCase().includes(q)
-    );
+    if (!memberSearch.trim()) return unassigned;
+    return unassigned.filter((m) => matchesSearch(memberSearch, fullName(m), m.user_code));
   }, [unassigned, memberSearch]);
 
   const performAdd = async () => {
@@ -282,8 +280,19 @@ export default function HouseholdsView() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("searchHouseholdsPlaceholder")}
-            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
           />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+              title="Clear"
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+            >
+              {t("clearLabel")}
+            </button>
+          )}
         </div>
       </div>
 
@@ -320,29 +329,29 @@ export default function HouseholdsView() {
                       setExpandedId(expanded ? null : h.id);
                     }
                   }}
-                  className="p-5 flex flex-wrap items-center gap-4 cursor-pointer"
+                  className="px-5 py-[18px] flex flex-wrap items-center gap-4 cursor-pointer"
                 >
                   <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#4FBEB0]/10 shrink-0">
                     <Home className="h-5 w-5 text-[#4FBEB0]" />
                   </div>
                   <div className="min-w-[140px]">
-                    <p className="text-sm font-bold text-white">{h.code}</p>
-                    <p className="text-xs text-white/45">{h.address || t("noAddressOnFile")}</p>
+                    <p className="text-base font-bold text-white">{h.code}</p>
+                    <p className="text-[13.5px] text-white/50">{h.address || t("noAddressOnFile")}</p>
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-[#7DD8CB] bg-[#4FBEB0]/10 rounded-full px-3 py-1">
-                    <Users className="h-3.5 w-3.5" /> {h.members_count} {t("membersLabel")}
+                  <div className="flex items-center gap-1.5 text-[13.5px] text-[#7DD8CB] bg-[#4FBEB0]/10 rounded-full px-3.5 py-1.5">
+                    <Users className="h-4 w-4" /> {h.members_count} {t("membersLabel")}
                   </div>
                   {head ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gold-300 bg-gold-500/10 rounded-full px-3 py-1">
-                      <Star className="h-3.5 w-3.5 fill-gold-300" /> {fullName(head)}
+                    <span className="inline-flex items-center gap-1 text-[13.5px] font-medium text-gold-300 bg-gold-500/10 rounded-full px-3.5 py-1.5">
+                      <Star className="h-4 w-4 fill-gold-300" /> {fullName(head)}
                     </span>
                   ) : h.members_count > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gold-300 bg-gold-500/10 rounded-full px-3 py-1">
-                      <AlertCircle className="h-3.5 w-3.5" /> {t("noHeadAssigned")}
+                    <span className="inline-flex items-center gap-1 text-[13.5px] font-medium text-gold-300 bg-gold-500/10 rounded-full px-3.5 py-1.5">
+                      <AlertCircle className="h-4 w-4" /> {t("noHeadAssigned")}
                     </span>
                   ) : null}
                   {h.contact_number && (
-                    <span className="text-xs text-white/40">{h.contact_number}</span>
+                    <span className="text-[13.5px] text-white/50">{h.contact_number}</span>
                   )}
 
                   <div className="ml-auto flex items-center gap-1">
@@ -355,11 +364,11 @@ export default function HouseholdsView() {
                 {expanded && (
                   <div className="border-t border-white/10 bg-black/20 px-5 py-4 space-y-3">
                     {h.members.length === 0 ? (
-                      <p className="text-xs text-white/40">{t("noMembersYet")}</p>
+                      <p className="text-sm text-white/50">{t("noMembersYet")}</p>
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {h.members.map((m) => (
-                          <div key={m.id} className="flex items-center gap-2 rounded-full bg-white/[0.05] border border-white/10 pl-3 pr-1.5 py-1.5 text-xs">
+                          <div key={m.id} className="flex items-center gap-2 rounded-full bg-white/[0.05] border border-white/10 pl-3 pr-1.5 py-1.5 text-sm">
                             <span className="font-medium text-white">{fullName(m)}</span>
                             {m.role === "Staff" && (
                               <span className="rounded-full bg-gold-400/15 text-gold-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
@@ -393,23 +402,34 @@ export default function HouseholdsView() {
                           value={memberSearch}
                           onChange={(e) => setMemberSearch(e.target.value)}
                           placeholder={t("searchResidentPlaceholder")}
-                          className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                          className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50 pr-[4.5rem]"
                         />
+                        {memberSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setMemberSearch("")}
+                            aria-label="Clear search"
+                            title="Clear"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+                          >
+                            {t("clearLabel")}
+                          </button>
+                        )}
                         <div className="max-h-40 overflow-y-auto space-y-1">
                           {filteredUnassigned.length === 0 ? (
-                            <p className="text-xs text-white/40 px-2 py-1">{t("noUnassignedResidents")}</p>
+                            <p className="text-sm text-white/40 px-2 py-1">{t("noUnassignedResidents")}</p>
                           ) : (
                             filteredUnassigned.map((m) => (
                               <button
                                 key={m.id}
                                 type="button"
                                 onClick={() => addMember(h.id, m.id)}
-                                className="w-full text-left text-xs px-3 py-2 rounded-full hover:bg-white/[0.06] flex items-center justify-between gap-2"
+                                className="w-full text-left text-sm px-3 py-2 rounded-full hover:bg-white/[0.06] flex items-center justify-between gap-2"
                               >
                                 <span className="flex items-center gap-1.5 text-white">
                                   {fullName(m)}
                                   {m.role === "Staff" && (
-                                    <span className="rounded-full bg-gold-400/15 text-gold-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
+                                    <span className="rounded-full bg-gold-400/15 text-gold-300 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
                                   )}
                                 </span>
                                 <span className="text-white/40">{m.user_code}</span>
@@ -417,7 +437,7 @@ export default function HouseholdsView() {
                             ))
                           )}
                         </div>
-                        <button type="button" onClick={() => { setPickerFor(null); setMemberSearch(""); }} className="text-xs text-white/40 hover:text-white px-2">
+                        <button type="button" onClick={() => { setPickerFor(null); setMemberSearch(""); }} className="text-sm text-white/40 hover:text-white px-2">
                           {t("cancelLabel")}
                         </button>
                       </div>
@@ -426,26 +446,26 @@ export default function HouseholdsView() {
                         <button
                           type="button"
                           onClick={() => setPickerFor(h.id)}
-                          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#4FBEB0] hover:text-[#7DD8CB]"
+                          className="inline-flex items-center gap-1.5 text-sm font-medium text-[#4FBEB0] hover:text-[#7DD8CB]"
                         >
-                          <UserPlus className="h-3.5 w-3.5" /> {t("addMemberLabel")}
+                          <UserPlus className="h-4 w-4" /> {t("addMemberLabel")}
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); openEdit(h); }}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.03] px-4 py-2 text-sm font-semibold text-white/70 hover:bg-white/10 hover:text-white transition-colors"
                             title={t("editLabel")}
                           >
-                            <Pencil className="h-3.5 w-3.5" /> {t("editLabel")}
+                            <Pencil className="h-4 w-4" /> {t("editLabel")}
                           </button>
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setDeleteRecord(h); }}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-500/10 transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-white/[0.03] px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition-colors"
                             title={t("deleteTitle")}
                           >
-                            <Trash2 className="h-3.5 w-3.5" /> {t("deleteTitle")}
+                            <Trash2 className="h-4 w-4" /> {t("deleteTitle")}
                           </button>
                         </div>
                       </div>
@@ -462,7 +482,7 @@ export default function HouseholdsView() {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`h-9 w-9 rounded-full text-sm ${p === page ? "bg-gold-400 text-[#08130F] font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
+                  className={`h-9 w-9 rounded-full text-sm ${p === page ? "bg-sage-700 text-white shadow-sm font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
                 >
                   {p}
                 </button>
@@ -476,7 +496,7 @@ export default function HouseholdsView() {
 
       {/* Edit modal */}
       {editRecord && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={handleCloseEdit}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={handleCloseEdit}>
           <form
             onSubmit={submitEdit}
             onClick={(e) => e.stopPropagation()}
@@ -503,7 +523,7 @@ export default function HouseholdsView() {
                 type="submit"
                 disabled={saving || isEditFormUnchanged}
                 title={isEditFormUnchanged ? t("noChangesToSaveHint") : undefined}
-                className="px-6 py-3 rounded-full bg-gold-400 text-[#08130F] text-base font-bold hover:bg-gold-500 transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-gold-400"
+                className="px-6 py-3 rounded-full bg-sage-700 text-white text-base font-bold hover:bg-sage-800 transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-sage-700"
               >
                 {t("saveChanges")}
               </button>
@@ -514,7 +534,7 @@ export default function HouseholdsView() {
 
       {/* Unsaved-changes guard for the Edit Household modal */}
       {showEditCancelConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
@@ -560,7 +580,7 @@ export default function HouseholdsView() {
 
       {/* Delete confirm modal */}
       {deleteRecord && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>

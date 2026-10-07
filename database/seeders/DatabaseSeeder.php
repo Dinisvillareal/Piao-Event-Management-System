@@ -55,6 +55,11 @@ class DatabaseSeeder extends Seeder
         $this->call([
             EventInventoryItemSeeder::class,
         ]);
+        // A few recent returns (Returns page -> Recently Released), applied
+        // on top of the borrows above.
+        $this->call([
+            EventInventoryReleaseSeeder::class,
+        ]);
         $this->call([
             EventExpenseSeeder::class,
         ]);

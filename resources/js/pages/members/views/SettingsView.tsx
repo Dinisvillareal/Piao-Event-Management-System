@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { KeyRound, Globe, Home, User, Phone, Pencil } from "lucide-react";
+import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { isStrongPassword, PASSWORD_MAX } from "../../../lib/passwordPolicy";
 import { LANGUAGES } from "../../../i18n/translations";
 import StatusModal from "../../../components/ui/StatusModal";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
@@ -18,6 +20,22 @@ export default function SettingsView({ member }: SettingsViewProps) {
   const { language, setLanguage, t } = useLanguage();
   const [profile, setProfile] = useState<any | null>(null);
 
+  // Section switcher -- same pill-tab pattern as the staff Settings page
+  // (Age & Status Categories): one focused card at a time, with a brief
+  // skeleton flash on switch so the change reads as navigation.
+  type SettingsTab = "profile" | "language" | "password";
+  const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
+  const [tabSwitching, setTabSwitching] = useState(false);
+  const tabTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const switchTab = (next: SettingsTab) => {
+    if (next === activeTab) return;
+    setTabSwitching(true);
+    setActiveTab(next);
+    if (tabTimer.current) clearTimeout(tabTimer.current);
+    tabTimer.current = setTimeout(() => setTabSwitching(false), 350);
+  };
+  useEffect(() => () => { if (tabTimer.current) clearTimeout(tabTimer.current); }, []);
+
   useEffect(() => {
     api.get("/me").then((res) => setProfile(res.data)).catch(() => setProfile(null));
   }, []);
@@ -32,18 +50,27 @@ export default function SettingsView({ member }: SettingsViewProps) {
   // Nothing to save if the field still matches what's already on the
   // profile -- covers both "opened Edit and clicked Save without typing
   // anything" and "typed it back to the original value".
-  const contactUnchanged = contactValue.trim() === (profile?.contact_number || "").trim();
+  const contactUnchanged = contactValue === (profile?.contact_number || "").replace(/\D/g, "");
 
   const openEditContact = () => {
-    setContactValue(profile?.contact_number || "");
+    setContactValue((profile?.contact_number || "").replace(/\D/g, "").slice(0, 11));
     setContactError("");
     setEditingContact(true);
   };
 
   const requestSaveContact = () => {
     setContactError("");
-    if (!contactValue.trim()) {
+    const digits = contactValue.replace(/\D/g, "");
+    if (!digits) {
       setContactError(t("contactNumberRequired"));
+      return;
+    }
+    if (!digits.startsWith("09")) {
+      setContactError(t("contactNumberMustStart09"));
+      return;
+    }
+    if (digits.length !== 11) {
+      setContactError(t("mustBe11Digits"));
       return;
     }
     setConfirmContactOpen(true);
@@ -64,7 +91,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
           "X-Requested-With": "XMLHttpRequest",
           ...(csrfToken && { "X-CSRF-TOKEN": csrfToken }),
         },
-        body: JSON.stringify({ contact_number: contactValue }),
+        body: JSON.stringify({ contact_number: contactValue.replace(/\D/g, "") }),
       });
 
       const data = await res.json();
@@ -88,6 +115,8 @@ export default function SettingsView({ member }: SettingsViewProps) {
   const [pwSuccess, setPwSuccess]           = useState("");
   const [pwLoading, setPwLoading]           = useState(false);
   const [confirmPwOpen, setConfirmPwOpen]   = useState(false);
+  const [showNewPw, setShowNewPw]           = useState(false);
+  const [showConfirmPw, setShowConfirmPw]   = useState(false);
 
   const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
   const passwordsMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
@@ -96,8 +125,8 @@ export default function SettingsView({ member }: SettingsViewProps) {
     setPwError("");
     setPwSuccess("");
 
-    if (newPassword.length < 8) {
-      setPwError(t("passwordMinLength"));
+    if (!isStrongPassword(newPassword)) {
+      setPwError(t("passwordPolicyError"));
       return;
     }
     if (!passwordsMatch) {
@@ -147,10 +176,68 @@ export default function SettingsView({ member }: SettingsViewProps) {
 
   return (
     <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
-    <div className="max-w-xl space-y-8">
+    <div className="space-y-6 max-w-3xl">
+      <div>
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("settings")}</h1>
+        <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("memberSettingsSubtitle")}</p>
+      </div>
+
+      {/* Section switcher -- standalone pill buttons, same as the staff
+          Settings page. */}
+      <div className="flex flex-wrap gap-2.5">
+          <button
+            type="button"
+            onClick={() => switchTab("profile")}
+            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
+              activeTab === "profile"
+                ? "bg-sage-700 text-white shadow-sm"
+                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+            }`}
+          >
+            <User className="h-4 w-4" />
+            {t("myProfile")}
+          </button>
+          <button
+            type="button"
+            onClick={() => switchTab("language")}
+            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
+              activeTab === "language"
+                ? "bg-sage-700 text-white shadow-sm"
+                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+            }`}
+          >
+            <Globe className="h-4 w-4" />
+            {t("language")}
+          </button>
+          <button
+            type="button"
+            onClick={() => switchTab("password")}
+            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
+              activeTab === "password"
+                ? "bg-sage-700 text-white shadow-sm"
+                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+            }`}
+          >
+            <KeyRound className="h-4 w-4" />
+            {t("changePassword")}
+          </button>
+      </div>
+
+      {tabSwitching && (
+        <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04]">
+          <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
+          <div className="p-10 space-y-3">
+            <Skeleton className="h-8 w-1/3" />
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-11 w-full rounded-full" />
+            ))}
+          </div>
+        </div>
+      )}
       {/* PROFILE / HOUSEHOLD INFO — UC-5 profiling display. Darkened like
           every other core content/edit card in the app -- this is where the
           resident actually edits their own contact number. */}
+      {activeTab === "profile" && !tabSwitching && (
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
         <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
         <div className="p-10">
@@ -199,7 +286,9 @@ export default function SettingsView({ member }: SettingsViewProps) {
                       <input
                         type="tel"
                         value={contactValue}
-                        onChange={(e) => setContactValue(e.target.value)}
+                        onChange={(e) => setContactValue(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                        inputMode="numeric"
+                        maxLength={11}
                         placeholder={t("contactNumberPlaceholder")}
                         disabled={contactSaving}
                         className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 disabled:opacity-50"
@@ -207,7 +296,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
                       <button
                         onClick={requestSaveContact}
                         disabled={contactSaving || !contactValue.trim() || contactUnchanged}
-                        className="shrink-0 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-semibold px-4 disabled:opacity-50 transition"
+                        className="shrink-0 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-semibold px-4 disabled:opacity-50 transition"
                       >
                         {contactSaving ? t("savingLabel") : t("saveLabel")}
                       </button>
@@ -219,6 +308,12 @@ export default function SettingsView({ member }: SettingsViewProps) {
                         {t("cancelLabel")}
                       </button>
                     </div>
+                    {contactValue.length > 0 && !contactValue.startsWith("09") && (
+                      <p className="mt-1.5 px-2 text-xs text-red-400">{t("contactNumberMustStart09")}</p>
+                    )}
+                    {contactValue.startsWith("09") && contactValue.length < 11 && (
+                      <p className="mt-1.5 px-2 text-xs text-white/50">{contactValue.length}/11</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -247,8 +342,10 @@ export default function SettingsView({ member }: SettingsViewProps) {
           )}
         </div>
       </div>
+      )}
 
       {/* LANGUAGE — UC-17 Switch Interface Language */}
+      {activeTab === "language" && !tabSwitching && (
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
         <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
         <div className="p-10">
@@ -275,8 +372,10 @@ export default function SettingsView({ member }: SettingsViewProps) {
           </div>
         </div>
       </div>
+      )}
 
       {/* CHANGE PASSWORD */}
+      {activeTab === "password" && !tabSwitching && (
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
         <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
         <div className="p-10">
@@ -288,24 +387,41 @@ export default function SettingsView({ member }: SettingsViewProps) {
           <div className="mt-6 space-y-4">
 
             <div>
+              <div className="relative">
               <input
-                type="password"
+                type={showNewPw ? "text" : "password"}
                 placeholder={t("newPasswordPlaceholder")}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 disabled={pwLoading}
-                className="w-full rounded-full border border-white/15 bg-white/10 px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 disabled:opacity-50"
+                maxLength={PASSWORD_MAX}
+                autoComplete="new-password"
+                className="w-full rounded-full border border-white/15 bg-white/10 pl-4 pr-14 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 disabled:opacity-50"
               />
+              <button
+                type="button"
+                onClick={() => setShowNewPw((v) => !v)}
+                aria-label={showNewPw ? t("memHidePassword") : t("memShowPassword")}
+                aria-pressed={showNewPw}
+                title={showNewPw ? t("memHidePassword") : t("memShowPassword")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 transition"
+              >
+                <EyeToggleIcon visible={showNewPw} />
+              </button>
+              </div>
+              <p className="mt-1.5 px-2 text-xs text-white/50">{t("passwordPolicyError")}</p>
             </div>
 
             <div>
+              <div className="relative">
               <input
-                type="password"
+                type={showConfirmPw ? "text" : "password"}
                 placeholder={t("confirmPasswordPlaceholder")}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 disabled={pwLoading}
-                className={`w-full rounded-full border px-4 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 disabled:opacity-50 transition-colors ${
+                maxLength={PASSWORD_MAX}
+                className={`w-full rounded-full border pl-4 pr-14 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 disabled:opacity-50 transition-colors ${
                   passwordsMismatch
                     ? "border-red-500/40 focus:ring-red-400/30 bg-red-500/10"
                     : passwordsMatch
@@ -313,6 +429,17 @@ export default function SettingsView({ member }: SettingsViewProps) {
                     : "border-white/15 bg-white/10 focus:ring-[#4FBEB0]/40"
                 }`}
               />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPw((v) => !v)}
+                aria-label={showConfirmPw ? t("memHidePassword") : t("memShowPassword")}
+                aria-pressed={showConfirmPw}
+                title={showConfirmPw ? t("memHidePassword") : t("memShowPassword")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 transition"
+              >
+                <EyeToggleIcon visible={showConfirmPw} />
+              </button>
+              </div>
               {passwordsMismatch && (
                 <p className="mt-1.5 text-xs text-red-400 font-medium px-2">
                   ✗ {t("passwordsDoNotMatch")}
@@ -328,13 +455,14 @@ export default function SettingsView({ member }: SettingsViewProps) {
             <button
               onClick={requestChangePassword}
               disabled={pwLoading || !passwordsMatch}
-              className="w-full rounded-full bg-gold-400 py-3 font-bold text-[#08130F] hover:bg-gold-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-full bg-sage-700 py-3 font-bold text-white hover:bg-sage-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {pwLoading ? t("updating") : t("updatePassword")}
             </button>
           </div>
         </div>
       </div>
+      )}
 
       {/* Peripheral alert modals -- the shared StatusModal, same as every
           other page's success/warning/error popups. The contact-number save

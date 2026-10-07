@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\BarangayOfficials;
 use App\Models\Event;
 use App\Models\EventAttendance;
 use App\Models\EventExpense;
@@ -82,22 +83,70 @@ class ReportController extends Controller
         $attendedCount = $attendances->filter(fn ($a) => $a->time_in)->count();
         $percentage = $totalEligible > 0 ? round(($attendedCount / $totalEligible) * 100, 1) : 0;
 
-        $perEvent = $events->map(function ($event) use ($attendances) {
+        // Optional attendee lists (the "Event Attendance Records" section):
+        // only built when asked for, and only for the requested events, so
+        // the on-screen summary stays light.
+        $includeAttendees = $request->boolean('include_attendees');
+        $eventIdFilter = $this->parseIdList($request->input('event_ids'));
+        $attendeeFilter = in_array($request->input('attendee_filter'), ['present', 'absent'], true)
+            ? $request->input('attendee_filter')
+            : 'all';
+
+        $perEvent = $events->map(function ($event) use ($attendances, $includeAttendees, $eventIdFilter, $attendeeFilter) {
             $eventAttendances = $attendances->where('event_id', $event->id);
             $eligible = $event->attendances()->count();
             $attended = $eventAttendances->filter(fn ($a) => $a->time_in)->count();
+            $status = $this->eventStatusLabel($event);
 
-            return [
+            $row = [
                 'id' => $event->id,
                 'name' => $event->name,
                 'date' => optional($event->event_start)->format('Y-m-d'),
+                'start_time' => optional($event->event_start)->format('g:i A'),
+                'end_time' => optional($event->event_end)->format('g:i A'),
+                'location' => $event->location,
+                'description' => $event->description,
+                'status' => $status,
+                'memberships' => $event->memberships->pluck('name')->values(),
                 'eligible' => $eligible,
                 'attended' => $attended,
+                'absent' => max(0, $eligible - $attended),
                 'percentage' => $eligible > 0 ? round(($attended / $eligible) * 100, 1) : 0,
                 'approved_budget' => $event->approved_budget,
                 'total_expenses' => $event->total_expenses,
                 'average_rating' => $event->average_rating,
             ];
+
+            if ($includeAttendees && ($eventIdFilter === null || in_array($event->id, $eventIdFilter, true))) {
+                $row['attendees'] = $eventAttendances
+                    ->filter(function ($a) use ($attendeeFilter) {
+                        if ($attendeeFilter === 'present') return (bool) $a->time_in;
+                        if ($attendeeFilter === 'absent') return !$a->time_in;
+                        return true;
+                    })
+                    ->sortBy(fn ($a) => mb_strtolower(($a->user->last_name ?? '') . ' ' . ($a->user->first_name ?? '')))
+                    ->values()
+                    ->map(function ($a) use ($status) {
+                        $u = $a->user;
+                        $middle = $u && $u->middle_name ? ' ' . mb_substr($u->middle_name, 0, 1) . '.' : '';
+
+                        return [
+                            'id' => $a->id,
+                            'user_code' => $u->user_code ?? null,
+                            'name' => $u ? trim(($u->last_name ?? '') . ', ' . ($u->first_name ?? '') . $middle) : '—',
+                            'age' => $u->age ?? null,
+                            'age_group' => $u->age_group ?? null,
+                            'gender' => $u->gender ?? null,
+                            'contact_number' => $u->contact_number ?? null,
+                            'attendance' => $a->time_in ? 'Present' : ($status === 'Upcoming' ? 'Expected' : 'Absent'),
+                            'time_in' => $a->time_in ? \Carbon\Carbon::parse($a->time_in)->format('g:i A') : null,
+                            'time_out' => $a->time_out ? \Carbon\Carbon::parse($a->time_out)->format('g:i A') : null,
+                        ];
+                    })
+                    ->all();
+            }
+
+            return $row;
         })->values();
 
         // "What Events usually happen per year" — event count grouped by month across all years present
@@ -138,6 +187,32 @@ class ReportController extends Controller
             'per_month' => $perMonth,
             'age_breakdown' => $ageBreakdown,
         ];
+    }
+
+    /** Upcoming / Ongoing / Past -- same rule the Events page and Budget page use. */
+    private function eventStatusLabel(Event $event): string
+    {
+        $now = now();
+        $start = $event->event_start;
+        if (!$start) {
+            return 'Upcoming';
+        }
+        $end = $event->event_end ?? $event->call_time_end ?? $start->copy()->endOfDay();
+        if ($now->lt($start)) return 'Upcoming';
+        if ($now->gt($end)) return 'Past';
+        return 'Ongoing';
+    }
+
+    /** "1,2,3" or [1,2,3] -> [1,2,3]; null when nothing was sent. */
+    private function parseIdList($value): ?array
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return null;
+        }
+        $list = is_array($value) ? $value : explode(',', (string) $value);
+        $ids = array_values(array_unique(array_filter(array_map('intval', $list))));
+
+        return $ids ?: null;
     }
 
     /**
@@ -216,7 +291,7 @@ class ReportController extends Controller
         $dateTo = $request->filled('date_to') ? $request->date_to : null;
         $eventId = $request->filled('event_id') ? (int) $request->event_id : null;
 
-        $eventsQuery = Event::withoutTrashed()->whereNotNull('approved_budget');
+        $eventsQuery = Event::withoutTrashed();
         if ($eventId) {
             $eventsQuery->where('id', $eventId);
         } else {
@@ -224,44 +299,104 @@ class ReportController extends Controller
             if ($dateTo) $eventsQuery->whereDate('event_start', '<=', $dateTo);
         }
 
-        $events = $eventsQuery->orderBy('event_start')->get();
+        $allEvents = $eventsQuery->orderBy('event_start')->get();
+        $events = $allEvents->filter(fn ($e) => $e->approved_budget !== null)->values();
+        $unbudgetedEvents = $allEvents->filter(fn ($e) => $e->approved_budget === null)->values();
+        $eventIds = $allEvents->pluck('id');
 
-        $perEvent = $events->map(function ($event) {
+        // Every expense entry for these events, grouped by event, with the
+        // recorder's name resolved from their user code.
+        $expenseRows = EventExpense::whereIn('event_id', $eventIds)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get()
+            ->groupBy('event_id');
+        $codes = $expenseRows->flatten(1)->pluck('recorded_by')->filter()->unique()->values();
+        $people = \App\Models\User::whereIn('user_code', $codes)->get(['user_code', 'first_name', 'last_name'])->keyBy('user_code');
+        $expensesFor = function ($event) use ($expenseRows, $people) {
+            return ($expenseRows->get($event->id) ?? collect())->map(function ($x) use ($people) {
+                $who = $x->recorded_by ? $people->get($x->recorded_by) : null;
+
+                return [
+                    'item' => $x->item,
+                    'amount' => (float) $x->amount,
+                    'notes' => $x->notes,
+                    'recorded_by' => $who ? trim($who->first_name . ' ' . $who->last_name) : ($x->recorded_by ?: null),
+                    'date' => optional($x->created_at)->format('Y-m-d'),
+                ];
+            })->values()->all();
+        };
+
+        $perEvent = $events->map(function ($event) use ($expensesFor) {
             $approved = (float) $event->approved_budget;
             $spent = (float) $event->total_expenses;
+            $utilization = $approved > 0 ? round(($spent / $approved) * 100, 1) : ($spent > 0 ? 100.0 : 0.0);
+            $expenses = $expensesFor($event);
 
             return [
                 'id' => $event->id,
                 'name' => $event->name,
                 'date' => optional($event->event_start)->format('Y-m-d'),
+                'event_status' => $this->eventStatusLabel($event),
                 'approved_budget' => $approved,
                 'total_expenses' => $spent,
                 'remaining' => round($approved - $spent, 2),
+                'over_by' => round(max(0, $spent - $approved), 2),
+                'utilization' => $utilization,
                 'is_over_budget' => $spent > $approved,
+                'budget_status' => $spent > $approved ? 'Over budget' : ($utilization >= 90 ? 'Near limit' : 'Within budget'),
+                'expense_count' => count($expenses),
+                'expenses' => $expenses,
             ];
         })->values();
 
-        $eventIds = $events->pluck('id');
+        $overBudget = $perEvent->where('is_over_budget', true)->sortByDesc('over_by')->values();
+
+        $unbudgeted = $unbudgetedEvents->map(function ($event) use ($expensesFor) {
+            $expenses = $expensesFor($event);
+
+            return [
+                'id' => $event->id,
+                'name' => $event->name,
+                'date' => optional($event->event_start)->format('Y-m-d'),
+                'event_status' => $this->eventStatusLabel($event),
+                'total_expenses' => round((float) $event->total_expenses, 2),
+                'expense_count' => count($expenses),
+                'expenses' => $expenses,
+            ];
+        })->values();
+
         $topExpenses = EventExpense::whereIn('event_id', $eventIds)
             ->orderByDesc('amount')
             ->limit(10)
             ->get(['event_id', 'item', 'amount'])
             ->map(fn ($e) => [
-                'event_name' => optional($events->firstWhere('id', $e->event_id))->name,
+                'event_name' => optional($allEvents->firstWhere('id', $e->event_id))->name,
                 'item' => $e->item,
                 'amount' => (float) $e->amount,
             ])
             ->values();
 
+        $totalApproved = round($events->sum('approved_budget'), 2);
+        $totalSpent = round($perEvent->sum('total_expenses'), 2);
+
         return [
             'summary' => [
                 'total_events' => $events->count(),
-                'total_approved_budget' => round($events->sum('approved_budget'), 2),
-                'total_expenses' => round($perEvent->sum('total_expenses'), 2),
+                'total_approved_budget' => $totalApproved,
+                'total_expenses' => $totalSpent,
                 'total_remaining' => round($perEvent->sum('remaining'), 2),
-                'events_over_budget' => $perEvent->where('is_over_budget', true)->count(),
+                'events_over_budget' => $overBudget->count(),
+                'total_over_amount' => round($overBudget->sum('over_by'), 2),
+                'events_near_limit' => $perEvent->where('budget_status', 'Near limit')->count(),
+                'utilization_percentage' => $totalApproved > 0 ? round(($totalSpent / $totalApproved) * 100, 1) : 0,
+                'total_expense_entries' => $perEvent->sum('expense_count') + $unbudgeted->sum('expense_count'),
+                'events_without_budget' => $unbudgeted->count(),
+                'unbudgeted_spent' => round($unbudgeted->sum('total_expenses'), 2),
             ],
             'per_event' => $perEvent,
+            'over_budget' => $overBudget,
+            'unbudgeted' => $unbudgeted,
             'top_expenses' => $topExpenses,
         ];
     }
@@ -286,7 +421,7 @@ class ReportController extends Controller
         $condition = $request->filled('condition') ? $request->condition : null;
 
         $query = InventoryItem::query();
-        if ($condition) $query->where('condition', $condition);
+        if ($condition) \App\Http\Controllers\InventoryController::applyConditionFilter($query, $condition);
 
         $items = $query->orderBy('name')->get();
 
@@ -341,9 +476,20 @@ class ReportController extends Controller
         $fontMetrics = $pdf->getFontMetrics();
         $font = $fontMetrics->getFont('DejaVu Sans');
         $footerSize = 8;
-        $footerWidth = $fontMetrics->getTextWidth('Page 00 of 00', $font, $footerSize);
+        // Bottom-right, right edge lined up with the page's right margin
+        // (12mm, the same @page margin as export.blade.php and the browser
+        // print view). The text is right-aligned by measuring a same-width
+        // stand-in ("Page 00 of 12") because dompdf only substitutes the
+        // real numbers at draw time; digits are the same width in DejaVu
+        // Sans, so the stand-in is exact for every page of a given count.
+        $pageCount = (string) $canvas->get_page_count();
+        $footerWidth = $fontMetrics->getTextWidth(
+            'Page ' . str_repeat('0', strlen($pageCount)) . ' of ' . $pageCount,
+            $font,
+            $footerSize
+        );
         $canvas->page_text(
-            ($canvas->get_width() - $footerWidth) / 2,
+            $canvas->get_width() - (12 * 72 / 25.4) - $footerWidth,
             $canvas->get_height() - 34,
             'Page {PAGE_NUM} of {PAGE_COUNT}',
             $font,
@@ -370,6 +516,13 @@ class ReportController extends Controller
         // zip extension compiled in, with no php.ini change or restart
         // needed.
         PhpWordSettings::setZipClass(PhpWordSettings::PCLZIP);
+
+        // PhpWord does NOT escape text by default, so any "&", "<" or ">" in an
+        // event name, expense note, resident name, etc. (e.g. "Chairs & Tables")
+        // wrote invalid XML into the .docx and Word refused to open the file
+        // ("Word experienced an error trying to open the file"). Turn escaping
+        // on so every string is written as safe XML.
+        PhpWordSettings::setOutputEscapingEnabled(true);
 
         $payload = $this->buildExportPayload($request);
         $phpWord = $this->buildWordDocument($payload);
@@ -402,6 +555,24 @@ class ReportController extends Controller
             'inventory' => 'Inventory Summary Report',
         ];
 
+        // Which sections to include (print/export options). null = everything (except the long attendee lists, which are opt-in).
+        $allowed = [
+            'attendance' => ['summary', 'charts', 'age', 'events', 'records', 'message'],
+            'membership' => ['summary', 'memberships', 'message'],
+            'budget' => ['summary', 'overBudget', 'perEvent', 'expenses', 'topExpenses', 'noBudget', 'message'],
+            'inventory' => ['summary', 'condition', 'items', 'message'],
+        ][$type];
+        $sections = null;
+        if ($request->filled('sections')) {
+            $picked = is_array($request->query('sections')) ? $request->query('sections') : explode(',', (string) $request->query('sections'));
+            $sections = array_values(array_intersect($allowed, array_map('trim', $picked)));
+        }
+
+        // The attendee lists only exist when that section was explicitly picked.
+        if ($type === 'attendance' && is_array($sections) && in_array('records', $sections, true)) {
+            $request->merge(['include_attendees' => 1]);
+        }
+
         $data = match ($type) {
             'membership' => $this->buildMembershipData($request),
             'budget' => $this->buildBudgetData($request),
@@ -409,13 +580,165 @@ class ReportController extends Controller
             default => $this->buildAttendanceData($request),
         };
 
+        $printedOn = now()->format('F j, Y');
+
         return [
             'type' => $type,
+            'sections' => $sections,
             'reportTitle' => $titles[$type],
             'filterSummary' => $this->buildFilterSummaryLine($type, $request),
-            'printedOn' => now()->format('F j, Y'),
+            'printedOn' => $printedOn,
+            // Signature block: whoever is currently marked Barangay Captain /
+            // Secretary on their resident record ("HON. ..."), or null if unset.
+            'officials' => BarangayOfficials::current(),
+            // The opening "I. MESSAGE" is optional: left out when the "message" section is unticked in Print & Export Options.
+            'message' => ($sections === null || in_array('message', $sections, true))
+                ? $this->buildReportMessage($type, $titles[$type], $data, $sections, $this->buildScopeText($type, $request), $printedOn)
+                : [],
             'data' => $data,
         ];
+    }
+
+    /** Plain-English description of what the filters cover, for the report's opening message. */
+    private function buildScopeText(string $type, Request $request): string
+    {
+        $fmt = fn ($d) => \Illuminate\Support\Carbon::parse($d)->format('F j, Y');
+        $range = function () use ($request, $fmt) {
+            $from = $request->filled('date_from') ? $fmt($request->date_from) : null;
+            $to = $request->filled('date_to') ? $fmt($request->date_to) : null;
+            if ($from && $to) {
+                return $from === $to ? "events held on {$from}" : "events held from {$from} to {$to}";
+            }
+            if ($from) {
+                return "events held from {$from} onward";
+            }
+            if ($to) {
+                return "events held up to {$to}";
+            }
+
+            return 'all recorded events';
+        };
+
+        if ($type === 'budget' && $request->filled('event_id')) {
+            $event = Event::find((int) $request->event_id);
+
+            return $event ? "the event \"{$event->name}\"" : $range();
+        }
+        if ($type === 'attendance' || $type === 'budget') {
+            return $range();
+        }
+        if ($type === 'membership') {
+            if ($request->filled('membership_id')) {
+                $m = Membership::find((int) $request->membership_id);
+
+                return $m ? "the \"{$m->name}\" membership" : 'all memberships';
+            }
+
+            return 'all memberships';
+        }
+        if ($request->filled('condition')) {
+            return match ($request->condition) {
+                'Lost' => 'inventory items with lost units',
+                'Disposed' => 'inventory items with disposed units',
+                default => "inventory items in {$request->condition} condition",
+            };
+        }
+
+        return 'all inventory items';
+    }
+
+    /**
+     * The "Message" that opens the printed / PDF / Word report: what the
+     * report is, the headline figures, and -- only -- the parts that are
+     * actually included in this printout. Mirrors resources/js/lib/reportMessage.ts
+     * (used by the browser print layout), so keep the two in step.
+     *
+     * @return string[] paragraphs
+     */
+    private function buildReportMessage(string $type, string $title, array $data, ?array $sections, string $scope, string $printedOn): array
+    {
+        $peso = fn ($n) => '₱' . number_format((float) $n, 2);
+        $count = fn ($n, $one, $many) => number_format((float) $n) . ' ' . ((float) $n === 1.0 ? $one : $many);
+        $s = $data['summary'] ?? [];
+
+        $topic = [
+            'attendance' => "the attendance of residents in the events and activities of the barangay",
+            'membership' => "the enrollment of residents in the membership programs of the barangay",
+            'budget' => "the approved budgets and the recorded expenses of the barangay's events",
+            'inventory' => "the barangay's inventory of equipment and supplies and the condition of each item",
+        ][$type];
+
+        // Same defaults as the export: everything, except the (opt-in) attendee lists.
+        $all = [
+            'attendance' => ['summary', 'charts', 'age', 'events'],
+            'membership' => ['summary', 'memberships'],
+            'budget' => ['summary', 'overBudget', 'perEvent', 'expenses', 'topExpenses', 'noBudget'],
+            'inventory' => ['summary', 'condition', 'items'],
+        ][$type];
+        $order = [
+            'attendance' => ['summary', 'charts', 'age', 'events', 'records'],
+            'membership' => ['summary', 'memberships'],
+            'budget' => ['summary', 'overBudget', 'perEvent', 'expenses', 'topExpenses', 'noBudget'],
+            'inventory' => ['summary', 'condition', 'items'],
+        ][$type];
+        $included = array_values(array_filter($order, fn ($k) => $sections === null ? in_array($k, $all, true) : in_array($k, $sections, true)));
+
+        $paragraphs = [
+            "This {$title} is prepared by the Barangay Piao office through the Piao Connect system to present {$topic}. It covers {$scope}.",
+        ];
+
+        if (in_array('summary', $included, true)) {
+            $paragraphs[] = match ($type) {
+                'attendance' => $count($s['total_events'] ?? 0, 'event was', 'events were') . ' held in this period, with ' . $count($s['total_attended'] ?? 0, 'recorded attendance', 'recorded attendances')
+                    . ' out of ' . $count($s['total_eligible'] ?? 0, 'eligible resident', 'eligible residents') . ', an overall attendance rate of ' . ($s['attendance_percentage'] ?? 0) . '%.'
+                    . (isset($s['average_feedback_rating']) && $s['average_feedback_rating'] !== null ? ' Residents rated the events ' . $s['average_feedback_rating'] . ' out of 5 on average.' : ''),
+                'membership' => 'The barangay maintains ' . $count($s['total_memberships'] ?? 0, 'membership program', 'membership programs') . ' with a total of ' . $count($s['total_assignments'] ?? 0, 'enrolled resident', 'enrolled residents') . '.',
+                'budget' => 'The approved budget of the covered events totals ' . $peso($s['total_approved_budget'] ?? 0) . ', against recorded expenses of ' . $peso($s['total_expenses'] ?? 0)
+                    . ' (' . ($s['utilization_percentage'] ?? 0) . '% used), leaving ' . $peso($s['total_remaining'] ?? 0) . ' unspent. '
+                    . (($s['events_over_budget'] ?? 0) > 0
+                        ? $count($s['events_over_budget'], 'event went', 'events went') . ' over budget by a combined ' . $peso($s['total_over_amount'] ?? 0) . '.'
+                        : 'No event went over its approved budget.'),
+                default => 'The inventory holds ' . $count($s['total_items'] ?? 0, 'item', 'items') . ' with a total of ' . $count($s['total_quantity'] ?? 0, 'unit', 'units') . ' in stock.',
+            };
+        }
+
+        $recordEvents = collect($data['per_event'] ?? [])->filter(fn ($e) => is_array($e) && array_key_exists('attendees', $e))->count();
+        $phrases = [
+            'attendance' => [
+                'summary' => 'a summary of the key attendance figures',
+                'charts' => 'the number of events per month and the overall attendance rate',
+                'age' => 'attendance by age group',
+                'events' => 'a per-event breakdown of attendance',
+                'records' => 'the attendance list of every resident for ' . ($recordEvents === 1 ? 'the event' : "each of the {$recordEvents} events") . ', showing who was present or absent and the time in and time out',
+            ],
+            'membership' => [
+                'summary' => 'the total number of memberships and enrolled residents',
+                'memberships' => 'the number of enrolled residents and the eligibility requirements of each membership',
+            ],
+            'budget' => [
+                'summary' => 'the budget summary totals',
+                'overBudget' => 'the list of events that went over budget',
+                'perEvent' => 'the approved budget, spending and remaining balance of every event',
+                'expenses' => 'the itemized expenses recorded for each event',
+                'topExpenses' => 'the largest expenses',
+                'noBudget' => 'the events that have no approved budget',
+            ],
+            'inventory' => [
+                'summary' => 'the total number of items and units',
+                'condition' => 'a breakdown of the items by condition',
+                'items' => 'the complete list of inventory items with their condition and quantity',
+            ],
+        ][$type];
+        $parts = array_map(fn ($k) => $phrases[$k], $included);
+        if ($parts) {
+            $last = array_pop($parts);
+            $list = !$parts ? $last : (count($parts) === 1 ? $parts[0] . ' and ' . $last : implode(', ', $parts) . ', and ' . $last);
+            $paragraphs[] = 'This report contains ' . $list . '.';
+        }
+
+        $paragraphs[] = "All figures are taken directly from the records encoded in Piao Connect as of {$printedOn} and are respectfully submitted for the information and guidance of the Barangay Council.";
+
+        return $paragraphs;
     }
 
     private function buildFilterSummaryLine(string $type, Request $request): string
@@ -448,477 +771,780 @@ class ReportController extends Controller
 
     /**
      * Builds the .docx equivalent of resources/views/reports/export.blade.php
-     * (used for the PDF download) -- same letterhead, same section order,
-     * same English-only copy, just assembled with PhpWord's object API
-     * instead of Blade/HTML since a .docx isn't rendered from a view.
+     * (the PDF / print layout): same A4 page and margins, same letterhead
+     * (seal + address left, system name and date right, heavy teal rule, title
+     * row), same colored stat tiles, same framed chart cards, same two-up
+     * record cards, same ruled tables, and the same signature + footer. Charts
+     * and progress meters are drawn as small PNGs (GD) so they look like the
+     * PDF's; on a PHP build without GD they fall back to shaded table cells.
      */
     private function buildWordDocument(array $payload): PhpWord
     {
         $phpWord = new PhpWord();
         $phpWord->setDefaultFontName('Calibri');
         $phpWord->setDefaultFontSize(10);
+        $phpWord->setDefaultParagraphStyle(['spaceAfter' => 40, 'spaceBefore' => 0]);
+        $phpWord->getDocInfo()->setTitle($payload['reportTitle'])->setCreator('Piao Connect')->setCompany('Barangay Piao');
 
+        $W = self::WORD_WIDTH;
         $section = $phpWord->addSection([
-            'marginLeft' => 900,
-            'marginRight' => 900,
-            'marginTop' => 900,
-            'marginBottom' => 900,
+            'pageSizeW' => 11906, 'pageSizeH' => 16838, 'orientation' => 'portrait',
+            'marginLeft' => 680, 'marginRight' => 680, 'marginTop' => 794, 'marginBottom' => 1000,
+            'footerHeight' => 420,
         ]);
 
-        $center = ['alignment' => 'center'];
-        $tiny = ['size' => 8, 'color' => '667777'];
-
-        // "Page X of Y" on every page, the same as the PDF export and a
-        // browser's own print dialog -- {PAGE}/{NUMPAGES} are real Word
-        // field codes (not a string dompdf-style placeholder), so Word
-        // computes and keeps them current itself, including across
-        // whatever page count this specific download ends up with.
-        $footer = $section->addFooter();
-        $footer->addPreserveText('Page {PAGE} of {NUMPAGES}', ['size' => 8, 'color' => '999999'], $center);
-
-        // Seal on the left, letterhead text still centered on the page --
-        // the third, empty spacer cell mirrors the logo cell's width so
-        // the center column doesn't drift right, same as the PDF's header
-        // table and the same balance an official letterhead keeps between
-        // a seal and the margin on the other side.
-        $logoPath = public_path('logo-removebg-preview.png');
-        $headerTable = $section->addTable($this->noBorderTableStyle());
-        $headerTable->addRow(null, ['cantSplit' => true]);
-        $logoCell = $headerTable->addCell(1500);
-        if (is_file($logoPath)) {
-            $logoCell->addImage($logoPath, ['width' => 64, 'height' => 64, 'alignment' => 'center']);
-        }
-        $textCell = $headerTable->addCell(6000);
-        $textCell->addText('REPUBLIC OF THE PHILIPPINES', $tiny, $center);
-        $textCell->addText('Province of Zamboanga del Norte', $tiny, $center);
-        $textCell->addText('Municipality of President Manuel A. Roxas', $tiny, $center);
-        $textCell->addText('BARANGAY PIAO', ['bold' => true, 'size' => 16, 'color' => '005F63'], $center);
-        $textCell->addText('Piao Barangay Hall, Purok Uno, Barangay Piao, 7104', $tiny, $center);
-        $textCell->addText('PIAO CONNECT', ['bold' => true, 'size' => 8, 'color' => '4FBEB0'], $center);
-        $headerTable->addCell(1500);
-        $section->addTextBreak(1);
-        $section->addText(strtoupper($payload['reportTitle']), ['bold' => true, 'size' => 13, 'color' => '005F63'], $center);
-        $section->addText($payload['filterSummary'], ['size' => 9, 'color' => '667777'], $center);
-        $section->addTextBreak(1);
+        $this->addWordFooter($phpWord, $section);
+        $this->addLetterhead($section, $payload);
+        $this->addWordMessage($section, $payload['message'] ?? []);
 
         $data = $payload['data'];
-        $headerCellStyle = ['bgColor' => '005F63'];
-        $headerFont = ['bold' => true, 'color' => 'FFFFFF', 'size' => 9];
-        $cellFont = ['size' => 9];
-        $phpWord->addTableStyle('ReportTable', ['borderSize' => 4, 'borderColor' => 'CCCCCC', 'cellMargin' => 80]);
+        $sections = $payload['sections'] ?? null;
+        $show = fn (string $key) => $sections === null || in_array($key, $sections, true);
+        $showRecords = is_array($sections) && in_array('records', $sections, true);
 
         switch ($payload['type']) {
             case 'attendance':
                 $s = $data['summary'];
-                $this->addStatTiles($section, [
-                    [(string) $s['total_events'], 'Events in Range', '456F68'],
-                    [(string) $s['total_attended'], 'Attendance Records', 'C6953C'],
-                    [$s['attendance_percentage'] . '%', 'Attendance Rate', '2A423E'],
-                    [$s['average_feedback_rating'] !== null ? (string) $s['average_feedback_rating'] : 'N/A', 'Avg Feedback Rating', '8A3D2C'],
-                ]);
+                if ($show('summary')) {
+                    $this->addStatTiles($section, [
+                        [(string) $s['total_events'], 'Events in Range', '456F68'],
+                        [(string) $s['total_attended'], 'Attendance Records', 'C6953C'],
+                        [$s['attendance_percentage'] . '%', 'Attendance Rate', '2A423E'],
+                        [$s['average_feedback_rating'] !== null ? (string) $s['average_feedback_rating'] : '—', 'Avg Feedback Rating', '8A3D2C'],
+                    ]);
+                }
 
-                // Same lg:grid-cols-3 (2 cols + 1 col) row as the on-screen
-                // page -- "Events per Month" and "Overall Attendance" sit
-                // side by side, not stacked, so this copies that instead of
-                // just matching the two cards individually.
-                $this->addTwoColumnRow(
-                    $section,
-                    6000,
-                    3000,
-                    function ($cell) use ($data) {
-                        $this->addCardHeading($cell, 'Events per Month', 'What events usually happen, and when — across all years in range.');
-                        $this->addVerticalBarChart($cell, $data['per_month'], 'events', 'month', '4FBEB0');
-                    },
-                    function ($cell) use ($s) {
-                        $this->addCardHeading($cell, 'Overall Attendance');
-                        $this->addProgressSummary(
-                            $cell,
-                            (float) $s['attendance_percentage'],
-                            $s['total_attended'] . ' of ' . $s['total_eligible'] . ' eligible residents',
-                            '4FBEB0'
-                        );
+                // "Events per Month" (2/3) and "Overall Attendance" (1/3) side by side, like the PDF.
+                if ($show('charts')) {
+                    $this->addCardRow($section, [
+                        [66, function ($cell, $inner) use ($data) {
+                            $this->addCardHeading($cell, 'Events per Month', 'What events usually happen, and when — across all years in range.');
+                            $this->addVerticalBarChart($cell, $data['per_month'], 'events', 'month', '4FBEB0', $inner);
+                        }],
+                        [34, function ($cell, $inner) use ($s) {
+                            $this->addCardHeading($cell, 'Overall Attendance');
+                            $this->addProgressSummary($cell, (float) $s['attendance_percentage'], $s['total_attended'] . ' of ' . $s['total_eligible'] . ' eligible residents', '4FBEB0', $inner);
+                        }],
+                    ]);
+                }
+
+                if ($show('age')) {
+                    $this->addCardRow($section, [[100, function ($cell, $inner) use ($data) {
+                        $this->addCardHeading($cell, 'Attendance by Age Group', 'Adviser recommendation: resident profiling filtered by age.');
+                        $this->addVerticalBarChart($cell, $data['age_breakdown'], 'attended', 'group', 'E8B84A', $inner);
+                    }]]);
+                }
+
+                if ($show('events')) {
+                    $this->addPagedCardGrid($section, 'Per-Event Breakdown', null, $data['per_event'], function ($c, $ev, $in) {
+                        $c->addText($ev['name'], ['bold' => true, 'size' => 9.5, 'color' => '005F63'], ['spaceAfter' => 0]);
+                        $c->addText($ev['date'] ?? '—', ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 30]);
+                        $this->addMiniProgressBar($c, (float) $ev['percentage'], '4FBEB0', $in);
+                        $c->addText($ev['attended'] . ' / ' . $ev['eligible'] . ' attended', ['size' => 8.5, 'color' => '667777'], ['spaceAfter' => 0]);
+                        if ($ev['approved_budget'] !== null) {
+                            $c->addText('Budget: ₱' . number_format($ev['approved_budget'], 2) . ' · Spent: ₱' . number_format($ev['total_expenses'], 2), ['size' => 8.5, 'color' => '667777'], ['spaceAfter' => 0]);
+                        }
+                    }, null, [1, 7]);
+                }
+
+                if ($showRecords) {
+                    if (is_array($sections) && count(array_diff($sections, ['records'])) > 0) {
+                        $section->addPageBreak();
                     }
-                );
-
-                $this->addCardHeading($section, 'Attendance by Age Group', 'Adviser recommendation: resident profiling filtered by age.');
-                $this->addVerticalBarChart($section, $data['age_breakdown'], 'attended', 'group', 'E8B84A');
-
-                $this->addCardHeading($section, 'Per-Event Breakdown');
-                $this->addCardGrid($section, $data['per_event'], function ($cell, $ev) {
-                    $cell->addText($ev['name'], ['bold' => true, 'size' => 9, 'color' => '005F63']);
-                    $cell->addText($ev['date'] ?? '—', ['size' => 7.5, 'color' => '999999']);
-                    $this->addMiniProgressBar($cell, (float) $ev['percentage'], '0F766E');
-                    $cell->addText($ev['attended'] . ' / ' . $ev['eligible'] . ' attended', ['size' => 8, 'color' => '667777']);
-                    if ($ev['approved_budget'] !== null) {
-                        $cell->addText(
-                            'Budget: ₱' . number_format($ev['approved_budget'], 2) . ' · Spent: ₱' . number_format($ev['total_expenses'], 2),
-                            ['size' => 8, 'color' => '667777']
-                        );
+                    $this->addSectionHeading($section, 'Event Attendance Records', 'Every event in the period with the residents who were eligible to attend and whether each one signed in.');
+                    $events = collect($data['per_event'])->filter(fn ($e) => array_key_exists('attendees', $e))->values();
+                    if ($events->isEmpty()) {
+                        $this->addEmptyNote($section, 'No events to list for this period.');
                     }
-                });
+                    foreach ($events as $ev) {
+                        $meta = array_filter([
+                            $ev['date'] ?? '—',
+                            !empty($ev['start_time']) ? $ev['start_time'] . (!empty($ev['end_time']) ? ' – ' . $ev['end_time'] : '') : null,
+                            $ev['location'] ?? null,
+                            $ev['status'] ?? null,
+                        ]);
+                        $this->addRecordHead($section, $ev['name'], implode('  ·  ', $meta), [
+                            ['Eligible: ', null], [(string) $ev['eligible'], ['bold' => true]], ['     Present: ', null],
+                            [(string) $ev['attended'], ['bold' => true, 'color' => '047857']], ['     Absent: ', null],
+                            [(string) $ev['absent'], ['bold' => true, 'color' => 'DC2626']], ['     Attendance rate: ', null],
+                            [$ev['percentage'] . '%', ['bold' => true]],
+                        ]);
+                        if (count($ev['attendees']) === 0) {
+                            $this->addEmptyNote($section, 'No attendees to list for this event.');
+                            continue;
+                        }
+                        $rows = [];
+                        foreach ($ev['attendees'] as $n => $a) {
+                            $rows[] = [
+                                (string) ($n + 1), ['t' => $a['name'], 'bold' => true], $a['user_code'] ?? '—', isset($a['age']) ? (string) $a['age'] : '—', $a['gender'] ?? '—',
+                                $a['attendance'], $a['time_in'] ?? '—', $a['time_out'] ?? '—',
+                            ];
+                        }
+                        $this->addDataTable($section, ['#', 'Name', 'ID', 'Age', 'Gender', 'Status', 'Time In', 'Time Out'], [24, 230, 62, 30, 46, 54, 54, 54], $rows, ['size' => 8.5]);
+                        $section->addTextBreak(1, ['size' => 6]);
+                    }
+                }
                 break;
 
             case 'membership':
                 $s = $data['summary'];
-                $this->addStatTiles($section, [
-                    [(string) $s['total_memberships'], 'Total Memberships', '456F68'],
-                    [(string) $s['total_assignments'], 'Total Enrolled Residents', 'C6953C'],
-                ]);
+                if ($show('summary')) {
+                    $this->addStatTiles($section, [
+                        [(string) $s['total_memberships'], 'Total Memberships', '456F68'],
+                        [(string) $s['total_assignments'], 'Total Enrolled Residents', 'C6953C'],
+                    ]);
+                }
 
-                $this->addCardHeading($section, 'Enrollment by Membership');
-                $this->addCardGrid($section, $data['per_membership'], function ($cell, $m) {
-                    $reqs = implode(' • ', array_filter([
-                        $m['eligible_age_bracket'] ?? null,
-                        $m['eligible_civil_status'] ?? null,
-                        $m['eligible_gender'] ?? null,
-                    ]));
-                    $cell->addText($m['name'], ['bold' => true, 'size' => 9, 'color' => '005F63']);
-                    $cell->addText((string) $m['member_count'], ['bold' => true, 'size' => 15, 'color' => '333333']);
-                    $cell->addText('members', ['size' => 7.5, 'color' => '999999']);
-                    if ($reqs !== '') {
-                        $cell->addText('Requires: ' . $reqs, ['size' => 8, 'color' => '0F766E']);
-                    }
-                });
+                if ($show('memberships')) {
+                    $this->addPagedCardGrid($section, 'Enrollment by Membership', null, $data['per_membership'], function ($c, $m, $in) {
+                        $reqs = implode(' • ', array_filter([$m['eligible_age_bracket'] ?? null, $m['eligible_civil_status'] ?? null, $m['eligible_gender'] ?? null]));
+                        $c->addText($m['name'], ['bold' => true, 'size' => 9.5, 'color' => '005F63'], ['spaceAfter' => 0]);
+                        $c->addText((string) $m['member_count'], ['bold' => true, 'size' => 18, 'color' => '333333'], ['spaceAfter' => 0]);
+                        $c->addText('members', ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 40]);
+                        if ($reqs !== '') {
+                            $c->addText(' Requires: ' . $reqs . ' ', ['size' => 8, 'bold' => true, 'color' => '0F766E', 'bgColor' => 'E6F5F3'], ['spaceAfter' => 0]);
+                        }
+                    }, null, [4, 7]);
+                }
                 break;
 
             case 'budget':
                 $s = $data['summary'];
-                $this->addStatTiles($section, [
-                    ['₱' . number_format($s['total_approved_budget'], 2), 'Total Approved Budget', '456F68'],
-                    ['₱' . number_format($s['total_expenses'], 2), 'Total Expenses', 'C6953C'],
-                    ['₱' . number_format($s['total_remaining'], 2), 'Remaining Budget', '2A423E'],
-                    [(string) $s['events_over_budget'], 'Events Over Budget', '8A3D2C'],
-                ]);
+                $peso = fn ($n) => '₱' . number_format((float) $n, 2);
 
-                $this->addCardHeading($section, 'Budget per Event');
-                $this->addCardGrid($section, $data['per_event'], function ($cell, $ev) {
-                    $cell->addText($ev['name'], ['bold' => true, 'size' => 9, 'color' => '005F63']);
-                    $cell->addText($ev['date'] ?? '—', ['size' => 7.5, 'color' => '999999']);
-                    $cell->addText('Budget: ₱' . number_format($ev['approved_budget'], 2), ['size' => 8, 'color' => '667777']);
-                    $cell->addText('Spent: ₱' . number_format($ev['total_expenses'], 2), ['size' => 8, 'color' => '667777']);
-                    $remainingLabel = ($ev['is_over_budget'] ? 'Over budget by ' : 'Remaining ') . '₱' . number_format(abs($ev['remaining']), 2);
-                    $cell->addText($remainingLabel, ['bold' => true, 'size' => 8.5, 'color' => $ev['is_over_budget'] ? 'DC2626' : '0F766E']);
-                }, fn ($ev) => $ev['is_over_budget'] ? 'FEF2F2' : 'FAFAF7');
+                if ($show('summary')) {
+                    $this->addStatTiles($section, [
+                        [$peso($s['total_approved_budget']), 'Total Approved Budget', '456F68'],
+                        [$peso($s['total_expenses']), 'Total Expenses', 'C6953C'],
+                        [$peso($s['total_remaining']), 'Remaining Budget', '2A423E'],
+                        [(string) $s['events_over_budget'], 'Events Over Budget', '8A3D2C'],
+                    ]);
+                    $this->addStatTiles($section, [
+                        [$s['utilization_percentage'] . '%', 'Budget Used', '3F6B66'],
+                        [$peso($s['total_over_amount']), 'Total Over Budget', '9A4A38'],
+                        [(string) $s['events_near_limit'], 'Events Near Limit (90%+)', '8C6A2B'],
+                        [(string) $s['total_expense_entries'], 'Expense Entries', '33504B'],
+                    ]);
+                }
 
-                if (!empty($data['top_expenses'])) {
-                    $this->addCardHeading($section, 'Top Expenses');
-                    $table2 = $section->addTable('ReportTable');
-                    $table2->addRow(null, ['cantSplit' => true]);
-                    foreach (['Item', 'Event', 'Amount'] as $h) {
-                        $table2->addCell(3000, $headerCellStyle)->addText($h, $headerFont);
+                if ($show('overBudget')) {
+                    $this->addSectionHeading($section, 'Over-Budget Events', 'Events whose recorded expenses are higher than the approved budget, largest overspend first.');
+                    if (empty($data['over_budget'])) {
+                        $this->addEmptyNote($section, 'No events are over budget for this period.', '0F766E');
+                    } else {
+                        $rows = [];
+                        foreach ($data['over_budget'] as $ev) {
+                            $rows[] = [$ev['name'], $ev['date'] ?? '—', $peso($ev['approved_budget']), $peso($ev['total_expenses']), ['t' => $peso($ev['over_by']), 'color' => 'DC2626', 'bold' => true], $ev['utilization'] . '%'];
+                        }
+                        $this->addDataTable($section, ['Event', 'Date', 'Approved', 'Spent', 'Over By', 'Used'], [250, 80, 100, 100, 100, 55], $rows, [], [2, 3, 4, 5]);
                     }
+                }
+
+                if ($show('perEvent')) {
+                    $this->addPagedCardGrid($section, 'Budget per Event', 'Approved budget, spending and how much of the budget has been used, for every event.', $data['per_event'], function ($c, $ev, $in) use ($peso) {
+                        $c->addText($ev['name'], ['bold' => true, 'size' => 9.5, 'color' => '005F63'], ['spaceAfter' => 0]);
+                        $c->addText(($ev['date'] ?? '—') . ' · ' . $ev['event_status'] . ' · ' . $ev['budget_status'], ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 30]);
+                        $c->addText('Budget: ' . $peso($ev['approved_budget']) . ' · Spent: ' . $peso($ev['total_expenses']), ['size' => 8.5, 'color' => '667777'], ['spaceAfter' => 0]);
+                        $c->addText($ev['utilization'] . '% used · ' . $ev['expense_count'] . ' ' . ($ev['expense_count'] === 1 ? 'entry' : 'entries'), ['size' => 8.5, 'color' => '667777'], ['spaceAfter' => 0]);
+                        $c->addText(($ev['is_over_budget'] ? 'Over budget by ' : 'Remaining ') . $peso(abs($ev['remaining'])), ['bold' => true, 'size' => 8.5, 'color' => $ev['is_over_budget'] ? 'DC2626' : '0F766E'], ['spaceAfter' => 0]);
+                    }, fn ($ev) => $ev['is_over_budget'] ? ['FEF2F2', 'FECACA'] : null, [3, 7]);
+                }
+
+                if ($show('expenses')) {
+                    $withItems = collect($data['per_event'])->concat($data['unbudgeted'] ?? [])->filter(fn ($ev) => !empty($ev['expenses']))->values();
+                    if ($withItems->isNotEmpty()) {
+                        if (is_array($sections) && count(array_diff($sections, ['expenses'])) > 0) {
+                            $section->addPageBreak();
+                        }
+                        $this->addSectionHeading($section, 'Itemized Expenses per Event', 'Every expense entry recorded against each event.');
+                        foreach ($withItems as $ev) {
+                            $hasBudget = array_key_exists('approved_budget', $ev);
+                            $over = !empty($ev['is_over_budget']);
+                            $stats = $hasBudget
+                                ? [['Budget: ', null], [$peso($ev['approved_budget']), ['bold' => true]], ['     Spent: ', null], [$peso($ev['total_expenses']), ['bold' => true]], ['     ', null],
+                                    $over ? ['Over by ' . $peso($ev['over_by']), ['bold' => true, 'color' => 'DC2626']] : ['Remaining: ' . $peso($ev['remaining']), ['bold' => true, 'color' => '0F766E']]]
+                                : [['No approved budget', ['bold' => true]], ['     Spent: ', null], [$peso($ev['total_expenses']), ['bold' => true]]];
+                            $this->addRecordHead($section, $ev['name'], ($ev['date'] ?? '—') . '  ·  ' . $ev['event_status'], $stats, $over);
+                            $rows = [];
+                            foreach ($ev['expenses'] as $i => $x) {
+                                $rows[] = [(string) ($i + 1), $x['item'], $peso($x['amount']), $x['notes'] ?: '—', $x['recorded_by'] ?: '—', $x['date'] ?? '—'];
+                            }
+                            $this->addDataTable($section, ['#', 'Item', 'Amount', 'Notes', 'Recorded By', 'Date'], [22, 190, 80, 190, 100, 80], $rows, ['size' => 8.5], [2], ['', 'Total', $peso($ev['total_expenses']), '', '', '']);
+                            $section->addTextBreak(1, ['size' => 6]);
+                        }
+                    }
+                }
+
+                if ($show('topExpenses') && !empty($data['top_expenses'])) {
+                    $this->addSectionHeading($section, 'Top Expenses');
+                    $rows = [];
                     foreach ($data['top_expenses'] as $ex) {
-                        $table2->addRow(null, ['cantSplit' => true]);
-                        $table2->addCell(3000)->addText($ex['item'], $cellFont);
-                        $table2->addCell(3000)->addText($ex['event_name'] ?? '—', $cellFont);
-                        $table2->addCell(3000)->addText('₱' . number_format($ex['amount'], 2), $cellFont);
+                        $rows[] = [$ex['item'], $ex['event_name'] ?? '—', $peso($ex['amount'])];
                     }
+                    $this->addDataTable($section, ['Item', 'Event', 'Amount'], [300, 340, 100], $rows, [], [2]);
+                }
+
+                if ($show('noBudget') && !empty($data['unbudgeted'])) {
+                    $this->addSectionHeading($section, 'Events Without an Approved Budget', 'Events in this period that have no approved budget set, so they are not counted in the totals above.');
+                    $rows = [];
+                    foreach ($data['unbudgeted'] as $ev) {
+                        $rows[] = [$ev['name'], $ev['date'] ?? '—', $ev['event_status'], (string) $ev['expense_count'], $peso($ev['total_expenses'])];
+                    }
+                    $this->addDataTable($section, ['Event', 'Date', 'Status', 'Entries', 'Spent'], [300, 85, 70, 50, 100], $rows, [], [3, 4]);
                 }
                 break;
 
             default: // inventory
                 $s = $data['summary'];
-                $this->addStatTiles($section, [
-                    [(string) $s['total_items'], 'Total Inventory Items', '456F68'],
-                    [(string) $s['total_quantity'], 'Total Quantity', 'C6953C'],
-                ]);
-
-                $this->addCardHeading($section, 'By Condition');
-                $conditionRow = $section->addTable($this->noBorderTableStyle(['cellSpacing' => 60]));
-                $conditionRow->addRow(null, ['cantSplit' => true]);
-                foreach ($data['by_condition'] as $c) {
-                    [$bg, $fg] = $this->conditionColors($c['condition']);
-                    $conditionRow->addCell(2600, ['bgColor' => $bg])
-                        ->addText($c['condition'] . ': ' . $c['count'] . ' items (' . $c['quantity'] . ' units)', ['size' => 8, 'bold' => true, 'color' => $fg]);
+                if ($show('summary')) {
+                    $this->addStatTiles($section, [
+                        [(string) $s['total_items'], 'Total Inventory Items', '456F68'],
+                        [(string) $s['total_quantity'], 'Total Quantity', 'C6953C'],
+                    ]);
                 }
 
-                $this->addCardHeading($section, 'Inventory Items');
-                $this->addCardGrid($section, $data['items'], function ($cell, $item) {
-                    [$bg, $fg] = $this->conditionColors($item['condition']);
-                    $cell->addText($item['name'], ['bold' => true, 'size' => 9, 'color' => '005F63']);
-                    $cell->addText($item['storage_location'] ?? '—', ['size' => 7.5, 'color' => '999999']);
-                    $condTable = $cell->addTable($this->noBorderTableStyle());
-                    $condTable->addRow(null, ['cantSplit' => true]);
-                    $condTable->addCell(2200, ['bgColor' => $bg])->addText($item['condition'], ['size' => 7.5, 'bold' => true, 'color' => $fg]);
-                    $condTable->addCell(1800)->addText('×' . $item['quantity'], ['bold' => true, 'size' => 9, 'color' => '333333'], ['alignment' => 'right']);
-                });
+                if ($show('condition')) {
+                    $this->addCardRow($section, [[100, function ($cell, $inner) use ($data) {
+                        $this->addCardHeading($cell, 'By Condition');
+                        $run = $cell->addTextRun(['spaceAfter' => 0, 'spaceBefore' => 40]);
+                        $any = false;
+                        foreach ($data['by_condition'] as $c) {
+                            $any = true;
+                            [$bg, $fg] = $this->conditionColors($c['condition']);
+                            $run->addText(' ' . $c['condition'] . ': ' . $c['count'] . ' items (' . $c['quantity'] . ' units) ', ['size' => 8.5, 'bold' => true, 'color' => $fg, 'bgColor' => $bg]);
+                            $run->addText('   ', ['size' => 8.5]);
+                        }
+                        if (!$any) {
+                            $this->addEmptyNote($cell, 'No items found.');
+                        }
+                    }]]);
+                }
+
+                if ($show('items')) {
+                    $this->addPagedCardGrid($section, 'Inventory Items', null, $data['items'], function ($c, $item, $in) {
+                        [$bg, $fg] = $this->conditionColors($item['condition']);
+                        $c->addText($item['name'], ['bold' => true, 'size' => 9.5, 'color' => '005F63'], ['spaceAfter' => 0]);
+                        $c->addText($item['storage_location'] ?? '—', ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 40]);
+                        $run = $c->addTextRun(['spaceAfter' => 0, 'tabs' => [new \PhpOffice\PhpWord\Style\Tab('right', $in)]]);
+                        $run->addText(' ' . $item['condition'] . ' ', ['size' => 8, 'bold' => true, 'color' => $fg, 'bgColor' => $bg]);
+                        $run->addText("\t×" . $item['quantity'], ['size' => 10, 'bold' => true, 'color' => '005F63']);
+                    }, null, [4, 9]);
+                }
                 break;
         }
 
-        $section->addTextBreak(2);
-        // 4500 + 4500 = 9000 twips, matching the same content-width
-        // convention every other table in this document uses (addStatTiles,
-        // addTwoColumnRow, etc.) -- the previous 5000 + 5000 = 10000 was
-        // wider than the section's usable width, which made Word/LibreOffice
-        // shrink and left-anchor the whole table instead of spanning it
-        // edge-to-edge like the on-screen/print signature row does.
-        $sigTable = $section->addTable($this->noBorderTableStyle(['alignment' => 'center']));
-        $sigTable->addRow(null, ['cantSplit' => true]);
-        $sigTable->addCell(4500)->addText('_____________________________', [], $center);
-        $sigTable->addCell(4500)->addText('_____________________________', [], $center);
-        $sigTable->addRow(null, ['cantSplit' => true]);
-        $sigTable->addCell(4500)->addText('Prepared by', ['size' => 9], $center);
-        $sigTable->addCell(4500)->addText('Barangay Captain', ['size' => 9], $center);
-
-        $section->addTextBreak(1);
+        // Signature block (Prepared by -> Barangay Secretary, Noted -> Barangay Captain) + footer line,
+        // kept together like the PDF's .sig-wrap.
+        $section->addTextBreak(1, ['size' => 14]);
+        $section->addTextBreak(1, ['size' => 14]);
+        $sig = $section->addTable($this->noBorderTableStyle(['width' => $W, 'unit' => 'dxa', 'layout' => 'fixed']));
+        $half = (int) ($W / 2);
+        $sig->addRow(null, ['cantSplit' => true]);
+        foreach (['Prepared by:', 'Noted:'] as $label) {
+            $sig->addCell($half, ['gridSpan' => 3])->addText($label, ['bold' => true, 'size' => 10], ['keepNext' => true, 'spaceAfter' => 0]);
+        }
+        // Row with room to sign, the official's name sitting on top of the line.
+        $sig->addRow(760, ['cantSplit' => true]);
+        foreach ([BarangayOfficials::SECRETARY, BarangayOfficials::CAPTAIN] as $post) {
+            $official = $payload['officials'][$post] ?? null;
+            $nameCell = $sig->addCell($half, ['gridSpan' => 3, 'valign' => 'bottom']);
+            $nameCell->addText($official['name'] ?? '', ['bold' => true, 'size' => 11.5, 'color' => '000000'], ['alignment' => 'center', 'keepNext' => true, 'spaceAfter' => 20]);
+        }
+        $sig->addRow(null, ['cantSplit' => true]);
+        $line = ['borderTopSize' => 6, 'borderTopColor' => '667777'];
+        foreach ([BarangayOfficials::SECRETARY, BarangayOfficials::CAPTAIN] as $post) {
+            $sig->addCell(700)->addText('', ['size' => 2], ['spaceAfter' => 0]);
+            $sig->addCell($half - 1400, $line)->addText(BarangayOfficials::TITLES[$post], ['bold' => false, 'size' => 10], ['alignment' => 'center', 'keepNext' => true, 'spaceAfter' => 0]);
+            $sig->addCell(700)->addText('', ['size' => 2], ['spaceAfter' => 0]);
+        }
         $section->addText(
             'Generated via Piao Connect — Barangay Information Management System · ' . $payload['printedOn'],
-            ['size' => 7, 'color' => '999999'],
-            $center
+            ['size' => 7.5, 'color' => '999999'],
+            ['alignment' => 'center', 'spaceBefore' => 160]
         );
 
         return $phpWord;
     }
 
-    /**
-     * Style for a purely-structural table (a stat-tile row, a bar chart, the
-     * letterhead, etc.) that should look exactly as borderless in the .docx
-     * as its PDF counterpart. Word's own "Table Gridlines" view -- an
-     * editing aid, never printed -- kicks in for ANY table whose border is
-     * zero-width or undefined, regardless of the individual cells' own
-     * bgColor fill, which is what made every one of these layout tables
-     * show up outlined in a plain gray grid the moment the .docx was opened
-     * in Word (compare that to the PDF, which never draws a line these
-     * tables don't ask for). Giving the table a real, non-zero border in a
-     * color that matches the white page background hands Word an actual
-     * border to render instead of falling back to that aid grid, so it
-     * reads as border-free on screen exactly as it does on paper.
-     *
-     * @param array $extra Additional table style options to merge in (cellSpacing, alignment, cellMargin, etc.)
-     */
+    /** Usable page width in twips: A4 (11906) minus 2 x 680 side margins. */
+    private const WORD_WIDTH = 10546;
+
+    /** Style for a purely structural table: real (white) borders so Word never shows its editing grid. */
     private function noBorderTableStyle(array $extra = []): array
     {
         return array_merge([
-            'borderSize' => 2,
-            'borderColor' => 'FFFFFF',
-            'borderInsideHSize' => 2,
-            'borderInsideHColor' => 'FFFFFF',
-            'borderInsideVSize' => 2,
-            'borderInsideVColor' => 'FFFFFF',
+            'borderSize' => 2, 'borderColor' => 'FFFFFF',
+            'borderInsideHSize' => 2, 'borderInsideHColor' => 'FFFFFF',
+            'borderInsideVSize' => 2, 'borderInsideVColor' => 'FFFFFF',
         ], $extra);
     }
 
-    /**
-     * Colored stat tiles -- the .docx equivalent of the on-screen/PDF
-     * gradient stat cards. PhpWord's Cell style has no border properties in
-     * the installed version (only bgColor/shading), so the "tile" look comes
-     * entirely from a solid fill color with white bold text, spaced apart
-     * with the table's own cellSpacing instead of a border -- same as the
-     * PDF's own borderless `.stat-box`.
-     *
-     * @param array<int, array{0: string, 1: string, 2: string}> $tiles [value, label, hexColor]
-     */
+    /** Border + fill for a framed card cell (the PDF's .card / .mini-cell). */
+    private function frameStyle(string $border = 'DDD5CA', string $bg = 'FFFFFF'): array
+    {
+        return [
+            'bgColor' => $bg,
+            'borderTopSize' => 6, 'borderTopColor' => $border,
+            'borderBottomSize' => 6, 'borderBottomColor' => $border,
+            'borderLeftSize' => 6, 'borderLeftColor' => $border,
+            'borderRightSize' => 6, 'borderRightColor' => $border,
+        ];
+    }
+
+    /** Letterhead: seal + address on the left, system name + date on the right, heavy teal rule, title row. */
+    private function addLetterhead($section, array $payload): void
+    {
+        $W = self::WORD_WIDTH;
+        $muted = ['size' => 8.5, 'color' => '667777'];
+        $dark = ['size' => 9, 'color' => '222222'];
+        $tight = ['spaceAfter' => 0, 'spaceBefore' => 0];
+
+        $head = $section->addTable($this->noBorderTableStyle(['width' => $W, 'unit' => 'dxa', 'layout' => 'fixed']));
+        $head->addRow(null, ['cantSplit' => true]);
+
+        $logoCell = $head->addCell(1400, ['valign' => 'center']);
+        $logoPath = public_path('logo-removebg-preview.png');
+        if (is_file($logoPath)) {
+            $logoCell->addImage($logoPath, ['width' => 62, 'height' => 62]);
+        }
+
+        $text = $head->addCell($W - 1400 - 2300, ['valign' => 'center']);
+        $text->addText('REPUBLIC OF THE PHILIPPINES', ['bold' => true, 'size' => 8, 'color' => '222222', 'spacing' => 20], $tight);
+        $text->addText('Province of Zamboanga del Norte, Region IX', $dark, $tight);
+        $text->addText('Municipality of President Manuel A. Roxas', $dark, ['spaceAfter' => 20]);
+        $text->addText('BARANGAY PIAO', ['bold' => true, 'size' => 13, 'color' => '000000'], ['spaceAfter' => 20]);
+        $text->addText('Purok Uno — Barangay Hall, Piao, Roxas, Zamboanga del Norte, 7102', $dark, $tight);
+
+        $right = $head->addCell(2300, ['valign' => 'top']);
+        $right->addText('PIAO CONNECT', ['bold' => true, 'size' => 9.5, 'color' => '4FBEB0', 'spacing' => 30], ['alignment' => 'right', 'spaceAfter' => 80]);
+        $right->addText('Generated on', $muted, ['alignment' => 'right', 'spaceAfter' => 0]);
+        $right->addText($payload['printedOn'], ['bold' => true, 'size' => 9, 'color' => '005F63'], ['alignment' => 'right', 'spaceAfter' => 0]);
+
+        // Heavy teal rule (3pt).
+        $section->addText('', ['size' => 2], ['spaceAfter' => 80, 'borderBottomSize' => 24, 'borderBottomColor' => '005F63']);
+
+        $title = $section->addTable($this->noBorderTableStyle(['width' => $W, 'unit' => 'dxa', 'layout' => 'fixed']));
+        $title->addRow(null, ['cantSplit' => true]);
+        $title->addCell(6300, ['valign' => 'bottom'])->addText(strtoupper($payload['reportTitle']), ['bold' => true, 'size' => 15, 'color' => '005F63'], $tight);
+        $title->addCell($W - 6300, ['valign' => 'bottom'])->addText($payload['filterSummary'], $muted, ['alignment' => 'right', 'spaceAfter' => 20]);
+
+        // Thin rule + breathing room.
+        $section->addText('', ['size' => 2], ['spaceAfter' => 120, 'borderBottomSize' => 6, 'borderBottomColor' => 'DDD5CA']);
+    }
+
+    /** "I. MESSAGE" (justified, first-line indented paragraphs) followed by the "II. REPORT DETAILS" heading. */
+    private function addWordMessage($section, array $paragraphs): void
+    {
+        if ($paragraphs === []) {
+            return;
+        }
+        $heading = ['bold' => true, 'size' => 11.5, 'color' => '000000'];
+        $section->addText('I.   MESSAGE', $heading, ['spaceBefore' => 60, 'spaceAfter' => 100, 'keepNext' => true]);
+        foreach ($paragraphs as $p) {
+            $section->addText($p, ['size' => 10.5, 'color' => '1A1A1A'], [
+                'alignment' => 'both', 'spaceAfter' => 110, 'lineHeight' => 1.2,
+                'indentation' => ['firstLine' => 567],
+            ]);
+        }
+        $section->addText('II.   REPORT DETAILS', $heading, ['spaceBefore' => 360, 'spaceAfter' => 100, 'keepNext' => true]);
+    }
+
+    /** Footer: system line on the left, "Page X of Y" (real Word fields) on the right, hairline above. */
+    private function addWordFooter(PhpWord $phpWord, $section): void
+    {
+        $footer = $section->addFooter();
+        // A paragraph style that carries the font itself: the PAGE / NUMPAGES field results inherit it
+        // (a per-run font on the field code alone is ignored by some viewers, which then show the digits larger).
+        $phpWord->addFontStyle('ReportFooterRight', ['size' => 8, 'color' => '999999'], ['alignment' => 'right', 'spaceBefore' => 40, 'spaceAfter' => 0]);
+        $table = $footer->addTable($this->noBorderTableStyle(['width' => self::WORD_WIDTH, 'unit' => 'dxa', 'layout' => 'fixed']));
+        $table->addRow(null, ['cantSplit' => true]);
+        $rule = ['borderTopSize' => 6, 'borderTopColor' => 'DDD5CA'];
+        $font = ['size' => 8, 'color' => '999999'];
+        $table->addCell(7600, $rule)->addText('Barangay Piao · Piao Connect — Barangay Information Management System', $font, ['spaceBefore' => 40, 'spaceAfter' => 0]);
+        $run = $table->addCell(self::WORD_WIDTH - 7600, $rule)->addTextRun('ReportFooterRight');
+        $run->addText('Page ', $font);
+        $run->addField('PAGE', [], [], null, $font);
+        $run->addText(' of ', $font);
+        $run->addField('NUMPAGES', [], [], null, $font);
+    }
+
+    /** Colored stat tiles in one row -- the PDF's .stat-box strip. */
     private function addStatTiles($section, array $tiles): void
     {
-        $width = (int) floor(9000 / max(1, count($tiles)));
-        $table = $section->addTable($this->noBorderTableStyle(['cellSpacing' => 80]));
+        $gap = 90;
+        $n = max(1, count($tiles));
+        $w = (int) floor((self::WORD_WIDTH - ($n - 1) * $gap) / $n);
+        $table = $section->addTable($this->noBorderTableStyle([
+            'width' => self::WORD_WIDTH, 'unit' => 'dxa', 'layout' => 'fixed',
+            'cellMarginTop' => 120, 'cellMarginBottom' => 110, 'cellMarginLeft' => 160, 'cellMarginRight' => 100,
+        ]));
         $table->addRow(null, ['cantSplit' => true]);
-        foreach ($tiles as [$value, $label, $color]) {
-            $cell = $table->addCell($width, ['bgColor' => $color]);
-            $cell->addText($value, ['bold' => true, 'size' => 16, 'color' => 'FFFFFF']);
-            $cell->addText(strtoupper($label), ['bold' => true, 'size' => 7, 'color' => 'FFFFFF']);
+        foreach ($tiles as $i => [$value, $label, $color]) {
+            if ($i > 0) {
+                $table->addCell($gap)->addText('', ['size' => 2], ['spaceAfter' => 0]);
+            }
+            $cell = $table->addCell($w, ['bgColor' => $color]);
+            $cell->addText($value, ['bold' => true, 'size' => 19, 'color' => 'FFFFFF'], ['spaceAfter' => 10]);
+            $cell->addText(strtoupper($label), ['bold' => true, 'size' => 7.5, 'color' => 'FFFFFF', 'spacing' => 10], ['spaceAfter' => 0]);
         }
-        $section->addTextBreak(1);
+        $section->addTextBreak(1, ['size' => 5]);
     }
 
-    private function addCardHeading($section, string $title, ?string $desc = null): void
+    /** One row of framed cards side by side (weights in %); each callback gets (cell, innerWidthTwips). */
+    private function addCardRow($section, array $cards, bool $allowSplit = false): void
     {
-        $section->addText($title, ['bold' => true, 'size' => 11, 'color' => '005F63']);
+        $gap = 110;
+        $margin = 150;
+        $n = count($cards);
+        $total = array_sum(array_column($cards, 0));
+        $avail = self::WORD_WIDTH - ($n - 1) * $gap;
+        $table = $section->addTable($this->noBorderTableStyle([
+            'width' => self::WORD_WIDTH, 'unit' => 'dxa', 'layout' => 'fixed',
+            'cellMarginTop' => 130, 'cellMarginBottom' => 130, 'cellMarginLeft' => $margin, 'cellMarginRight' => $margin,
+        ]));
+        $table->addRow(null, ['cantSplit' => !$allowSplit]);
+        foreach ($cards as $i => [$weight, $fill]) {
+            if ($i > 0) {
+                $table->addCell($gap)->addText('', ['size' => 2], ['spaceAfter' => 0]);
+            }
+            $w = (int) floor($avail * $weight / $total);
+            $cell = $table->addCell($w, $this->frameStyle());
+            $fill($cell, $w - 2 * $margin);
+        }
+        $section->addTextBreak(1, ['size' => 5]);
+    }
+
+    private function addCardHeading($container, string $title, ?string $desc = null): void
+    {
+        $container->addText($title, ['bold' => true, 'size' => 12, 'color' => '005F63'], ['spaceAfter' => $desc === null ? 60 : 0, 'keepNext' => true]);
         if ($desc !== null) {
-            $section->addText($desc, ['size' => 7.5, 'color' => '999999']);
+            $container->addText($desc, ['size' => 8, 'color' => '8A8F8F'], ['spaceAfter' => 80, 'keepNext' => true]);
+        }
+    }
+
+    /** Heading for a section whose content is a flat table (no frame). */
+    private function addSectionHeading($section, string $title, ?string $desc = null): void
+    {
+        $section->addText($title, ['bold' => true, 'size' => 13, 'color' => '005F63'], ['spaceBefore' => 160, 'spaceAfter' => $desc === null ? 80 : 0, 'keepNext' => true]);
+        if ($desc !== null) {
+            $section->addText($desc, ['size' => 8, 'color' => '8A8F8F'], ['spaceAfter' => 100, 'keepNext' => true]);
+        }
+    }
+
+    private function addEmptyNote($container, string $text, string $color = 'AAAAAA'): void
+    {
+        $container->addText($text, ['italic' => true, 'size' => 9, 'color' => $color], ['spaceBefore' => 40, 'spaceAfter' => 100]);
+    }
+
+    /** Tinted event banner above a table (the PDF's .rec-head). $statRuns: [[text, fontOrNull], ...]. */
+    private function addRecordHead($section, string $name, string $meta, array $statRuns, bool $warn = false): void
+    {
+        $table = $section->addTable($this->noBorderTableStyle([
+            'width' => self::WORD_WIDTH, 'unit' => 'dxa', 'layout' => 'fixed',
+            'cellMarginTop' => 90, 'cellMarginBottom' => 90, 'cellMarginLeft' => 150, 'cellMarginRight' => 150,
+        ]));
+        $table->addRow(null, ['cantSplit' => true]);
+        $cell = $table->addCell(self::WORD_WIDTH, $warn ? $this->frameStyle('FECACA', 'FEF2F2') : $this->frameStyle('DCEAE5', 'EEF4F1'));
+        $keep = ['keepNext' => true, 'spaceAfter' => 0];
+        $cell->addText($name, ['bold' => true, 'size' => 11, 'color' => '000000'], $keep);
+        $cell->addText($meta, ['size' => 8.5, 'color' => '222222'], $keep);
+        $run = $cell->addTextRun(['keepNext' => true, 'spaceAfter' => 0, 'spaceBefore' => 20]);
+        foreach ($statRuns as [$text, $font]) {
+            $run->addText($text, array_merge(['size' => 9, 'color' => '333333'], $font ?? []));
+        }
+        // A paragraph between the two tables: without it Word/LibreOffice fuse them into one table,
+        // which also stops the data table's header row from repeating on later pages.
+        $section->addText('', ['size' => 1], ['spaceAfter' => 0, 'spaceBefore' => 0, 'keepNext' => true]);
+    }
+
+    /**
+     * Ruled table with the report's navy header row (repeats on every page),
+     * zebra striping and optional right-aligned columns / total row.
+     * $weights are relative column widths scaled to the page width; a cell
+     * value is a string or ['t' => text, 'color' => hex, 'bold' => bool].
+     */
+    private function addDataTable($section, array $headers, array $weights, array $rows, array $opts = [], array $rightCols = [], ?array $totalRow = null): void
+    {
+        $size = $opts['size'] ?? 9;
+        $sum = array_sum($weights);
+        $widths = array_map(fn ($w) => (int) floor(self::WORD_WIDTH * $w / $sum), $weights);
+        $table = $section->addTable([
+            'width' => self::WORD_WIDTH, 'unit' => 'dxa', 'layout' => 'fixed',
+            'borderSize' => 4, 'borderColor' => 'D6DEDB',
+            'borderInsideHSize' => 4, 'borderInsideHColor' => 'D6DEDB',
+            'borderInsideVSize' => 4, 'borderInsideVColor' => 'D6DEDB',
+            'cellMarginTop' => 55, 'cellMarginBottom' => 55, 'cellMarginLeft' => 90, 'cellMarginRight' => 90,
+        ]);
+        $align = fn ($i) => in_array($i, $rightCols, true) ? ['alignment' => 'right', 'spaceAfter' => 0] : ['spaceAfter' => 0];
+
+        $table->addRow(null, ['cantSplit' => true, 'tblHeader' => true]);
+        foreach ($headers as $i => $h) {
+            $table->addCell($widths[$i], ['bgColor' => '17365D'])
+                ->addText($h, ['bold' => true, 'color' => 'FFFFFF', 'size' => $size], $align($i));
+        }
+        foreach ($rows as $r => $row) {
+            $table->addRow(null, ['cantSplit' => true]);
+            $bg = $r % 2 === 1 ? ['bgColor' => 'EEF4F1'] : [];
+            foreach ($row as $i => $val) {
+                $font = ['size' => $size, 'color' => '222222'];
+                if (is_array($val)) {
+                    $font = array_merge($font, array_filter(['color' => $val['color'] ?? null, 'bold' => $val['bold'] ?? null]));
+                    $val = $val['t'];
+                }
+                $table->addCell($widths[$i], $bg)->addText((string) $val, $font, $align($i));
+            }
+        }
+        if ($totalRow) {
+            $table->addRow(null, ['cantSplit' => true]);
+            foreach ($totalRow as $i => $val) {
+                $table->addCell($widths[$i], ['bgColor' => 'DCEAE5'])->addText((string) $val, ['bold' => true, 'size' => $size], $align($i));
+            }
         }
     }
 
     /**
-     * Vertical bar chart -- a real copy of the on-screen/PDF BarChart's
-     * column look, not just an equivalent. A .docx table row can't vary one
-     * cell's height independently of its neighbours, so a single "bar" is
-     * built out of a short stack of tiny fixed-height rows instead (one
-     * table column per category, `$levels` thin rows per column): rows
-     * within each column's filled height get the accent bgColor, the rest
-     * stay unshaded, so the shaded cells read as one solid bar growing up
-     * from the baseline -- the same technique as a pixel/voxel bar chart,
-     * built entirely from Cell::bgColor and Row::exactHeight (both already
-     * proven cell/row style keys in this PhpWord version).
+     * Two-up grid of mini cards (the PDF's .mini-grid) built as one table with
+     * spacer column/rows. $fillCell receives (cell, item, innerWidthTwips);
+     * $styleFor may return [bg, border] for a highlighted card.
      */
-    private function addVerticalBarChart($section, $items, string $valueKey, string $labelKey, string $color, int $levels = 9): void
+    private function addCardGrid($container, $items, callable $fillCell, ?callable $styleFor = null, ?int $availWidth = null): void
+    {
+        $items = collect($items)->values();
+        if ($items->isEmpty()) {
+            $this->addEmptyNote($container, 'No records found.');
+
+            return;
+        }
+
+        $availWidth ??= self::WORD_WIDTH;
+        $gap = 110;
+        $margin = 130;
+        $cw = (int) floor(($availWidth - $gap) / 2);
+        $table = $container->addTable($this->noBorderTableStyle([
+            'width' => $cw * 2 + $gap, 'unit' => 'dxa', 'layout' => 'fixed',
+            'cellMarginTop' => 100, 'cellMarginBottom' => 100, 'cellMarginLeft' => $margin, 'cellMarginRight' => $margin,
+        ]));
+        $rows = $items->chunk(2);
+        foreach ($rows as $ri => $pair) {
+            if ($ri > 0) {
+                $table->addRow(90, ['exactHeight' => true, 'cantSplit' => true]);
+                foreach ([$cw, $gap, $cw] as $w) {
+                    $table->addCell($w)->addText('', ['size' => 2], ['spaceAfter' => 0]);
+                }
+            }
+            $table->addRow(null, ['cantSplit' => true]);
+            foreach ([0, 1] as $col) {
+                if ($col === 1) {
+                    $table->addCell($gap)->addText('', ['size' => 2], ['spaceAfter' => 0]);
+                }
+                $item = $pair[$col] ?? null;
+                if ($item === null) {
+                    $table->addCell($cw)->addText('', ['size' => 2], ['spaceAfter' => 0]);
+                    continue;
+                }
+                [$bg, $border] = ($styleFor ? $styleFor($item) : null) ?? ['FAFAF7', 'EEE2D3'];
+                $fillCell($table->addCell($cw, $this->frameStyle($border, $bg)), $item, $cw - 2 * $margin);
+            }
+        }
+    }
+
+    /**
+     * Record-list card split into page-sized cards ("(continued)" heading), like
+     * the PDF -- $caps = [rows that fit on the page the list starts on, rows per
+     * later page], one row being a 2-up pair.
+     */
+    private function addPagedCardGrid($section, string $title, ?string $desc, $items, callable $fill, ?callable $styleFor, array $caps): void
+    {
+        $list = array_values(collect($items)->all());
+        if ($list === []) {
+            $this->addCardRow($section, [[100, function ($cell) use ($title, $desc) {
+                $this->addCardHeading($cell, $title, $desc);
+                $this->addEmptyNote($cell, 'No records found.');
+            }]]);
+
+            return;
+        }
+
+        $rows = array_chunk($list, 2);
+        $i = 0;
+        $cap = max(1, $caps[0]);
+        $group = 0;
+        while ($i < count($rows)) {
+            $chunk = array_merge(...array_slice($rows, $i, $cap));
+            $heading = $group > 0 ? $title . ' (continued)' : $title;
+            $this->addCardRow($section, [[100, function ($cell, $inner) use ($heading, $desc, $group, $chunk, $fill, $styleFor) {
+                $this->addCardHeading($cell, $heading, $group === 0 ? $desc : null);
+                $this->addCardGrid($cell, $chunk, $fill, $styleFor, $inner);
+            }]]);
+            $i += $cap;
+            $cap = max(1, $caps[1]);
+            $group++;
+        }
+    }
+
+    /** Vertical bar chart: value row, one PNG for all the bars, label row (table fallback without GD). */
+    private function addVerticalBarChart($container, $items, string $valueKey, string $labelKey, string $color, int $innerWidth): void
     {
         if ($items->isEmpty()) {
-            $section->addText('No data for the selected filters.', ['italic' => true, 'size' => 9, 'color' => 'AAAAAA']);
-            $section->addTextBreak(1);
+            $this->addEmptyNote($container, 'No data for the selected filters.');
 
             return;
         }
 
         $count = $items->count();
-        $colWidth = (int) floor(8500 / max(1, $count));
-        $levelHeight = 95;
-        $max = max(1, (float) ($items->max($valueKey) ?? 0));
-
-        $filledLevels = [];
+        $colW = (int) floor($innerWidth / $count);
+        $values = [];
         foreach ($items as $item) {
-            $value = (float) ($item[$valueKey] ?? 0);
-            $filledLevels[] = $value > 0 ? max(1, (int) round(($value / $max) * $levels)) : 0;
+            $values[] = (float) ($item[$valueKey] ?? 0);
         }
 
-        $table = $section->addTable($this->noBorderTableStyle(['cellMargin' => 20]));
-
-        // Row 0: the value shown above each bar, same as BarChart's own
-        // per-bar value label.
+        $table = $container->addTable($this->noBorderTableStyle(['width' => $colW * $count, 'unit' => 'dxa', 'layout' => 'fixed', 'cellMargin' => 0]));
         $table->addRow(null, ['cantSplit' => true]);
         foreach ($items as $item) {
-            $table->addCell($colWidth)->addText((string) $item[$valueKey], ['bold' => true, 'size' => 8], ['alignment' => 'center']);
+            $table->addCell($colW)->addText((string) $item[$valueKey], ['bold' => true, 'size' => 8.5, 'color' => '333333'], ['alignment' => 'center', 'spaceAfter' => 20, 'keepNext' => true]);
         }
 
-        // Rows 1..levels: the bar body itself, tallest level first so the
-        // shaded cells accumulate toward the bottom row (the baseline).
-        for ($level = $levels; $level >= 1; $level--) {
-            $table->addRow($levelHeight, ['exactHeight' => true, 'cantSplit' => true]);
-            foreach ($filledLevels as $filled) {
-                $cell = $table->addCell($colWidth, $level <= $filled ? ['bgColor' => $color] : []);
-                $cell->addText('');
+        $table->addRow(null, ['cantSplit' => true]);
+        $body = $table->addCell($colW * $count, ['gridSpan' => $count]);
+        // PhpWord image sizes are in points (twips / 20); the PNG itself is drawn at 2x for crispness.
+        $wPt = (int) floor($colW * $count / 20);
+        $png = $this->canDrawImages() ? $this->pngBars($values, $color, $wPt * 2, 150) : null;
+        if ($png !== null) {
+            $body->addTextRun(['spaceAfter' => 0, 'keepNext' => true])->addImage($png, ['width' => $wPt, 'height' => 75]);
+        } else {
+            $max = max(1.0, max($values));
+            foreach ($values as $v) {
+                // (no GD) a simple proportional text bar keeps the numbers readable
+                $body->addText(str_repeat('█', (int) round($v / $max * 12)), ['size' => 6, 'color' => $color], ['spaceAfter' => 0]);
             }
         }
 
-        // Final row: the category label under each bar.
         $table->addRow(null, ['cantSplit' => true]);
         foreach ($items as $item) {
-            $table->addCell($colWidth)->addText((string) ($item[$labelKey] ?? ''), ['size' => 7.5, 'color' => '999999'], ['alignment' => 'center']);
+            $table->addCell($colW)->addText((string) ($item[$labelKey] ?? ''), ['size' => 8, 'color' => '8A8F8F'], ['alignment' => 'center', 'spaceAfter' => 0]);
         }
-
-        $section->addTextBreak(1);
     }
 
-    /**
-     * A compact two-column layout row -- the .docx equivalent of the
-     * on-screen `lg:grid-cols-3` row that puts "Events per Month" and
-     * "Overall Attendance" side by side instead of stacked full-width, so
-     * this matches that arrangement instead of just matching each card on
-     * its own. $left/$right receive the Cell to build their content into,
-     * exactly like $section elsewhere.
-     */
-    private function addTwoColumnRow($section, int $leftWidth, int $rightWidth, callable $left, callable $right): void
+    /** Thin rounded progress meter followed by the percentage (inside a card cell). */
+    private function addMiniProgressBar($cell, float $percentage, string $color, int $innerWidth): void
     {
-        $table = $section->addTable($this->noBorderTableStyle(['cellSpacing' => 100]));
-        $table->addRow(null, ['cantSplit' => true]);
-        $left($table->addCell($leftWidth));
-        $right($table->addCell($rightWidth));
-        $section->addTextBreak(1);
+        $label = round($percentage) . '%';
+        $run = $cell->addTextRun(['spaceAfter' => 30, 'spaceBefore' => 20]);
+        $barPt = max(40, (int) floor(($innerWidth - 700) / 20));
+        $png = $this->canDrawImages() ? $this->pngPill($percentage, $barPt * 3, 18, $color) : null;
+        if ($png !== null) {
+            $run->addImage($png, ['width' => $barPt, 'height' => 6]);
+            $run->addText('  ' . $label, ['bold' => true, 'size' => 9, 'color' => '005F63']);
+        } else {
+            $run->addText($label, ['bold' => true, 'size' => 9, 'color' => '005F63']);
+        }
     }
 
-    /**
-     * A thin horizontal percentage meter -- the .docx equivalent of the
-     * on-screen per-event progress bar (a filled + empty two-cell "track",
-     * same trick as addProgressSummary's bigger version) so each
-     * Per-Event-Breakdown card gets a real bar next to its rate, not just
-     * the number on its own.
-     */
-    private function addMiniProgressBar($cell, float $percentage, string $color): void
+    /** Big percentage + proportional pill + caption -- the PDF's "Overall Attendance" card body. */
+    private function addProgressSummary($container, float $percentage, string $caption, string $color, int $innerWidth): void
     {
-        $clamped = max(0, min(100, $percentage));
-        $trackWidth = 3400;
-        $filled = (int) round(($clamped / 100) * $trackWidth);
-        $remainder = max(0, $trackWidth - $filled);
-
-        $table = $cell->addTable($this->noBorderTableStyle());
-        $table->addRow(null, ['cantSplit' => true]);
-        if ($filled > 0) {
-            $table->addCell($filled, ['bgColor' => $color])->addText('');
+        $center = ['alignment' => 'center', 'spaceAfter' => 0];
+        $container->addText(round($percentage) . '%', ['bold' => true, 'size' => 28, 'color' => $color], ['alignment' => 'center', 'spaceBefore' => 100, 'spaceAfter' => 40]);
+        $pillPt = max(60, (int) floor(($innerWidth - 500) / 20));
+        $png = $this->canDrawImages() ? $this->pngPill($percentage, $pillPt * 3, 24, $color) : null;
+        if ($png !== null) {
+            $container->addTextRun(['alignment' => 'center', 'spaceAfter' => 60])->addImage($png, ['width' => $pillPt, 'height' => 8]);
         }
-        if ($remainder > 0) {
-            $table->addCell($remainder, ['bgColor' => 'EEEEEE'])->addText('');
-        }
-        $table->addCell(900)->addText(round($percentage) . '%', ['bold' => true, 'size' => 8, 'color' => $color], ['alignment' => 'right']);
+        $container->addText($caption, ['size' => 8.5, 'color' => '8A8F8F'], $center);
     }
 
-    /**
-     * "Overall Attendance" donut equivalent -- a .docx can't draw an SVG
-     * ring, so this keeps the same information (big percentage + a
-     * proportional bar + a caption) the on-screen DonutChart already shows
-     * next to its ring, just without the ring itself.
-     */
-    private function addProgressSummary($section, float $percentage, string $caption, string $color): void
+    private function canDrawImages(): bool
     {
-        $clamped = max(0, min(100, $percentage));
-        $center = ['alignment' => 'center'];
-        $section->addText(round($percentage) . '%', ['bold' => true, 'size' => 26, 'color' => $color], $center);
-
-        $trackWidth = 6000;
-        $filled = (int) round(($clamped / 100) * $trackWidth);
-        $remainder = max(0, $trackWidth - $filled);
-        $table = $section->addTable($this->noBorderTableStyle(['alignment' => 'center']));
-        $table->addRow(null, ['cantSplit' => true]);
-        if ($filled > 0) {
-            $table->addCell($filled, ['bgColor' => $color])->addText('');
-        }
-        if ($remainder > 0) {
-            $table->addCell($remainder, ['bgColor' => 'EEEEEE'])->addText('');
-        }
-
-        $section->addText($caption, ['size' => 8.5, 'color' => '999999'], $center);
-        $section->addTextBreak(1);
+        return function_exists('imagecreatetruecolor') && function_exists('imagepng') && function_exists('imagecopyresampled');
     }
 
-    /**
-     * Two-per-row "card" grid -- the .docx equivalent of the on-screen
-     * `grid gap-3 sm:grid-cols-2` record cards. Cards get a light fill via
-     * Cell::bgColor (the only per-cell styling this PhpWord version
-     * supports -- no per-cell borders) so each record still reads as a
-     * distinct tile instead of a plain table row.
-     *
-     * The pair's own table *does* get a real, visible border (light tan,
-     * the same color as the PDF's `.mini-cell` border) instead of the
-     * invisible-white treatment every other structural table in this
-     * document uses. Combined with `cellSpacing`, Word renders that border
-     * around each of the pair's two cells individually rather than as one
-     * box around the whole row -- the closest this PhpWord version can get
-     * to the PDF's actually-bordered per-card look, short of true per-cell
-     * borders.
-     *
-     * @param iterable<mixed> $items
-     * @param callable(mixed, mixed): void $fillCell receives (Cell, item) and adds its content
-     * @param (callable(mixed): string)|null $bgColorFor optional per-item bgColor override (defaults to a light neutral)
-     */
-    private function addCardGrid($section, $items, callable $fillCell, ?callable $bgColorFor = null): void
+    /** @return array{0:int,1:int,2:int} */
+    private function hexRgb(string $hex): array
     {
-        $items = collect($items)->values();
-        if ($items->isEmpty()) {
-            $section->addText('No records found.', ['italic' => true, 'size' => 9, 'color' => 'AAAAAA']);
-            $section->addTextBreak(1);
+        return [hexdec(substr($hex, 0, 2)), hexdec(substr($hex, 2, 2)), hexdec(substr($hex, 4, 2))];
+    }
 
-            return;
+    /** Filled rectangle with rounded top corners (supersampled canvas coordinates). */
+    private function gdRoundedTop($im, float $x0, float $y0, float $x1, float $y1, float $r, $col): void
+    {
+        $r = min($r, ($x1 - $x0) / 2, $y1 - $y0);
+        imagefilledrectangle($im, (int) round($x0), (int) round($y0 + $r), (int) round($x1), (int) round($y1), $col);
+        imagefilledrectangle($im, (int) round($x0 + $r), (int) round($y0), (int) round($x1 - $r), (int) round($y0 + $r), $col);
+        imagefilledellipse($im, (int) round($x0 + $r), (int) round($y0 + $r), (int) round($r * 2), (int) round($r * 2), $col);
+        imagefilledellipse($im, (int) round($x1 - $r), (int) round($y0 + $r), (int) round($r * 2), (int) round($r * 2), $col);
+    }
+
+    /** Bar-chart PNG (rounded bars on a faint grid) -- returns raw PNG bytes. */
+    private function pngBars(array $values, string $hex, int $wPx, int $hPx): ?string
+    {
+        $s = 2;
+        $W = $wPx * $s;
+        $H = $hPx * $s;
+        $im = imagecreatetruecolor($W, $H);
+        imagefill($im, 0, 0, imagecolorallocate($im, 255, 255, 255));
+        [$r, $g, $b] = $this->hexRgb($hex);
+        $col = imagecolorallocate($im, $r, $g, $b);
+        $grid = imagecolorallocate($im, 238, 242, 242);
+        $base = $H - 2 * $s;
+        $usable = $H - 8 * $s;
+        foreach ([0.25, 0.5, 0.75, 1.0] as $f) {
+            $y = (int) ($base - $usable * $f);
+            imageline($im, 0, $y, $W, $y, $grid);
         }
+        imagefilledrectangle($im, 0, $base, $W, $base + $s, imagecolorallocate($im, 221, 213, 202));
+        $n = max(1, count($values));
+        $colW = $W / $n;
+        $barW = $colW * 0.62;
+        $max = max(1.0, max($values));
+        foreach ($values as $i => $v) {
+            $h = $v > 0 ? max(6 * $s, ($v / $max) * $usable) : 2 * $s;
+            $x0 = $i * $colW + ($colW - $barW) / 2;
+            $this->gdRoundedTop($im, $x0, $base - $h, $x0 + $barW, $base, 5 * $s, $col);
+        }
+        $out = imagecreatetruecolor($wPx, $hPx);
+        imagecopyresampled($out, $im, 0, 0, 0, 0, $wPx, $hPx, $W, $H);
+        ob_start();
+        imagepng($out);
+        $png = ob_get_clean();
 
-        $cardBorder = [
-            'borderSize' => 4,
-            'borderColor' => 'EEE2D3',
-            'borderInsideHSize' => 4,
-            'borderInsideHColor' => 'EEE2D3',
-            'borderInsideVSize' => 4,
-            'borderInsideVColor' => 'EEE2D3',
-            'cellSpacing' => 80,
-        ];
-        foreach ($items->chunk(2) as $pair) {
-            $table = $section->addTable($cardBorder);
-            $table->addRow(null, ['cantSplit' => true]);
-            // A trailing odd item spans both columns instead of sitting next
-            // to an empty filler cell -- with the card border above now
-            // real (not invisible), a filler cell would otherwise show up
-            // as an empty bordered box for no reason.
-            $gridSpan = $pair->count() < 2 ? 2 : 1;
-            foreach ($pair as $item) {
-                $bg = $bgColorFor ? $bgColorFor($item) : 'FAFAF7';
-                $cell = $table->addCell(4500, ['bgColor' => $bg, 'gridSpan' => $gridSpan]);
-                $fillCell($cell, $item);
+        return $png !== false && $png !== '' ? $png : null;
+    }
+
+    /** Rounded progress "pill" PNG: grey track with a colored fill to $pct percent. */
+    private function pngPill(float $pct, int $wPx, int $hPx, string $hex): ?string
+    {
+        $s = 2;
+        $W = $wPx * $s;
+        $H = $hPx * $s;
+        $im = imagecreatetruecolor($W, $H);
+        imagefill($im, 0, 0, imagecolorallocate($im, 255, 255, 255));
+        $round = function ($w, $color) use ($im, $H) {
+            $r = $H / 2;
+            if ($w < $H) {
+                $w = $H;
             }
+            imagefilledellipse($im, (int) $r, (int) $r, $H, $H, $color);
+            imagefilledellipse($im, (int) ($w - $r), (int) $r, $H, $H, $color);
+            imagefilledrectangle($im, (int) $r, 0, (int) ($w - $r), $H - 1, $color);
+        };
+        $round($W, imagecolorallocate($im, 238, 242, 242));
+        $pct = max(0.0, min(100.0, $pct));
+        if ($pct > 0) {
+            [$r, $g, $b] = $this->hexRgb($hex);
+            $round($W * $pct / 100, imagecolorallocate($im, $r, $g, $b));
         }
-        $section->addTextBreak(1);
+        $out = imagecreatetruecolor($wPx, $hPx);
+        imagecopyresampled($out, $im, 0, 0, 0, 0, $wPx, $hPx, $W, $H);
+        ob_start();
+        imagepng($out);
+        $png = ob_get_clean();
+
+        return $png !== false && $png !== '' ? $png : null;
     }
 
     /**
      * Same condition → color mapping as ReportsView.tsx's conditionColor
-     * object and this same controller's exportPdf Blade view, translated to
-     * plain hex pairs for PhpWord's font/cell color options.
+     * object and the PDF Blade view, as plain hex pairs.
      *
      * @return array{0: string, 1: string} [bgColor, textColor]
      */

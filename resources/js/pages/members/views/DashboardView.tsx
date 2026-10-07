@@ -54,7 +54,7 @@ export default function DashboardView({
   pastEventsCount,
   highlightText,
 }: DashboardViewProps) {
-  const { t, language } = useLanguage();
+  const { t, language, locale } = useLanguage();
 
   // Ticks every second purely for the live clock in the "My Activity" panel
   // below, the same real-time touch the staff portal's own Dashboard uses --
@@ -229,13 +229,13 @@ export default function DashboardView({
                 </span>
               </div>
               <p className="mt-1 text-[15px] text-white/50">
-                {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                {currentTime.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' })}
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2">
               <Clock className="h-4 w-4 text-[#4FBEB0]" />
               <span className="font-display text-lg font-bold tabular-nums text-white">
-                {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                {currentTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
               </span>
             </div>
           </div>

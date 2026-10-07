@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Clock, X } from "lucide-react";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 interface TimePickerProps {
   /** 24-hour "HH:MM" string, or "" for none selected -- same shape a
@@ -62,7 +63,7 @@ export default function TimePicker({
   value,
   onChange,
   placeholder = "--:-- --",
-  clearLabel = "Clear",
+  clearLabel,
   className = "",
   dark = false,
   disabled = false,
@@ -71,6 +72,8 @@ export default function TimePicker({
   title,
   align = "left",
 }: TimePickerProps) {
+  const { t } = useLanguage();
+  const clearText = clearLabel ?? t("clearLabel");
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -206,7 +209,7 @@ export default function TimePicker({
         >
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <p className={`text-center text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>Hour</p>
+              <p className={`text-center text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>{t("uiHour")}</p>
               <div ref={hourListRef} className="max-h-40 overflow-y-auto space-y-0.5 pr-0.5">
                 {HOURS_12.map((h) => {
                   const active = !!parsed && parsed.h12 === h;
@@ -225,7 +228,7 @@ export default function TimePicker({
               </div>
             </div>
             <div>
-              <p className={`text-center text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>Min</p>
+              <p className={`text-center text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>{t("uiMin")}</p>
               <div ref={minuteListRef} className="max-h-40 overflow-y-auto space-y-0.5 pr-0.5">
                 {MINUTES.map((m) => {
                   const active = !!parsed && parsed.m === m;
@@ -273,7 +276,7 @@ export default function TimePicker({
               }}
               className={`inline-flex items-center gap-1 text-xs font-medium transition ${dark ? "text-white/50 hover:text-red-400" : "text-gray-500 hover:text-red-500"}`}
             >
-              <X className="h-3.5 w-3.5" /> {clearLabel}
+              <X className="h-3.5 w-3.5" /> {clearText}
             </button>
           </div>
         </div>,

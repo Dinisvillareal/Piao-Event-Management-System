@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\StrongPassword;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateUserRequest extends FormRequest
@@ -17,6 +18,13 @@ class UpdateUserRequest extends FormRequest
             'first_name'       => 'nullable|string|max:70',
             'last_name'        => 'nullable|string|max:70',
             'middle_name'      => 'nullable|string|max:70',
+            'suffix'           => 'nullable|string|max:10',
+
+            // Barangay Captain / Secretary designation. One active holder per
+            // post: the controller refuses a second holder unless the caller
+            // explicitly confirms the replacement (replace_barangay_position).
+            'barangay_position'         => 'nullable|in:captain,secretary',
+            'replace_barangay_position' => 'nullable|boolean',
 
             // strips dashes before regex — frontend sends 0917-123-4567
             'contact_number'   => [
@@ -32,7 +40,10 @@ class UpdateUserRequest extends FormRequest
             ],
 
             'role'             => 'nullable|in:Staff,Resident',
-            'password'         => 'nullable|string|min:6|max:100',
+            // Account rules (can't remove an existing account, a new one needs
+            // a password) are enforced in UserController::update.
+            'has_account'      => 'nullable|boolean',
+            'password'         => ['nullable', 'string', new StrongPassword()],
             'validation_id'    => 'nullable',
             'membership_ids'   => 'nullable|array',
             'membership_ids.*' => 'exists:memberships,id',

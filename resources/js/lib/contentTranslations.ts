@@ -11,7 +11,7 @@ export async function loadContentTranslations(): Promise<void> {
   if (loaded) return;
   if (loading) return loading;
 
-  loading = api.get("/content-translations")
+  loading = api.get("/content-translations", { skipAuthRedirect: true } as any)
     .then((res) => {
       translations = res.data ?? {};
       loaded = true;

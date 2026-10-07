@@ -1,3 +1,4 @@
+import { matchesSearch } from "../../../lib/search";
 import React, { useState, useEffect, useMemo } from "react";
 import {
   LayoutDashboard,
@@ -81,13 +82,23 @@ interface SidebarProps {
   setActive: (key: string, path?: string) => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
+  /** Signed-in staff member, shown in the account card above "Sign out". */
+  userName?: string;
+  userRole?: string;
 }
 
-export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile }: SidebarProps) {
+export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile, userName, userRole }: SidebarProps) {
   const { t } = useLanguage();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [navQuery, setNavQuery] = useState("");
+  const accountName = (userName ?? "").trim();
+  const accountInitials = accountName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "S";
 
   // Every real destination in the sidebar, flattened once, so the search
   // box below can filter across standalone links, every module's items,
@@ -99,7 +110,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   );
   const trimmedQuery = navQuery.trim().toLowerCase();
   const searchResults = trimmedQuery
-    ? allNavItems.filter((item) => t(item.key).toLowerCase().includes(trimmedQuery) || item.label.toLowerCase().includes(trimmedQuery))
+    ? allNavItems.filter((item) => matchesSearch(navQuery, t(item.key), item.label))
     : [];
 
   // Which module the currently active page lives under -- "settings" is
@@ -208,11 +219,11 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
         >
           <XIcon size={20} />
         </button>
-        <div className="border-b border-white/10 px-4 py-5 shrink-0 flex items-center gap-3">
+        <div className="border-b border-white/10 px-4 h-[73px] box-border shrink-0 flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 border border-white/15 font-black shrink-0 overflow-hidden">
             <img
               src="/logo-removebg-preview.png"
-              alt="Logo"
+              alt={t("dashLogoAlt")}
               className="w-full h-full object-contain"
             />
           </div>
@@ -232,9 +243,20 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
               type="text"
               value={navQuery}
               onChange={(e) => setNavQuery(e.target.value)}
-              placeholder="Search"
-              className="w-full rounded-xl border border-white/10 bg-white/[0.05] py-2.5 pl-10 pr-3 text-[13.5px] text-white placeholder-white/35 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-2 focus:ring-[#4FBEB0]/20"
+              placeholder={t("search")}
+              className="w-full rounded-xl border border-white/10 bg-white/[0.05] py-2.5 pl-10 pr-[4.5rem] text-[13.5px] text-white placeholder-white/35 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-2 focus:ring-[#4FBEB0]/20"
             />
+            {navQuery && (
+              <button
+                type="button"
+                onClick={() => setNavQuery("")}
+                aria-label="Clear search"
+                title="Clear"
+                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+              >
+                {t("clearLabel")}
+              </button>
+            )}
           </div>
         </div>
 
@@ -242,7 +264,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           {trimmedQuery ? (
             <>
               <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">
-                {searchResults.length > 0 ? "Search Results" : "No Matches"}
+                {searchResults.length > 0 ? t("dashSearchResults") : t("dashNoMatches")}
               </p>
               {searchResults.length > 0 ? (
                 <div className="space-y-1.5">
@@ -264,7 +286,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
               ) : (
                 <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-white/35">
                   <SearchX className="h-6 w-6" />
-                  <p className="text-[13px]">Nothing matches "{navQuery}"</p>
+                  <p className="text-[13px]">{t("dashNothingMatches").replace("{query}", navQuery)}</p>
                 </div>
               )}
             </>
@@ -343,13 +365,22 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
             </>
           )}
         </div>
-        <div className="border-t border-white/10 p-2 shrink-0">
+        <div className="border-t border-white/10 p-3 shrink-0 flex items-center gap-2.5">
+          {/* Signed-in staff avatar, beside Sign out. Name and role are in the tooltip
+              (and in the top header), so the sidebar footer stays a single clean row. */}
+          <div
+            title={`${accountName || t("staffPortal")}${userRole ? ` · ${userRole}` : ""}`}
+            aria-label={accountName}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-400 text-[12px] font-bold text-[#08130F]"
+          >
+            {accountInitials}
+          </div>
           <button
-            className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all ${inactiveNav}`}
+            className="flex min-w-0 flex-1 items-center justify-start gap-3 rounded-xl border border-white/10 px-3 py-2.5 text-[13.5px] font-semibold text-white/70 transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
             onClick={() => setShowLogoutConfirm(true)}
           >
             <LogOut className="h-5 w-5 shrink-0" />
-            <span className="truncate flex-1 min-w-0 text-left">{t("signOut")}</span>
+            <span className="truncate">{t("signOut")}</span>
           </button>
         </div>
       </aside>
@@ -358,7 +389,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           in the app -- logout is destructive to the current session so it
           gets the same "are you sure" treatment instead of firing instantly. */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-6 text-center shadow-2xl">
             <div className="mb-4 flex justify-center text-[#4FBEB0]"><LogOut size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("confirmLogoutTitle")}</h3>

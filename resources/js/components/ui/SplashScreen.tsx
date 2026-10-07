@@ -1,3 +1,5 @@
+import { useLanguage } from "../../i18n/LanguageContext";
+
 // ─── Branded splash screen -- a frosted-glass roundel (translucent, blurred,
 // soft specular edge -- real glassmorphism, not just a plain fade) holds the
 // mark, which spins/builds open into view inside the glass rather than just
@@ -11,6 +13,7 @@
 // before that navigation reloads the page) so both "the app is loading"
 // moments use exactly the same splash instead of two copies drifting apart.
 export default function SplashScreen({ visible }: { visible: boolean }) {
+  const { t } = useLanguage();
   return (
     <div
       className={`fixed inset-0 z-[200] flex flex-col items-center justify-center gap-5 bg-[#0A0E1A] transition-opacity duration-700 ${
@@ -32,7 +35,7 @@ export default function SplashScreen({ visible }: { visible: boolean }) {
         <div className="logo-build relative h-16 w-16 sm:h-20 sm:w-20">
           <img
             src="/logo-removebg-preview.png"
-            alt="Logo"
+            alt={t("uiLogoAlt")}
             className="h-full w-full object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.5)]"
           />
         </div>
@@ -40,13 +43,13 @@ export default function SplashScreen({ visible }: { visible: boolean }) {
 
       <div className="px-6 text-center">
         <p className="build-line build-line-1 text-[15px] font-bold text-white">
-          Building your <span className="text-[#7DD8CB]">Barangay Piao</span> portal
+          {t("uiSplashBuilding")} <span className="text-[#7DD8CB]">Barangay Piao</span> {t("uiSplashPortal")}
         </p>
         <p className="build-line build-line-2 mt-1 text-[13px] text-white/55">
-          Committed to serving every resident, every time
+          {t("uiSplashTagline")}
         </p>
         <p className="build-line build-line-3 mt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/35">
-          Secure &middot; Reliable &middot; Resident-First
+          {t("uiSplashValues")}
         </p>
       </div>
 

@@ -12,15 +12,19 @@ use Illuminate\Support\Facades\DB;
 class NotificationController extends Controller
 {
     // For Residents - their own notifications with event data
-    public function index()
+    public function index(Request $request)
     {
+        // Paginated, unread first. Callers that show the full list ask for more per page
+        // (capped); anything that only needs a number should use /notifications/unread-count.
+        $perPage = max(1, min(200, (int) $request->query('per_page', 20)));
+
         $notifications = Notification::where('user_id', Auth::id())
             ->with('event')  // Load event relationship
             ->orderBy('read', 'asc')
             ->orderBy('is_updated', 'desc')
             ->orderBy('updated_at_notification', 'desc')
             ->orderBy('created_at', 'desc')
-            ->paginate(20);
+            ->paginate($perPage);
 
         return response()->json($notifications);
     }

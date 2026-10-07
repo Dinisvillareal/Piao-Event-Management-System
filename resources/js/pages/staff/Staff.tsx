@@ -1,3 +1,4 @@
+import { highlightMatches } from "../../lib/highlight";
 import React, { useEffect, useMemo, useState } from "react";
 
 // --- LAYOUT IMPORTS ---
@@ -22,6 +23,7 @@ import IntegrationsView from "./views/IntegrationsView";
 import ProfilingSettingsView from "./views/ProfilingSettingsView";
 import OfflineBanner from "../../components/ui/OfflineBanner";
 import api from "../../lib/api";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 // --- TYPES & MOCK DATA ---
 export type Resident = { id: string; name: string; age: number; address: string; contact: string; };
@@ -36,19 +38,13 @@ export type TrashedItem = {
   deletedBy: string;
 };
 
-export const highlightText = (text: string, query: string) => {
-  if (!query.trim()) return text;
-  const regex = new RegExp(`(${query})`, "gi");
-  const parts = text.split(regex);
-  return parts.map((part, i) =>
-    part.toLowerCase() === query.toLowerCase() ? <mark key={i} className="bg-yellow-300 rounded-sm px-0.5">{part}</mark> : part
-  );
-};
+export const highlightText = (text: string, query: string) => highlightMatches(text, query);
 
 // --------------------------
 // MAIN COMPONENT
 // --------------------------
 export default function StaffDashboard() {
+  const { t } = useLanguage();
   const getInitialActive = () => {
     const path = window.location.pathname;
     const lastSegment = path.split('/').pop() || "";
@@ -88,7 +84,7 @@ export default function StaffDashboard() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "STAFF / ADMIN" };
+  const staff = { id: "STAFF-001", name: "Brgy. Captain", role: t("dashStaffAdminRole") };
 
   const [membershipOptions, setMembershipOptions] = useState<Membership[]>([]);
   const [allEvents, setAllEvents] = useState<any[]>([]);
@@ -266,6 +262,8 @@ export default function StaffDashboard() {
       <Sidebar
         active={active}
         setActive={setActive}
+        userName={displayName}
+        userRole={staff.role}
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />
@@ -279,7 +277,7 @@ export default function StaffDashboard() {
         />
         <OfflineBanner />
 
-        <div className="h-[calc(100vh-73px)] overflow-y-auto p-3 sm:p-6 smooth-scroll print:h-auto print:overflow-visible print:p-0">
+        <div id="staff-content-scroll" className="h-[calc(100vh-73px)] overflow-y-auto p-3 sm:p-6 smooth-scroll print:h-auto print:overflow-visible print:p-0">
           {active === "dashboard" && (
             <DashboardView
               membershipsCount={membershipOptions.length}

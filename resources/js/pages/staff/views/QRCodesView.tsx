@@ -1,3 +1,5 @@
+import { matchesSearch } from "../../../lib/search";
+import FormSelect from "../../../components/ui/FormSelect";
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Users, Plus, Pencil, Trash2, Search, CheckCircle, AlertCircle, AlertTriangle, Layers, ChevronRight, ChevronDown, XCircle, Save } from "lucide-react";
@@ -481,11 +483,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
   const filteredMemberships = useMemo(() => {
     if (!searchQuery.trim()) return memberships;
-    const q = searchQuery.toLowerCase();
-    return memberships.filter(m =>
-      m.name?.toLowerCase().includes(q) ||
-      m.description?.toLowerCase().includes(q)
-    );
+    return memberships.filter(m => matchesSearch(searchQuery, m.name, m.description));
   }, [memberships, searchQuery]);
 
   const totalPages = Math.ceil(filteredMemberships.length / itemsPerPage);
@@ -678,8 +676,19 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t("searchMembershipsAdminPlaceholder")}
-            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
           />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              aria-label="Clear search"
+              title="Clear"
+              className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+            >
+              {t("clearLabel")}
+            </button>
+          )}
         </div>
       </div>
 
@@ -703,6 +712,34 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         </div>
       ) : (
         <div className="space-y-4">
+          {totalPages > 1 && (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => goToPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                aria-label="Previous page"
+                className="h-9 w-9 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+              >
+                &larr;
+              </button>
+              <span
+                title={`${t("pageOfLabel")} ${currentPage} ${t("ofPagesLabel")} ${totalPages}`}
+                className="h-9 w-9 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold"
+              >
+                {currentPage}
+              </span>
+              <button
+                type="button"
+                onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                aria-label="Next page"
+                className="h-9 w-9 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+              >
+                &rarr;
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
             {paginatedMemberships.map((m) => {
               const residentCount = getResidentsByMembership(m.name).length;
@@ -765,20 +802,6 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               );
             })}
           </div>
-
-          {totalPages > 1 && (
-            <div className="flex justify-center gap-2 pt-2">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => goToPage(p)}
-                  className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-gold-400 text-[#08130F] font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       )}
       </div>
@@ -787,7 +810,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* View Roster Modal */}
       {showModal && selectedMembership && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 sm:p-0"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-0"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleBackdropClick}
         >
@@ -849,7 +872,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             </div>
 
             <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-t border-white/10 flex justify-end">
-              <button onClick={closeModal} className="bg-gold-400 hover:bg-gold-500 text-[#08130F] px-4 py-2 rounded-full text-sm font-bold transition">
+              <button onClick={closeModal} className="bg-sage-700 hover:bg-sage-800 text-white px-4 py-2 rounded-full text-sm font-bold transition">
                 {t("closeLabel")}
               </button>
             </div>
@@ -860,7 +883,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       {eligibilityCheck && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4 sm:p-0"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-0"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={() => setEligibilityCheck(null)}
         >
@@ -907,7 +930,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             </div>
 
             <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-t border-white/10 flex justify-end">
-              <button onClick={() => setEligibilityCheck(null)} className="bg-gold-400 hover:bg-gold-500 text-[#08130F] px-4 py-2 rounded-full text-sm font-bold transition">
+              <button onClick={() => setEligibilityCheck(null)} className="bg-sage-700 hover:bg-sage-800 text-white px-4 py-2 rounded-full text-sm font-bold transition">
                 {t("closeLabel")}
               </button>
             </div>
@@ -921,7 +944,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           title size, close icon, and button treatment. */}
       {showAddModal && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleAddBackdropClick}
         >
@@ -972,7 +995,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   <div>
                     <label className="block text-sm font-medium text-white mb-1">{t("eligibleAgeBracketLabel")}</label>
                     <div className="relative">
-                      <select
+                      <FormSelect
                         value={newMembership.eligibleAgeBracketId ?? ""}
                         onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleAgeBracketId: e.target.value ? Number(e.target.value) : null }))}
                         className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
@@ -981,14 +1004,13 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         {ageBrackets.map((b) => (
                           <option key={b.id} value={b.id} className="bg-[#0A0E1A] text-white">{b.label}</option>
                         ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                      </FormSelect>
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-white mb-1">{t("eligibleCivilStatusLabel")}</label>
                     <div className="relative">
-                      <select
+                      <FormSelect
                         value={newMembership.eligibleCivilStatusId ?? ""}
                         onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCivilStatusId: e.target.value ? Number(e.target.value) : null }))}
                         className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
@@ -997,14 +1019,13 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         {civilStatuses.map((cs) => (
                           <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                         ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                      </FormSelect>
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-white mb-1">{t("eligibleCurrentStatusLabel")}</label>
                     <div className="relative">
-                      <select
+                      <FormSelect
                         value={newMembership.eligibleCurrentStatusId ?? ""}
                         onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
                         className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
@@ -1013,14 +1034,13 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         {currentStatuses.map((cs) => (
                           <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                         ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                      </FormSelect>
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-white mb-1">{t("eligibleGenderLabel")}</label>
                     <div className="relative">
-                      <select
+                      <FormSelect
                         value={newMembership.eligibleGender}
                         onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleGender: e.target.value }))}
                         className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
@@ -1028,8 +1048,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                         <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
                         <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                      </FormSelect>
                     </div>
                   </div>
                 </div>
@@ -1063,7 +1082,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Edit Membership Group Modal -- same treatment as the Add modal above. */}
       {showEditModal && editingMembership && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleEditBackdropClick}
         >
@@ -1114,7 +1133,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   <div>
                     <label className="block text-sm font-medium text-white mb-1">{t("eligibleAgeBracketLabel")}</label>
                     <div className="relative">
-                      <select
+                      <FormSelect
                         value={editingMembership.eligibleAgeBracketId ?? ""}
                         onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleAgeBracketId: e.target.value ? Number(e.target.value) : null }))}
                         className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
@@ -1123,14 +1142,13 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         {ageBrackets.map((b) => (
                           <option key={b.id} value={b.id} className="bg-[#0A0E1A] text-white">{b.label}</option>
                         ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                      </FormSelect>
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-white mb-1">{t("eligibleCivilStatusLabel")}</label>
                     <div className="relative">
-                      <select
+                      <FormSelect
                         value={editingMembership.eligibleCivilStatusId ?? ""}
                         onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCivilStatusId: e.target.value ? Number(e.target.value) : null }))}
                         className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
@@ -1139,14 +1157,13 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         {civilStatuses.map((cs) => (
                           <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                         ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                      </FormSelect>
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-white mb-1">{t("eligibleCurrentStatusLabel")}</label>
                     <div className="relative">
-                      <select
+                      <FormSelect
                         value={editingMembership.eligibleCurrentStatusId ?? ""}
                         onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
                         className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
@@ -1155,14 +1172,13 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         {currentStatuses.map((cs) => (
                           <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                         ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                      </FormSelect>
                     </div>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-white mb-1">{t("eligibleGenderLabel")}</label>
                     <div className="relative">
-                      <select
+                      <FormSelect
                         value={editingMembership.eligibleGender ?? ""}
                         onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleGender: e.target.value }))}
                         className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
@@ -1170,8 +1186,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                         <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
                         <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
                         <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                      </FormSelect>
                     </div>
                   </div>
                 </div>
@@ -1247,7 +1262,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && membershipToDelete && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteBackdropClick}
         >
@@ -1279,7 +1294,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Add Success Modal */}
       {showAddSuccess && createPortal(
         <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleAddSuccessBackdropClick}
         >
@@ -1291,7 +1306,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <p className="text-[15px] text-white/50 mb-6">{t("membershipAddedSuccess")}</p>
             <button
               onClick={closeAddSuccess}
-              className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
+              className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white font-bold transition"
             >
               {t("okLabel")}
             </button>
@@ -1303,7 +1318,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Delete Success Modal */}
       {showDeleteSuccess && createPortal(
         <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteSuccessBackdropClick}
         >
@@ -1315,7 +1330,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <p className="text-[15px] text-white/50 mb-6">{t("membershipDeletedSuccess")}</p>
             <button
               onClick={closeDeleteSuccess}
-              className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
+              className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white font-bold transition"
             >
               {t("okLabel")}
             </button>
@@ -1326,7 +1341,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       {showUpdateSuccess && createPortal(
         <div
-          className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleUpdateSuccessBackdropClick}
         >
@@ -1338,7 +1353,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <p className="text-[15px] text-white/50 mb-6">{t("membershipUpdatedSuccess")}</p>
             <button
               onClick={closeUpdateSuccess}
-              className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
+              className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white font-bold transition"
             >
               {t("okLabel")}
             </button>
@@ -1350,7 +1365,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Deletion Failed Modal */}
       {showDeleteFailed && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteFailedBackdropClick}
         >
@@ -1374,7 +1389,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Generic Error Modal -- replaces native alert() for add/edit failures */}
       {genericError && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleGenericErrorBackdropClick}
         >
@@ -1398,7 +1413,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Cancel Unsaved Changes Confirm Modal -- same pattern as the Residents form */}
       {showCancelConfirm && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowCancelConfirm(null);
@@ -1417,7 +1432,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   if (target === "add") closeAddModal();
                   if (target === "edit") closeEditModal();
                 }}
-                className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
+                className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white font-bold transition"
               >
                 {t("discardCloseButton")}
               </button>

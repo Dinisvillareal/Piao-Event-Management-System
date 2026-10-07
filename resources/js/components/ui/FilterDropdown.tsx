@@ -1,10 +1,16 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Search } from "lucide-react";
+import { matchesSearch } from "../../lib/search";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 export interface FilterDropdownOption {
   value: string;
   label: string;
+  /** Shown but not selectable (dimmed, can't be clicked). */
+  disabled?: boolean;
+  /** Small muted note shown at the right of the option, e.g. "Taken". */
+  hint?: string;
 }
 
 interface FilterDropdownProps {
@@ -34,6 +40,11 @@ interface FilterDropdownProps {
   searchPlaceholder?: string;
   /** Shown in place of the option list when a search matches nothing. Only used when searchable. */
   noResultsLabel?: string;
+  /** Make the option panel exactly as wide as the trigger (for full-width form fields). */
+  fullWidth?: boolean;
+  /** Shown (muted) when `value` matches no option, instead of falling back to the first option. */
+  placeholder?: string;
+  disabled?: boolean;
 }
 
 /**
@@ -67,21 +78,25 @@ export default function FilterDropdown({
   wrapperClassName = "",
   dark = false,
   searchable = false,
-  searchPlaceholder = "Search...",
-  noResultsLabel = "No matches found.",
+  searchPlaceholder,
+  noResultsLabel,
+  fullWidth = false,
+  placeholder,
+  disabled = false,
 }: FilterDropdownProps) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
+  const [panelPos, setPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   // The search box (when enabled) filters what's rendered below it, but the
   // trigger's own selected-value label always comes from the full `options`
   // list further down -- searching never changes what's currently selected.
   const filteredOptions = searchable && query.trim()
-    ? options.filter((opt) => opt.label.toLowerCase().includes(query.trim().toLowerCase()))
+    ? options.filter((opt) => matchesSearch(query, opt.label))
     : options;
 
   useEffect(() => {
@@ -103,16 +118,17 @@ export default function FilterDropdown({
       const margin = 8;
       const panelHeightEstimate = Math.min(options.length * 40 + (searchable ? 64 : 16), 296);
 
-      let left = align === "right" ? rect.right - panelWidthPx : rect.left;
-      if (left + panelWidthPx + margin > window.innerWidth) {
-        left = window.innerWidth - margin - panelWidthPx;
+      const width = fullWidth ? rect.width : panelWidthPx;
+      let left = align === "right" ? rect.right - width : rect.left;
+      if (left + width + margin > window.innerWidth) {
+        left = window.innerWidth - margin - width;
       }
       if (left < margin) left = margin;
 
       const openUp = rect.bottom + panelHeightEstimate > window.innerHeight && rect.top > panelHeightEstimate;
       const top = openUp ? rect.top - panelHeightEstimate - 6 : rect.bottom + 6;
 
-      setPanelPos({ top, left });
+      setPanelPos({ top, left, width });
     };
 
     recompute();
@@ -122,7 +138,7 @@ export default function FilterDropdown({
       window.removeEventListener("resize", recompute);
       window.removeEventListener("scroll", recompute, true);
     };
-  }, [open, align, panelWidthPx, options.length, searchable]);
+  }, [open, align, panelWidthPx, options.length, searchable, fullWidth]);
 
   useEffect(() => {
     if (!open) return;
@@ -146,13 +162,16 @@ export default function FilterDropdown({
     };
   }, [open]);
 
-  const selectedLabel = options.find((opt) => opt.value === value)?.label ?? options[0]?.label ?? "";
+  const selectedOpt = options.find((opt) => opt.value === value);
+  const showingPlaceholder = !selectedOpt && placeholder !== undefined;
+  const selectedLabel = selectedOpt?.label ?? (placeholder !== undefined ? placeholder : options[0]?.label ?? "");
 
   return (
     <div ref={wrapperRef} className={`relative h-full ${wrapperClassName}`}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => !disabled && setOpen((v) => !v)}
+        disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         className={`relative flex items-center gap-2 rounded-full border text-sm focus:outline-none focus:ring-2 ${
@@ -166,7 +185,7 @@ export default function FilterDropdown({
             next to the text via `gap-2` -- a caller that forgets extra
             right-padding for a long label ("All Conditions") can no longer
             end up with the chevron drawn on top of the tail of the text. */}
-        <span className={`truncate flex-1 ${dark ? "text-white" : "text-[#1A1A1A]"}`}>{selectedLabel}</span>
+        <span className={`truncate flex-1 text-left ${showingPlaceholder ? (dark ? "text-white/50" : "text-gray-400") : (dark ? "text-white" : "text-[#1A1A1A]")}`}>{selectedLabel}</span>
         <ChevronDown
           className={`h-4 w-4 shrink-0 transition-transform ${dark ? "text-white/40" : "text-[#6B7280]"} ${open ? "rotate-180" : ""}`}
         />
@@ -187,7 +206,7 @@ export default function FilterDropdown({
           <div
             ref={panelRef}
             role="listbox"
-            style={{ position: "fixed", top: panelPos.top, left: panelPos.left, width: panelWidthPx }}
+            style={{ position: "fixed", top: panelPos.top, left: panelPos.left, width: panelPos.width }}
             className={`z-[9999] rounded-2xl border shadow-xl overflow-hidden py-1.5 ${
               dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#E6E0D3] bg-white"
             }`}
@@ -201,19 +220,30 @@ export default function FilterDropdown({
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={searchPlaceholder}
-                    className={`w-full rounded-full border pl-8 pr-3 py-1.5 text-sm focus:outline-none ${
+                    placeholder={searchPlaceholder ?? t("uiSearchPlaceholder")}
+                    className={`w-full rounded-full border pl-8 pr-[4.25rem] py-1.5 text-sm focus:outline-none ${
                       dark
                         ? "border-white/10 bg-white/[0.06] text-white placeholder-white/30 focus:border-[#4FBEB0]/50"
                         : "border-[#E6E0D3] bg-sage-50/40 text-[#1A1A1A] placeholder-gray-400 focus:border-sage-400"
                     }`}
                   />
+                  {query && (
+                    <button
+                      type="button"
+                      onClick={() => setQuery("")}
+                      aria-label="Clear search"
+                      title="Clear"
+                      className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold shadow-sm transition ${dark ? "border border-white/10 bg-[#0A0E1A] text-white hover:bg-[#161C2E]" : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}
+                    >
+                      {t("clearLabel")}
+                    </button>
+                  )}
                 </div>
               </div>
             )}
             <div className={`max-h-[280px] overflow-y-auto ${dark ? "filter-dropdown-scroll-dark" : "filter-dropdown-scroll-light"}`}>
               {searchable && filteredOptions.length === 0 ? (
-                <p className={`px-4 py-2.5 text-sm italic ${dark ? "text-white/40" : "text-gray-400"}`}>{noResultsLabel}</p>
+                <p className={`px-4 py-2.5 text-sm italic ${dark ? "text-white/40" : "text-gray-400"}`}>{noResultsLabel ?? t("noMatchesFoundLabel")}</p>
               ) : (
                 filteredOptions.map((opt) => (
                   <button
@@ -221,12 +251,19 @@ export default function FilterDropdown({
                     type="button"
                     role="option"
                     aria-selected={value === opt.value}
+                    aria-disabled={opt.disabled || undefined}
+                    disabled={opt.disabled}
                     onClick={() => {
+                      if (opt.disabled) return;
                       onChange(opt.value);
                       setOpen(false);
                     }}
                     className={`w-full text-left px-4 py-2.5 text-sm truncate transition ${
-                      dark
+                      opt.disabled
+                        ? dark
+                          ? "cursor-not-allowed text-white/30"
+                          : "cursor-not-allowed text-gray-400"
+                        : dark
                         ? value === opt.value
                           ? "bg-[#4FBEB0]/10 text-[#7DD8CB] font-semibold"
                           : "text-white hover:bg-white/10"
@@ -235,7 +272,14 @@ export default function FilterDropdown({
                           : "text-[#1A1A1A] hover:bg-sage-50/60"
                     }`}
                   >
-                    {opt.label}
+                    {opt.hint ? (
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="truncate">{opt.label}</span>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${dark ? "bg-white/10 text-white/50" : "bg-gray-100 text-gray-500"}`}>{opt.hint}</span>
+                      </span>
+                    ) : (
+                      opt.label
+                    )}
                   </button>
                 ))
               )}

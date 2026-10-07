@@ -1,6 +1,7 @@
 //LAST WORKING IMPLEMENTATION
 // import { useEffect, useMemo, useState } from "react";
 // import Sidebar from "../../components/layout/Sidebar";
+import { highlightMatches } from "../../lib/highlight";
 // import TopHeader from "../../components/layout/TopHeader";
 // import SettingsView from "./views/SettingsView";
 // import DashboardView from "./views/DashboardView";
@@ -297,18 +298,7 @@
 //   };
 
 //   // ─── HIGHLIGHT MATCHED SEARCH TEXT ───────────────────────────────────────────
-//   const highlightText = (text: string, query: string) => {
-//     if (!query.trim()) return text;
-//     const regex = new RegExp(`(${query})`, "gi");
-//     const parts = text.split(regex);
-//     return parts.map((part, i) =>
-//       part.toLowerCase() === query.toLowerCase() ? (
-//         <mark key={i} className="bg-yellow-300 rounded-sm px-0.5">{part}</mark>
-//       ) : (
-//         part
-//       )
-//     );
-//   };
+//   const highlightText = (text: string, query: string) => highlightMatches(text, query);
 
 //   // ─── LOADING SCREEN ───────────────────────────────────────────────────────────
 //   if (loading) {
@@ -547,13 +537,42 @@ export default function MemberDashboard() {
     return () => clearInterval(poll);
   }, [active]);
 
+  // Keeps the sidebar's unread badge live on every page: loads once, re-checks
+  // every 20s, and refreshes right away when the Notifications page marks
+  // something read (it fires "member-notifications-changed").
+  // The badge number comes from the server's own unread count. Counting rows of
+  // GET /notifications is wrong: that endpoint is paginated (unread first), so the
+  // count was capped at one page and, after reading some, the next unread rows slid
+  // in and the badge never went down.
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const fetchUnreadCount = async () => {
+    try {
+      const res = await api.get('/notifications/unread-count');
+      setUnreadNotificationCount(Number(res.data?.count) || 0);
+    } catch (error) {
+      console.error('Failed to fetch unread count:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+    fetchUnreadCount();
+    const poll = setInterval(() => { fetchNotifications(); fetchUnreadCount(); }, 20000);
+    const onChanged = () => { fetchNotifications(); fetchUnreadCount(); };
+    window.addEventListener("member-notifications-changed", onChanged);
+    return () => {
+      clearInterval(poll);
+      window.removeEventListener("member-notifications-changed", onChanged);
+    };
+  }, []);
+
   useEffect(() => {
     api.get('/me')
       .then((res) => {
         const user = res.data;
         setMember({
           id: user.id,
-          name: `${user.first_name} ${user.last_name}`,
+          name: `${user.first_name} ${user.last_name}${user.suffix ? `, ${user.suffix}` : ''}`,
           first_name: user.first_name,
           last_name: user.last_name,
           user_code: user.user_code || ''
@@ -729,6 +748,9 @@ export default function MemberDashboard() {
           setActive={setActive}
           mobileOpen={mobileSidebarOpen}
           onCloseMobile={() => setMobileSidebarOpen(false)}
+          userName={member.name}
+          userRole="Member"
+          badges={{ notify: unreadNotificationCount }}
         />
 
         <main className="flex-1 min-w-0 flex flex-col">

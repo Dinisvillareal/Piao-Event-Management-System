@@ -1,3 +1,4 @@
+import { matchesSearch } from "../../../lib/search";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Camera, CameraOff, CheckCircle, XCircle, AlertTriangle, LogIn, LogOut, IdCard, ScanLine, Search, ChevronDown } from "lucide-react";
 import { Scanner } from '@yudiel/react-qr-scanner';
@@ -5,6 +6,8 @@ import api from "../../../lib/api";
 import { queueAttendance } from "../../../lib/offlineQueue";
 import { useOnlineStatus } from "../../../hooks/useOnlineStatus";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import Skeleton from "../../../components/ui/Skeleton";
+import { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 
 type ScanResult = {
   ok: boolean;
@@ -46,7 +49,11 @@ const SCAN_STATUS_VARIANT: Record<ModalConfig['type'], 'success' | 'warning' | '
 };
 
 export default function ScanView({ events, residents, memberships }: any) {
-          const { t } = useLanguage();
+          const { t, locale } = useLanguage();
+  // Page-open skeleton: events/residents come in as already-loaded props, so
+  // this is just the short minimum -- opening the scanner reads as a
+  // deliberate load like the other modules instead of popping in.
+  const openSkeleton = usePageOpenSkeleton(false);
   const [eventId, setEventId] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [attendance, setAttendance] = useState<Record<string, AttendanceEntry[]>>({});
@@ -91,22 +98,22 @@ export default function ScanView({ events, residents, memberships }: any) {
   // also shows each option's own date/time for the same reason).
   const [currentDateTimeLabel, setCurrentDateTimeLabel] = useState(() => {
     const now = new Date();
-    return `${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`;
+    return `${now.toLocaleDateString(locale, { month: "short", day: "numeric" })}, ${now.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", hour12: true })}`;
   });
   useEffect(() => {
     const tick = setInterval(() => {
       const now = new Date();
       setCurrentHHMM(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
-      setCurrentDateTimeLabel(`${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`);
+      setCurrentDateTimeLabel(`${now.toLocaleDateString(locale, { month: "short", day: "numeric" })}, ${now.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", hour12: true })}`);
     }, 15000);
     return () => clearInterval(tick);
-  }, []);
+  }, [locale]);
 
   const formatEventOptionDateTime = (isoLike?: string): string => {
     if (!isoLike) return "";
     const d = new Date(String(isoLike).replace(" ", "T"));
     if (isNaN(d.getTime())) return "";
-    return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`;
+    return `${d.toLocaleDateString(locale, { month: "short", day: "numeric" })}, ${d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", hour12: true })}`;
   };
 
   const isOnline = useOnlineStatus();
@@ -172,9 +179,8 @@ export default function ScanView({ events, residents, memberships }: any) {
   }, [events, currentHHMM]);
 
   const filteredEventOptions = useMemo(() => {
-    const q = eventSearchQuery.trim().toLowerCase();
-    if (!q) return upcomingEvents;
-    return upcomingEvents.filter((e: any) => (e.title ?? "").toLowerCase().includes(q));
+    if (!eventSearchQuery.trim()) return upcomingEvents;
+    return upcomingEvents.filter((e: any) => matchesSearch(eventSearchQuery, e.title));
   }, [upcomingEvents, eventSearchQuery]);
 
   useEffect(() => {
@@ -362,7 +368,7 @@ export default function ScanView({ events, residents, memberships }: any) {
 
     const userCode = matchedResident.user_code || fallback?.userCode || `${t("idFieldLabel")} ${userId}`;
     const photo = matchedResident.photo || matchedResident.validation_id_url;
-    const role = matchedResident.role || "Resident";
+    const role = matchedResident.role || t("residentOption");
 
     let hasAccess = true;
     let reason = t("openEventAllowedMessage");
@@ -514,6 +520,70 @@ export default function ScanView({ events, residents, memberships }: any) {
     }
   };
 
+  if (openSkeleton) {
+    return (
+      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+        <div className="space-y-6">
+          <div>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("scan")}</h1>
+            <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("scanSubtitle")}</p>
+          </div>
+          <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+              <div className="flex items-center justify-between gap-3 border-b border-white/10 p-5">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-2/5" />
+                  <Skeleton className="h-3 w-3/5" />
+                </div>
+                <Skeleton className="h-11 w-11 rounded-full shrink-0" />
+              </div>
+              <div className="p-5 space-y-5">
+                <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-1/4" />
+                    <Skeleton className="h-11 w-full rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-1/3" />
+                    <div className="flex gap-2">
+                      <Skeleton className="h-10 flex-1 rounded-xl" />
+                      <Skeleton className="h-10 flex-1 rounded-xl" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-1/4" />
+                    <div className="flex gap-2">
+                      <Skeleton className="h-10 flex-1 rounded-xl" />
+                      <Skeleton className="h-10 flex-1 rounded-xl" />
+                    </div>
+                  </div>
+                </div>
+                <Skeleton className="aspect-video w-full rounded-2xl" />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+              <div className="border-b border-white/10 p-5 space-y-2">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <div className="divide-y divide-white/[0.06]">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 px-5 py-3">
+                    <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-3/5" />
+                      <Skeleton className="h-3 w-2/5" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
@@ -528,7 +598,7 @@ export default function ScanView({ events, residents, memberships }: any) {
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-white/10 p-5">
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-white">
+              <h2 className="text-[17px] font-bold text-white">
                 {checkInMethod === "camera" ? t("cameraScannerLabel") : t("manualPhysicalIdLookupLabel")}
               </h2>
               <p className="mt-0.5 text-sm text-white/50">
@@ -560,7 +630,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                 <button
                   type="button"
                   onClick={() => setEventDropdownOpen((v) => !v)}
-                  className="flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-left text-sm transition hover:border-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-700/20"
+                  className="flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-left text-[15px] transition hover:border-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-700/20"
                 >
                   <span className={ev ? "truncate font-medium text-white" : "text-white/40"}>
                     {ev ? ev.title : t("selectEventStep1")}
@@ -575,7 +645,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                         <span className="h-1.5 w-1.5 rounded-full bg-sage-600 animate-pulse" />
                         {t("currentDateTimeLabel")}
                       </span>
-                      <span className="text-xs font-bold text-sage-800">{currentDateTimeLabel}</span>
+                      <span className="text-sm font-bold text-sage-800">{currentDateTimeLabel}</span>
                     </div>
                     <div className="border-b border-white/10 p-2">
                       <div className="relative">
@@ -585,13 +655,24 @@ export default function ScanView({ events, residents, memberships }: any) {
                           value={eventSearchQuery}
                           onChange={(e) => setEventSearchQuery(e.target.value)}
                           placeholder={t("scannerSearchEventPlaceholder")}
-                          className="h-9 w-full rounded-xl border border-white/10 bg-white/[0.06] text-white placeholder-white/30 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                          className="h-9 w-full rounded-xl border border-white/10 bg-white/[0.06] text-white placeholder-white/30 pl-8 pr-[4.5rem] text-[15px] focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
                         />
+                        {eventSearchQuery && (
+                          <button
+                            type="button"
+                            onClick={() => setEventSearchQuery("")}
+                            aria-label="Clear search"
+                            title="Clear"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-sm font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+                          >
+                            {t("clearLabel")}
+                          </button>
+                        )}
                       </div>
                     </div>
                     <div className="max-h-[240px] overflow-y-auto filter-dropdown-scroll-dark">
                       {filteredEventOptions.length === 0 ? (
-                        <p className="px-4 py-6 text-center text-xs italic text-white/40">
+                        <p className="px-4 py-6 text-center text-sm italic text-white/40">
                           {upcomingEvents.length === 0 ? t("noUpcomingEventsLabel") : t("noEventsMatchSearch")}
                         </p>
                       ) : (
@@ -604,7 +685,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                               setEventDropdownOpen(false);
                               setEventSearchQuery("");
                             }}
-                            className={`w-full text-left px-4 py-2.5 text-sm transition ${
+                            className={`w-full text-left px-4 py-2.5 text-[15px] transition ${
                               String(e.id) === String(eventId)
                                 ? "bg-sage-50 text-sage-800 font-semibold"
                                 : "text-white hover:bg-sage-50/60"
@@ -612,7 +693,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                           >
                             <span className="block truncate">{e.title}</span>
                             {formatEventOptionDateTime(e.event_start) && (
-                              <span className={`block text-[11px] font-normal mt-0.5 ${String(e.id) === String(eventId) ? "text-gray-500" : "text-white/40"}`}>
+                              <span className={`block text-sm font-normal mt-0.5 ${String(e.id) === String(eventId) ? "text-gray-500" : "text-white/40"}`}>
                                 {formatEventOptionDateTime(e.event_start)}
                               </span>
                             )}
@@ -630,7 +711,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                   <button
                     type="button"
                     onClick={() => { setCheckInMethod("camera"); setManualQuery(""); }}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition-colors ${
                       checkInMethod === "camera" ? "bg-sage-700 text-white shadow-sm" : "border border-white/10 bg-white/[0.03] text-white/50 hover:bg-sage-50/10"
                     }`}
                   >
@@ -639,14 +720,14 @@ export default function ScanView({ events, residents, memberships }: any) {
                   <button
                     type="button"
                     onClick={() => { setCheckInMethod("manual"); setIsCameraOn(false); }}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition-colors ${
                       checkInMethod === "manual" ? "bg-sage-700 text-white shadow-sm" : "border border-white/10 bg-white/[0.03] text-white/50 hover:bg-sage-50/10"
                     }`}
                   >
                     <IdCard className="h-4 w-4" /> {t("manualPhysicalIdLabel")}
                   </button>
                 </div>
-                <p className="mt-1.5 text-[11px] text-white/40">{t("adviserTwoInOneNote")}</p>
+                <p className="mt-1.5 text-xs text-white/40">{t("adviserTwoInOneNote")}</p>
               </div>
 
               <div>
@@ -655,7 +736,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                   <button
                     onClick={() => setScanMode("in")}
                     disabled={scanMode === "out"}
-                    className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    className={`flex-1 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition-colors ${
                       scanMode === "in"
                         ? "bg-sage-700 text-white shadow-sm hover:bg-sage-800"
                         : "border border-white/10 bg-white/[0.03] text-white/30 cursor-not-allowed opacity-60"
@@ -666,7 +747,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                   <button
                     onClick={() => setScanMode("out")}
                     disabled={scanMode === "in"}
-                    className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+                    className={`flex-1 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition-colors ${
                       scanMode === "out"
                         ? "bg-gold-400 text-[#08130F] shadow-sm hover:bg-gold-500"
                         : "border border-white/10 bg-white/[0.03] text-white/30 cursor-not-allowed opacity-60"
@@ -684,7 +765,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                 {/* Read-only -- this window comes from the event's own Start
                     Time / Call Time fields (set on the Events screen), not
                     typed in here each session. */}
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white">
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[15px] text-white">
                   {closingTime ? `${t("closesAtLabel")} ${formatEventOptionDateTime(closingTime) || closingTime}` : t("noClosingTimeSet")}
                 </div>
               </div>
@@ -709,7 +790,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                       components={{ finder: true }}
                       styles={{ container: { width: '100%', height: '100%' }, video: { objectFit: 'cover' } }}
                     />
-                    <div className="absolute top-4 left-4 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white backdrop-blur">
+                    <div className="absolute top-4 left-4 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1 text-sm font-bold uppercase tracking-wide text-white backdrop-blur">
                       <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" /> {t("cameraScanLabel")}
                     </div>
                     <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
@@ -721,10 +802,10 @@ export default function ScanView({ events, residents, memberships }: any) {
                       </div>
                     </div>
                     <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex w-[90%] max-w-[300px] flex-col items-center gap-1.5 z-10">
-                      <div className="rounded-full bg-black/70 px-4 py-1.5 text-xs font-semibold text-white backdrop-blur">
+                      <div className="rounded-full bg-black/70 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur">
                         {t("scanningForQr")}
                       </div>
-                      <div className="rounded-xl bg-black/50 px-4 py-1.5 text-center text-[11px] text-white/80 backdrop-blur">
+                      <div className="rounded-xl bg-black/50 px-4 py-1.5 text-center text-sm text-white/80 backdrop-blur">
                         <span className="font-semibold text-white">{t("blurryLabel")}</span> {t("movePhoneCloserNote")}
                       </div>
                     </div>
@@ -732,7 +813,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                 ) : (
                   <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-2 text-white/50">
                     <Camera className="h-9 w-9" />
-                    <p className="text-sm">{t("cameraOffClickToStart")}</p>
+                    <p className="text-[15px]">{t("cameraOffClickToStart")}</p>
                   </div>
                 )}
               </div>
@@ -740,7 +821,7 @@ export default function ScanView({ events, residents, memberships }: any) {
               // Adviser recommendation: "2 in 1 — Text/physical QR ID" manual lookup
               <div className="rounded-2xl border border-white/10 bg-white/[0.03] min-h-[380px] p-5">
                 <div className="flex items-center gap-2 font-bold text-sage-800 mb-3">
-                  <IdCard className="h-5 w-5" /> {t("manualPhysicalIdCheckin")}
+                  <IdCard className="h-4 w-4" /> {t("manualPhysicalIdCheckin")}
                 </div>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
@@ -749,12 +830,12 @@ export default function ScanView({ events, residents, memberships }: any) {
                     value={manualQuery}
                     onChange={(e: any) => setManualQuery(e.target.value)}
                     placeholder={t("typeResidentIdPlaceholder")}
-                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
                   />
                 </div>
                 <div className="mt-3 space-y-2 max-h-[270px] overflow-y-auto">
                   {manualQuery.trim() && manualResults.length === 0 && (
-                    <p className="text-sm text-white/40 italic text-center py-6">{t("noMatchingResidentFound")}</p>
+                    <p className="text-[15px] text-white/40 italic text-center py-6">{t("noMatchingResidentFound")}</p>
                   )}
                   {manualResults.map((r: any) => (
                     <button
@@ -763,14 +844,14 @@ export default function ScanView({ events, residents, memberships }: any) {
                       className="w-full flex items-center justify-between rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-left hover:border-sage-400 hover:shadow-sm transition"
                     >
                       <div>
-                        <p className="font-semibold text-white text-sm">{r.first_name} {r.last_name}</p>
-                        <p className="text-xs text-white/40">{r.user_code}</p>
+                        <p className="font-semibold text-white text-[15px]">{r.first_name} {r.last_name}</p>
+                        <p className="text-sm text-white/40">{r.user_code}</p>
                       </div>
-                      <span className="text-xs font-bold text-sage-700">{t("selectArrowLabel")}</span>
+                      <span className="text-sm font-bold text-sage-700">{t("selectArrowLabel")}</span>
                     </button>
                   ))}
                   {!manualQuery.trim() && (
-                    <p className="text-sm text-white/40 italic text-center py-10">{t("startTypingToFindResident")}</p>
+                    <p className="text-[15px] text-white/40 italic text-center py-10">{t("startTypingToFindResident")}</p>
                   )}
                 </div>
               </div>
@@ -821,15 +902,15 @@ export default function ScanView({ events, residents, memberships }: any) {
                           </p>
                           {scan.hasAccess && (
                             <>
-                              <p className={`text-sm font-bold mt-1.5 tracking-wide ${scan.hasAccess && scanMode === "in" ? "text-gray-700" : "text-white"}`}>
+                              <p className={`text-base font-bold mt-1.5 tracking-wide ${scan.hasAccess && scanMode === "in" ? "text-gray-700" : "text-white"}`}>
                                 {scan.userCode.replace("-", " - ")}
                               </p>
-                              <p className={`text-[11px] font-bold uppercase tracking-wider mt-0.5 ${scan.hasAccess && scanMode === "in" ? "text-gray-500" : "text-white/50"}`}>
+                              <p className={`text-sm font-bold uppercase tracking-wider mt-0.5 ${scan.hasAccess && scanMode === "in" ? "text-gray-500" : "text-white/50"}`}>
                                 {scan.role}
                               </p>
                             </>
                           )}
-                          <p className={`mt-2 text-sm font-medium ${scan.hasAccess && scanMode === "in" ? "text-gray-600" : "text-white/80"}`}>
+                          <p className={`mt-2 text-base font-medium ${scan.hasAccess && scanMode === "in" ? "text-gray-600" : "text-white/80"}`}>
                             {scan.reason}
                           </p>
                         </div>
@@ -840,17 +921,17 @@ export default function ScanView({ events, residents, memberships }: any) {
                   {scan.hasAccess && (
                     <>
                       {windowNotYetOpen ? (
-                        <div className="mt-4 p-3 rounded-xl border border-gold-400/30 bg-gold-400/10 text-center text-sm font-bold text-gold-300">
+                        <div className="mt-4 p-3 rounded-xl border border-gold-400/30 bg-gold-400/10 text-center text-base font-bold text-gold-300">
                           {scanMode === "in" ? t("signInOpensAtBanner") : t("signOutOpensAtBanner")} {formatEventOptionDateTime(windowNotYetOpen) || windowNotYetOpen}
                         </div>
                       ) : isPastClosingTime() ? (
-                        <div className="mt-4 p-3 rounded-xl border border-red-500/25 bg-red-500/10 text-center text-sm font-bold text-red-400">
+                        <div className="mt-4 p-3 rounded-xl border border-red-500/25 bg-red-500/10 text-center text-base font-bold text-red-400">
                           {scanMode === "in" ? t("deadlinePassedPrefix") : t("signOutDeadlinePassedPrefix")} ({formatEventOptionDateTime(closingTime) || closingTime}) {scanMode === "in" ? t("signInClosedSuffix") : t("signOutClosedSuffix")}
                         </div>
                       ) : (
                         <button
                           onClick={confirmAttendance}
-                          className={`mt-4 w-full py-3 text-sm font-bold rounded-full transition-colors shadow-sm ${
+                          className={`mt-4 w-full py-3 text-base font-bold rounded-full transition-colors shadow-sm ${
                             scanMode === "in" ? "text-white bg-sage-700 hover:bg-sage-800" : "text-[#08130F] bg-gold-400 hover:bg-gold-500"
                           }`}
                         >
@@ -877,8 +958,8 @@ export default function ScanView({ events, residents, memberships }: any) {
                   {attendance[eventId]!.map((rec, i) => (
                     <div key={rec.residentId} className="p-4 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-between transition-colors">
                       <div>
-                        <p className="font-semibold text-white">{i + 1}. {rec.residentName}</p>
-                        <div className="flex gap-4 mt-1 text-xs text-white/50 font-medium">
+                        <p className="text-base font-semibold text-white">{i + 1}. {rec.residentName}</p>
+                        <div className="flex gap-4 mt-1 text-[13px] text-white/50 font-medium">
                           <span className="flex items-center gap-1 text-sage-700"><LogIn className="h-3.5 w-3.5" /> {rec.timeIn || "—"}</span>
                           <span className="flex items-center gap-1 text-gold-300"><LogOut className="h-3.5 w-3.5" /> {rec.timeOut || "—"}</span>
                         </div>
@@ -902,7 +983,7 @@ export default function ScanView({ events, residents, memberships }: any) {
         const buttonColor = variant === 'error' ? 'bg-red-500 hover:bg-red-600' : variant === 'warning' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-sage-700 hover:bg-sage-800';
         const Icon = variant === 'error' ? XCircle : variant === 'warning' ? AlertTriangle : CheckCircle;
         return (
-          <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-[340px] p-6 py-8 flex flex-col items-center text-center shadow-2xl animate-in zoom-in-95 duration-200">
               <Icon className={`${accent} mb-4`} size={56} strokeWidth={2} />
               <h3 className={`text-xl font-bold mb-2 ${titleColor}`}>{modalConfig.title}</h3>

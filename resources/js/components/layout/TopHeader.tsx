@@ -1,5 +1,6 @@
 import { SquareMenu, Menu } from "lucide-react";
 import LanguageSwitcher from "../ui/LanguageSwitcher";
+import DefaultAvatar from "../ui/DefaultAvatar";
 import { useLanguage } from "../../i18n/LanguageContext";
 
 interface TopHeaderProps {
@@ -14,15 +15,9 @@ interface TopHeaderProps {
 // that touch, which is what made it read as the less-finished of the two.
 export default function TopHeader({ memberName, onMenuClick, userId }: TopHeaderProps) {
   const { t } = useLanguage();
-  const initials = memberName
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("") || "M";
 
   return (
-    <div className="flex items-center justify-between border-b border-white/10 bg-[#0A0E1A] px-3 sm:px-6 py-3 sm:py-4 gap-2">
+    <div className="flex items-center justify-between border-b border-white/10 bg-[#0A0E1A] px-3 sm:px-6 h-[73px] box-border gap-2">
       <div className="flex items-center gap-2 min-w-0">
         <button onClick={onMenuClick} className="md:hidden shrink-0 text-white/60 p-1 -ml-1">
           <Menu className="h-5 w-5" />
@@ -35,9 +30,7 @@ export default function TopHeader({ memberName, onMenuClick, userId }: TopHeader
       <div className="flex items-center gap-2 sm:gap-4 shrink-0">
         <LanguageSwitcher userId={userId} />
         <div className="hidden sm:flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gold-400 text-[11px] font-bold text-[#08130F] shrink-0">
-            {initials}
-          </div>
+          <DefaultAvatar className="h-8 w-8" title={memberName} />
           <div className="text-left leading-tight">
             <p className="text-xs text-white/40">{t("signedInAs")}</p>
             <p className="text-sm font-bold text-white">{memberName}</p>

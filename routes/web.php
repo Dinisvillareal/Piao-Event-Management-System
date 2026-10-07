@@ -50,6 +50,30 @@ Route::post('/integrations/facebook/webhook', [IntegrationController::class, 'we
 
 /*
 |--------------------------------------------------------------------------
+| CONTENT TRANSLATIONS (UC-17) -- PUBLIC on purpose
+|--------------------------------------------------------------------------
+| The React app fetches this once on every page load, including the login
+| screen where nobody is signed in yet. Behind auth it answered 401 to
+| guests, and the API client's 401 handler bounced them back to "/", so the
+| login page reloaded forever behind the splash screen. It only returns the
+| translated label text, nothing user-specific.
+*/
+Route::get('/content-translations', function () {
+    try {
+        $rows = \App\Models\ContentTranslation::all();
+    } catch (\Throwable $e) {
+        // Table not migrated yet -- the app simply falls back to English.
+        return response()->json((object) []);
+    }
+    $map = [];
+    foreach ($rows as $r) {
+        $map[$r->key][$r->locale] = $r->value;
+    }
+    return response()->json((object) $map);
+});
+
+/*
+|--------------------------------------------------------------------------
 | PROTECTED ROUTES
 |--------------------------------------------------------------------------
 */
@@ -63,6 +87,7 @@ Route::middleware('auth')->group(function () {
     */
     Route::post('/logout', [UserController::class, 'logout']);
     Route::get('/me', [UserController::class, 'me']);
+    Route::get('/barangay-officials', [\App\Http\Controllers\BarangayOfficialController::class, 'index']);
     Route::patch('/users/{id}/change-password', [UserController::class, 'changePassword']);
 
     /*
@@ -148,6 +173,7 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::get('/membership-residents', [MembershipResidentController::class, 'index']);
+    Route::post('/membership-residents/export/pdf', [\App\Http\Controllers\ResidentExportController::class, 'pdf']);
     Route::get('/membership-residents/{id}', [MembershipResidentController::class, 'show']);
     Route::post('/membership-residents', [MembershipResidentController::class, 'store']);
     Route::put('/membership-residents/{id}', [MembershipResidentController::class, 'update']);
@@ -165,6 +191,8 @@ Route::middleware('auth')->group(function () {
     // {id} value.
     Route::get('/events/borrowed-items/releases/recent', [EventController::class, 'recentReleases']);
     Route::post('/events/borrowed-items/releases/{releaseId}/undo', [EventController::class, 'undoRelease']);
+    Route::post('/events/borrowed-items/releases/{releaseId}/update', [EventController::class, 'updateRelease']);
+    Route::get('/events/borrowed-items/undos/recent', [EventController::class, 'recentUndos']);
     Route::post('/events', [EventController::class, 'store']);
     Route::put('/events/{id}', [EventController::class, 'update']);
     Route::delete('/events/{id}', [EventController::class, 'destroy']);  // Now soft deletes
@@ -256,6 +284,7 @@ Route::middleware('auth')->group(function () {
     */
     Route::get('/events/{eventId}/expenses', [EventExpenseController::class, 'index']);
     Route::post('/events/{eventId}/expenses', [EventExpenseController::class, 'store']);
+    Route::put('/events/{eventId}/budget', [EventExpenseController::class, 'updateBudget']);
     Route::put('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'update']);
     Route::delete('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'destroy']);
 
@@ -278,20 +307,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/integrations/facebook', [IntegrationController::class, 'facebookStatus']);
     Route::post('/integrations/facebook', [IntegrationController::class, 'connectFacebook']);
     Route::delete('/integrations/facebook', [IntegrationController::class, 'disconnectFacebook']);
-
-     /*
-    |--------------------------------------------------------------------------
-    | TRANSLATIONS (UC-17) -- for React frontend to fetch all translations in one go
-    |--------------------------------------------------------------------------
-    */
-    Route::get('/content-translations', function () {
-        $rows = \App\Models\ContentTranslation::all();
-        $map = [];
-        foreach ($rows as $r) {
-            $map[$r->key][$r->locale] = $r->value;
-        }
-        return response()->json($map);
-    });
 });
 
 /*

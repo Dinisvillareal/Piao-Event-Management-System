@@ -11,16 +11,16 @@
        this is what guarantees every page, including one a card gets
        pushed onto by a page break, opens with a proper gutter of white
        space instead of content butting right up against the paper edge. --}}
-  @page { margin: 16mm 14mm; }
+  @page { margin: 14mm 12mm 18mm 12mm; }
   body { font-family: 'DejaVu Sans', sans-serif; color: #1a1a1a; font-size: 11px; }
   .center { text-align: center; }
   .hdr-table { width: 100%; border-collapse: collapse; }
-  .hdr-logo-cell { width: 92px; vertical-align: middle; }
+  .hdr-logo-cell { width: 86px; vertical-align: middle; }
   .hdr-text-cell { vertical-align: middle; }
-  .hdr-logo { width: 76px; height: 76px; }
+  .hdr-logo { width: 70px; height: 70px; }
   .muted { color: #667777; font-size: 9px; }
   .tiny { color: #667777; font-size: 8px; letter-spacing: 1px; text-transform: uppercase; }
-  h1.brgy { color: #005F63; font-size: 20px; margin: 4px 0; text-transform: uppercase; }
+  h1.brgy { color: #000000; font-size: 12.5px; margin: 4px 0; text-transform: uppercase; letter-spacing: 0.5px; }
   .system { color: #4FBEB0; font-size: 9px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
   h2.title { color: #005F63; font-size: 15px; text-transform: uppercase; margin-top: 14px; margin-bottom: 2px; }
 
@@ -37,18 +37,18 @@
   .stat-label { font-size: 8px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: bold; }
 
   .card { border: 1px solid #ddd5ca; border-radius: 16px; padding: 12px 15px 14px; margin-top: 12px; page-break-inside: avoid; }
-  {{-- "Per-Event Breakdown", "Inventory Items" and the other record-list
-       cards hold an open-ended number of entries, so unlike the fixed-size
-       chart/summary cards above they can legitimately run taller than one
-       page. Forcing page-break-inside:avoid on those (like plain .card)
-       either crams them onto whatever's left of the current page (a big
-       ugly empty gap) or, once they're taller than a full page, forces
-       dompdf to slice straight through a row anyway -- worse than either.
-       This override lets the card itself flow across pages, while each
-       individual entry (.mini-cell/.mini-grid below) still keeps its own
-       protection so a break only ever falls *between* two entries, never
-       through the middle of one. --}}
-  .card.card-list { page-break-inside: auto; }
+  {{-- Record-list cards ("Per-Event Breakdown", "Inventory Items", ...) hold
+       an open-ended number of entries. dompdf can't close and re-open a
+       bordered card across a page break -- the border simply runs off the
+       bottom of one page and the entries restart flush at the top of the
+       next with no frame or gutter. So instead of one long card, the list
+       is split server-side (see $pageRows in the PHP block below) into one
+       complete, closed card per page: each page gets its own rounded frame,
+       the heading repeats with "(continued)", and every card is
+       page-break-inside:avoid so nothing is ever sliced through the middle
+       of an entry or the frame. Same look as the browser print preview. --}}
+  .card.card-list { page-break-inside: avoid; }
+  .card h3 .cont { color: #8a8f8f; font-size: 9px; font-weight: normal; }
   .row-2col { width: 100%; border-collapse: separate; border-spacing: 6px 0; margin-top: 12px; table-layout: fixed; page-break-inside: avoid; }
   .row-2col-cell { vertical-align: top; padding: 0; }
   .card h3 { color: #005F63; font-size: 12px; margin: 0 0 2px; }
@@ -85,9 +85,9 @@
   .chip { display: inline-block; border-radius: 16px; padding: 3px 9px; font-size: 8px; font-weight: bold; margin: 0 4px 4px 0; }
 
   table.plain { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  table.plain th, table.plain td { border: 1px solid #ccc; padding: 5px 7px; font-size: 10px; text-align: left; }
+  table.plain th, table.plain td { border: 1px solid #DCEAE5; padding: 5px 7px; font-size: 10px; text-align: left; }
   table.plain tr { page-break-inside: avoid; }
-  table.plain th { background: #005F63; color: #fff; }
+  table.plain th { background: #17365D; color: #fff; }
   {{-- The signature block used to carry ~110px of pure top spacing
        (60px margin + 50px cell padding), sized for trailing a nearly-full
        page. For a short report -- few events, little data -- that's often
@@ -98,20 +98,32 @@
        one page-break-inside:avoid box below so it fits the remaining
        space in the common case, and still moves as one clean unit on the
        rare page it doesn't. --}}
-  .sig-wrap { page-break-inside: avoid; margin-top: 28px; }
+  .rec-title h3 { color: #005F63; font-size: 13px; margin: 14px 0 2px; }
+  .rec-newpage { page-break-before: always; }
+  .rec-head { background: #EEF4F1; border: 1px solid #DCEAE5; padding: 7px 10px; margin-top: 10px; page-break-after: avoid; page-break-inside: avoid; }
+  .rec-name { color: #000000; font-size: 11px; font-weight: bold; }
+  .rec-meta { color: #222222; font-size: 9px; margin-top: 2px; }
+  .rec-stats { color: #333333; font-size: 9px; margin-top: 3px; }
+  table.rec-table { width: 100%; border-collapse: collapse; margin-top: 0; }
+  table.rec-table thead { display: table-header-group; }
+  table.rec-table th, table.rec-table td { font-size: 9px; padding: 3px 5px; }
+  .sig-wrap { page-break-inside: avoid; margin-top: 52px; }
   .sig-row { width: 100%; border-collapse: collapse; }
-  .sig-row td { border: none; text-align: center; font-size: 10px; padding-top: 26px; }
-  .sig-line { border-top: 1px solid #667777; padding-top: 4px; margin: 0 30px; }
+  .sig-row td { border: none; text-align: center; font-size: 10px; padding: 0; }
+  .sig-row td.sig-label { text-align: left; font-weight: bold; font-size: 10.5px; color: #1a1a1a; }
+  .sig-row td.sig-space { height: 46px; vertical-align: bottom; }
+  .sig-name { margin: 0 40px; padding-bottom: 3px; text-align: center; font-weight: bold; font-size: 12px; letter-spacing: 0.4px; color: #000000; }
+  .sig-line { border-top: 1px solid #667777; padding-top: 4px; margin: 0 40px; font-weight: normal; font-size: 10.5px; color: #1a1a1a; }
+  .msg { margin-top: 4px; }
+  .msg h4 { color: #000000; font-size: 12px; margin: 10px 0 6px; letter-spacing: 0.5px; }
+  .msg p { font-size: 10.5px; line-height: 1.55; text-align: justify; text-indent: 26px; margin: 0 0 7px; color: #1a1a1a; }
   .footer { text-align: center; color: #999; font-size: 8px; margin-top: 10px; }
 </style>
 </head>
 <body>
-  <div style="border-bottom: 2px solid #005F63; padding-bottom: 8px;">
-    {{-- Seal on the left, letterhead text still centered on the page --
-         the third empty cell mirrors the logo cell's width so the
-         center column stays truly centered instead of drifting right,
-         the same way an official government letterhead balances a seal
-         against a matching margin on the other side. --}}
+  <div style="padding-bottom: 6px;">
+    {{-- Left-aligned letterhead: seal and address block on the left, system name and
+         generation date on the right, then a heavy rule and the report title row. --}}
     @php
       // dompdf hands PNG embedding off to its bundled Cpdf renderer, which
       // requires the PHP GD extension to decode it -- a server without GD
@@ -135,21 +147,36 @@
           <img src="{{ $logoPath }}" class="hdr-logo">
         @endif
       </td>
-      <td class="hdr-text-cell center">
-        <p class="tiny">Republic of the Philippines</p>
-        <p class="muted">Province of Zamboanga del Norte</p>
-        <p class="muted">Municipality of President Manuel A. Roxas</p>
-        <h1 class="brgy">Barangay Piao</h1>
-        <p class="muted">Piao Barangay Hall, Purok Uno, Barangay Piao, 7104</p>
-        <p class="system">Piao Connect</p>
+      <td class="hdr-text-cell">
+        <p class="tiny" style="margin:0; color:#222222; font-weight:bold;">Republic of the Philippines</p>
+        <p class="muted" style="margin:2px 0 0 0; color:#222222; font-size:9.5px;">Province of Zamboanga del Norte, Region IX</p>
+        <p class="muted" style="margin:0; color:#222222; font-size:9.5px;">Municipality of President Manuel A. Roxas</p>
+        <h1 class="brgy" style="margin:6px 0 4px 0;">Barangay Piao</h1>
+        <p class="muted" style="margin:0; color:#222222; font-size:9.5px;">Purok Uno — Barangay Hall, Piao, Roxas, Zamboanga del Norte, 7102</p>
       </td>
-      <td class="hdr-logo-cell"></td>
+      <td style="width:130px; text-align:right; vertical-align:top;">
+        <p class="system" style="margin:0;">Piao Connect</p>
+        <p class="muted" style="margin:8px 0 0 0;">Generated on</p>
+        <p class="muted" style="margin:1px 0 0 0; color:#005F63; font-weight:bold;">{{ now()->format('F j, Y') }}</p>
+      </td>
     </tr></table>
-    <div class="center">
-    <h2 class="title">{{ $reportTitle }}</h2>
-    <p class="muted">{{ $filterSummary }}</p>
-    </div>
+    <div style="border-top: 3px solid #005F63; margin-top: 8px;"></div>
+    <table class="hdr-table" style="margin-top: 8px;"><tr>
+      <td style="vertical-align: bottom;"><h2 class="title" style="margin: 0;">{{ $reportTitle }}</h2></td>
+      <td style="vertical-align: bottom; text-align: right; width: 45%;"><p class="muted" style="margin: 0;">{{ $filterSummary }}</p></td>
+    </tr></table>
+    <div style="border-top: 1px solid #ddd5ca; margin-top: 6px;"></div>
   </div>
+
+  @if(!empty($message))
+  <div class="msg">
+    <h4>I.&nbsp;&nbsp;&nbsp;MESSAGE</h4>
+    @foreach($message as $para)
+      <p>{{ $para }}</p>
+    @endforeach
+    <h4 style="margin-top: 26px;">II.&nbsp;&nbsp;&nbsp;REPORT DETAILS</h4>
+  </div>
+  @endif
 
   @php
     // Turns a Collection of {label,value} rows into dompdf-safe vertical
@@ -178,10 +205,47 @@
         'Disposed' => ['bg' => '#F3F4F6', 'text' => '#6B7280'],
         'Lost' => ['bg' => '#FEF2F2', 'text' => '#DC2626'],
     ];
+    // Which sections to print. null = everything except the (opt-in) attendee lists.
+    $show = fn ($key) => $sections === null || in_array($key, $sections, true);
+    $showRecords = is_array($sections) && in_array('records', $sections, true);
     $chipColor = fn ($condition) => $conditionColors[$condition] ?? ['bg' => '#F3F4F6', 'text' => '#6B7280'];
+
+    // (Page 1 now also carries the opening Message, so the first-page counts are
+    // small; 0 means "start the list on a fresh page".)
+    // [rows that fit on the page the list starts on, rows per later page],
+    // one "row" being a 2-up pair of entries. Tuned against real dompdf
+    // output for A4 with the @page margins above -- each list's entries are
+    // a different height, so each has its own numbers. Deliberately a hair
+    // conservative: a card that is a row short just leaves a little white
+    // space above the bottom margin, while one row too many would push the
+    // whole card to the next page.
+    $rowCaps = [
+        'Per-Event Breakdown' => [0, 7],
+        'Enrollment by Membership' => [2, 7],
+        'Budget per Event' => [4, 8],
+        'Inventory Items' => [3, 9],
+    ];
+    // Entries are clipped to one line so a long name can't wrap, grow its row
+    // and push a page-sized card past the bottom margin.
+    $cut = fn ($text, int $max) => mb_strimwidth((string) $text, 0, $max, '…');
+    // Splits a collection into 2-up rows, then into page-sized groups
+    // (first group sized for the remainder of the first page).
+    $pageRows = function ($items, int $firstCap, int $perPage) {
+        $rows = $items->chunk(2)->values();
+        $groups = [];
+        $i = 0;
+        $cap = $firstCap > 0 ? $firstCap : max(1, $perPage);
+        while ($i < $rows->count()) {
+            $groups[] = $rows->slice($i, $cap)->values();
+            $i += $cap;
+            $cap = max(1, $perPage);
+        }
+        return $groups;
+    };
   @endphp
 
   @if($type === 'attendance')
+    @if($show('summary'))
     <table class="stat-table">
       <tr>
         <td class="stat-cell"><div class="stat-box" style="background:#456F68;">
@@ -202,11 +266,13 @@
         </div></td>
       </tr>
     </table>
+    @endif
 
     {{-- Same lg:grid-cols-3 (2 cols + 1 col) row as the on-screen page --
          "Events per Month" and "Overall Attendance" sit side by side, not
          stacked, so this copies that arrangement instead of just matching
          each card on its own. --}}
+    @if($show('charts'))
     @php $monthBars = $barItems($data['per_month'], 'events', 'month'); @endphp
     <table class="row-2col"><tr>
       <td class="row-2col-cell" style="width:66%;">
@@ -239,7 +305,9 @@
         </div>
       </td>
     </tr></table>
+    @endif
 
+    @if($show('age'))
     @php $ageBars = $barItems($data['age_breakdown'], 'attended', 'group'); @endphp
     <div class="card">
       <h3>Attendance by Age Group</h3>
@@ -258,14 +326,18 @@
         </tr></table>
       @endif
     </div>
+    @endif
 
+    @if($show('events'))
+    @php $groups = $pageRows($data['per_event'], $rowCaps['Per-Event Breakdown'][0], $rowCaps['Per-Event Breakdown'][1]); @endphp
+    @forelse($groups as $gi => $rowGroup)
     <div class="card card-list">
-      <h3>Per-Event Breakdown</h3>
-      @forelse($data['per_event']->chunk(2) as $pair)
+      <h3>Per-Event Breakdown @if($gi > 0) <span class="cont">(continued)</span>@endif</h3>
+      @foreach($rowGroup as $pair)
         <table class="mini-grid"><tr>
           @foreach($pair as $ev)
             <td class="mini-cell">
-              <div class="mini-title">{{ $ev['name'] }}</div>
+              <div class="mini-title">{{ $cut($ev['name'], 38) }}</div>
               <div class="mini-sub">{{ $ev['date'] ?? '—' }}</div>
               <table class="progress-row"><tr>
                 <td><div class="progress-track"><div class="progress-fill" style="width:{{ min(100, max(0, $ev['percentage'])) }}%;"></div></div></td>
@@ -279,12 +351,63 @@
           @endforeach
           @if($pair->count() < 2)<td class="mini-cell" style="visibility:hidden;"></td>@endif
         </tr></table>
-      @empty
-        <p class="empty">No records for this period.</p>
-      @endforelse
+      @endforeach
     </div>
+    @empty
+    <div class="card card-list"><h3>Per-Event Breakdown</h3><p class="empty">No records for this period.</p></div>
+    @endforelse
+    @endif
+
+    @if($showRecords)
+      @php
+        $recEvents = collect($data['per_event'])->filter(fn ($e) => array_key_exists('attendees', $e))->values();
+        $recOthers = is_array($sections) && count(array_diff($sections, ['records'])) > 0;
+      @endphp
+      <div class="rec-title {{ $recOthers ? 'rec-newpage' : '' }}">
+        <h3>Event Attendance Records</h3>
+        <p class="desc">Every event in the period with the residents who were eligible to attend and whether each one signed in.</p>
+      </div>
+      @forelse($recEvents as $ev)
+        <div class="rec-head">
+          <div class="rec-name">{{ $ev['name'] }}</div>
+          <div class="rec-meta">
+            {{ $ev['date'] ?? '—' }}@if(!empty($ev['start_time'])) &middot; {{ $ev['start_time'] }}@if(!empty($ev['end_time'])) – {{ $ev['end_time'] }}@endif @endif
+            @if(!empty($ev['location'])) &middot; {{ $ev['location'] }}@endif
+            &middot; {{ $ev['status'] }}
+          </div>
+          <div class="rec-stats">
+            Eligible: <b>{{ $ev['eligible'] }}</b> &nbsp; Present: <b style="color:#047857;">{{ $ev['attended'] }}</b> &nbsp; Absent: <b style="color:#DC2626;">{{ $ev['absent'] }}</b> &nbsp; Attendance rate: <b>{{ $ev['percentage'] }}%</b>
+          </div>
+        </div>
+        @if(count($ev['attendees']) === 0)
+          <p class="empty" style="margin: 6px 0 14px;">No attendees to list for this event.</p>
+        @else
+          <table class="plain rec-table">
+            <thead><tr><th style="width:24px;">#</th><th>Name</th><th style="width:62px;">ID</th><th style="width:28px;">Age</th><th style="width:44px;">Gender</th><th style="width:52px;">Status</th><th style="width:52px;">Time In</th><th style="width:52px;">Time Out</th></tr></thead>
+            <tbody>
+            @foreach($ev['attendees'] as $i => $a)
+              <tr>
+                <td>{{ $i + 1 }}</td>
+                <td style="font-weight:bold;">{{ $a['name'] }}</td>
+                <td>{{ $a['user_code'] ?? '—' }}</td>
+                <td>{{ $a['age'] ?? '—' }}</td>
+                <td>{{ $a['gender'] ?? '—' }}</td>
+                <td>{{ $a['attendance'] }}</td>
+                <td>{{ $a['time_in'] ?? '—' }}</td>
+                <td>{{ $a['time_out'] ?? '—' }}</td>
+              </tr>
+            @endforeach
+            </tbody>
+          </table>
+          <div style="height:12px;"></div>
+        @endif
+      @empty
+        <p class="empty">No events to list for this period.</p>
+      @endforelse
+    @endif
 
   @elseif($type === 'membership')
+    @if($show('summary'))
     <table class="stat-table">
       <tr>
         <td class="stat-cell" style="width:50%;"><div class="stat-box" style="background:#456F68;">
@@ -297,17 +420,21 @@
         </div></td>
       </tr>
     </table>
+    @endif
 
+    @if($show('memberships'))
+    @php $groups = $pageRows($data['per_membership'], $rowCaps['Enrollment by Membership'][0], $rowCaps['Enrollment by Membership'][1]); @endphp
+    @forelse($groups as $gi => $rowGroup)
     <div class="card card-list">
-      <h3>Enrollment by Membership</h3>
-      @forelse($data['per_membership']->chunk(2) as $pair)
+      <h3>Enrollment by Membership @if($gi > 0) <span class="cont">(continued)</span>@endif</h3>
+      @foreach($rowGroup as $pair)
         <table class="mini-grid"><tr>
           @foreach($pair as $m)
             @php
               $reqs = implode(' • ', array_filter([$m['eligible_age_bracket'] ?? null, $m['eligible_civil_status'] ?? null, $m['eligible_gender'] ?? null]));
             @endphp
             <td class="mini-cell">
-              <div class="mini-title">{{ $m['name'] }}</div>
+              <div class="mini-title">{{ $cut($m['name'], 38) }}</div>
               <div class="mini-big">{{ $m['member_count'] }}</div>
               <div class="mini-sub">members</div>
               @if($reqs !== '')
@@ -317,24 +444,28 @@
           @endforeach
           @if($pair->count() < 2)<td class="mini-cell" style="visibility:hidden;"></td>@endif
         </tr></table>
-      @empty
-        <p class="empty">No memberships found.</p>
-      @endforelse
+      @endforeach
     </div>
+    @empty
+    <div class="card card-list"><h3>Enrollment by Membership</h3><p class="empty">No memberships found.</p></div>
+    @endforelse
+    @endif
 
   @elseif($type === 'budget')
+    @php $peso = fn ($n) => '₱' . number_format((float) $n, 2); @endphp
+    @if($show('summary'))
     <table class="stat-table">
       <tr>
         <td class="stat-cell"><div class="stat-box" style="background:#456F68;">
-          <div class="stat-value">₱{{ number_format($data['summary']['total_approved_budget'], 2) }}</div>
+          <div class="stat-value">{{ $peso($data['summary']['total_approved_budget']) }}</div>
           <div class="stat-label">Total Approved Budget</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#C6953C;">
-          <div class="stat-value">₱{{ number_format($data['summary']['total_expenses'], 2) }}</div>
+          <div class="stat-value">{{ $peso($data['summary']['total_expenses']) }}</div>
           <div class="stat-label">Total Expenses</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#2A423E;">
-          <div class="stat-value">₱{{ number_format($data['summary']['total_remaining'], 2) }}</div>
+          <div class="stat-value">{{ $peso($data['summary']['total_remaining']) }}</div>
           <div class="stat-label">Remaining Budget</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#8A3D2C;">
@@ -343,48 +474,174 @@
         </div></td>
       </tr>
     </table>
+    <table class="stat-table">
+      <tr>
+        <td class="stat-cell"><div class="stat-box" style="background:#3F6B66;">
+          <div class="stat-value">{{ $data['summary']['utilization_percentage'] }}%</div>
+          <div class="stat-label">Budget Used</div>
+        </div></td>
+        <td class="stat-cell"><div class="stat-box" style="background:#9A4A38;">
+          <div class="stat-value">{{ $peso($data['summary']['total_over_amount']) }}</div>
+          <div class="stat-label">Total Over Budget</div>
+        </div></td>
+        <td class="stat-cell"><div class="stat-box" style="background:#8C6A2B;">
+          <div class="stat-value">{{ $data['summary']['events_near_limit'] }}</div>
+          <div class="stat-label">Events Near Limit (90%+)</div>
+        </div></td>
+        <td class="stat-cell"><div class="stat-box" style="background:#33504B;">
+          <div class="stat-value">{{ $data['summary']['total_expense_entries'] }}</div>
+          <div class="stat-label">Expense Entries</div>
+        </div></td>
+      </tr>
+    </table>
+    @endif
 
+    @if($show('overBudget'))
+    <div class="card">
+      <h3>Over-Budget Events</h3>
+      <p class="desc">Events whose recorded expenses are higher than the approved budget, largest overspend first.</p>
+      @if(empty($data['over_budget']) || count($data['over_budget']) === 0)
+        <p class="empty" style="color:#0F766E;">No events are over budget for this period.</p>
+      @else
+        <table class="plain">
+          <thead><tr><th>Event</th><th style="width:62px;">Date</th><th style="width:72px; text-align:right;">Approved</th><th style="width:72px; text-align:right;">Spent</th><th style="width:72px; text-align:right;">Over By</th><th style="width:38px; text-align:right;">Used</th></tr></thead>
+          <tbody>
+          @foreach($data['over_budget'] as $ev)
+            <tr>
+              <td>{{ $cut($ev['name'], 44) }}</td>
+              <td>{{ $ev['date'] ?? '—' }}</td>
+              <td style="text-align:right;">{{ $peso($ev['approved_budget']) }}</td>
+              <td style="text-align:right;">{{ $peso($ev['total_expenses']) }}</td>
+              <td style="text-align:right; font-weight:bold; color:#DC2626;">{{ $peso($ev['over_by']) }}</td>
+              <td style="text-align:right;">{{ $ev['utilization'] }}%</td>
+            </tr>
+          @endforeach
+          </tbody>
+        </table>
+      @endif
+    </div>
+    @endif
+
+    @if($show('perEvent'))
+    @php $groups = $pageRows(collect($data['per_event']), 1, 7); @endphp
+    @forelse($groups as $gi => $rowGroup)
     <div class="card card-list">
-      <h3>Budget per Event</h3>
-      @forelse($data['per_event']->chunk(2) as $pair)
+      <h3>Budget per Event @if($gi > 0) <span class="cont">(continued)</span>@endif</h3>
+      @foreach($rowGroup as $pair)
         <table class="mini-grid"><tr>
           @foreach($pair as $ev)
             <td class="mini-cell {{ $ev['is_over_budget'] ? 'over-budget' : '' }}">
-              <div class="mini-title">{{ $ev['name'] }}</div>
-              <div class="mini-sub">{{ $ev['date'] ?? '—' }}</div>
-              <div class="mini-line">Budget: ₱{{ number_format($ev['approved_budget'], 2) }}</div>
-              <div class="mini-line">Spent: ₱{{ number_format($ev['total_expenses'], 2) }}</div>
+              <div class="mini-title">{{ $cut($ev['name'], 38) }}</div>
+              <div class="mini-sub">{{ $ev['date'] ?? '—' }} &middot; {{ $ev['event_status'] }} &middot; {{ $ev['budget_status'] }}</div>
+              <div class="mini-line">Budget: {{ $peso($ev['approved_budget']) }} &middot; Spent: {{ $peso($ev['total_expenses']) }}</div>
+              <div class="mini-line">{{ $ev['utilization'] }}% used &middot; {{ $ev['expense_count'] }} {{ $ev['expense_count'] === 1 ? 'entry' : 'entries' }}</div>
               <div class="mini-line" style="font-weight:bold; color:{{ $ev['is_over_budget'] ? '#DC2626' : '#0F766E' }};">
-                {{ $ev['is_over_budget'] ? 'Over budget by' : 'Remaining' }} ₱{{ number_format(abs($ev['remaining']), 2) }}
+                {{ $ev['is_over_budget'] ? 'Over budget by' : 'Remaining' }} {{ $peso(abs($ev['remaining'])) }}
               </div>
             </td>
           @endforeach
           @if($pair->count() < 2)<td class="mini-cell" style="visibility:hidden;"></td>@endif
         </tr></table>
-      @empty
-        <p class="empty">No events for this period.</p>
-      @endforelse
+      @endforeach
     </div>
+    @empty
+    <div class="card card-list"><h3>Budget per Event</h3><p class="empty">No events for this period.</p></div>
+    @endforelse
+    @endif
 
+    @if($show('expenses'))
+      @php
+        $withItems = collect($data['per_event'])->concat($data['unbudgeted'] ?? [])->filter(fn ($ev) => !empty($ev['expenses']))->values();
+        $expOthers = is_array($sections) && count(array_diff($sections, ['expenses'])) > 0;
+      @endphp
+      @if($withItems->isNotEmpty())
+        <div class="rec-title {{ $expOthers ? 'rec-newpage' : '' }}">
+          <h3>Itemized Expenses per Event</h3>
+          <p class="desc">Every expense entry recorded against each event.</p>
+        </div>
+        @foreach($withItems as $ev)
+          <div class="rec-head" @if(!empty($ev['is_over_budget'])) style="background:#FEF2F2; border-color:#FECACA;" @endif>
+            <div class="rec-name">{{ $ev['name'] }}</div>
+            <div class="rec-meta">{{ $ev['date'] ?? '—' }} &middot; {{ $ev['event_status'] }}</div>
+            <div class="rec-stats">
+              @if(array_key_exists('approved_budget', $ev))
+                Budget: <b>{{ $peso($ev['approved_budget']) }}</b> &nbsp; Spent: <b>{{ $peso($ev['total_expenses']) }}</b> &nbsp;
+                @if($ev['is_over_budget']) <b style="color:#DC2626;">Over by {{ $peso($ev['over_by']) }}</b> @else Remaining: <b style="color:#0F766E;">{{ $peso($ev['remaining']) }}</b> @endif
+              @else
+                <b>No approved budget</b> &nbsp; Spent: <b>{{ $peso($ev['total_expenses']) }}</b>
+              @endif
+            </div>
+          </div>
+          <table class="plain rec-table">
+            <thead><tr><th style="width:22px;">#</th><th>Item</th><th style="width:70px; text-align:right;">Amount</th><th>Notes</th><th style="width:80px;">Recorded By</th><th style="width:56px;">Date</th></tr></thead>
+            <tbody>
+            @foreach($ev['expenses'] as $i => $x)
+              <tr>
+                <td>{{ $i + 1 }}</td>
+                <td>{{ $x['item'] }}</td>
+                <td style="text-align:right;">{{ $peso($x['amount']) }}</td>
+                <td>{{ $x['notes'] ?: '—' }}</td>
+                <td>{{ $x['recorded_by'] ?: '—' }}</td>
+                <td>{{ $x['date'] ?? '—' }}</td>
+              </tr>
+            @endforeach
+              <tr>
+                <td></td><td style="font-weight:bold; background:#EEF4F1;">Total</td>
+                <td style="text-align:right; font-weight:bold; background:#EEF4F1;">{{ $peso($ev['total_expenses']) }}</td>
+                <td colspan="3" style="background:#EEF4F1;"></td>
+              </tr>
+            </tbody>
+          </table>
+          <div style="height:12px;"></div>
+        @endforeach
+      @endif
+    @endif
+
+    @if($show('topExpenses'))
     @if(!empty($data['top_expenses']) && count($data['top_expenses']))
       <div class="card">
         <h3>Top Expenses</h3>
         <table class="plain">
-          <thead><tr><th>Item</th><th>Event</th><th>Amount</th></tr></thead>
+          <thead><tr><th>Item</th><th>Event</th><th style="text-align:right;">Amount</th></tr></thead>
           <tbody>
           @foreach($data['top_expenses'] as $ex)
             <tr>
               <td>{{ $ex['item'] }}</td>
               <td>{{ $ex['event_name'] ?? '—' }}</td>
-              <td>₱{{ number_format($ex['amount'], 2) }}</td>
+              <td style="text-align:right;">{{ $peso($ex['amount']) }}</td>
             </tr>
           @endforeach
           </tbody>
         </table>
       </div>
     @endif
+    @endif
+
+    @if($show('noBudget'))
+    @if(!empty($data['unbudgeted']) && count($data['unbudgeted']))
+      <div class="card">
+        <h3>Events Without an Approved Budget</h3>
+        <p class="desc">Events in this period that have no approved budget set, so they are not counted in the totals above.</p>
+        <table class="plain">
+          <thead><tr><th>Event</th><th style="width:62px;">Date</th><th style="width:56px;">Status</th><th style="width:42px; text-align:right;">Entries</th><th style="width:76px; text-align:right;">Spent</th></tr></thead>
+          <tbody>
+          @foreach($data['unbudgeted'] as $ev)
+            <tr>
+              <td>{{ $cut($ev['name'], 48) }}</td>
+              <td>{{ $ev['date'] ?? '—' }}</td>
+              <td>{{ $ev['event_status'] }}</td>
+              <td style="text-align:right;">{{ $ev['expense_count'] }}</td>
+              <td style="text-align:right;">{{ $peso($ev['total_expenses']) }}</td>
+            </tr>
+          @endforeach
+          </tbody>
+        </table>
+      </div>
+    @endif
+    @endif
 
   @else
+    @if($show('summary'))
     <table class="stat-table">
       <tr>
         <td class="stat-cell" style="width:50%;"><div class="stat-box" style="background:#456F68;">
@@ -397,7 +654,9 @@
         </div></td>
       </tr>
     </table>
+    @endif
 
+    @if($show('condition'))
     <div class="card">
       <h3>By Condition</h3>
       @forelse($data['by_condition'] as $c)
@@ -407,16 +666,20 @@
         <p class="empty">No items found.</p>
       @endforelse
     </div>
+    @endif
 
+    @if($show('items'))
+    @php $groups = $pageRows($data['items'], $rowCaps['Inventory Items'][0], $rowCaps['Inventory Items'][1]); @endphp
+    @forelse($groups as $gi => $rowGroup)
     <div class="card card-list">
-      <h3>Inventory Items</h3>
-      @forelse($data['items']->chunk(2) as $pair)
+      <h3>Inventory Items @if($gi > 0) <span class="cont">(continued)</span>@endif</h3>
+      @foreach($rowGroup as $pair)
         <table class="mini-grid"><tr>
           @foreach($pair as $item)
             @php $cc = $chipColor($item['condition']); @endphp
             <td class="mini-cell">
-              <div class="mini-title">{{ $item['name'] }}</div>
-              <div class="mini-sub">{{ $item['storage_location'] ?? '—' }}</div>
+              <div class="mini-title">{{ $cut($item['name'], 38) }}</div>
+              <div class="mini-sub">{{ $cut($item['storage_location'] ?? '—', 60) }}</div>
               <table class="progress-row"><tr>
                 <td><span class="chip" style="background:{{ $cc['bg'] }}; color:{{ $cc['text'] }};">{{ $item['condition'] }}</span></td>
                 <td class="progress-pct" style="text-align:right;">×{{ $item['quantity'] }}</td>
@@ -425,17 +688,30 @@
           @endforeach
           @if($pair->count() < 2)<td class="mini-cell" style="visibility:hidden;"></td>@endif
         </tr></table>
-      @empty
-        <p class="empty">No items found.</p>
-      @endforelse
+      @endforeach
     </div>
+    @empty
+    <div class="card card-list"><h3>Inventory Items</h3><p class="empty">No items found.</p></div>
+    @endforelse
+    @endif
+
   @endif
 
   <div class="sig-wrap">
     <table class="sig-row" style="border: none;">
       <tr>
-        <td style="width: 50%;"><div class="sig-line">Prepared by</div></td>
-        <td style="width: 50%;"><div class="sig-line">Barangay Captain</div></td>
+        <td class="sig-label" style="width: 50%;">Prepared by:</td>
+        <td class="sig-label" style="width: 50%;">Noted:</td>
+      </tr>
+      <tr>
+        {{-- The official's name (auto-filled from the resident marked Barangay
+             Secretary / Captain) sits on top of the signature line. --}}
+        <td class="sig-space"><div class="sig-name">{{ $officials['secretary']['name'] ?? '' }}</div></td>
+        <td class="sig-space"><div class="sig-name">{{ $officials['captain']['name'] ?? '' }}</div></td>
+      </tr>
+      <tr>
+        <td><div class="sig-line">Barangay Secretary</div></td>
+        <td><div class="sig-line">Barangay Captain</div></td>
       </tr>
     </table>
     <p class="footer">Generated via Piao Connect — Barangay Information Management System · {{ $printedOn }}</p>

@@ -10,7 +10,8 @@
         "barryvdh/laravel-dompdf": "*",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
-        "phpoffice/phpword": "*"
+        "phpoffice/phpword": "*",
+        "stichoza/google-translate-php": "^5.3"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

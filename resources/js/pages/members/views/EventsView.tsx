@@ -569,6 +569,7 @@ import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
 import api, { apiErrorMessage } from "../../../lib/api";
+import { matchesSearch } from "../../../lib/search";
 
 const THIS_WEEK_KEY = "__THIS_WEEK__";
 
@@ -747,12 +748,8 @@ export default function EventsView({
     }
 
     if (eventSearch.trim()) {
-      const q = eventSearch.toLowerCase();
       result = result.filter((e) =>
-        e.title.toLowerCase().includes(q) ||
-        e.date.toLowerCase().includes(q) ||
-        e.location.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q)
+        matchesSearch(eventSearch, e.title, e.date, e.location, e.description)
       );
     }
 
@@ -851,7 +848,7 @@ export default function EventsView({
               <div className="flex items-center gap-2">
                 <button onClick={() => goToPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
-                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">{currentPage}</span>
+                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">{currentPage}</span>
                 <button onClick={() => goToPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">→</button>
               </div>
@@ -946,7 +943,7 @@ export default function EventsView({
                                   {reviewError && <p className="mt-1 text-xs text-red-400">{reviewError}</p>}
                                   <div className="mt-2 flex gap-2">
                                     <button type="button" onClick={() => submitReview(e.id)} disabled={reviewRating < 1 || submittingReview}
-                                      className="flex-1 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-bold py-2 disabled:opacity-50 transition">
+                                      className="flex-1 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold py-2 disabled:opacity-50 transition">
                                       {submittingReview ? t("submittingLabel") : t("submitReviewButton")}
                                     </button>
                                     <button type="button" onClick={cancelReview} disabled={submittingReview}

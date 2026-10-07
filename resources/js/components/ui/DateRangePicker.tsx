@@ -1,6 +1,8 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Calendar, ChevronDown, X } from "lucide-react";
 import MiniCalendar from "./Calendar";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { formatShortDate, monthShort } from "./dateNames";
 
 interface DateRangePickerProps {
   from: string;
@@ -46,6 +48,7 @@ export default function DateRangePicker({
   applyLabel,
   dark = false,
 }: DateRangePickerProps) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [draftFrom, setDraftFrom] = useState(from);
   const [draftTo, setDraftTo] = useState(to);
@@ -169,9 +172,8 @@ export default function DateRangePicker({
   // out each side in full ("Sep 1, 2026 – Mar 2, 2027").
   const parseISO = (value: string) => (value ? new Date(`${value}T00:00:00`) : null);
 
-  const formatSingleDate = (d: Date) =>
-    d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  const formatShortMonth = (d: Date) => d.toLocaleDateString("en-US", { month: "short" });
+  const formatSingleDate = (d: Date) => formatShortDate(d, t);
+  const formatShortMonth = (d: Date) => monthShort(t, d.getMonth());
 
   const formatRange = (fromValue: string, toValue: string): string => {
     const fromDate = parseISO(fromValue);

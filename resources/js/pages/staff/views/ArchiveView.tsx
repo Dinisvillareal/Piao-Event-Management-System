@@ -1,8 +1,10 @@
+import { matchesSearch } from "../../../lib/search";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RefreshCw, Filter, Search, Trash2, Layers, Clock, AlertTriangle } from 'lucide-react';
 import FilterDropdown from '../../../components/ui/FilterDropdown';
 import StatusModal from '../../../components/ui/StatusModal';
 import { useLanguage } from "../../../i18n/LanguageContext";
+import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 
 interface TrashedItem {
   id: string | number;
@@ -49,6 +51,8 @@ export default function ArchiveView() {
   const { t } = useLanguage();
   const [allTrashedItems, setAllTrashedItems] = useState<TrashedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
+  const statsLoading = usePageOpenSkeleton(loading);
   const [restoringId, setRestoringId] = useState<string | number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -58,11 +62,17 @@ export default function ArchiveView() {
   // on, but the flash keeps page switches feeling consistent app-wide.
   const [pageSwitching, setPageSwitching] = useState(false);
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Anchor at the very top of the page -- scrolled into view on every
+  // pagination click, same as Activity Logs, so switching pages always
+  // lands back at the top instead of staying wherever the list had been
+  // scrolled to.
+  const topRef = useRef<HTMLDivElement>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const itemsPerPage = 20;
@@ -112,7 +122,7 @@ export default function ArchiveView() {
           return {
             id: item.id,
             type: item.type === 'user' ? 'resident' : item.type,
-            name: item.name || item.title || 'Unnamed',
+            name: item.name || item.title || t("opsUnnamed"),
             deletedAt: formatTimeOnly(raw),
             deletedAtRaw: raw,
             deletedBy: item.deleted_by || item.deletedBy,
@@ -182,11 +192,8 @@ export default function ArchiveView() {
       filtered = filtered.filter(item => item.type === typeFilter);
     }
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(item =>
-        item.name.toLowerCase().includes(q) ||
-        item.type.toLowerCase().includes(q) ||
-        item.deletedBy.toLowerCase().includes(q)
+        matchesSearch(searchQuery, item.name, item.type, item.deletedBy)
       );
     }
     return filtered;
@@ -329,7 +336,7 @@ export default function ArchiveView() {
         modals further below stay on their original light theme, same
         scoping used everywhere else -- there's no core edit form on this
         page to darken along with it. */}
-    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div ref={topRef} className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -348,6 +355,7 @@ export default function ArchiveView() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {statCards.map((card) => {
+          if (statsLoading) return <StatCardSkeleton key={card.key} />;
           const Icon = card.icon;
           return (
             <div key={card.key} className={`rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white`}>
@@ -368,28 +376,42 @@ export default function ArchiveView() {
         })}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("searchArchivePlaceholder")}
-              className="h-11 w-full rounded-xl border border-transparent bg-transparent pl-10 pr-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+                title="Clear"
+                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+              >
+                {t("clearLabel")}
+              </button>
+            )}
           </div>
+          <FilterDropdown
+            value={typeFilter}
+            onChange={setTypeFilter}
+            options={typeOptions}
+            align="right"
+            className="h-11 pl-10 pr-8 shrink-0"
+            icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+            dark
+            searchable
+            searchPlaceholder={t("search")}
+            noResultsLabel={t("noMatchesFoundLabel")}
+          />
         </div>
-        <FilterDropdown
-          value={typeFilter}
-          onChange={setTypeFilter}
-          options={typeOptions}
-          align="right"
-          className="h-11 pl-10 pr-8"
-          icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-          dark
-        />
       </div>
 
       <p className="text-xs text-white/45">
@@ -464,7 +486,7 @@ export default function ArchiveView() {
               disabled={currentPage === 1}
               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >←</button>
-            <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+            <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
               {currentPage}
             </span>
             <button
@@ -482,7 +504,7 @@ export default function ArchiveView() {
           step, and the success modal below) since restoring is the
           positive/undo action here, not the app's usual save/delete. */}
       {restoreItem && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="flex justify-center text-sage-400 mb-3"><RefreshCw size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("restoreItemModalTitle")}</h3>

@@ -2,38 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { ArrowRight, Copy, LayoutDashboard, Users, CheckCircle, LogOut } from "lucide-react";
 import StatusModal from "../../components/ui/StatusModal";
 import SplashScreen from "../../components/ui/SplashScreen";
-
-// ─── Password-visibility eye glyph -- a plain closed-eye arc for "tap to
-// hide" (password currently showing), and that same arc with a hollow
-// pupil ring beneath it for "tap to reveal" (password currently masked) --
-// no bottom eyelid line, just the arc + ring, always in the theme's own
-// muted color rather than solid black. ─────────────────────────────────────
-function EyeToggleIcon({ visible }: { visible: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" className="text-white/50">
-      {visible ? (
-        <path
-          d="M4 13c1.8-4.2 5-6.8 8-6.8s6.2 2.6 8 6.8"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.3"
-          strokeLinecap="round"
-        />
-      ) : (
-        <>
-          <path
-            d="M4 12.5c1.8-4.3 5-6.3 8-6.3s6.2 2 8 6.3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-          <circle cx="12" cy="12.7" r="3.3" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        </>
-      )}
-    </svg>
-  );
-}
+import { useLanguage } from "../../i18n/LanguageContext";
+import EyeToggleIcon from "../../components/ui/EyeToggleIcon";
 
 // ─── Decorative corner wave art -- a few overlapping stroked lines, standing
 // in for the flowing line-art motif in the reference selection screen. ────
@@ -96,6 +66,7 @@ function PortalSelectionModal({
   onSelectMember: () => void;
   onLogout: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-[#0A0E1A]">
       <CornerWaveArt className="pointer-events-none absolute left-0 top-0 h-40 w-72 opacity-60 sm:h-56 sm:w-96" />
@@ -107,7 +78,7 @@ function PortalSelectionModal({
           className="flex items-center gap-1.5 text-[13px] font-semibold text-white/60 transition hover:text-white"
         >
           <LogOut className="h-4 w-4" />
-          Logout
+          {t("loginLogout")}
         </button>
       </div>
 
@@ -116,61 +87,61 @@ function PortalSelectionModal({
       <div className="relative flex items-center justify-center px-6 pb-16 pt-4 sm:px-10">
         <div className="w-full max-w-5xl rounded-3xl border border-white/15 bg-white/[0.07] p-10 text-center shadow-[0_25px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-14">
           <p className="text-[13px] font-semibold uppercase tracking-[0.2em] text-white/50">
-            Piao e-Membership Portal
+            {t("loginPortalEyebrow")}
           </p>
           <h1 className="mt-3 font-display text-[36px] font-extrabold uppercase tracking-tight text-white sm:text-[46px]">
-            Portal Selection
+            {t("loginPortalSelection")}
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-[16px] text-white/55">
-            Welcome back, {userName}. You have both staff and member access — choose where you'd like to go.
+            {t("loginPortalWelcome").replace("{name}", userName)}
           </p>
 
           <div className="mt-12 grid gap-7 text-left sm:grid-cols-2">
             <div className="overflow-hidden rounded-2xl border border-white/15 bg-white/[0.05]">
               <div className="flex items-center justify-between border-b border-white/10 px-7 py-5">
-                <span className="text-[12px] font-bold uppercase tracking-wide text-white/60">Staff Access</span>
+                <span className="text-[12px] font-bold uppercase tracking-wide text-white/60">{t("loginStaffAccess")}</span>
                 <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10">
                   <LayoutDashboard className="h-5 w-5 text-white" />
                 </span>
               </div>
               <div className="p-7">
-                <p className="font-display text-[21px] font-bold text-white">Staff Portal</p>
+                <p className="font-display text-[21px] font-bold text-white">{t("loginStaffPortal")}</p>
                 <p className="mt-2 text-[14px] leading-relaxed text-white/55">
-                  Manage residents, events, certificate requests, and memberships.
+                  {t("loginStaffPortalDesc")}
                 </p>
                 <button
                   onClick={onSelectStaff}
                   className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-gold-400 to-[#4FBEB0] py-3.5 text-[15px] font-bold text-[#08130F] transition hover:opacity-90"
                 >
-                  Continue to Staff Portal <ArrowRight className="h-4 w-4" />
+                  {t("loginContinueStaff")} <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-white/15 bg-white/[0.05]">
               <div className="flex items-center justify-between border-b border-white/10 px-7 py-5">
-                <span className="text-[12px] font-bold uppercase tracking-wide text-white/60">Member Access</span>
+                <span className="text-[12px] font-bold uppercase tracking-wide text-white/60">{t("loginMemberAccess")}</span>
                 <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10">
                   <Users className="h-5 w-5 text-white" />
                 </span>
               </div>
               <div className="p-7">
-                <p className="font-display text-[21px] font-bold text-white">Member Dashboard</p>
+                <p className="font-display text-[21px] font-bold text-white">{t("loginMemberPortalTitle")}</p>
                 <p className="mt-2 text-[14px] leading-relaxed text-white/55">
-                  View your memberships, event attendance, and certificate status.
+                  {t("loginMemberPortalDesc")}
                 </p>
                 <button
                   onClick={onSelectMember}
                   className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-gold-400 to-[#4FBEB0] py-3.5 text-[15px] font-bold text-[#08130F] transition hover:opacity-90"
                 >
-                  Continue to Member Dashboard <ArrowRight className="h-4 w-4" />
+                  {t("loginContinueMember")} <ArrowRight className="h-4 w-4" />
                 </button>
               </div>
             </div>
           </div>
 
           <p className="relative z-10 mt-11 text-[13px] text-white/40">
-            Need help? Contact the Barangay Hall at{" "}
+            {t("loginNeedHelp")}{" "}
             <span className="font-semibold text-[#7DD8CB]">0917-123-4567</span>
           </p>
         </div>
@@ -182,6 +153,7 @@ function PortalSelectionModal({
 // ─── Live clock -- Philippine Standard Time, ticking every second, styled
 // after the reference gov't sites (plain stacked text, no badge chrome). ──
 function LiveClock() {
+  const { t, locale } = useLanguage();
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -189,14 +161,14 @@ function LiveClock() {
     return () => clearInterval(id);
   }, []);
 
-  const dateLabel = now.toLocaleDateString("en-PH", {
+  const dateLabel = now.toLocaleDateString(locale, {
     timeZone: "Asia/Manila",
     weekday: "long",
     month: "long",
     day: "numeric",
     year: "numeric",
   });
-  const timeLabel = now.toLocaleTimeString("en-PH", {
+  const timeLabel = now.toLocaleTimeString(locale, {
     timeZone: "Asia/Manila",
     hour: "2-digit",
     minute: "2-digit",
@@ -206,9 +178,9 @@ function LiveClock() {
 
   return (
     <div className="text-right">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45">Philippine Standard Time</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45">{t("loginPhilTime")}</p>
       <p className="mt-0.5 text-[13px] font-medium text-white/90 [font-variant-numeric:tabular-nums]">
-        {dateLabel} at {timeLabel}
+        {t("loginDateAtTime").replace("{date}", dateLabel).replace("{time}", timeLabel)}
       </p>
     </div>
   );
@@ -218,6 +190,7 @@ function LiveClock() {
 // advancing every few seconds, giving the branded panel a sense of a live,
 // in-use system rather than a static marketing graphic. ──────────────────
 function LiveActivityFeed() {
+  const { t } = useLanguage();
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 5000);
@@ -226,16 +199,16 @@ function LiveActivityFeed() {
 
   const formatAgo = (baseSeconds: number) => {
     const seconds = baseSeconds + tick * 5;
-    if (seconds < 60) return "just now";
+    if (seconds < 60) return t("justNowLabel");
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}m ago`;
-    return `${Math.floor(minutes / 60)}h ago`;
+    if (minutes < 60) return t("minutesAgoShortLabel").replace("{n}", String(minutes));
+    return t("hoursAgoShortLabel").replace("{n}", String(Math.floor(minutes / 60)));
   };
 
   const items = [
-    { label: "New resident record added", base: 20 },
-    { label: "Certificate request approved", base: 340 },
-    { label: "Event attendance logged", base: 1180 },
+    { label: "loginActNewResident", base: 20 },
+    { label: "loginActCertApproved", base: 340 },
+    { label: "loginActAttendanceLogged", base: 1180 },
   ];
 
   return (
@@ -246,7 +219,7 @@ function LiveActivityFeed() {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-60" />
             <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]" />
           </span>
-          <span className="text-white/80">{item.label}</span>
+          <span className="text-white/80">{t(item.label)}</span>
           <span className="text-white/35">&middot; {formatAgo(item.base)}</span>
         </div>
       ))}
@@ -256,6 +229,7 @@ function LiveActivityFeed() {
 
 // ─── Login Page ───────────────────────────────────────────────────────────────
 export default function LoginPage() {
+  const { t } = useLanguage();
   const [showContact, setShowContact] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -292,7 +266,7 @@ export default function LoginPage() {
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
     if (!username.trim() || !password.trim()) {
-      setError("Please enter both your username and password.");
+      setError(t("loginErrEnterBoth"));
       return;
     }
 
@@ -352,24 +326,26 @@ export default function LoginPage() {
             setShowAccountDeletedModal(true);
             return;
           }
-          setError(data.message || "Invalid username or password");
+          setError(data.message || t("loginErrInvalid"));
         } else if (response.status === 419) {
-          setError("Session expired. Please refresh the page");
+          setError(t("loginErrSessionExpired"));
         } else if (response.status === 429) {
           const retryAfter = parseInt(response.headers.get("Retry-After") || "", 10);
           setError(
             Number.isFinite(retryAfter) && retryAfter > 0
-              ? `Too many login attempts. Please try again in ${retryAfter} second${retryAfter === 1 ? "" : "s"}.`
-              : "Too many login attempts. Please wait a moment and try again."
+              ? retryAfter === 1
+                ? t("loginErrTooManyOneSecond")
+                : t("loginErrTooManySeconds").replace("{n}", String(retryAfter))
+              : t("loginErrTooMany")
           );
         } else {
-          setError(data.message || "Login failed");
+          setError(data.message || t("loginErrFailed"));
         }
 
         (form.elements.namedItem("password") as HTMLInputElement).value = "";
       }
     } catch (err) {
-      setError("Network error. Please try again");
+      setError(t("loginErrNetwork"));
     } finally {
       setIsLoading(false);
     }
@@ -454,9 +430,9 @@ export default function LoginPage() {
       <StatusModal
         open={showAccountDeletedModal}
         type="error"
-        title="Account Deleted"
-        message="This account has been deleted. You cannot log in."
-        okLabel="OK"
+        title={t("loginAccountDeletedTitle")}
+        message={t("loginAccountDeletedMsg")}
+        okLabel={t("okLabel")}
         onClose={() => { setShowAccountDeletedModal(false); window.location.href = "/login"; }}
       />
 
@@ -468,15 +444,15 @@ export default function LoginPage() {
       <StatusModal
         open={!!error}
         type="error"
-        title="Sign In Failed"
+        title={t("loginSignInFailed")}
         message={error}
-        okLabel="OK"
+        okLabel={t("okLabel")}
         onClose={() => setError("")}
       />
 
       {showCopiedToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2 rounded-full bg-[#0A0E1A] text-white text-sm font-medium px-5 py-2.5 shadow-xl animate-in fade-in slide-in-from-bottom-2">
-          <CheckCircle size={16} className="text-gold-400" /> Number copied to clipboard!
+          <CheckCircle size={16} className="text-gold-400" /> {t("loginCopied")}
         </div>
       )}
 
@@ -501,7 +477,7 @@ export default function LoginPage() {
         <div className="relative z-10 flex items-center justify-between border-b border-white/10 px-6 py-4 sm:px-10">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10">
-              <img src="/logo-removebg-preview.png" alt="Logo" className="h-full w-full object-contain" />
+              <img src="/logo-removebg-preview.png" alt={t("loginLogoAlt")} className="h-full w-full object-contain" />
             </div>
             <span className="text-[13px] font-extrabold tracking-wide text-white">
               PIAO<span className="text-white/40">CONNECT</span>
@@ -513,7 +489,7 @@ export default function LoginPage() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
               </span>
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-white/55">System Online</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-white/55">{t("loginSystemOnline")}</span>
             </div>
             <LiveClock />
           </div>
@@ -524,7 +500,7 @@ export default function LoginPage() {
           {/* Left: branding + wording */}
           <div className="w-full max-w-xl text-center lg:text-left">
             <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/60 sm:text-[12px]">
-              Welcome to the
+              {t("loginWelcomeTo")}
             </p>
             <p className="mt-2 font-display text-[34px] font-extrabold uppercase leading-none tracking-tight sm:text-[48px]">
               <span
@@ -534,32 +510,29 @@ export default function LoginPage() {
                     "linear-gradient(90deg, #F4CE6A 0%, #92C298 33%, #3E989B 66%, #125E85 100%)",
                 }}
               >
-                Barangay Piao Community
+                {t("loginCommunityName")}
               </span>
             </p>
             <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.25em] text-white/50 sm:text-[13px]">
-              Resident-Focused &middot; Community-Driven &middot; Always Online
+              {t("loginTagline")}
             </p>
             <p className="mx-auto mt-6 max-w-md text-[14px] leading-relaxed text-white/55 lg:mx-0">
-              One account for every resident and staff member — request certificates,
-              keep your household records up to date, follow barangay announcements,
-              and register for community events, all from a single, secure portal
-              built around this community.
+              {t("loginIntro")}
             </p>
           </div>
 
           {/* Right: the sign-in card */}
           <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white/[0.07] p-8 shadow-[0_25px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-10">
             <div className="text-center">
-              <h2 className="font-display text-[28px] font-bold text-white">Welcome back</h2>
+              <h2 className="font-display text-[28px] font-bold text-white">{t("welcomeBack")}</h2>
               <p className="mt-2 text-[14px] text-white/55">
-                Sign in with the account issued to you at the Barangay Hall to reach your dashboard.
+                {t("loginSubtitle")}
               </p>
             </div>
 
             <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-5">
               <div>
-                <label className="text-[13px] font-semibold text-white/80">Username</label>
+                <label className="text-[13px] font-semibold text-white/80">{t("usernameLabel")}</label>
                 <input
                   type="text"
                   name="username"
@@ -572,9 +545,9 @@ export default function LoginPage() {
 
               <div>
                 <div className="flex justify-between items-baseline text-sm">
-                  <label className="text-[13px] font-semibold text-white/80">Password</label>
+                  <label className="text-[13px] font-semibold text-white/80">{t("passwordLabel")}</label>
                   <span className="text-xs font-semibold text-[#7DD8CB] cursor-pointer hover:underline">
-                    Forgot?
+                    {t("loginForgot")}
                   </span>
                 </div>
                 <div className="relative">
@@ -589,7 +562,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? t("loginHidePassword") : t("loginShowPassword")}
                     className="absolute right-3 top-1/2 mt-0.5 -translate-y-1/2 text-white/50 transition hover:text-white"
                   >
                     <EyeToggleIcon visible={showPassword} />
@@ -617,7 +590,7 @@ export default function LoginPage() {
                   disabled={isLoading}
                 />
                 <label htmlFor="keepSignedIn" className="text-[13px] text-white/60">
-                  Keep me signed in on this device
+                  {t("loginKeepSignedIn")}
                 </label>
               </div>
 
@@ -626,18 +599,18 @@ export default function LoginPage() {
                 disabled={isLoading}
                 className="w-full py-3 rounded-full font-bold text-[14px] shadow-sm transition text-[#08130F] flex items-center justify-center gap-2 bg-gradient-to-r from-gold-400 to-[#4FBEB0] hover:opacity-90 disabled:opacity-50"
               >
-                {isLoading ? "Signing in..." : "Sign In"}
+                {isLoading ? t("loginSigningIn") : t("signInWord")}
                 {!isLoading && <ArrowRight className="h-4 w-4" />}
               </button>
 
               <div className="relative flex justify-center mt-1" ref={contactRef}>
                 <p className="text-xs text-white/45">
-                  Don't have an account?{" "}
+                  {t("loginNoAccount")}{" "}
                   <span
                     onClick={() => setShowContact(true)}
                     className="font-semibold cursor-pointer text-[#7DD8CB] hover:underline"
                   >
-                    Contact the Records Office
+                    {t("loginContactRecords")}
                   </span>
                 </p>
 
@@ -661,8 +634,7 @@ export default function LoginPage() {
             </form>
 
             <p className="mt-8 text-center text-[11px] leading-relaxed text-white/35">
-              Resident accounts are created by Barangay staff — only staff and the
-              residents they've registered can sign in here.
+              {t("loginResidentNote")}
             </p>
           </div>
         </div>
@@ -686,23 +658,23 @@ export default function LoginPage() {
 
         <div className="relative mx-auto max-w-4xl text-center">
           <p className="text-[20px] font-bold leading-snug text-white sm:text-[28px]">
-            Building a more connected{" "}
+            {t("loginBuildingPrefix")}{" "}
             <span className="bg-gradient-to-r from-gold-300 to-gold-400 bg-clip-text text-transparent">
-              barangay
+              {t("loginBarangayWord")}
             </span>
             ,{" "}
             <span className="bg-gradient-to-r from-[#8FC59B] to-[#4FBEB0] bg-clip-text text-transparent">
-              committed to every resident
+              {t("loginCommittedTo")}
             </span>
           </p>
           <p className="mt-3 text-[18px] font-bold text-white sm:text-[24px]">
-            one household, one record, one community at a time.
+            {t("loginOneAtATime")}
           </p>
         </div>
       </section>
 
       <p className="relative z-10 border-t border-white/10 px-6 py-4 text-center text-[11px] text-white/30 sm:px-10">
-        © 2026 Barangay Piao e-Membership · Community System
+        {t("loginFooter")}
       </p>
     </div>
   );

@@ -25,7 +25,8 @@ class EventAttendanceSeeder extends Seeder
      * mix of Complete / Incomplete / missed outcomes with real time_in and
      * time_out values pulled from that event's own schedule -- events that
      * are still upcoming are left as pure 'missed' placeholders, exactly
-     * like a real event nobody has attended yet.
+     * like a real event nobody has attended yet. An event that is in progress
+     * right now only has sign-ins (no sign-outs yet).
      */
     public function run(): void
     {
@@ -40,11 +41,17 @@ class EventAttendanceSeeder extends Seeder
 
             $eventStart = Carbon::parse($event->event_start);
             $hasHappened = $eventStart->lessThanOrEqualTo($now);
+            // An event that has started but not finished yet (ongoing right now):
+            // people have signed in, but nobody can have signed out.
+            $hasEnded = Carbon::parse($event->event_end ?? $event->event_start)->lessThanOrEqualTo($now);
 
             $rows = [];
 
             foreach ($residents->values() as $index => $resident) {
                 $outcome = $hasHappened ? $this->rollOutcome($index) : 'missed';
+                if ($hasHappened && !$hasEnded && $outcome === 'complete') {
+                    $outcome = 'incomplete';
+                }
                 [$timeIn, $timeOut, $status] = $this->timesFor($event, $outcome);
 
                 $rows[] = [

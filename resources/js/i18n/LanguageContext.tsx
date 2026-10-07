@@ -6,12 +6,15 @@ type LanguageContextValue = {
   language: LanguageCode;
   setLanguage: (lang: LanguageCode, opts?: { userId?: string | number }) => void;
   t: (key: string) => string;
+  /** BCP-47 tag for Intl / toLocaleDateString (Bisaya falls back to fil-PH, which browsers support). */
+  locale: string;
 };
 
 const LanguageContext = createContext<LanguageContextValue>({
   language: "en",
   setLanguage: () => {},
   t: (key) => key,
+  locale: "en-US",
 });
 
 const STORAGE_KEY = "piao_language";
@@ -52,12 +55,14 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   const t = useCallback((key: string) => translate(key, language), [language]);
 
+  const locale = language === "en" ? "en-US" : "fil-PH";
+
   useEffect(() => {
     document.documentElement.lang = language === "en" ? "en" : language;
   }, [language]);
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage, t, locale }}>
       {children}
     </LanguageContext.Provider>
   );

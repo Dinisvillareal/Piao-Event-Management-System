@@ -1,4 +1,5 @@
 import { Search } from "lucide-react";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 interface SearchBarProps {
   value: string;
@@ -16,6 +17,7 @@ interface SearchBarProps {
 }
 
 export default function SearchBar({ value, onChange, placeholder, className = "", dark = false }: SearchBarProps) {
+  const { t } = useLanguage();
   return (
     <div className={`relative w-full ${className}`}>
       <Search className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 ${dark ? "h-4 w-4 text-white/40" : "h-6 w-6 text-sage-700/80"}`} />
@@ -26,10 +28,25 @@ export default function SearchBar({ value, onChange, placeholder, className = ""
         placeholder={placeholder}
         className={`w-full border focus:outline-none transition ${
           dark
-            ? "h-11 rounded-xl border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-            : "h-14 rounded-full border-sage-200 bg-white pl-12 pr-4 text-base shadow-sm focus:ring-1 focus:border-sage-400 focus:ring-sage-700/20"
+            ? "h-11 rounded-xl border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+            : "h-14 rounded-full border-sage-200 bg-white pl-12 pr-24 text-base shadow-sm focus:ring-1 focus:border-sage-400 focus:ring-sage-700/20"
         }`}
       />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-label="Clear search"
+          title="Clear"
+          className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full transition ${
+            dark
+              ? "right-3 border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm hover:bg-[#161C2E]"
+              : "right-4 px-3 py-1 text-sm font-semibold text-sage-700/80 hover:bg-sage-700/10 hover:text-sage-800"
+          }`}
+        >
+          {t("clearLabel")}
+        </button>
+      )}
     </div>
   );
 }
