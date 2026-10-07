@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Support\BarangayOfficials;
 use App\Models\Household;
 use App\Models\ActivityLog;
 use Illuminate\Http\Request;
@@ -52,6 +53,62 @@ class UserController extends Controller
     {
         return $e instanceof \Illuminate\Database\QueryException
             && str_contains($e->getMessage(), 'users_unique_active_full_name');
+    }
+
+    /**
+     * Applies the requested Barangay Captain / Secretary post to $user (does not
+     * save -- the caller saves/creates). Returns the CURRENT holder when the post
+     * is already taken and the request did not confirm replacing them, else null.
+     */
+    private function applyBarangayPosition(User $user, Request $request): ?User
+    {
+        $position = $request->filled('barangay_position') ? $request->barangay_position : null;
+        // Strictly one holder per post: a post that is already held can never be
+        // taken over from here. The current holder has to be set to "None" first.
+        $replace = false;
+
+        $previousHolderCode = null;
+        if ($position) {
+            $previous = BarangayOfficials::holder($position);
+            $previousHolderCode = $previous && $previous->id !== $user->id ? $previous->user_code : null;
+        }
+
+        $taken = BarangayOfficials::assign($user, $position, $replace);
+        if ($taken) {
+            return $taken;
+        }
+
+        $user->save();
+
+        $title = $position ? (BarangayOfficials::TITLES[$position] ?? $position) : null;
+        if ($position) {
+            $this->createLog(
+                'Barangay Position',
+                'User',
+                "{$user->user_code} is now the {$title}" . ($previousHolderCode ? " (replaced {$previousHolderCode})" : '')
+            );
+        } else {
+            $this->createLog('Barangay Position', 'User', "{$user->user_code} no longer holds a barangay post");
+        }
+
+        return null;
+    }
+
+    private function positionTakenResponse(string $position, User $holder)
+    {
+        $title = BarangayOfficials::TITLES[$position] ?? $position;
+        return response()->json([
+            'message' => "{$holder->first_name} {$holder->last_name} is already the {$title}.",
+            'errors' => [
+                'barangay_position' => [
+                    BarangayOfficials::nameFor($holder, $position) . " is currently the {$title}. There can only be one -- set their position to None first before assigning it to someone else.",
+                ],
+            ],
+            'position_taken' => [
+                'position' => $position,
+                'holder' => BarangayOfficials::nameFor($holder, $position),
+            ],
+        ], 422);
     }
 
     private function localUpload($file): string
@@ -165,6 +222,7 @@ class UserController extends Controller
         $exists = User::whereRaw('LOWER(TRIM(first_name)) = ?', [mb_strtolower(trim($request->first_name))])
             ->whereRaw('LOWER(TRIM(last_name)) = ?', [mb_strtolower(trim($request->last_name))])
             ->whereRaw('LOWER(TRIM(COALESCE(middle_name, ""))) = ?', [mb_strtolower(trim($request->middle_name ?? ''))])
+            ->whereRaw('LOWER(TRIM(COALESCE(suffix, ""))) = ?', [mb_strtolower(trim($request->suffix ?? ''))])
             ->whereNull('deleted_at')
             ->exists();
 
@@ -215,6 +273,7 @@ class UserController extends Controller
                 'first_name'     => $request->first_name,
                 'last_name'      => $request->last_name,
                 'middle_name'    => $request->middle_name,
+                'suffix'         => trim((string) $request->suffix) !== '' ? trim($request->suffix) : null,
                 'contact_number' => $request->contact_number,
                 'validation_id'  => $path,
                 'role'           => $request->role,
@@ -230,6 +289,18 @@ class UserController extends Controller
 
             if (!empty($incomingCurrentStatusIds)) {
                 $user->currentStatuses()->sync($incomingCurrentStatusIds);
+            }
+
+            // Barangay Captain / Secretary post (one active holder each).
+            if ($request->filled('barangay_position')) {
+                $taken = $this->applyBarangayPosition($user, $request);
+                if ($taken) {
+                    DB::rollBack();
+                    if ($path) {
+                        $this->localDelete($path);
+                    }
+                    return $this->positionTakenResponse($request->barangay_position, $taken);
+                }
             }
 
             if (filter_var($request->is_household_head, FILTER_VALIDATE_BOOLEAN)) {
@@ -412,6 +483,7 @@ class UserController extends Controller
             $exists = User::whereRaw('LOWER(TRIM(first_name)) = ?', [mb_strtolower(trim($request->first_name))])
                 ->whereRaw('LOWER(TRIM(last_name)) = ?', [mb_strtolower(trim($request->last_name))])
                 ->whereRaw('LOWER(TRIM(COALESCE(middle_name, ""))) = ?', [mb_strtolower(trim($request->middle_name ?? ''))])
+                ->whereRaw('LOWER(TRIM(COALESCE(suffix, ""))) = ?', [mb_strtolower(trim($request->suffix ?? ''))])
                 ->whereNull('deleted_at')
                 ->where('id', '!=', $id)
                 ->exists();
@@ -460,6 +532,7 @@ class UserController extends Controller
                 'first_name',
                 'last_name',
                 'middle_name',
+                'suffix',
                 'contact_number',
                 'birth_date',
                 'address',
@@ -467,6 +540,19 @@ class UserController extends Controller
                 'gender',
                 'preferred_language',
             ]));
+
+            // Barangay Captain / Secretary post -- staff only. Sent as an empty
+            // string to clear the post; absent means "leave it alone".
+            if ($this->isStaff() && $request->has('barangay_position')) {
+                $newPosition = $request->filled('barangay_position') ? $request->barangay_position : null;
+                if ($newPosition !== $user->barangay_position) {
+                    $taken = $this->applyBarangayPosition($user, $request);
+                    if ($taken) {
+                        DB::rollBack();
+                        return $this->positionTakenResponse($newPosition, $taken);
+                    }
+                }
+            }
 
             // Both blocks below are staff-only, same as role/has_account/
             // membership_ids just further down -- a resident hitting this
@@ -656,6 +742,18 @@ class UserController extends Controller
             // before this record is restored.
             if ($user->is_household_head) {
                 $user->is_household_head = false;
+            }
+
+            // Likewise an archived resident can't keep the Barangay Captain /
+            // Secretary post -- clear it now so a successor can be named, and
+            // so restoring this record later can't create a second holder.
+            if ($user->barangay_position) {
+                $this->createLog(
+                    'Barangay Position',
+                    'User',
+                    "{$user->user_code} stepped down as " . (BarangayOfficials::TITLES[$user->barangay_position] ?? $user->barangay_position) . ' (record archived)'
+                );
+                $user->barangay_position = null;
             }
 
             // ✅ STORE WHO DELETED IT

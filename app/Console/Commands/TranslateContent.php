@@ -21,6 +21,13 @@ class TranslateContent extends Command
 
     public function handle()
     {
+        if (! class_exists(GoogleTranslate::class)) {
+            $this->error('The translation package is not installed yet.');
+            $this->line('Run:  composer require stichoza/google-translate-php');
+            $this->line('Then run this command again.');
+            return self::FAILURE;
+        }
+
         $locales = ['tl' => 'fil', 'ceb' => 'ceb'];
 
         $strings = [];

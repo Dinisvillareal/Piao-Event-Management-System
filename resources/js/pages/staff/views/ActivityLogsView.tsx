@@ -397,38 +397,51 @@ export default function ActivityLogsView() {
         })}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("searchActivitiesPlaceholder")}
-              className="h-11 w-full rounded-xl border border-transparent bg-transparent pl-10 pr-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+                title="Clear"
+                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+              >
+                {t("clearLabel")}
+              </button>
+            )}
           </div>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
           <FilterDropdown
             value={filterType}
             onChange={setFilterType}
             options={typeOptions}
-            className="h-11 pl-10 pr-8"
+            className="h-11 pl-10 pr-8 shrink-0"
             icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
             dark
+            searchable
+            searchPlaceholder={t("search")}
+            noResultsLabel={t("noMatchesFoundLabel")}
           />
           <FilterDropdown
             value={sortOrder}
             onChange={(v) => setSortOrder(v as "desc" | "asc")}
             options={sortOptions}
-            className="h-11 pl-10 pr-8"
+            className="h-11 pl-10 pr-8 shrink-0"
             icon={<ArrowUpDown className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
             dark
           />
-          <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 px-4" dark />
+          <div className="h-11 shrink-0">
+            <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 px-4" dark />
+          </div>
         </div>
       </div>
 

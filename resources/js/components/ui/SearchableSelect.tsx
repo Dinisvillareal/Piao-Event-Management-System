@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Search, ChevronDown, Plus } from "lucide-react";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { matchesSearch } from "../../lib/search";
 
 export interface SearchableSelectOption {
   value: string;
@@ -59,13 +60,8 @@ export default function SearchableSelect({
   const [panelPos, setPanelPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter(
-      (opt) =>
-        opt.label.toLowerCase().includes(q) ||
-        (opt.hint ? opt.hint.toLowerCase().includes(q) : false)
-    );
+    if (!query.trim()) return options;
+    return options.filter((opt) => matchesSearch(query, opt.label, opt.hint));
   }, [options, query]);
 
   useEffect(() => {

@@ -1,3 +1,4 @@
+import { matchesSearch } from "../../../lib/search";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Undo2, CheckCircle2, PackageX, X, RotateCcw, Pencil, Search, Package, Clock, History, Camera, Eye, ArrowRight } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -262,11 +263,11 @@ export default function ReturnsView() {
   // Ended-date range filter -- comparing plain "yyyy-mm-dd" slices keeps
   // this independent of time-of-day/timezone formatting.
   const filteredEvents = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     return events.filter((ev) => {
       if (q) {
-        const matchesEvent = ev.name.toLowerCase().includes(q);
-        const matchesItem = ev.items.some((it) => it.name.toLowerCase().includes(q));
+        const matchesEvent = matchesSearch(q, ev.name);
+        const matchesItem = ev.items.some((it) => matchesSearch(q, it.name));
         if (!matchesEvent && !matchesItem) return false;
       }
       if (endedDate && ev.ended_at.slice(0, 10) !== endedDate) return false;
@@ -696,22 +697,34 @@ export default function ReturnsView() {
         })}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
             <input
+              type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("searchReturnsPlaceholder")}
-              className="h-11 w-full rounded-xl border border-transparent bg-transparent pl-10 pr-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                title="Clear"
+                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+              >
+                {t("clearLabel")}
+              </button>
+            )}
           </div>
-        </div>
-        <div className="flex items-end gap-3">
-          <div>
-            <p className="text-xs font-semibold text-white/50 mb-1">{t("filterEndedDateLabel")}</p>
-            <DatePicker value={endedDate} onChange={setEndedDate} className="h-11 px-4" dark />
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-semibold text-white/50 whitespace-nowrap">{t("filterEndedDateLabel")}</span>
+            <div className="h-11">
+              <DatePicker value={endedDate} onChange={setEndedDate} className="h-11 px-4" dark />
+            </div>
           </div>
         </div>
       </div>
@@ -728,36 +741,36 @@ export default function ReturnsView() {
         <button
           type="button"
           onClick={() => switchTab("pending")}
-          className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
+          className={`inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-base font-bold transition ${
             activeTab === "pending"
               ? "bg-sage-700 text-white shadow-sm"
               : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
           }`}
         >
-          <PackageX className="h-4 w-4" />
+          <PackageX className="h-5 w-5" />
           {t("pendingReturnsTitle")}
           <span
-            className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+            className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-2 text-xs font-bold ${
               activeTab === "pending" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
             }`}
           >
             {filteredEvents.length}
           </span>
         </button>
-        <ArrowRight className="h-4 w-4 text-white/25 hidden sm:block" />
+        <ArrowRight className="h-5 w-5 text-white/25 hidden sm:block" />
         <button
           type="button"
           onClick={() => switchTab("released")}
-          className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
+          className={`inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-base font-bold transition ${
             activeTab === "released"
               ? "bg-sage-700 text-white shadow-sm"
               : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
           }`}
         >
-          <History className="h-4 w-4" />
+          <History className="h-5 w-5" />
           {t("recentlyReleasedTitle")}
           <span
-            className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+            className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-2 text-xs font-bold ${
               activeTab === "released" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
             }`}
           >
@@ -771,11 +784,11 @@ export default function ReturnsView() {
           is the active one. */}
       {activeTab === "pending" && (
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
-        <div className="px-4 sm:px-5 py-3.5 border-b border-white/10 flex items-center gap-2.5">
-          <PackageX className="h-4 w-4 text-white/40" />
+        <div className="px-4 sm:px-6 py-4 border-b border-white/10 flex items-center gap-3">
+          <PackageX className="h-5 w-5 text-white/40" />
           <div>
-            <p className="text-sm font-bold text-white">{t("pendingReturnsTitle")}</p>
-            <p className="text-xs text-white/40">{t("pendingReturnsHint")}</p>
+            <p className="text-base font-bold text-white">{t("pendingReturnsTitle")}</p>
+            <p className="text-[13px] text-white/40">{t("pendingReturnsHint")}</p>
           </div>
         </div>
 
@@ -804,14 +817,14 @@ export default function ReturnsView() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-[15px]">
                 <thead>
                   <tr className="border-b border-white/10">
-                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("eventColumnLabel")}</th>
-                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("endedOnColumnLabel")}</th>
-                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("daysOverdueColumnLabel")}</th>
-                    <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("itemsColumnLabel")}</th>
-                    <th className="py-3 px-4 text-right text-[11px] font-bold uppercase tracking-wide text-white">{t("actionColumnLabel")}</th>
+                    <th className="py-3.5 px-5 text-left text-xs font-bold uppercase tracking-wide text-white">{t("eventColumnLabel")}</th>
+                    <th className="py-3.5 px-5 text-left text-xs font-bold uppercase tracking-wide text-white">{t("endedOnColumnLabel")}</th>
+                    <th className="py-3.5 px-5 text-left text-xs font-bold uppercase tracking-wide text-white">{t("daysOverdueColumnLabel")}</th>
+                    <th className="py-3.5 px-5 text-left text-xs font-bold uppercase tracking-wide text-white">{t("itemsColumnLabel")}</th>
+                    <th className="py-3.5 px-5 text-right text-xs font-bold uppercase tracking-wide text-white">{t("actionColumnLabel")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -824,10 +837,10 @@ export default function ReturnsView() {
                           flashEventIds.includes(ev.id) ? "bg-[#4FBEB0]/15 shadow-[inset_3px_0_0_#4FBEB0]" : "hover:bg-white/[0.05]"
                         }`}
                       >
-                        <td className="py-3.5 px-4">
+                        <td className="py-4 px-5">
                           <div className="flex items-center gap-3 min-w-0">
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#8A3D2C]/25 shrink-0">
-                              <PackageX className="h-4 w-4 text-[#E2A088]" />
+                            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#8A3D2C]/25 shrink-0">
+                              <PackageX className="h-5 w-5 text-[#E2A088]" />
                             </div>
                             <div className="min-w-0">
                               <p className="font-semibold text-white truncate">{tc(ev.name, language as any)}</p>
@@ -837,25 +850,25 @@ export default function ReturnsView() {
                             </div>
                           </div>
                         </td>
-                        <td className="py-3.5 px-4 text-white/60 whitespace-nowrap">{formatEndedAt(ev.ended_at)}</td>
-                        <td className="py-3.5 px-4">
-                          <span className="inline-flex items-center rounded-full bg-[#8A3D2C]/25 text-[#E2A088] border border-[#8A3D2C]/40 px-2.5 py-1 text-xs font-bold">
+                        <td className="py-4 px-5 text-white/60 whitespace-nowrap">{formatEndedAt(ev.ended_at)}</td>
+                        <td className="py-4 px-5">
+                          <span className="inline-flex items-center rounded-full bg-[#8A3D2C]/25 text-[#E2A088] border border-[#8A3D2C]/40 px-3 py-1 text-[13px] font-bold">
                             {t("daysOverdueBadge").replace("{n}", String(days))}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 text-white/50">
+                        <td className="py-4 px-5 text-white/50">
                           <ul className="space-y-0.5">
                             {ev.items.map((it) => (
-                              <li key={it.id} className="text-xs">{it.quantity}&times; {tc(it.name, language as any)}</li>
+                              <li key={it.id} className="text-[13px]">{it.quantity}&times; {tc(it.name, language as any)}</li>
                             ))}
                           </ul>
                         </td>
-                        <td className="py-3.5 px-4 text-right">
+                        <td className="py-4 px-5 text-right">
                           <button
                             onClick={() => setSelectedEventId(ev.id)}
-                            className="inline-flex items-center gap-2 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-xs font-bold uppercase tracking-wide px-4 py-2 transition"
+                            className="inline-flex items-center gap-2 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-[13px] font-bold uppercase tracking-wide px-5 py-2.5 transition"
                           >
-                            <Undo2 className="h-3.5 w-3.5" />
+                            <Undo2 className="h-4 w-4" />
                             {t("reviewLabel")}
                           </button>
                         </td>
@@ -907,11 +920,11 @@ export default function ReturnsView() {
           Returns, so the two never appear stacked together. */}
       {activeTab === "released" && (
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
-        <div className="px-4 sm:px-5 py-3.5 border-b border-white/10 flex items-center gap-2.5">
-          <History className="h-4 w-4 text-white/40" />
+        <div className="px-4 sm:px-6 py-4 border-b border-white/10 flex items-center gap-3">
+          <History className="h-5 w-5 text-white/40" />
           <div>
-            <p className="text-sm font-bold text-white">{t("recentlyReleasedTitle")}</p>
-            <p className="text-xs text-white/40">{t("recentlyReleasedHint")}</p>
+            <p className="text-base font-bold text-white">{t("recentlyReleasedTitle")}</p>
+            <p className="text-[13px] text-white/40">{t("recentlyReleasedHint")}</p>
           </div>
         </div>
         {recentReleasesLoading ? (
@@ -936,7 +949,7 @@ export default function ReturnsView() {
               {recentReleases.map((r) => (
                 <li
                   key={r.id}
-                  className={`flex items-center justify-between gap-3 px-4 sm:px-5 py-3 flex-wrap transition-colors duration-700 ${
+                  className={`flex items-center justify-between gap-3 px-4 sm:px-6 py-4 flex-wrap transition-colors duration-700 ${
                     flashReleaseIds.includes(r.id) ? "bg-[#4FBEB0]/15 shadow-[inset_3px_0_0_#4FBEB0]" : ""
                   }`}
                 >
@@ -952,7 +965,7 @@ export default function ReturnsView() {
                       // corner, not a clipped child -- nesting it inside the
                       // overflow-hidden circle cut the badge in half.
                       <div className="relative shrink-0">
-                        <div className="h-9 w-9 rounded-full overflow-hidden border border-white/15">
+                        <div className="h-11 w-11 rounded-full overflow-hidden border border-white/15">
                           <img src={r.evidence_photo_url} alt="" className="h-full w-full object-cover" />
                         </div>
                         {r.evidence_photo_urls?.length > 1 && (
@@ -970,17 +983,17 @@ export default function ReturnsView() {
                         </button>
                       </div>
                     ) : (
-                      <div className="shrink-0 h-9 w-9 rounded-full border border-white/10 bg-white/[0.03] flex items-center justify-center text-white/20">
-                        <Eye className="h-4 w-4" />
+                      <div className="shrink-0 h-11 w-11 rounded-full border border-white/10 bg-white/[0.03] flex items-center justify-center text-white/20">
+                        <Eye className="h-[18px] w-[18px]" />
                       </div>
                     )}
                     <div className="min-w-0">
-                      <p className="text-sm text-white truncate">
+                      <p className="text-[15px] text-white truncate">
                         {r.quantity}&times; {tc(r.item_name, language as any)} <span className="text-white/40">&bull;</span> {tc(r.event_name, language as any)}
                       </p>
-                      <p className="text-xs text-white/40 mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                        <span className="inline-flex items-center gap-1 rounded-full bg-[#4FBEB0]/15 text-[#7DD8CB] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
-                          <CheckCircle2 className="h-3 w-3" />
+                      <p className="text-[13px] text-white/40 mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#4FBEB0]/15 text-[#7DD8CB] px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
                           {t("returnedChipLabel")}
                         </span>
                         <span>
@@ -994,7 +1007,7 @@ export default function ReturnsView() {
                             className="inline-flex items-center gap-1 text-[#E2A088] hover:text-white font-semibold transition"
                           >
                             &bull; {t("eventStillPendingLabel")}
-                            <ArrowRight className="h-3 w-3" />
+                            <ArrowRight className="h-3.5 w-3.5" />
                           </button>
                         )}
                       </p>
@@ -1002,9 +1015,9 @@ export default function ReturnsView() {
                   </div>
                   <button
                     onClick={() => openEdit(r)}
-                    className="ml-auto shrink-0 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] hover:bg-white/[0.1] text-white text-sm font-bold px-5 py-2 transition"
+                    className="ml-auto shrink-0 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] hover:bg-white/[0.1] text-white text-[15px] font-bold px-6 py-2.5 transition"
                   >
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="h-4 w-4" />
                     {t("editLabel")}
                   </button>
                 </li>
@@ -1050,7 +1063,7 @@ export default function ReturnsView() {
           confirm/success alert. */}
       {modalEvent && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
           onClick={() => setSelectedEventId(null)}
         >
           <div
@@ -1213,7 +1226,7 @@ export default function ReturnsView() {
         // Same sizing and card style as the Release Items modal, so both
         // return dialogs feel like one family.
         return createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4" onClick={closeEdit}>
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={closeEdit}>
             <div
               className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
               onClick={(e) => e.stopPropagation()}
@@ -1355,7 +1368,7 @@ export default function ReturnsView() {
           (10000) so it can be opened from either. */}
       {viewingPhoto && createPortal(
         <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-[10001] px-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10001] px-4"
           onClick={() => setViewingPhoto(null)}
         >
           <div

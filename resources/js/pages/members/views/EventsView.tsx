@@ -569,6 +569,7 @@ import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
 import api, { apiErrorMessage } from "../../../lib/api";
+import { matchesSearch } from "../../../lib/search";
 
 const THIS_WEEK_KEY = "__THIS_WEEK__";
 
@@ -747,12 +748,8 @@ export default function EventsView({
     }
 
     if (eventSearch.trim()) {
-      const q = eventSearch.toLowerCase();
       result = result.filter((e) =>
-        e.title.toLowerCase().includes(q) ||
-        e.date.toLowerCase().includes(q) ||
-        e.location.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q)
+        matchesSearch(eventSearch, e.title, e.date, e.location, e.description)
       );
     }
 

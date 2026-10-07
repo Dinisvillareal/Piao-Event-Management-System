@@ -1,3 +1,4 @@
+import { matchesSearch } from "../../../lib/search";
 import React, { useState, useEffect, useMemo } from "react";
 import {
   LayoutDashboard,
@@ -109,7 +110,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   );
   const trimmedQuery = navQuery.trim().toLowerCase();
   const searchResults = trimmedQuery
-    ? allNavItems.filter((item) => t(item.key).toLowerCase().includes(trimmedQuery) || item.label.toLowerCase().includes(trimmedQuery))
+    ? allNavItems.filter((item) => matchesSearch(navQuery, t(item.key), item.label))
     : [];
 
   // Which module the currently active page lives under -- "settings" is
@@ -243,8 +244,19 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
               value={navQuery}
               onChange={(e) => setNavQuery(e.target.value)}
               placeholder={t("search")}
-              className="w-full rounded-xl border border-white/10 bg-white/[0.05] py-2.5 pl-10 pr-3 text-[13.5px] text-white placeholder-white/35 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-2 focus:ring-[#4FBEB0]/20"
+              className="w-full rounded-xl border border-white/10 bg-white/[0.05] py-2.5 pl-10 pr-[4.5rem] text-[13.5px] text-white placeholder-white/35 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-2 focus:ring-[#4FBEB0]/20"
             />
+            {navQuery && (
+              <button
+                type="button"
+                onClick={() => setNavQuery("")}
+                aria-label="Clear search"
+                title="Clear"
+                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+              >
+                {t("clearLabel")}
+              </button>
+            )}
           </div>
         </div>
 
@@ -377,7 +389,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           in the app -- logout is destructive to the current session so it
           gets the same "are you sure" treatment instead of firing instantly. */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-6 text-center shadow-2xl">
             <div className="mb-4 flex justify-center text-[#4FBEB0]"><LogOut size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("confirmLogoutTitle")}</h3>

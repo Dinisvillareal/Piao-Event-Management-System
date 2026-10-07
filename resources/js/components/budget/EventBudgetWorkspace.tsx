@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Wallet, Plus, X, AlertTriangle, CheckCircle, Lock, Trash2, Pencil, Paperclip, FileText, Download, FileSpreadsheet, Banknote, PiggyBank, Search, Eye, RefreshCw } from "lucide-react";
+import { Wallet, Plus, X, AlertTriangle, CheckCircle, Lock, Trash2, Pencil, Paperclip, FileText, Download, FileSpreadsheet, Banknote, PiggyBank, Search, Eye, RefreshCw, Check } from "lucide-react";
 import StatusModal from "../ui/StatusModal";
 import api, { apiErrorMessage } from "../../lib/api";
 import { exportExpenseReportXlsx } from "../../lib/expenseReportExport";
@@ -130,6 +130,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
   // Confirm-before / success-after around the CSV export button, same
   // pattern already used below for a receipt download.
   const [confirmExportCsv, setConfirmExportCsv] = useState(false);
+  const [exportIncludeMessage, setExportIncludeMessage] = useState(true);
   const [exportCsvSuccess, setExportCsvSuccess] = useState(false);
   const [showEditExpenseConfirm, setShowEditExpenseConfirm] = useState(false);
   // Closing the Edit Expense modal (X, Cancel, or the backdrop) with
@@ -354,6 +355,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
         approvedBudget: approved,
         totalSpent: spent,
         expenses: summary.expenses,
+        includeMessage: exportIncludeMessage,
       });
       setExportCsvSuccess(true);
     } catch (e) {
@@ -721,9 +723,9 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                       <button
                         type="button"
                         onClick={openBudgetEdit}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3.5 py-1.5 text-xs font-bold text-white transition hover:bg-white/10"
+                        className="inline-flex items-center gap-2 rounded-full border border-white/15 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-white/10"
                       >
-                        <Pencil className="h-3.5 w-3.5" /> {approvedNum === null ? t("budgetSetLabel") : t("budgetEditLabel")}
+                        <Pencil className="h-4 w-4" /> {approvedNum === null ? t("budgetSetLabel") : t("budgetEditLabel")}
                       </button>
                     )}
                     {budgetState === "over" && (
@@ -800,33 +802,33 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                   <button
                     type="button"
                     onClick={() => setExpenseTab("add")}
-                    className={`inline-flex items-center gap-1.5 rounded-full px-5 py-2.5 text-sm font-bold transition ${
+                    className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-bold transition ${
                       expenseTab === "add" ? "bg-sage-700 text-white" : "border border-white/15 text-white/70 hover:bg-white/10 hover:text-white"
                     }`}
                   >
-                    <Plus className="h-4 w-4" /> {t("addExpenseTitle")}
+                    <Plus className="h-[18px] w-[18px]" /> {t("addExpenseTitle")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setExpenseTab("records")}
-                    className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
+                    className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-bold transition ${
                       expenseTab === "records" ? "bg-sage-700 text-white" : "border border-white/15 text-white/70 hover:bg-white/10 hover:text-white"
                     }`}
                   >
-                    <FileText className="h-4 w-4" /> {t("recordsTab")}
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${expenseTab === "records" ? "bg-white/20" : "bg-white/10"}`}>
+                    <FileText className="h-[18px] w-[18px]" /> {t("recordsTab")}
+                    <span className={`rounded-full px-2.5 py-0.5 text-[13px] font-semibold ${expenseTab === "records" ? "bg-white/20" : "bg-white/10"}`}>
                       {summary.expenses.length}
                     </span>
                   </button>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setConfirmExportCsv(true)}
+                  onClick={() => { setExportIncludeMessage(true); setConfirmExportCsv(true); }}
                   disabled={summary.expenses.length === 0}
                   title={t("exportCsvLabel")}
-                  className="inline-flex items-center justify-center gap-1 rounded-full border border-white/15 text-white px-4 py-2.5 text-sm font-semibold hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-full border border-white/15 text-white px-5 py-3 text-[15px] font-semibold hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <FileSpreadsheet className="h-4 w-4" /> {t("exportCsvLabel")}
+                  <FileSpreadsheet className="h-[18px] w-[18px]" /> {t("exportCsvLabel")}
                 </button>
               </div>
 
@@ -834,22 +836,22 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
               <form
                 onSubmit={handleAddExpense}
                 noValidate
-                className={`rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8 space-y-6 ${isExpenseLocked ? "opacity-60" : ""}`}
+                className={`rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 ${isExpenseLocked ? "opacity-60" : ""}`}
               >
-                <fieldset disabled={isExpenseLocked} className="space-y-6 min-w-0">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <fieldset disabled={isExpenseLocked} className="space-y-4 min-w-0">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-semibold text-white mb-2.5">{t("itemExpenseDescPlaceholder")}</label>
+                      <label className="block text-[13px] font-semibold text-white mb-1.5">{t("itemExpenseDescPlaceholder")}</label>
                       <input
                         required
                         value={form.item}
                         onChange={(e) => setForm((p) => ({ ...p, item: e.target.value }))}
                         placeholder={t("itemExpenseDescPlaceholder")}
-                        className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                        className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-white mb-2.5">{t("amountPlaceholder")}</label>
+                      <label className="block text-[13px] font-semibold text-white mb-1.5">{t("amountPlaceholder")}</label>
                       <NumberStepper
                         required
                         fullWidth
@@ -858,22 +860,22 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                         value={form.amount}
                         onChange={(v) => setForm((p) => ({ ...p, amount: v }))}
                         placeholder={t("amountPlaceholder")}
-                        className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                        className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-4 pr-8 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                       />
                     </div>
                   </div>
                   {addDelta > 0 && renderImpact(addDelta)}
                   <div>
-                    <label className="block text-sm font-semibold text-white mb-2.5">{t("notesLabel")}</label>
+                    <label className="block text-[13px] font-semibold text-white mb-1.5">{t("notesLabel")}</label>
                     <textarea
                       value={form.notes}
                       onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-                      rows={3}
+                      className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                      rows={2}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-white mb-2.5">{t("receiptLabel")}</label>
+                    <label className="block text-[13px] font-semibold text-white mb-1.5">{t("receiptLabel")}</label>
                     <ReceiptField
                       items={receiptItems}
                       onChange={setReceiptItems}
@@ -881,16 +883,16 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                       onError={setError}
                       emptyLabel={t("attachReceiptRequiredLabel")}
                     />
-                    {receiptItems.length === 0 && <p className="mt-2 text-sm text-[#7DD8CB]">{t("receiptRequiredHint")}</p>}
-                    <p className="mt-2 text-sm text-white/50">{t("fileHintReceipts")}</p>
+                    {receiptItems.length === 0 && <p className="mt-1.5 text-[13px] text-[#7DD8CB]">{t("receiptRequiredHint")}</p>}
+                    <p className="mt-1.5 text-[13px] text-white/50">{t("fileHintReceipts")}</p>
                   </div>
-                  <div className="flex gap-3 pt-2">
-                    <button type="submit" className="flex-1 py-3.5 text-base rounded-full font-bold bg-sage-700 hover:bg-sage-800 text-white transition disabled:opacity-50 disabled:cursor-not-allowed">{t("addLabel")}</button>
+                  <div className="flex gap-3 pt-1">
+                    <button type="submit" className="flex-1 py-2.5 text-sm rounded-full font-bold bg-sage-700 hover:bg-sage-800 text-white transition disabled:opacity-50 disabled:cursor-not-allowed">{t("addLabel")}</button>
                     <button
                       type="button"
                       onClick={resetAddExpenseForm}
                       disabled={isAddExpenseEmpty}
-                      className="px-8 py-3.5 text-base rounded-full border border-white/15 text-white hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="px-6 py-2.5 text-sm rounded-full border border-white/15 text-white hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {t("clearLabel")}
                     </button>
@@ -1008,7 +1010,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
           form, as opposed to the confirm/success/error/receipt modals
           further below which stay on their original light theme). */}
       {editingExpense && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={() => !savingEdit && handleCloseEditExpense()}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={() => !savingEdit && handleCloseEditExpense()}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-3xl p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl sm:text-3xl font-black text-white">{t("editExpenseTitle")}</h2>
@@ -1059,7 +1061,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
 
       {/* Unsaved-changes guard for the Edit Expense modal */}
       {showEditCancelConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
@@ -1123,7 +1125,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
       <StatusModal open={!!expenseSuccessMessage} type="success" title={t("expenseSuccessTitle")} message={expenseSuccessMessage || ""} okLabel={t("okLabel")} onClose={() => setExpenseSuccessMessage(null)} />
 
       {viewingReceipt && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[70] px-4" onClick={closeReceiptViewer}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4" onClick={closeReceiptViewer}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -1225,7 +1227,28 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
         open={confirmExportCsv}
         icon={<FileSpreadsheet className="h-9 w-9" />}
         title={t("confirmExportCsvTitle")}
-        body={t("confirmExportCsvBody")}
+        body={
+          <div>
+            <p>{t("confirmExportCsvBody")}</p>
+            <p className="mt-5 text-left text-sm font-bold uppercase tracking-wide text-white/80">{t("rptOtherHeading")}</p>
+            <button
+              type="button"
+              onClick={() => setExportIncludeMessage((v) => !v)}
+              aria-pressed={exportIncludeMessage}
+              className={`mt-2 flex w-full items-start gap-3 rounded-2xl border px-4 py-3.5 text-left transition-colors ${
+                exportIncludeMessage ? "border-[#4FBEB0]/50 bg-[#4FBEB0]/[0.07]" : "border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]"
+              }`}
+            >
+              <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${exportIncludeMessage ? "border-[#4FBEB0] bg-[#4FBEB0] text-[#0A0E1A]" : "border-white/25"}`}>
+                {exportIncludeMessage && <Check className="h-3.5 w-3.5" strokeWidth={3.5} />}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold text-white">{t("rptSecMessage")}</span>
+                <span className="mt-0.5 block text-[13px] leading-snug text-white/45">{t("rptSecMessageDesc")}</span>
+              </span>
+            </button>
+          </div>
+        }
         cancelLabel={t("cancelLabel")}
         confirmLabel={t("downloadLabel")}
         onCancel={() => setConfirmExportCsv(false)}
@@ -1241,7 +1264,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
       />
 
       {deleteExpense && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4" onClick={() => !deletingExpense && setDeleteExpense(null)}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={() => !deletingExpense && setDeleteExpense(null)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
@@ -1264,8 +1287,8 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
 
       {/* Approved budget dialog */}
       {budgetEdit !== null && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={() => !savingBudget && setBudgetEdit(null)}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-lg p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={() => !savingBudget && setBudgetEdit(null)}>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-xl p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-2xl font-black text-white">{t("budgetEditTitle")}</h2>
               <button onClick={() => setBudgetEdit(null)} className="text-white/50 hover:text-white"><X size={24} /></button>

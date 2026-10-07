@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\BarangayOfficials;
 use App\Models\Event;
 use App\Models\EventAttendance;
 use App\Models\EventExpense;
@@ -556,10 +557,10 @@ class ReportController extends Controller
 
         // Which sections to include (print/export options). null = everything (except the long attendee lists, which are opt-in).
         $allowed = [
-            'attendance' => ['summary', 'charts', 'age', 'events', 'records'],
-            'membership' => ['summary', 'memberships'],
-            'budget' => ['summary', 'overBudget', 'perEvent', 'expenses', 'topExpenses', 'noBudget'],
-            'inventory' => ['summary', 'condition', 'items'],
+            'attendance' => ['summary', 'charts', 'age', 'events', 'records', 'message'],
+            'membership' => ['summary', 'memberships', 'message'],
+            'budget' => ['summary', 'overBudget', 'perEvent', 'expenses', 'topExpenses', 'noBudget', 'message'],
+            'inventory' => ['summary', 'condition', 'items', 'message'],
         ][$type];
         $sections = null;
         if ($request->filled('sections')) {
@@ -587,7 +588,13 @@ class ReportController extends Controller
             'reportTitle' => $titles[$type],
             'filterSummary' => $this->buildFilterSummaryLine($type, $request),
             'printedOn' => $printedOn,
-            'message' => $this->buildReportMessage($type, $titles[$type], $data, $sections, $this->buildScopeText($type, $request), $printedOn),
+            // Signature block: whoever is currently marked Barangay Captain /
+            // Secretary on their resident record ("HON. ..."), or null if unset.
+            'officials' => BarangayOfficials::current(),
+            // The opening "I. MESSAGE" is optional: left out when the "message" section is unticked in Print & Export Options.
+            'message' => ($sections === null || in_array('message', $sections, true))
+                ? $this->buildReportMessage($type, $titles[$type], $data, $sections, $this->buildScopeText($type, $request), $printedOn)
+                : [],
             'data' => $data,
         ];
     }
@@ -1026,7 +1033,7 @@ class ReportController extends Controller
                 break;
         }
 
-        // Signature block (Prepared by -> Brgy. Secretary, Noted -> Barangay Captain) + footer line,
+        // Signature block (Prepared by -> Barangay Secretary, Noted -> Barangay Captain) + footer line,
         // kept together like the PDF's .sig-wrap.
         $section->addTextBreak(1, ['size' => 14]);
         $section->addTextBreak(1, ['size' => 14]);
@@ -1036,15 +1043,18 @@ class ReportController extends Controller
         foreach (['Prepared by:', 'Noted:'] as $label) {
             $sig->addCell($half, ['gridSpan' => 3])->addText($label, ['bold' => true, 'size' => 10], ['keepNext' => true, 'spaceAfter' => 0]);
         }
+        // Row with room to sign, the official's name sitting on top of the line.
         $sig->addRow(760, ['cantSplit' => true]);
-        foreach ([0, 1] as $i) {
-            $sig->addCell($half, ['gridSpan' => 3])->addText('', [], ['keepNext' => true, 'spaceAfter' => 0]);
+        foreach ([BarangayOfficials::SECRETARY, BarangayOfficials::CAPTAIN] as $post) {
+            $official = $payload['officials'][$post] ?? null;
+            $nameCell = $sig->addCell($half, ['gridSpan' => 3, 'valign' => 'bottom']);
+            $nameCell->addText($official['name'] ?? '', ['bold' => true, 'size' => 11.5, 'color' => '000000'], ['alignment' => 'center', 'keepNext' => true, 'spaceAfter' => 20]);
         }
         $sig->addRow(null, ['cantSplit' => true]);
         $line = ['borderTopSize' => 6, 'borderTopColor' => '667777'];
-        foreach (['Brgy. Secretary', 'Barangay Captain'] as $title) {
+        foreach ([BarangayOfficials::SECRETARY, BarangayOfficials::CAPTAIN] as $post) {
             $sig->addCell(700)->addText('', ['size' => 2], ['spaceAfter' => 0]);
-            $sig->addCell($half - 1400, $line)->addText($title, ['bold' => true, 'size' => 10], ['alignment' => 'center', 'keepNext' => true, 'spaceAfter' => 0]);
+            $sig->addCell($half - 1400, $line)->addText(BarangayOfficials::TITLES[$post], ['bold' => false, 'size' => 10], ['alignment' => 'center', 'keepNext' => true, 'spaceAfter' => 0]);
             $sig->addCell(700)->addText('', ['size' => 2], ['spaceAfter' => 0]);
         }
         $section->addText(
@@ -1100,8 +1110,7 @@ class ReportController extends Controller
 
         $text = $head->addCell($W - 1400 - 2300, ['valign' => 'center']);
         $text->addText('REPUBLIC OF THE PHILIPPINES', ['bold' => true, 'size' => 8, 'color' => '222222', 'spacing' => 20], $tight);
-        $text->addText('Western Mindanao, Region IX', $dark, $tight);
-        $text->addText('Province of Zamboanga del Norte', $dark, $tight);
+        $text->addText('Province of Zamboanga del Norte, Region IX', $dark, $tight);
         $text->addText('Municipality of President Manuel A. Roxas', $dark, ['spaceAfter' => 20]);
         $text->addText('BARANGAY PIAO', ['bold' => true, 'size' => 13, 'color' => '000000'], ['spaceAfter' => 20]);
         $text->addText('Purok Uno — Barangay Hall, Piao, Roxas, Zamboanga del Norte, 7102', $dark, $tight);

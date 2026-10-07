@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink, Eye, EyeOff } from "lucide-react";
+import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink } from "lucide-react";
+import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
 import api, { apiErrorMessage } from "../../../lib/api";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
@@ -106,7 +107,7 @@ export default function IntegrationsView() {
   };
 
   const inputCls =
-    "w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50";
+    "w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50";
   const cardCls = "overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04]";
   const tabCls = (on: boolean) =>
     `inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
@@ -119,7 +120,7 @@ export default function IntegrationsView() {
     /* Dark-navy full-bleed page + pill tabs, same "moduling" as the Age &
        Status Categories settings page, instead of the old light paper cards. */
     <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
-      <div className="space-y-6 max-w-3xl">
+      <div className="space-y-5 max-w-2xl">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("integrations")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("integrationsSubtitle")}</p>
@@ -142,7 +143,7 @@ export default function IntegrationsView() {
         {tabSwitching && (
           <div className={cardCls}>
             <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-            <div className="p-6 sm:p-8 space-y-3">
+            <div className="p-5 sm:p-6 space-y-3">
               <Skeleton className="h-8 w-1/3" />
               <Skeleton className="h-11 w-full rounded-full" />
               <Skeleton className="h-11 w-full rounded-full" />
@@ -153,28 +154,28 @@ export default function IntegrationsView() {
         {activeTab === "facebook" && !tabSwitching && (
           <div className={cardCls}>
             <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-            <div className="p-6 sm:p-8">
+            <div className="p-5 sm:p-6">
               <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#1877F2]/15">
-                  <MessageCircle className="h-6 w-6 text-[#6AA9FF]" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1877F2]/15">
+                  <MessageCircle className="h-5 w-5 text-[#6AA9FF]" />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="text-2xl font-black text-white">{t("facebookPageTitle")}</h2>
+                  <h2 className="text-lg font-black text-white">{t("facebookPageTitle")}</h2>
                   <p className="mt-0.5 text-sm text-white/50">{t("facebookPageDesc")}</p>
                 </div>
               </div>
 
               {loading ? (
-                <div className="mt-6 space-y-3">
-                  <Skeleton className="h-12 w-full rounded-full" />
-                  <Skeleton className="h-12 w-full rounded-full" />
+                <div className="mt-5 space-y-3">
+                  <Skeleton className="h-10 w-full rounded-full" />
+                  <Skeleton className="h-10 w-full rounded-full" />
                   <Skeleton className="h-11 w-40 rounded-full" />
                 </div>
               ) : (
-                <div className="mt-6">
+                <div className="mt-5">
                   {status?.connected ? (
                     <div className="rounded-2xl border border-[#4FBEB0]/30 bg-[#4FBEB0]/[0.08] px-5 py-4 flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5 text-[#7DD8CB] text-base font-semibold">
+                      <div className="flex items-center gap-2.5 text-[#7DD8CB] text-sm font-semibold">
                         <CheckCircle2 className="h-5 w-5 shrink-0" />
                         {t("connectedToPageId")} {status.page_id}
                       </div>
@@ -189,11 +190,11 @@ export default function IntegrationsView() {
                   ) : (
                     <form onSubmit={handleConnect} noValidate className="space-y-5">
                       <div>
-                        <label className="block text-base font-semibold text-white mb-2">{t("facebookPageIdLabel")}</label>
+                        <label className="block text-sm font-semibold text-white mb-1.5">{t("facebookPageIdLabel")}</label>
                         <input required value={pageId} onChange={(e) => setPageId(e.target.value)} className={inputCls} placeholder="e.g. 123456789012345" />
                       </div>
                       <div>
-                        <label className="block text-base font-semibold text-white mb-2">{t("pageAccessTokenLabel")}</label>
+                        <label className="block text-sm font-semibold text-white mb-1.5">{t("pageAccessTokenLabel")}</label>
                         <div className="relative">
                           <input
                             required
@@ -212,7 +213,7 @@ export default function IntegrationsView() {
                             title={showToken ? t("opsHideToken") : t("opsShowToken")}
                             className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 transition"
                           >
-                            {showToken ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            <EyeToggleIcon visible={showToken} />
                           </button>
                         </div>
                         <p className="mt-2 text-sm text-white/50">{t("pageAccessTokenHint")}</p>
@@ -220,7 +221,7 @@ export default function IntegrationsView() {
                       <button
                         type="submit"
                         disabled={saving}
-                        className="inline-flex items-center gap-2 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-base font-bold px-7 py-3.5 transition shadow-sm disabled:opacity-60"
+                        className="inline-flex items-center gap-2 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold px-6 py-2.5 transition shadow-sm disabled:opacity-60"
                       >
                         <Link2 className="h-5 w-5" /> {saving ? t("connecting") : t("connectPage")}
                       </button>
@@ -235,17 +236,17 @@ export default function IntegrationsView() {
         {activeTab === "qr" && !tabSwitching && (
           <div className={cardCls}>
             <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-            <div className="p-6 sm:p-8">
+            <div className="p-5 sm:p-6">
               <div className="flex items-center gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gold-400/15">
-                  <QrCode className="h-6 w-6 text-gold-300" />
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-400/15">
+                  <QrCode className="h-5 w-5 text-gold-300" />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="text-2xl font-black text-white">{t("physicalQrIdTitle")}</h2>
+                  <h2 className="text-lg font-black text-white">{t("physicalQrIdTitle")}</h2>
                   <p className="mt-0.5 text-sm text-white/50">{t("physicalQrIdDesc")}</p>
                 </div>
               </div>
-              <p className="mt-6 text-base leading-relaxed text-white/70">
+              <p className="mt-4 text-sm leading-relaxed text-white/70">
                 {t("physicalQrIdBody1")} <strong className="text-white">{t("physicalQrIdToggleLabel")}</strong> {t("physicalQrIdBody2")}
                 <strong className="text-white"> {t("scan")}</strong> {t("physicalQrIdBody3")}
               </p>

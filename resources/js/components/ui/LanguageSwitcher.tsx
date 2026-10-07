@@ -74,11 +74,11 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
         aria-haspopup="listbox"
         aria-expanded={open}
         title="Change interface language"
-        className="flex h-8 items-center gap-1.5 rounded-full border border-white/15 bg-[#0A0E1A] pl-2.5 pr-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-white/10 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/60"
+        className="flex h-10 items-center gap-2 rounded-full border border-white/15 bg-[#0A0E1A] pl-3.5 pr-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-white/10 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/60"
       >
-        <Languages className="h-3.5 w-3.5 text-white/70" />
+        <Languages className="h-4 w-4 text-white/70" />
         <span>{current.label}</span>
-        <ChevronDown className={`h-3.5 w-3.5 text-white/70 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-4 w-4 text-white/70 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
@@ -87,7 +87,7 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
           aria-label="Interface language"
           tabIndex={-1}
           onKeyDown={handleListKeyDown}
-          className="absolute right-0 z-50 mt-1.5 min-w-[9rem] overflow-hidden rounded-2xl border border-white/10 bg-[#0A0E1A] py-1 shadow-xl"
+          className="absolute right-0 z-50 mt-1.5 min-w-[10rem] overflow-hidden rounded-2xl border border-white/10 bg-[#0A0E1A] py-1 shadow-xl"
         >
           {LANGUAGES.map((l, i) => {
             const selected = l.code === language;

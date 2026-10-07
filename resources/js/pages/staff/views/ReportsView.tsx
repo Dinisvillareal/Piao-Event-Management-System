@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import { Filter, Printer, Download, TrendingUp, Users, CalendarDays, CalendarCheck, Star, Award, Wallet, Package, ChevronDown, MapPin, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { BarChart, DonutChart } from "../../../components/ui/Charts";
@@ -10,6 +11,7 @@ import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { translate } from "../../../i18n/translations";
 import { buildReportMessage, dateRangeScope } from "../../../lib/reportMessage";
+import { useBarangayOfficials } from "../../../lib/barangayOfficials";
 import ReportOptionsModal, { type AttendeeFilter, type SectionDef } from "./ReportOptionsModal";
 
 interface Membership {
@@ -90,10 +92,12 @@ const SECTION_DEFS: Record<ReportType, SectionDef[]> = {
     { key: "age", labelKey: "rptSecAge", descKey: "rptSecAgeDesc" },
     { key: "events", labelKey: "rptSecEvents", descKey: "rptSecEventsDesc" },
     { key: "records", labelKey: "rptSecRecords", descKey: "rptSecRecordsDesc" },
+    { key: "message", labelKey: "rptSecMessage", descKey: "rptSecMessageDesc", group: "other" },
   ],
   membership: [
     { key: "summary", labelKey: "rptSecSummary", descKey: "rptSecSummaryMem" },
     { key: "memberships", labelKey: "rptSecMemberships", descKey: "rptSecMembershipsDesc" },
+    { key: "message", labelKey: "rptSecMessage", descKey: "rptSecMessageDesc", group: "other" },
   ],
   budget: [
     { key: "summary", labelKey: "rptSecSummary", descKey: "rptSecSummaryBud" },
@@ -102,11 +106,13 @@ const SECTION_DEFS: Record<ReportType, SectionDef[]> = {
     { key: "expenses", labelKey: "rptSecExpenses", descKey: "rptSecExpensesDesc" },
     { key: "topExpenses", labelKey: "rptSecTopExpenses", descKey: "rptSecTopExpensesDesc" },
     { key: "noBudget", labelKey: "rptSecNoBudget", descKey: "rptSecNoBudgetDesc" },
+    { key: "message", labelKey: "rptSecMessage", descKey: "rptSecMessageDesc", group: "other" },
   ],
   inventory: [
     { key: "summary", labelKey: "rptSecSummary", descKey: "rptSecSummaryInv" },
     { key: "condition", labelKey: "rptSecCondition", descKey: "rptSecConditionDesc" },
     { key: "items", labelKey: "rptSecItems", descKey: "rptSecItemsDesc" },
+    { key: "message", labelKey: "rptSecMessage", descKey: "rptSecMessageDesc", group: "other" },
   ],
 };
 
@@ -149,6 +155,8 @@ const ATTENDANCE_PILL: Record<string, string> = {
  */
 export default function ReportsView({ memberships = [], events = [] }: ReportsViewProps) {
   const { t: tUI, locale } = useLanguage();
+  // Signature names on the printed report: whoever is marked Barangay Captain / Secretary on their resident record.
+  const officials = useBarangayOfficials();
   const [reportType, setReportType] = useState<ReportType>("attendance");
 
   // Attendance-tab filters -- date range defaults to "this month" (see
@@ -291,6 +299,8 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
   // ── Word / PDF download (chosen from the Print & Export Options dialog) ──
   const [downloading, setDownloading] = useState(false);
+  // "Are you sure?" step in front of every Word / PDF download.
+  const [confirmDownload, setConfirmDownload] = useState<"pdf" | "word" | null>(null);
   // Success confirmation shown after the file actually reaches the browser's
   // download handling -- mirrors Budget's success StatusModal for
   // Add/Update/Delete Expense.
@@ -713,8 +723,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
               <img src="/logo-removebg-preview.png" alt="" className="h-[72px] w-[72px] shrink-0 object-contain" />
               <div className="text-left leading-tight">
                 <p className="text-[9.5px] font-bold uppercase tracking-[0.2em] text-[#222]">{t("printCountryLabel")}</p>
-                <p className="mt-0.5 text-[10px] text-[#222]">{t("printRegionLabel")}</p>
-                <p className="text-[10px] text-[#222]">{t("printProvinceLabel")}</p>
+                <p className="mt-0.5 text-[10px] text-[#222]">{t("printProvinceLabel")}</p>
                 <p className="text-[10px] text-[#222]">{t("printMunicipalityLabel")}</p>
                 <p className="mt-1.5 text-[13px] font-extrabold uppercase leading-none tracking-wide text-black">{t("printBarangayLabel")}</p>
                 <p className="mt-1.5 text-[10px] text-[#222]">{t("printAddressLabel")}</p>
@@ -735,13 +744,15 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
           {/* Message -- opens the printed report (like the "I. MESSAGE" of an
               annual report): what it is and what it includes. */}
-          <div className="mt-4">
-            <h3 className="text-[13px] font-black tracking-wide text-black">I.&nbsp;&nbsp;&nbsp;MESSAGE</h3>
-            {printMessage.map((para, i) => (
-              <p key={i} className="mt-2 text-justify text-[11.5px] leading-relaxed text-[#1a1a1a] indent-8">{para}</p>
-            ))}
-            <h3 className="mt-8 text-[13px] font-black tracking-wide text-black">II.&nbsp;&nbsp;&nbsp;REPORT DETAILS</h3>
-          </div>
+          {hasSection("message") && (
+            <div className="mt-4">
+              <h3 className="text-[13px] font-black tracking-wide text-black">I.&nbsp;&nbsp;&nbsp;MESSAGE</h3>
+              {printMessage.map((para, i) => (
+                <p key={i} className="mt-2 text-justify text-[11.5px] leading-relaxed text-[#1a1a1a] indent-8">{para}</p>
+              ))}
+              <h3 className="mt-8 text-[13px] font-black tracking-wide text-black">II.&nbsp;&nbsp;&nbsp;REPORT DETAILS</h3>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden">
@@ -756,11 +767,11 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             <button
               type="button"
               onClick={() => setOptionsMode("print")}
-              className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-5 pr-1.5 py-1.5 text-[15px] font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md active:scale-95"
+              className="group inline-flex items-center gap-3.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-7 pr-2 py-2 text-[17px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95"
             >
               {tUI("printReport")}
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
-                <Printer className="h-4 w-4 text-white" />
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
+                <Printer className="h-5 w-5 text-white" />
               </span>
             </button>
 
@@ -772,9 +783,9 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
               disabled={loading || isEmpty}
               title={tUI("downloadReportLabel")}
               aria-label={tUI("downloadReportLabel")}
-              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white transition hover:bg-white/[0.12] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white transition hover:bg-white/[0.12] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Download className="h-4.5 w-4.5" />
+              <Download className="h-6 w-6" />
             </button>
           </div>
         </div>
@@ -978,29 +989,29 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           </div>
 
           <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("events")}`}>
-            <h3 className="text-lg font-bold text-white mb-3 print:break-after-avoid print:text-[#005f63]">{t("perEventBreakdown")}</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <h3 className="text-lg font-bold text-white mb-4 print:break-after-avoid print:text-[#005f63]">{t("perEventBreakdown")}</h3>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {perEvent.map((ev: any) => (
-                <div key={ev.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-gray-100 print:bg-gray-50">
+                <div key={ev.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-5 print:border-gray-100 print:bg-gray-50">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-bold text-white text-sm truncate print:text-[#005f63]">{ev.name}</p>
+                    <p className="font-bold text-white text-base truncate print:text-[#005f63]">{ev.name}</p>
                     {ev.status && (
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${EVENT_STATUS_PILL[ev.status] ?? EVENT_STATUS_PILL.Past}`}>{t(`rptStatus${ev.status}`)}</span>
+                      <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${EVENT_STATUS_PILL[ev.status] ?? EVENT_STATUS_PILL.Past}`}>{t(`rptStatus${ev.status}`)}</span>
                     )}
                   </div>
-                  <p className="text-xs text-white/40 mt-0.5 print:text-gray-500">
+                  <p className="text-[13px] text-white/40 mt-1 print:text-gray-500">
                     {ev.date}{ev.start_time ? ` · ${ev.start_time}${ev.end_time ? ` – ${ev.end_time}` : ""}` : ""}
                   </p>
-                  {ev.location && <p className="text-[11px] text-white/40 mt-0.5 truncate print:text-gray-500">{ev.location}</p>}
-                  <div className="mt-3 flex items-center gap-3">
-                    <div className="flex-1 h-2 rounded-full bg-white/10 overflow-hidden print:bg-gray-200">
+                  {ev.location && <p className="text-xs text-white/40 mt-0.5 truncate print:text-gray-500">{ev.location}</p>}
+                  <div className="mt-4 flex items-center gap-3">
+                    <div className="flex-1 h-2.5 rounded-full bg-white/10 overflow-hidden print:bg-gray-200">
                       <div className="h-full bg-[#4FBEB0]" style={{ width: `${ev.percentage}%` }} />
                     </div>
-                    <span className="text-xs font-bold text-white shrink-0 print:text-[#005f63]">{ev.percentage}%</span>
+                    <span className="text-sm font-bold text-white shrink-0 print:text-[#005f63]">{ev.percentage}%</span>
                   </div>
-                  <p className="text-[11px] text-white/40 mt-1 print:text-gray-500">{ev.attended} / {ev.eligible} {t("attendedOfEligible")}</p>
+                  <p className="text-xs text-white/40 mt-1.5 print:text-gray-500">{ev.attended} / {ev.eligible} {t("attendedOfEligible")}</p>
                   {ev.approved_budget !== null && (
-                    <p className="text-[11px] text-white/40 mt-1 print:text-gray-500">
+                    <p className="text-xs text-white/40 mt-1.5 print:text-gray-500">
                       {t("budgetColon")} ₱{Number(ev.approved_budget).toLocaleString()} · {t("spentColon")} ₱{Number(ev.total_expenses).toLocaleString()}
                     </p>
                   )}
@@ -1443,11 +1454,13 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         <div className="mt-6 grid grid-cols-2 gap-16 px-2">
           <div>
             <p className="text-[12px] font-bold text-[#1a1a1a]">{t("rbPreparedBy")}</p>
-            <div className="mt-12 mx-8 border-t border-[#667777] pt-1 text-center text-[12px] font-bold text-[#1a1a1a]">{t("rbBrgySecretary")}</div>
+            <div className="mt-12 mx-8 min-h-[1.25rem] pb-0.5 text-center text-[13px] font-black uppercase tracking-wide text-black">{officials.secretary?.name ?? ""}</div>
+            <div className="mx-8 border-t border-[#667777] pt-1 text-center text-[12px] font-normal text-[#1a1a1a]">{t("rbBrgySecretary")}</div>
           </div>
           <div>
             <p className="text-[12px] font-bold text-[#1a1a1a]">{t("rbNoted")}</p>
-            <div className="mt-12 mx-8 border-t border-[#667777] pt-1 text-center text-[12px] font-bold text-[#1a1a1a]">{t("printBarangayCaptainLabel")}</div>
+            <div className="mt-12 mx-8 min-h-[1.25rem] pb-0.5 text-center text-[13px] font-black uppercase tracking-wide text-black">{officials.captain?.name ?? ""}</div>
+            <div className="mx-8 border-t border-[#667777] pt-1 text-center text-[12px] font-normal text-[#1a1a1a]">{t("printBarangayCaptainLabel")}</div>
           </div>
         </div>
         <p className="mt-6 text-center text-[9px] text-[#999]">{t("printFooterAttributionLabel")} · {printedOn}</p>
@@ -1478,8 +1491,24 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         busy={preparing || downloading}
         onClose={() => setOptionsMode(null)}
         onPrint={handlePrintConfirmed}
-        onDownload={handleDownload}
+        onDownload={(format) => setConfirmDownload(format)}
         t={tUI}
+      />
+
+      <ConfirmDialog
+        open={confirmDownload !== null}
+        icon={<Download className="h-9 w-9" />}
+        title={tUI("confirmDownloadReportTitle")}
+        body={confirmDownload === "word" ? tUI("confirmDownloadReportBodyWord") : tUI("confirmDownloadReportBodyPdf")}
+        cancelLabel={tUI("cancelLabel")}
+        confirmLabel={tUI("downloadLabel")}
+        z={9999}
+        onCancel={() => setConfirmDownload(null)}
+        onConfirm={() => {
+          const format = confirmDownload;
+          setConfirmDownload(null);
+          if (format) handleDownload(format);
+        }}
       />
 
       {/* "Downloaded successfully" -- confirms the file actually reached the

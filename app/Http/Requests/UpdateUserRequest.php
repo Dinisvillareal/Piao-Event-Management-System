@@ -18,6 +18,13 @@ class UpdateUserRequest extends FormRequest
             'first_name'       => 'nullable|string|max:70',
             'last_name'        => 'nullable|string|max:70',
             'middle_name'      => 'nullable|string|max:70',
+            'suffix'           => 'nullable|string|max:10',
+
+            // Barangay Captain / Secretary designation. One active holder per
+            // post: the controller refuses a second holder unless the caller
+            // explicitly confirms the replacement (replace_barangay_position).
+            'barangay_position'         => 'nullable|in:captain,secretary',
+            'replace_barangay_position' => 'nullable|boolean',
 
             // strips dashes before regex — frontend sends 0917-123-4567
             'contact_number'   => [

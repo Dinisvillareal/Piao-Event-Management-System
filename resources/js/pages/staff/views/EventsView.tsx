@@ -1,3 +1,5 @@
+import { matchesSearch } from "../../../lib/search";
+import FormSelect from "../../../components/ui/FormSelect";
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Filter, X, LogIn, LogOut, ChevronLeft, Archive,
@@ -103,6 +105,7 @@ export function EventsView({
   };
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
+  const [membershipFilter, setMembershipFilter] = useState("all");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [viewEv, setViewEv] = useState<MyEvent | null>(null);
   // Which of the 4 tabs (Overview / Attendance / Budget / Feedback) is
@@ -321,6 +324,7 @@ export function EventsView({
       setEventSearch("");
       setCurrentPage(1);
       setEventFilter("all");
+      setMembershipFilter("all");
       setSelectedDate("");
     };
 
@@ -346,6 +350,7 @@ export function EventsView({
             eventId: event.id,
             residentId: record.user_id,
             residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
+            userCode: record.user?.user_code ?? "",
             timeIn: record.time_in,
             timeOut: record.time_out
           }));
@@ -606,14 +611,15 @@ export function EventsView({
 
     result = result.filter(event => getFilterStatus(event, eventFilter));
 
+    if (membershipFilter !== "all") {
+      result = result.filter((e) =>
+        (e.membershipIds || []).some((id) => String(id) === membershipFilter)
+      );
+    }
+
     if (eventSearch.trim()) {
-      const q = eventSearch.toLowerCase();
-      result = result.filter(
-        (e) =>
-          e.title.toLowerCase().includes(q) ||
-          (e.date && e.date.toLowerCase().includes(q)) ||
-          e.location.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q)
+      result = result.filter((e) =>
+        matchesSearch(eventSearch, e.title, e.date, e.location, e.description)
       );
     }
 
@@ -638,7 +644,7 @@ export function EventsView({
     }
 
     return result;
-  }, [localEvents, eventFilter, eventSearch, selectedDate]);
+  }, [localEvents, eventFilter, membershipFilter, eventSearch, selectedDate]);
 
   const sortedFilteredEvents = useMemo(() => {
     const today = new Date();
@@ -678,7 +684,7 @@ export function EventsView({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [eventSearch, eventFilter, selectedDate]);
+  }, [eventSearch, eventFilter, membershipFilter, selectedDate]);
 
   // Runs the field-level checks that used to live at the top of the old
   // handleSaveEvent, then -- if they pass -- opens the confirm step
@@ -946,6 +952,7 @@ export function EventsView({
       eventId: eventId,
       residentId: record.residentId,
       residentName: record.residentName,
+      userCode: record.userCode || eligibleMembers.find((m: any) => m.id === record.residentId)?.user_code || "",
       timeIn: record.timeIn || "",
       timeOut: record.timeOut || ""
     }));
@@ -957,6 +964,7 @@ export function EventsView({
           eventId: eventId,
           residentId: member.id,
           residentName: memberName,
+          userCode: member.user_code || "",
           timeIn: "",
           timeOut: ""
         });
@@ -973,10 +981,10 @@ export function EventsView({
 
   const getFilteredAttendance = (fullList: any[]) => {
     return fullList.filter((record) => {
-      const matchesSearch = record.residentName.toLowerCase().includes(attendanceSearch.toLowerCase());
+      const matchesName = matchesSearch(attendanceSearch, record.residentName, record.userCode);
       const status = getAttendanceStatus(record).label.toLowerCase();
       const matchesStatus = attendanceStatusFilter === "all" || status === attendanceStatusFilter;
-      return matchesSearch && matchesStatus;
+      return matchesName && matchesStatus;
     });
   };
 
@@ -1180,8 +1188,19 @@ export function EventsView({
                           value={attendanceSearch}
                           onChange={(e) => setAttendanceSearch(e.target.value)}
                           placeholder={t("searchResidentNamePlaceholder")}
-                          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                         />
+                        {attendanceSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setAttendanceSearch("")}
+                            aria-label="Clear search"
+                            title="Clear"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+                          >
+                            {t("clearLabel")}
+                          </button>
+                        )}
                       </div>
                       <div className="shrink-0">
                         <FilterDropdown
@@ -1202,19 +1221,20 @@ export function EventsView({
                   </div>
 
                   <div className="rounded-xl border border-white/10 w-full overflow-x-auto">
-                    <table className="w-full text-sm min-w-[560px]">
+                    <table className="w-full text-base min-w-[680px]">
                       <thead className="bg-white/[0.06] sticky top-0 z-10">
                         <tr>
-                          <th className="text-left p-4 font-bold text-white w-[30%]">{t("residentNameColumn")}</th>
-                          <th className="text-left p-4 font-bold text-white w-[25%]">{t("timeInColumn")}</th>
-                          <th className="text-left p-4 font-bold text-white w-[25%]">{t("timeOutColumn")}</th>
-                          <th className="text-left p-4 font-bold text-white w-[15%]">{t("statusColumn")}</th>
+                          <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[20%]">{t("idNumberColumn")}</th>
+                          <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[28%]">{t("residentNameColumn")}</th>
+                          <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[20%]">{t("timeInColumn")}</th>
+                          <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[20%]">{t("timeOutColumn")}</th>
+                          <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[12%]">{t("statusColumn")}</th>
                         </tr>
                       </thead>
                       <tbody>
                         {paginatedAttendance.length === 0 ? (
                           <tr>
-                            <td colSpan={4} className="p-6 text-center text-white/40 italic bg-white/[0.03]">
+                            <td colSpan={5} className="p-6 text-center text-white/40 italic bg-white/[0.03]">
                               {t("noMatchingRecords")}
                             </td>
                           </tr>
@@ -1228,25 +1248,26 @@ export function EventsView({
 
                             return (
                               <tr key={i} className="border-t border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors">
-                                <td className="p-4 text-white">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
-                                <td className="p-4 text-white">
+                                <td className="px-5 py-5 font-mono text-[15px] text-white/80">{record.userCode ? highlightAttendanceText(record.userCode, attendanceSearch) : "—"}</td>
+                                <td className="px-5 py-5 text-white">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
+                                <td className="px-5 py-5 text-white">
                                   {record.timeIn ? (
                                     <span className="flex items-center gap-2">
-                                      <LogIn className="h-4 w-4 text-[#4FBEB0]" />
+                                      <LogIn className="h-[18px] w-[18px] text-[#4FBEB0]" />
                                       {formatTime12Hour(record.timeIn)}
                                     </span>
                                   ) : "—"}
                                 </td>
-                                <td className="p-4 text-white">
+                                <td className="px-5 py-5 text-white">
                                   {record.timeOut ? (
                                     <span className="flex items-center gap-2">
-                                      <LogOut className="h-4 w-4 text-red-400" />
+                                      <LogOut className="h-[18px] w-[18px] text-red-400" />
                                       {formatTime12Hour(record.timeOut)}
                                     </span>
                                   ) : "—"}
                                 </td>
-                                <td className="p-4">
-                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColor}`}>
+                                <td className="px-5 py-5">
+                                  <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColor}`}>
                                     {attendanceStatusLabel(recStatus.label)}
                                   </span>
                                 </td>
@@ -1412,33 +1433,90 @@ export function EventsView({
                   value={eventSearch}
                   onChange={(e) => setEventSearch(e.target.value)}
                   placeholder={t("searchEventsPlaceholder")}
-                  className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                  className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                 />
+                {eventSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setEventSearch("")}
+                    aria-label="Clear search"
+                    title="Clear"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+                  >
+                    {t("clearLabel")}
+                  </button>
+                )}
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <FilterDropdown
-                  value={eventFilter}
-                  onChange={setEventFilter}
-                  options={[
-                    { value: "all", label: t("allEvents") },
-                    { value: "upcoming", label: t("upcomingEvents") },
-                    { value: "ongoing", label: t("ongoingEvents") },
-                    { value: "past", label: t("pastEvents") },
-                  ]}
-                  className="h-11 pl-9 pr-8"
-                  icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0]/70 pointer-events-none" />}
-                  dark
-                />
-                <div className="h-11">
-                  <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
-                </div>
+              <FilterDropdown
+                value={eventFilter}
+                onChange={setEventFilter}
+                options={[
+                  { value: "all", label: t("allEvents") },
+                  { value: "upcoming", label: t("upcomingEvents") },
+                  { value: "ongoing", label: t("ongoingEvents") },
+                  { value: "past", label: t("pastEvents") },
+                ]}
+                className="h-11 pl-10 pr-8 shrink-0"
+                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+                dark
+              />
+              <FilterDropdown
+                value={membershipFilter}
+                onChange={setMembershipFilter}
+                options={[
+                  { value: "all", label: t("allMembershipsOption") },
+                  ...memberships
+                    .slice()
+                    .sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)))
+                    .map((m: any) => ({ value: String(m.id), label: m.name })),
+                ]}
+                className="h-11 min-w-[220px] pl-10 pr-8 shrink-0"
+                panelWidthPx={280}
+                icon={<Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+                dark
+                searchable
+                searchPlaceholder={t("search")}
+                noResultsLabel={t("noMatchesFoundLabel")}
+              />
+              <div className="h-11 shrink-0">
+                <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
               </div>
             </div>
           </div>
 
-          <p className="text-xs text-white/50">
-            {filteredEvents.length} {t("eventsMatchCount")}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-white/50">
+              {filteredEvents.length} {t("eventsMatchCount")}
+            </p>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => goToPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  aria-label="Previous page"
+                  className="h-9 w-9 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                >
+                  &larr;
+                </button>
+                <span
+                  title={`${t("pageOfLabel")} ${currentPage} ${t("ofPagesLabel")} ${totalPages}`}
+                  className="h-9 w-9 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold"
+                >
+                  {currentPage}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  aria-label="Next page"
+                  className="h-9 w-9 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                >
+                  &rarr;
+                </button>
+              </div>
+            )}
+          </div>
 
           {loading || pageSwitching || openSkeleton ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
@@ -1530,20 +1608,6 @@ export function EventsView({
                   );
                 })}
               </div>
-
-              {totalPages > 1 && (
-                <div className="flex justify-center gap-2 pt-2">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => goToPage(p)}
-                      className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-sage-700 text-white shadow-sm font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
-                    >
-                      {p}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           )}
           </div>
@@ -1677,15 +1741,14 @@ export function EventsView({
                   <div>
                     <label className="block text-base font-semibold text-white mb-1.5">{t("targetMembersRequired")}</label>
                     <div className="relative">
-                      <select
+                      <FormSelect
                         value={newEvent.targetMembership}
                         onChange={(e) => setNewEvent({ ...newEvent, targetMembership: e.target.value })}
                         className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       >
                         <option value="all" className="bg-[#0A0E1A] text-white">{t("allResidentsOption")}</option>
                         {memberships.map((m: any) => (<option key={m.id} value={String(m.id)} className="bg-[#0A0E1A] text-white">{m.name}</option>))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
+                      </FormSelect>
                     </div>
                   </div>
 
@@ -1822,7 +1885,7 @@ export function EventsView({
 
       {/* Delete Event Confirm Modal */}
       {eventToDelete !== null && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-lg font-bold text-red-400 mb-2">{t("confirmDeletionTitle")}</h3>

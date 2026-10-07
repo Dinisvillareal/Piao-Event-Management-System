@@ -1,3 +1,4 @@
+import { highlightMatches } from "../../lib/highlight";
 import React, { useEffect, useMemo, useState } from "react";
 
 // --- LAYOUT IMPORTS ---
@@ -37,14 +38,7 @@ export type TrashedItem = {
   deletedBy: string;
 };
 
-export const highlightText = (text: string, query: string) => {
-  if (!query.trim()) return text;
-  const regex = new RegExp(`(${query})`, "gi");
-  const parts = text.split(regex);
-  return parts.map((part, i) =>
-    part.toLowerCase() === query.toLowerCase() ? <mark key={i} className="bg-yellow-300 rounded-sm px-0.5">{part}</mark> : part
-  );
-};
+export const highlightText = (text: string, query: string) => highlightMatches(text, query);
 
 // --------------------------
 // MAIN COMPONENT

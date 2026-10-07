@@ -1,3 +1,4 @@
+import { matchesSearch } from "../../../lib/search";
 import { useState, useMemo, useEffect, useRef } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
@@ -88,7 +89,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    const fetchNotifications = async (silent = false) => {
        if (!silent) setLoading(true);
        try {
-           const response = await fetch('/notifications', {
+           const response = await fetch('/notifications?per_page=200', {
                headers: {
                    'Accept': 'application/json',
                    'X-Requested-With': 'XMLHttpRequest'
@@ -138,6 +139,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                        n.id === id ? { ...n, read: true } : n
                    )
                );
+               window.dispatchEvent(new Event("member-notifications-changed"));
            }
        } catch (error) {
            console.error('Error marking as read:', error);
@@ -216,10 +218,8 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
        // Search filter
        if (notificationSearch.trim()) {
-           const q = notificationSearch.toLowerCase();
            filtered = filtered.filter((n) =>
-               n.title.toLowerCase().includes(q) ||
-               n.message.toLowerCase().includes(q)
+               matchesSearch(notificationSearch, n.title, n.message)
            );
        }
 
@@ -431,7 +431,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                <div
                                    key={n.id}
                                    onClick={() => handleNotificationClick(n)}
-                                   className={`cursor-pointer relative rounded-2xl sm:rounded-3xl px-5 sm:px-6 py-6 sm:py-7 border-l-4 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.35)] hover:-translate-y-1 ${
+                                   className={`cursor-pointer relative rounded-2xl sm:rounded-3xl px-5 sm:px-6 py-6 sm:py-7 border-l-4 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.35)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100 ${
                                        isDeleted
                                            ? 'border-l-white/20 bg-white/[0.02] opacity-75 cursor-not-allowed hover:bg-white/[0.02]'
                                            : isRead
@@ -503,48 +503,55 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                the app's popups (StatusModal / ConfirmDialog) instead of the
                white card this used to be. */}
            {selectedNotification && selectedNotification.event && !selectedNotification.event.deleted_at && (
-               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                   <div className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-lg max-h-[85vh] overflow-y-auto shadow-2xl transform transition-all">
-                       <div className="sticky top-0 bg-[#0A0E1A] px-6 py-4 border-b border-white/10 flex items-center justify-between rounded-t-3xl z-10">
-                           <h3 className="text-lg font-bold text-white">{t("notificationDetails")}</h3>
+               <div className="notif-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                   <style>{`
+                       @keyframes notif-overlay-in { from { opacity: 0 } to { opacity: 1 } }
+                       @keyframes notif-pop-in { from { opacity: 0; transform: translateY(18px) scale(0.94) } to { opacity: 1; transform: translateY(0) scale(1) } }
+                       .notif-overlay { animation: notif-overlay-in 180ms ease-out both }
+                       .notif-pop { animation: notif-pop-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both }
+                       @media (prefers-reduced-motion: reduce) { .notif-overlay, .notif-pop { animation: none } }
+                   `}</style>
+                   <div className="notif-pop bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl transform transition-all">
+                       <div className="sticky top-0 bg-[#0A0E1A] px-8 py-6 border-b border-white/10 flex items-center justify-between rounded-t-[30px] z-10">
+                           <h3 className="text-2xl font-black text-white">{t("notificationDetails")}</h3>
                            <button
                                onClick={closeModal}
-                               className="p-2 rounded-full hover:bg-white/10 transition-colors"
+                               className="p-2.5 rounded-full hover:bg-white/10 transition-colors"
                            >
-                               <X size={18} className="text-white/50" />
+                               <X size={22} className="text-white/50" />
                            </button>
                        </div>
 
 
-                       <div className="px-6 py-5 space-y-4">
+                       <div className="px-8 py-7 space-y-5">
                            {/* Staff and Sent Info */}
                            <div className="flex items-center justify-between w-full">
-                               <span className="text-sm text-white/70">
+                               <span className="text-base font-medium text-white/80">
                                    {parseMessage(selectedNotification.message).staffName || t("barangayStaffFallback")}
                                </span>
                                <div className="flex items-center gap-2 text-white/50">
-                                   <Send size={16} />
-                                   <span className="text-sm">{formatDateModal(selectedNotification.created_at)}</span>
+                                   <Send size={18} />
+                                   <span className="text-[15px]">{formatDateModal(selectedNotification.created_at)}</span>
                                </div>
                            </div>
 
 
                            {/* Event Details - Date, Time, Location, and Description */}
                            {selectedNotification.event && (
-                               <div className="space-y-3 pt-2 border-t border-white/10">
+                               <div className="space-y-4 pt-5 border-t border-white/10">
                                    {/* Date */}
-                                   <div className="flex items-start gap-3 text-white/70">
-                                       <Calendar size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
-                                       <div className="text-sm">
+                                   <div className="flex items-start gap-4 text-white/70">
+                                       <Calendar size={20} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
+                                       <div className="text-base leading-relaxed">
                                            <span className="font-medium text-white">{t("dateColon")}</span>{' '}
                                            <span>{formatEventDate(selectedNotification.event.event_start)}</span>
                                        </div>
                                    </div>
 
                                    {/* Time */}
-                                   <div className="flex items-start gap-3 text-white/70">
-                                       <Clock size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
-                                       <div className="text-sm">
+                                   <div className="flex items-start gap-4 text-white/70">
+                                       <Clock size={20} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
+                                       <div className="text-base leading-relaxed">
                                            <span className="font-medium text-white">{t("timeColon")}</span>{' '}
                                            <span>{formatEventTime(selectedNotification.event.event_start)}</span>
                                        </div>
@@ -552,9 +559,9 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
                                    {/* Location */}
                                    {selectedNotification.event.location && (
-                                       <div className="flex items-start gap-3 text-white/70">
-                                           <MapPin size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
-                                           <div className="text-sm">
+                                       <div className="flex items-start gap-4 text-white/70">
+                                           <MapPin size={20} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
+                                           <div className="text-base leading-relaxed">
                                                <span className="font-medium text-white">{t("locationColon")}</span>{' '}
                                                <span>{tc(selectedNotification.event.location, language as any)}</span>
                                            </div>
@@ -563,11 +570,11 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
                                    {/* Event Description */}
                                    {selectedNotification.event.description && (
-                                       <div className="flex items-start gap-3 text-white/70">
-                                           <FileText size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
-                                           <div className="text-sm">
+                                       <div className="flex items-start gap-4 text-white/70">
+                                           <FileText size={20} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
+                                           <div className="text-base leading-relaxed">
                                                <span className="font-medium text-white">{t("eventDetailsColon")}</span>
-                                               <p className="text-white/50 mt-1">{tc(selectedNotification.event.description, language as any)}</p>
+                                               <p className="text-white/55 mt-1">{tc(selectedNotification.event.description, language as any)}</p>
                                            </div>
                                        </div>
                                    )}
@@ -576,10 +583,10 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
 
                            {/* Message Content */}
-                           <div className="space-y-2 pt-2 border-t border-white/10">
-                               <div className="flex items-start gap-3 text-white/70">
-                                   <MessageSquare size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
-                                   <div className="text-sm">
+                           <div className="space-y-2 pt-5 border-t border-white/10">
+                               <div className="flex items-start gap-4 text-white/70">
+                                   <MessageSquare size={20} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
+                                   <div className="text-base leading-relaxed">
                                        <span className="font-medium text-white">{t("messageColon")}</span>
                                        <p className="text-white/70 mt-1">
                                            {parseMessage(selectedNotification.message).actualMessage || selectedNotification.message}

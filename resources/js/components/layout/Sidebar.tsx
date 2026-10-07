@@ -16,6 +16,10 @@ interface SidebarProps {
   setActive: (page: string) => void;
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
+  userName?: string;
+  userRole?: string;
+  /** Optional per-nav-key count shown as a badge (e.g. { notify: 3 } for unread notifications). */
+  badges?: Record<string, number>;
 }
 
 // Same navy/gold/teal system, fixed width, and behavior as the staff
@@ -23,8 +27,15 @@ interface SidebarProps {
 // width, header block, nav styling, and logout confirm. No quick-jump
 // search box here: this portal's nav list is short enough (6 items) that a
 // search input isn't needed the way it is for staff's larger, grouped nav.
-export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile }: SidebarProps) {
+export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile, userName, userRole, badges }: SidebarProps) {
   const { t } = useLanguage();
+  const accountName = (userName ?? "").trim();
+  const accountInitials = accountName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("") || "M";
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -90,7 +101,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
         </button>
 
         {/* Sidebar Header -- same block as the staff Sidebar's own. */}
-        <div className="border-b border-white/10 px-4 py-5 shrink-0 flex items-center gap-3">
+        <div className="border-b border-white/10 px-4 h-[73px] box-border shrink-0 flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 border border-white/15 shrink-0 overflow-hidden">
             <img
               src="/logo-removebg-preview.png"
@@ -124,20 +135,35 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                 >
                   <item.icon className="h-5 w-5 shrink-0" />
                   <span className="truncate flex-1 min-w-0 text-left">{t(item.key)}</span>
+                  {(badges?.[item.key] ?? 0) > 0 && (
+                    <span
+                      className="ml-auto inline-flex h-6 min-w-[1.5rem] shrink-0 items-center justify-center rounded-full bg-gold-400 px-2 text-xs font-bold text-[#08130F] shadow-sm"
+                      aria-label={`${badges![item.key]} unread`}
+                    >
+                      {badges![item.key] > 99 ? "99+" : badges![item.key]}
+                    </span>
+                  )}
                 </button>
               );
             })}
           </div>
         </div>
 
-        {/* Logout */}
-        <div className="border-t border-white/10 p-2 shrink-0">
+        {/* Logout -- avatar + Sign out, same footer as the staff Sidebar. */}
+        <div className="border-t border-white/10 p-3 shrink-0 flex items-center gap-2.5">
+          <div
+            title={`${accountName}${userRole ? ` · ${userRole}` : ""}`}
+            aria-label={accountName}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-400 text-[12px] font-bold text-[#08130F]"
+          >
+            {accountInitials}
+          </div>
           <button
+            className="flex min-w-0 flex-1 items-center justify-start gap-3 rounded-xl border border-white/10 px-3 py-2.5 text-[13.5px] font-semibold text-white/70 transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
             onClick={() => setShowLogoutConfirm(true)}
-            className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all ${inactiveNav}`}
           >
             <LogOut className="h-5 w-5 shrink-0" />
-            <span className="truncate flex-1 min-w-0 text-left">{t("signOut")}</span>
+            <span className="truncate">{t("signOut")}</span>
           </button>
         </div>
       </aside>
@@ -146,7 +172,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           logout -- ending the session gets a deliberate, prominent step
           instead of the light peripheral-alert treatment. */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
           <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-6 text-center shadow-2xl">
             <div className="mb-4 flex justify-center text-[#4FBEB0]"><LogOut size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("confirmLogoutTitle")}</h3>

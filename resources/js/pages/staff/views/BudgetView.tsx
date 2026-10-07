@@ -1,3 +1,4 @@
+import { matchesSearch } from "../../../lib/search";
 import React, { useEffect, useMemo, useState } from "react";
 import { Wallet, Lock, Search, Banknote, PiggyBank, AlertTriangle, RefreshCw } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
@@ -106,7 +107,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     const b = budgetByEventId.get(String(id));
     return budgetStateOf(b?.approved_budget != null ? Number(b.approved_budget) : null, b?.total_expenses ?? 0);
   };
-  const searchedEvents = allEvents.filter((e) => e.title?.toLowerCase().includes(search.toLowerCase()));
+  const searchedEvents = allEvents.filter((e) => matchesSearch(search, e.title));
   const filterCounts = {
     all: searchedEvents.length,
     near: searchedEvents.filter((e) => stateOfEvent(e.id) === "near").length,
@@ -210,8 +211,19 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("searchEventsPlaceholderShort")}
-              className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+              className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                title="Clear"
+                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+              >
+                {t("clearLabel")}
+              </button>
+            )}
           </div>
 
           {/* When: Ongoing / Upcoming / Past, with live counts. */}

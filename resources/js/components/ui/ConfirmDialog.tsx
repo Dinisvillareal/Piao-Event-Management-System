@@ -58,7 +58,7 @@ export default function ConfirmDialog({
   if (!open) return null;
   const styles = dark ? TONE_STYLES_DARK[tone] : TONE_STYLES[tone];
   return (
-    <div className={`fixed inset-0 flex items-center justify-center px-4 ${dark ? "bg-black/70" : "bg-black/40"}`} style={{ zIndex: z }}>
+    <div className={`fixed inset-0 flex items-center justify-center px-4 bg-black/80 backdrop-blur-sm`} style={{ zIndex: z }}>
       <div className={`rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto ${dark ? "bg-[#0A0E1A] border border-white/10" : "bg-white"}`}>
         <div className={`mb-3 flex justify-center ${styles.icon}`}>{icon}</div>
         <h3 className={`text-lg font-bold mb-2 ${styles.title}`}>{title}</h3>

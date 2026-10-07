@@ -27,7 +27,9 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
-    if (status === 401 || status === 419) {
+    // Background, best-effort requests (e.g. the content-translations preload) opt out so a 401
+    // can never wipe the session or redirect the page.
+    if ((status === 401 || status === 419) && !(error?.config as any)?.skipAuthRedirect) {
       try {
         localStorage.removeItem("user");
         localStorage.removeItem("isAuthenticated");

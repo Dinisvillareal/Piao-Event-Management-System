@@ -1,5 +1,6 @@
+import FormSelect from "../../../components/ui/FormSelect";
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus } from "lucide-react";
+import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter } from "lucide-react";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
@@ -470,8 +471,19 @@ export default function InventoryView() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("searchInventoryPlaceholder")}
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                title="Clear"
+                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+              >
+                {t("clearLabel")}
+              </button>
+            )}
           </div>
           <FilterDropdown
             value={conditionFilter}
@@ -483,7 +495,8 @@ export default function InventoryView() {
                 label: t(CONDITION_LABEL_KEYS[c]),
               })),
             ]}
-            className="h-11 px-4 shrink-0"
+            className="h-11 pl-10 pr-8 shrink-0"
+            icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
             dark
           />
         </div>
@@ -667,7 +680,7 @@ export default function InventoryView() {
           Households Edit modal (centered card rather than a full-page
           takeover, since this form is small). */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={handleCloseForm}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={handleCloseForm}>
           <div className="bg-[#0A0E1A] rounded-3xl w-full max-w-3xl p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl sm:text-3xl font-bold text-white">{editing ? t("editItem") : t("addInventoryItem")}</h2>
@@ -707,11 +720,11 @@ export default function InventoryView() {
                 </div>
                 <div>
                   <label className="block text-base font-semibold text-white mb-2">{t("conditionRequired")}</label>
-                  <select value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value as Condition }))} className="w-full appearance-none rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50">
+                  <FormSelect value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value as Condition }))} className="w-full appearance-none rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50">
                     {(["New", "Good", "Fair", "Poor"] as Condition[]).map((c) => (
                       <option key={c} value={c} className="bg-[#0A0E1A] text-white">{t(CONDITION_LABEL_KEYS[c])}</option>
                     ))}
-                  </select>
+                  </FormSelect>
                 </div>
               </div>
               {editing && (
@@ -755,7 +768,7 @@ export default function InventoryView() {
 
       {/* Unsaved-changes guard for the Add/Edit Item modal */}
       {showFormCancelConfirm && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
@@ -783,7 +796,7 @@ export default function InventoryView() {
       <StatusModal open={!!successMessage} type="success" title={t("successTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} z={65} />
 
       {deleteId !== null && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70] px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-3 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-lg font-bold text-red-400 mb-2">{t("removeItemConfirmTitle")}</h3>
@@ -814,7 +827,7 @@ export default function InventoryView() {
           app (same treatment as the Delete-confirm and Unsaved-changes
           modals: bg-[#0A0E1A] card, white/10 border, teal accents). */}
       {viewingPhoto && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[80] px-4" onClick={() => setViewingPhoto(null)}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setViewingPhoto(null)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">

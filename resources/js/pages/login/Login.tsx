@@ -3,38 +3,7 @@ import { ArrowRight, Copy, LayoutDashboard, Users, CheckCircle, LogOut } from "l
 import StatusModal from "../../components/ui/StatusModal";
 import SplashScreen from "../../components/ui/SplashScreen";
 import { useLanguage } from "../../i18n/LanguageContext";
-
-// ─── Password-visibility eye glyph -- a plain closed-eye arc for "tap to
-// hide" (password currently showing), and that same arc with a hollow
-// pupil ring beneath it for "tap to reveal" (password currently masked) --
-// no bottom eyelid line, just the arc + ring, always in the theme's own
-// muted color rather than solid black. ─────────────────────────────────────
-function EyeToggleIcon({ visible }: { visible: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" width="18" height="18" className="text-white/50">
-      {visible ? (
-        <path
-          d="M4 13c1.8-4.2 5-6.8 8-6.8s6.2 2.6 8 6.8"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.3"
-          strokeLinecap="round"
-        />
-      ) : (
-        <>
-          <path
-            d="M4 12.5c1.8-4.3 5-6.3 8-6.3s6.2 2 8 6.3"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-          <circle cx="12" cy="12.7" r="3.3" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        </>
-      )}
-    </svg>
-  );
-}
+import EyeToggleIcon from "../../components/ui/EyeToggleIcon";
 
 // ─── Decorative corner wave art -- a few overlapping stroked lines, standing
 // in for the flowing line-art motif in the reference selection screen. ────

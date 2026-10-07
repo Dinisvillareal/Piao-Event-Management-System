@@ -312,6 +312,7 @@ import FilterDropdown from "../../../components/ui/FilterDropdown";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
+import { matchesSearch } from "../../../lib/search";
 
 
 export interface AttendanceRecord {
@@ -400,13 +401,8 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
       });
     }
     if (attendanceSearch.trim()) {
-      const q = attendanceSearch.toLowerCase();
       result = result.filter((rec) =>
-        rec.eventTitle.toLowerCase().includes(q) ||
-        rec.eventDate.toLowerCase().includes(q) ||
-        rec.location.toLowerCase().includes(q) ||
-        rec.timeIn?.toLowerCase().includes(q) ||
-        rec.timeOut?.toLowerCase().includes(q)
+        matchesSearch(attendanceSearch, rec.eventTitle, rec.eventDate, rec.location, rec.timeIn, rec.timeOut)
       );
     }
     return [...result].sort((a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime());
@@ -508,25 +504,25 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
           ) : (
             paginatedAttendance.map((rec) => (
               <div key={rec.id}
-                className="rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] px-6 py-4 hover:bg-white/[0.06] transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                className="rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] px-6 py-[18px] hover:bg-white/[0.06] transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex-1">
-                  <h3 className="text-base font-bold text-white">{highlightText(tc(rec.eventTitle, language as any), attendanceSearch)}</h3>
-                  <p className="text-[13px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)} · {tc(rec.location, language as any)}</p>
+                  <h3 className="text-[16.5px] font-bold text-white">{highlightText(tc(rec.eventTitle, language as any), attendanceSearch)}</h3>
+                  <p className="text-[13.5px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)} · {tc(rec.location, language as any)}</p>
                 </div>
                 <div className="flex items-center gap-6">
                   <div className="text-right">
-                    <span className="text-[13px] text-white/40">{t("timeInLabel")}</span>
-                    <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${rec.timeIn ? 'text-[#7DD8CB] bg-[#4FBEB0]/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
+                    <span className="text-[13.5px] text-white/40">{t("timeInLabel")}</span>
+                    <span className={`ml-1.5 text-[13.5px] font-medium px-2 py-0.5 rounded-full ${rec.timeIn ? 'text-[#7DD8CB] bg-[#4FBEB0]/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
                       {formatTimeOnly(rec.timeIn) || '—'}
                     </span>
                   </div>
                   <div className="text-right">
-                    <span className="text-[13px] text-white/40">{t("timeOutLabel")}</span>
-                    <span className={`ml-1.5 text-[13px] font-medium px-2 py-0.5 rounded-full ${rec.timeOut ? 'text-gold-300 bg-gold-400/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
+                    <span className="text-[13.5px] text-white/40">{t("timeOutLabel")}</span>
+                    <span className={`ml-1.5 text-[13.5px] font-medium px-2 py-0.5 rounded-full ${rec.timeOut ? 'text-gold-300 bg-gold-400/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
                       {formatTimeOnly(rec.timeOut) || '—'}
                     </span>
                   </div>
-                  <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                  <span className={`text-[12.5px] font-semibold px-3 py-1 rounded-full ${
                     rec.status === 'complete' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
                     : rec.status === 'incomplete' ? 'bg-gold-400/15 text-gold-300'
                     : 'bg-red-500/15 text-red-400'}`}>

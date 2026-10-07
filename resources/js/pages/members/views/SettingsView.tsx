@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { KeyRound, Globe, Home, User, Phone, Pencil, Eye, EyeOff } from "lucide-react";
+import { KeyRound, Globe, Home, User, Phone, Pencil } from "lucide-react";
+import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { isStrongPassword, PASSWORD_MAX } from "../../../lib/passwordPolicy";
@@ -405,7 +406,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
                 title={showNewPw ? t("memHidePassword") : t("memShowPassword")}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 transition"
               >
-                {showNewPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                <EyeToggleIcon visible={showNewPw} />
               </button>
               </div>
               <p className="mt-1.5 px-2 text-xs text-white/50">{t("passwordPolicyError")}</p>
@@ -436,7 +437,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
                 title={showConfirmPw ? t("memHidePassword") : t("memShowPassword")}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 transition"
               >
-                {showConfirmPw ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                <EyeToggleIcon visible={showConfirmPw} />
               </button>
               </div>
               {passwordsMismatch && (

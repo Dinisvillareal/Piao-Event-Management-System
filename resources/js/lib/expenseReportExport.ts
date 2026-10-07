@@ -1,4 +1,5 @@
 import type { Worksheet } from "exceljs";
+import { fetchBarangayOfficials } from "./barangayOfficials";
 
 /**
  * Builds a styled, ready-to-hand-off `.xlsx` expense report for a single
@@ -34,6 +35,8 @@ export interface ExpenseReportOptions {
   approvedBudget: number | null;
   totalSpent: number;
   expenses: ExpenseReportExpense[];
+  /** Opening "I. MESSAGE" section. Defaults to true. */
+  includeMessage?: boolean;
 }
 
 // Piao brand palette (tailwind.config.js), as ARGB for ExcelJS.
@@ -98,7 +101,7 @@ async function loadSeal(): Promise<ArrayBuffer | null> {
 }
 
 export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Promise<void> {
-  const { eventTitle, statusLabel, dateLabel, location, approvedBudget, totalSpent, expenses } = options;
+  const { eventTitle, statusLabel, dateLabel, location, approvedBudget, totalSpent, expenses, includeMessage = true } = options;
   const ExcelJS = (await import("exceljs")).default;
 
   const remaining = approvedBudget !== null ? Math.round((approvedBudget - totalSpent) * 100) / 100 : null;
@@ -106,6 +109,9 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
   const usedPct = approvedBudget ? (totalSpent / approvedBudget) * 100 : null;
   const isNear = !isOver && usedPct !== null && usedPct >= NEAR_LIMIT_PCT;
   const money = (n: number) => `₱${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  // Signature names: current Barangay Captain / Secretary ("HON. ..."), blank if none is set.
+  const officials = await fetchBarangayOfficials();
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "Piao Connect";
@@ -126,12 +132,11 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
   };
   lh(1, "REPUBLIC OF THE PHILIPPINES", "PIAO CONNECT", { font: { name: FONT, size: 8, bold: true, color: { argb: "FF222222" } } }, { font: { name: FONT, size: 9, bold: true, color: { argb: TEAL_LIGHT } } });
   const dk = { name: FONT, size: 9, color: { argb: "FF222222" } };
-  lh(2, "Western Mindanao, Region IX", "Generated on", { font: dk }, { font: { name: FONT, size: 8, color: { argb: MUTED } } });
-  lh(3, "Province of Zamboanga del Norte", generatedLong, { font: dk }, { font: { name: FONT, size: 10, bold: true, color: { argb: TEAL } } });
-  lh(4, "Municipality of President Manuel A. Roxas", null, { font: dk });
-  lh(5, "BARANGAY PIAO", null, { font: { name: FONT, size: 13, bold: true, color: { argb: "FF000000" } } });
-  lh(6, "Purok Uno — Barangay Hall, Piao, Roxas, Zamboanga del Norte, 7102", null, { font: dk });
-  [18, 13, 13, 13, 22, 16, 6].forEach((h, i) => (ws.getRow(i + 1).height = h));
+  lh(2, "Province of Zamboanga del Norte, Region IX", "Generated on", { font: dk }, { font: { name: FONT, size: 8, color: { argb: MUTED } } });
+  lh(3, "Municipality of President Manuel A. Roxas", generatedLong, { font: dk }, { font: { name: FONT, size: 10, bold: true, color: { argb: TEAL } } });
+  lh(4, "BARANGAY PIAO", null, { font: { name: FONT, size: 13, bold: true, color: { argb: "FF000000" } } });
+  lh(5, "Purok Uno — Barangay Hall, Piao, Roxas, Zamboanga del Norte, 7102", null, { font: dk });
+  [18, 13, 13, 22, 16, 4, 6].forEach((h, i) => (ws.getRow(i + 1).height = h));
   for (let c = FIRST_COL; c <= LAST_COL; c++) {
     ws.getCell(7, c).border = { bottom: { style: "thick", color: { argb: TEAL } } };
   }
@@ -190,8 +195,8 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
     });
     r++;
   };
-  sectionHeading("I.   MESSAGE", 22);
-  messageParagraphs.forEach((para) => {
+  if (includeMessage) sectionHeading("I.   MESSAGE", 22);
+  (includeMessage ? messageParagraphs : []).forEach((para) => {
     band(ws, r, FIRST_COL, LAST_COL, "      " + para, {
       font: { name: FONT, size: 10.5, color: { argb: argb("#1A1A1A") } },
       alignment: { vertical: "top", horizontal: "justify", indent: 1, wrapText: true },
@@ -200,8 +205,12 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
     ws.getRow(r).height = lines * 14.5 + 6;
     r++;
   });
-  sectionHeading("II.   REPORT DETAILS", 34);
-  ws.getRow(r).height = 6;
+  if (includeMessage) {
+    sectionHeading("II.   REPORT DETAILS", 34);
+    ws.getRow(r).height = 6;
+  } else {
+    ws.getRow(r).height = 10;
+  }
   r++;
 
   // ── Event details: two label/value pairs per row.
@@ -333,17 +342,20 @@ export async function exportExpenseReportXlsx(options: ExpenseReportOptions): Pr
   ws.getRow(r).height = 24;
   r++;
 
-  // ── Certification: "Prepared by" -> Brgy. Secretary, "Noted" -> Barangay Captain, same as the printed reports.
+  // ── Certification: "Prepared by" -> Barangay Secretary, "Noted" -> Barangay Captain, same as the printed reports.
   r += 2;
   const signLabel = { font: { name: FONT, size: 10.5, bold: true, color: { argb: argb("#1A1A1A") } }, alignment: { horizontal: "left", vertical: "middle", indent: 1 } };
   band(ws, r, 1, 3, "Prepared by:", signLabel);
   band(ws, r, 5, 7, "Noted:", signLabel);
   r++;
   ws.getRow(r).height = 48; // room to sign above the lines
+  const signName = { font: { name: FONT, size: 12, bold: true, color: { argb: argb("#000000") } }, alignment: { horizontal: "center", vertical: "bottom" } };
+  band(ws, r, 1, 3, officials.secretary?.name ?? "", signName);
+  band(ws, r, 5, 7, officials.captain?.name ?? "", signName);
   r++;
   const signLine = { border: { top: thin(MUTED) } };
-  const signTitle = { ...signLine, font: { name: FONT, size: 10.5, bold: true, color: { argb: argb("#1A1A1A") } }, alignment: { horizontal: "center", vertical: "top" } };
-  band(ws, r, 1, 3, "Brgy. Secretary", signTitle);
+  const signTitle = { ...signLine, font: { name: FONT, size: 10.5, bold: false, color: { argb: argb("#1A1A1A") } }, alignment: { horizontal: "center", vertical: "top" } };
+  band(ws, r, 1, 3, "Barangay Secretary", signTitle);
   band(ws, r, 5, 7, "Barangay Captain", signTitle);
   r += 2;
   band(ws, r, FIRST_COL, LAST_COL, `Generated via Piao Connect — Barangay Information Management System · ${generatedFull}`, {

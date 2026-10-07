@@ -62,11 +62,11 @@ export function receiptItemsChanged(items: ReceiptItem[], savedCount: number): b
 }
 
 const BTN_WHITE =
-  "inline-flex items-center rounded-full border border-white/25 px-5 py-2.5 text-base font-semibold text-white hover:bg-white/15 transition";
+  "inline-flex items-center rounded-full border border-white/25 px-4 py-2 text-sm font-semibold text-white hover:bg-white/15 transition";
 const BTN_RED =
-  "inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-5 py-2.5 text-base font-semibold text-red-400 hover:bg-red-500/10 transition";
+  "inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition";
 const BTN_GREEN =
-  "inline-flex items-center gap-1.5 rounded-full border border-[#4FBEB0]/40 px-5 py-2.5 text-[15px] font-semibold text-[#7DD8CB] hover:bg-[#4FBEB0]/10 transition";
+  "inline-flex items-center gap-1.5 rounded-full border border-[#4FBEB0]/40 px-4 py-2 text-[13px] font-semibold text-[#7DD8CB] hover:bg-[#4FBEB0]/10 transition";
 const BTN_WHITE_SM =
   "inline-flex items-center rounded-full border border-white/25 px-5 py-2.5 text-[15px] font-semibold text-white hover:bg-white/15 transition";
 const BTN_RED_SM =

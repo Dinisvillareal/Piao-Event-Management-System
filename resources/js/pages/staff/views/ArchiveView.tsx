@@ -1,3 +1,4 @@
+import { matchesSearch } from "../../../lib/search";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RefreshCw, Filter, Search, Trash2, Layers, Clock, AlertTriangle } from 'lucide-react';
 import FilterDropdown from '../../../components/ui/FilterDropdown';
@@ -191,11 +192,8 @@ export default function ArchiveView() {
       filtered = filtered.filter(item => item.type === typeFilter);
     }
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(item =>
-        item.name.toLowerCase().includes(q) ||
-        item.type.toLowerCase().includes(q) ||
-        item.deletedBy.toLowerCase().includes(q)
+        matchesSearch(searchQuery, item.name, item.type, item.deletedBy)
       );
     }
     return filtered;
@@ -378,28 +376,42 @@ export default function ArchiveView() {
         })}
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40" />
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("searchArchivePlaceholder")}
-              className="h-11 w-full rounded-xl border border-transparent bg-transparent pl-10 pr-3 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                aria-label="Clear search"
+                title="Clear"
+                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
+              >
+                {t("clearLabel")}
+              </button>
+            )}
           </div>
+          <FilterDropdown
+            value={typeFilter}
+            onChange={setTypeFilter}
+            options={typeOptions}
+            align="right"
+            className="h-11 pl-10 pr-8 shrink-0"
+            icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+            dark
+            searchable
+            searchPlaceholder={t("search")}
+            noResultsLabel={t("noMatchesFoundLabel")}
+          />
         </div>
-        <FilterDropdown
-          value={typeFilter}
-          onChange={setTypeFilter}
-          options={typeOptions}
-          align="right"
-          className="h-11 pl-10 pr-8"
-          icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-          dark
-        />
       </div>
 
       <p className="text-xs text-white/45">
@@ -492,7 +504,7 @@ export default function ArchiveView() {
           step, and the success modal below) since restoring is the
           positive/undo action here, not the app's usual save/delete. */}
       {restoreItem && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="flex justify-center text-sage-400 mb-3"><RefreshCw size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("restoreItemModalTitle")}</h3>

@@ -111,8 +111,9 @@
   .sig-row { width: 100%; border-collapse: collapse; }
   .sig-row td { border: none; text-align: center; font-size: 10px; padding: 0; }
   .sig-row td.sig-label { text-align: left; font-weight: bold; font-size: 10.5px; color: #1a1a1a; }
-  .sig-row td.sig-space { height: 46px; }
-  .sig-line { border-top: 1px solid #667777; padding-top: 4px; margin: 0 40px; font-weight: bold; font-size: 10.5px; color: #1a1a1a; }
+  .sig-row td.sig-space { height: 46px; vertical-align: bottom; }
+  .sig-name { margin: 0 40px; padding-bottom: 3px; text-align: center; font-weight: bold; font-size: 12px; letter-spacing: 0.4px; color: #000000; }
+  .sig-line { border-top: 1px solid #667777; padding-top: 4px; margin: 0 40px; font-weight: normal; font-size: 10.5px; color: #1a1a1a; }
   .msg { margin-top: 4px; }
   .msg h4 { color: #000000; font-size: 12px; margin: 10px 0 6px; letter-spacing: 0.5px; }
   .msg p { font-size: 10.5px; line-height: 1.55; text-align: justify; text-indent: 26px; margin: 0 0 7px; color: #1a1a1a; }
@@ -148,8 +149,7 @@
       </td>
       <td class="hdr-text-cell">
         <p class="tiny" style="margin:0; color:#222222; font-weight:bold;">Republic of the Philippines</p>
-        <p class="muted" style="margin:2px 0 0 0; color:#222222; font-size:9.5px;">Western Mindanao, Region IX</p>
-        <p class="muted" style="margin:0; color:#222222; font-size:9.5px;">Province of Zamboanga del Norte</p>
+        <p class="muted" style="margin:2px 0 0 0; color:#222222; font-size:9.5px;">Province of Zamboanga del Norte, Region IX</p>
         <p class="muted" style="margin:0; color:#222222; font-size:9.5px;">Municipality of President Manuel A. Roxas</p>
         <h1 class="brgy" style="margin:6px 0 4px 0;">Barangay Piao</h1>
         <p class="muted" style="margin:0; color:#222222; font-size:9.5px;">Purok Uno — Barangay Hall, Piao, Roxas, Zamboanga del Norte, 7102</p>
@@ -703,9 +703,14 @@
         <td class="sig-label" style="width: 50%;">Prepared by:</td>
         <td class="sig-label" style="width: 50%;">Noted:</td>
       </tr>
-      <tr><td class="sig-space"></td><td class="sig-space"></td></tr>
       <tr>
-        <td><div class="sig-line">Brgy. Secretary</div></td>
+        {{-- The official's name (auto-filled from the resident marked Barangay
+             Secretary / Captain) sits on top of the signature line. --}}
+        <td class="sig-space"><div class="sig-name">{{ $officials['secretary']['name'] ?? '' }}</div></td>
+        <td class="sig-space"><div class="sig-name">{{ $officials['captain']['name'] ?? '' }}</div></td>
+      </tr>
+      <tr>
+        <td><div class="sig-line">Barangay Secretary</div></td>
         <td><div class="sig-line">Barangay Captain</div></td>
       </tr>
     </table>
