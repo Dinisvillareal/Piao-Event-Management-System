@@ -947,6 +947,8 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
   const performDownloadQRCode = useCallback(async () => {
     setShowDownloadConfirm(false);
+    // Only a confirmed download closes the card popup; Cancel leaves it open.
+    setShowCardViewer(false);
 
     // Prefer the hidden hi-res QR so the printed card stays razor sharp;
     // fall back to the on-screen one.
@@ -980,10 +982,11 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   const [showCardViewer, setShowCardViewer] = useState(false);
   useEffect(() => {
     if (!showCardViewer) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setShowCardViewer(false); };
+    // Esc closes the card popup, but not while the download confirmation is on top of it.
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !showDownloadConfirm) setShowCardViewer(false); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [showCardViewer]);
+  }, [showCardViewer, showDownloadConfirm]);
   useEffect(() => {
     if (!userId || !userCode || !fullName) { setCardSides(null); return; }
     let cancelled = false;
@@ -1088,7 +1091,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
               <div className="mt-6 flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
-                  onClick={() => { setShowCardViewer(false); setShowDownloadConfirm(true); }}
+                  onClick={() => setShowDownloadConfirm(true)}
                   className="group inline-flex min-w-[260px] items-center justify-center gap-4 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-1.5 py-1.5 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md"
                 >
                   {t("downloadQrCode")}
@@ -1254,6 +1257,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
         body={t("confirmDownloadQrBody")}
         cancelLabel={t("cancelLabel")}
         confirmLabel={t("yesDownload")}
+        z={90}
         onCancel={() => setShowDownloadConfirm(false)}
         onConfirm={performDownloadQRCode}
         tone="brand"
