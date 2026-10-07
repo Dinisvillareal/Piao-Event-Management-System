@@ -134,6 +134,7 @@ class UserSeeder extends Seeder
                 'has_account' => 0,
                 'password' => 'emily123',
                 'birth_date' => '1991-08-17',
+                'civil_status' => 'Separated',
                 'current_statuses' => ['Solo Parent'],
                 'gender' => 'Female',
             ],
@@ -167,6 +168,7 @@ class UserSeeder extends Seeder
                 'password' => 'bea123',
                 // Solo Parent ("single mom") demo resident
                 'birth_date' => '1992-03-22',
+                'civil_status' => 'Single',
                 'current_statuses' => ['Solo Parent'],
                 'gender' => 'Female',
             ],
@@ -232,6 +234,7 @@ class UserSeeder extends Seeder
                 // Solo Parent -- enrolled in Solo Parent Support via
                 // MembershipResidentSeeder membership_id 5
                 'birth_date' => '1987-03-11',
+                'civil_status' => 'Widowed',
                 'current_statuses' => ['Solo Parent'],
                 'gender' => 'Female',
             ],
@@ -304,7 +307,8 @@ class UserSeeder extends Seeder
 
                 // Adviser example (Senior Citizen eligibility) extended to
                 // Youth / Solo Parent / Gender -- every seeded user now
-                // carries these so the Residents table isn't full of
+                // carries a civil status and gender (both are required when
+                // adding a resident in the app, so the demo data matches) so the Residents table isn't full of
                 // blank age/status/gender columns.
                 'birth_date' => $data['birth_date'] ?? null,
                 'civil_status_id' => isset($data['civil_status']) ? ($civilStatusIds[$data['civil_status']] ?? null) : null,

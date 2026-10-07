@@ -50,7 +50,7 @@ export default function EventsView({
   myFeedback = [],
   onFeedbackSubmitted,
 }: EventsViewProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
@@ -259,7 +259,7 @@ export default function EventsView({
       if (eventDate >= weekStart && eventDate <= weekEnd) {
         sectionKey = THIS_WEEK_KEY;
       } else {
-        sectionKey = new Date(dateOnly).toLocaleDateString("en-US", {
+        sectionKey = new Date(dateOnly).toLocaleDateString(locale, {
           weekday: "long",
           year: "numeric",
           month: "long",
@@ -349,7 +349,7 @@ export default function EventsView({
                   ←
                 </button>
 
-                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
                   {currentPage}
                 </span>
 
@@ -497,7 +497,7 @@ export default function EventsView({
                                       type="button"
                                       onClick={() => submitReview(e.id)}
                                       disabled={reviewRating < 1 || submittingReview}
-                                      className="flex-1 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-bold py-2 disabled:opacity-50 transition"
+                                      className="flex-1 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold py-2 disabled:opacity-50 transition"
                                     >
                                       {submittingReview ? t("submittingLabel") : t("submitReviewButton")}
                                     </button>

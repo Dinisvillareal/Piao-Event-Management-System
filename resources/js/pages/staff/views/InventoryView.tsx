@@ -4,20 +4,35 @@ import FilterDropdown from "../../../components/ui/FilterDropdown";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import NumberStepper from "../../../components/ui/NumberStepper";
+import PhotoAttachment from "../../../components/ui/PhotoAttachment";
+import { PhotoItem, photoItemsFromUrls, appendPhotoFields, photoItemsChanged } from "../../../components/ui/PhotoGallery";
 import Skeleton from "../../../components/ui/Skeleton";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 
-type Condition = "New" | "Good" | "Fair" | "Poor" | "Disposed" | "Lost";
+// An item's condition covers the units still in use. Lost and disposed units
+// are separate counters on the item, so they are only *filters*, not conditions.
+type Condition = "New" | "Good" | "Fair" | "Poor";
+type ConditionFilter = Condition | "Disposed" | "Lost";
 
 interface InventoryItem {
   id: number;
   name: string;
   quantity: number;
+  // Units reported lost -- separate from `condition`, so a few lost units
+  // never mark the still-good ones as Lost. lost_pending is the part that
+  // was out on loan when reported (settled once that loan closes).
+  lost_quantity: number;
+  lost_pending: number;
+  // Worn-out / used-up units taken out of service (same idea as lost).
+  disposed_quantity: number;
   condition: Condition;
   storage_location: string | null;
   notes: string | null;
   photo_url: string | null;
+  // Every photo, cover first (the list above only ever shows the cover).
+  photo_urls: string[];
   // How many units are currently lent out to a still-active event (see
   // InventoryItem::borrows() on the backend). >0 means the item can't be
   // deleted yet -- it has to be returned to Inventory first.
@@ -37,13 +52,11 @@ const CONDITION_STYLES: Record<Condition, string> = {
   Good: "bg-[#4FBEB0]/10 text-[#7DD8CB]",
   Fair: "bg-gold-400/15 text-gold-300",
   Poor: "bg-[#8A3D2C]/25 text-[#E2A088]",
-  Disposed: "bg-white/10 text-white/45",
-  Lost: "bg-red-500/15 text-red-400",
 };
 
-const emptyForm = { name: "", quantity: 1, condition: "Good" as Condition, storage_location: "", notes: "" };
+const emptyForm = { name: "", quantity: 1, lost_quantity: 0, disposed_quantity: 0, condition: "Good" as Condition, storage_location: "", notes: "" };
 
-const CONDITION_LABEL_KEYS: Record<Condition, string> = {
+const CONDITION_LABEL_KEYS: Record<ConditionFilter, string> = {
   New: "conditionNew",
   Good: "conditionGood",
   Fair: "conditionFair",
@@ -63,6 +76,8 @@ export default function InventoryView() {
   const { t } = useLanguage();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
+  const statsLoading = usePageOpenSkeleton(loading);
   const [search, setSearch] = useState("");
   const [conditionFilter, setConditionFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -91,13 +106,12 @@ export default function InventoryView() {
   const itemsPerPage = 10;
 
   // Photo state for the Add/Edit form
-  const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [photoPreview, setPhotoPreview] = useState<string>("");
-  const [removeExistingPhoto, setRemoveExistingPhoto] = useState(false);
-  const photoInputRef = useRef<HTMLInputElement>(null);
+  // One photo per item: the saved one or a newly picked file (kept as a list
+  // of at most one so it shares the save format with the multi-photo fields).
+  const [photoItems, setPhotoItems] = useState<PhotoItem[]>([]);
 
   // Full-size photo viewer (dark themed, matching the rest of the app).
-  const [viewingPhoto, setViewingPhoto] = useState<{ url: string; name: string } | null>(null);
+  const [viewingPhoto, setViewingPhoto] = useState<{ url: string; name: string; urls?: string[] } | null>(null);
 
   // KPI strip data -- deliberately a SEPARATE, always-unfiltered fetch from
   // the search/condition-filtered `items` list below, so the summary
@@ -152,7 +166,7 @@ export default function InventoryView() {
     const totalUnits = allItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
     const onLoanCount = allItems.filter((i) => i.borrowed_quantity > 0).length;
     const needsAttentionCount = allItems.filter(
-      (i) => !!i.overdue_borrow_event || i.condition === "Poor" || i.condition === "Lost"
+      (i) => !!i.overdue_borrow_event || i.condition === "Poor" || (i.lost_quantity ?? 0) > 0
     ).length;
     return { totalItems, totalUnits, onLoanCount, needsAttentionCount };
   }, [allItems]);
@@ -189,39 +203,82 @@ export default function InventoryView() {
   const isFormUnchanged = !!editing && (
     form.name === editing.name &&
     Number(form.quantity) === editing.quantity &&
+    Number(form.lost_quantity) === (editing.lost_quantity ?? 0) &&
+    Number(form.disposed_quantity) === (editing.disposed_quantity ?? 0) &&
     form.condition === editing.condition &&
     form.storage_location === (editing.storage_location ?? "") &&
     form.notes === (editing.notes ?? "") &&
-    photoFile === null &&
-    !removeExistingPhoto
+    !photoItemsChanged(photoItems, editing.photo_urls?.length ?? (editing.photo_url ? 1 : 0))
   );
 
   const hasFormChanges = editing
     ? !isFormUnchanged
-    : JSON.stringify(form) !== JSON.stringify(emptyForm) || photoFile !== null;
+    : JSON.stringify(form) !== JSON.stringify(emptyForm) || photoItems.length > 0;
 
   const handleCloseForm = () => {
     if (hasFormChanges) setShowFormCancelConfirm(true);
     else closeForm();
   };
 
+  // Lost / Disposed move units out of (or back into) the in-stock Quantity
+  // live, mirroring what the server does on save: stepping Lost or Disposed
+  // up takes units out of Quantity, stepping down puts them back. When
+  // editing, form.quantity is the BASE stock sent to the server; the number
+  // shown in the Quantity box is what's left after the Lost/Disposed changes.
+  // Units found again that were out on loan when reported (lost_pending)
+  // settle with that loan instead of returning to stock.
+  const projectStock = (base: number, lost: number, disposed: number) => {
+    if (!editing) return base;
+    let s = base;
+    const dl = lost - (editing.lost_quantity ?? 0);
+    if (dl > 0) {
+      s -= Math.min(dl, s);
+    } else if (dl < 0) {
+      const found = -dl;
+      s += found - Math.min(found, editing.lost_pending ?? 0);
+    }
+    return s - (disposed - (editing.disposed_quantity ?? 0));
+  };
+  const baseQuantity = Number(form.quantity) || 0;
+  const shownQuantity = editing ? projectStock(baseQuantity, form.lost_quantity, form.disposed_quantity) : baseQuantity;
+  // Upper limits so the numbers stay within what actually exists: disposed
+  // can only come from stock, lost can also come from units out on loan.
+  const maxDisposed = editing ? (editing.disposed_quantity ?? 0) + Math.max(0, projectStock(baseQuantity, form.lost_quantity, editing.disposed_quantity ?? 0)) : 0;
+  const maxLost = editing
+    ? (editing.lost_quantity ?? 0)
+      + Math.max(0, baseQuantity - Math.max(0, form.disposed_quantity - (editing.disposed_quantity ?? 0)))
+      + Math.max(0, (editing.borrowed_quantity ?? 0) - (editing.lost_pending ?? 0))
+    : 0;
+
+  // Picking a photo replaces the current one -- an item holds exactly one.
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError(t("uploadImageOnly"));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError(t("photoTooLarge"));
+      return;
+    }
+    const old = photoItems[0];
+    if (old?.file) URL.revokeObjectURL(old.url);
+    setPhotoItems([{ id: `photo-${Date.now()}`, url: URL.createObjectURL(file), file, existingIndex: null }]);
+  };
+
   const closeForm = () => {
     setShowForm(false);
     setEditing(null);
     setForm(emptyForm);
-    setPhotoFile(null);
-    setPhotoPreview("");
-    setRemoveExistingPhoto(false);
-    if (photoInputRef.current) photoInputRef.current.value = "";
+    setPhotoItems([]);
   };
 
   const openAdd = () => {
     setEditing(null);
     setForm(emptyForm);
-    setPhotoFile(null);
-    setPhotoPreview("");
-    setRemoveExistingPhoto(false);
-    if (photoInputRef.current) photoInputRef.current.value = "";
+    setPhotoItems([]);
     setError(null);
     setShowForm(true);
   };
@@ -231,46 +288,15 @@ export default function InventoryView() {
     setForm({
       name: item.name,
       quantity: item.quantity,
+      lost_quantity: item.lost_quantity ?? 0,
+      disposed_quantity: item.disposed_quantity ?? 0,
       condition: item.condition,
       storage_location: item.storage_location ?? "",
       notes: item.notes ?? "",
     });
-    setPhotoFile(null);
-    setPhotoPreview(item.photo_url ?? "");
-    setRemoveExistingPhoto(false);
-    if (photoInputRef.current) photoInputRef.current.value = "";
+    setPhotoItems(photoItemsFromUrls(item.photo_url ? [item.photo_url] : []));
     setError(null);
     setShowForm(true);
-  };
-
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setError("Please upload an image file only.");
-      e.target.value = "";
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Photo is too large. Maximum is 5 MB.");
-      e.target.value = "";
-      return;
-    }
-
-    setPhotoFile(file);
-    setRemoveExistingPhoto(false);
-    const reader = new FileReader();
-    reader.onload = (ev) => setPhotoPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
-    e.target.value = "";
-  };
-
-  const handleRemovePhoto = () => {
-    setPhotoFile(null);
-    setPhotoPreview("");
-    if (editing?.photo_url) setRemoveExistingPhoto(true);
-    if (photoInputRef.current) photoInputRef.current.value = "";
   };
 
   // Form submit only opens the "are you sure" step -- the actual save
@@ -283,11 +309,10 @@ export default function InventoryView() {
     e.preventDefault();
     setError(null);
 
-    // photoPreview is "" whenever the item would end up with no photo --
-    // a brand-new item with nothing chosen yet, or an existing item whose
-    // photo was removed and never replaced -- so this one check covers
-    // both the Add and Edit forms.
-    if (!photoPreview) {
+    // An item always keeps at least one photo -- a brand-new item with
+    // nothing chosen yet, or an existing item whose photos were all removed
+    // -- so this one check covers both the Add and Edit forms.
+    if (photoItems.length === 0) {
       setError(t("photoRequiredError"));
       return;
     }
@@ -313,14 +338,14 @@ export default function InventoryView() {
       fd.append("name", form.name);
       fd.append("quantity", String(form.quantity));
       fd.append("condition", form.condition);
+      if (editing) {
+        fd.append("lost_quantity", String(form.lost_quantity));
+        fd.append("disposed_quantity", String(form.disposed_quantity));
+      }
       if (form.storage_location) fd.append("storage_location", form.storage_location);
       if (form.notes) fd.append("notes", form.notes);
 
-      if (photoFile) {
-        fd.append("photo", photoFile);
-      } else if (removeExistingPhoto) {
-        fd.append("remove_photo", "1");
-      }
+      appendPhotoFields(fd, photoItems);
 
       let archived = false;
       if (editing) {
@@ -349,6 +374,8 @@ export default function InventoryView() {
         setForm({
           name: editing.name,
           quantity: editing.quantity,
+          lost_quantity: editing.lost_quantity ?? 0,
+          disposed_quantity: editing.disposed_quantity ?? 0,
           condition: editing.condition,
           storage_location: editing.storage_location ?? "",
           notes: editing.notes ?? "",
@@ -416,7 +443,9 @@ export default function InventoryView() {
           { value: stats.totalUnits, label: t("unitsInStockStatLabel"), description: t("unitsInStockStatDesc"), icon: Layers, gradient: "from-sage-800 to-[#1C2E2B]" },
           { value: stats.onLoanCount, label: t("onLoanStatLabel"), description: t("onLoanStatDesc"), icon: RefreshCw, gradient: "from-gold-400 to-gold-700" },
           { value: stats.needsAttentionCount, label: t("needsAttentionStatLabel"), description: t("needsAttentionStatDesc"), icon: AlertTriangle, gradient: "from-[#8A3D2C] to-[#5C2A1E]" },
-        ].map((card, idx) => (
+        ].map((card, idx) => statsLoading ? (
+          <StatCardSkeleton key={idx} />
+        ) : (
           <div
             key={idx}
             className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white shadow-sm transition-shadow duration-300 hover:shadow-md`}
@@ -448,7 +477,7 @@ export default function InventoryView() {
             onChange={setConditionFilter}
             options={[
               { value: "", label: t("allConditions") },
-              ...(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as Condition[]).map((c) => ({
+              ...(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as ConditionFilter[]).map((c) => ({
                 value: c,
                 label: t(CONDITION_LABEL_KEYS[c]),
               })),
@@ -489,12 +518,12 @@ export default function InventoryView() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-white/10">
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("itemColumn")}</th>
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("conditionColumn")}</th>
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("quantityColumn")}</th>
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("storageLocationLabel")}</th>
-                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("statusColumn")}</th>
-                  <th className="py-3 px-4 text-right text-[11px] font-bold uppercase tracking-wide text-white">{t("actionsColumn")}</th>
+                  <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("itemColumn")}</th>
+                  <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("conditionColumn")}</th>
+                  <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("quantityColumn")}</th>
+                  <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("storageLocationLabel")}</th>
+                  <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("statusColumn")}</th>
+                  <th className="py-3 px-4 text-right text-xs font-bold uppercase tracking-wide text-white">{t("actionsColumn")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -522,36 +551,49 @@ export default function InventoryView() {
                           )}
                         </div>
                         <div className="min-w-0 max-w-[280px]">
-                          <p className="font-semibold text-white truncate" title={item.name}>{item.name}</p>
+                          <p className="text-[15px] font-semibold text-white truncate" title={item.name}>{item.name}</p>
                           {item.notes && (
-                            <p className="text-xs text-white/40 leading-snug mt-0.5 line-clamp-2" title={item.notes}>{item.notes}</p>
+                            <p className="text-[13px] text-white/40 leading-snug mt-0.5 line-clamp-2" title={item.notes}>{item.notes}</p>
                           )}
                         </div>
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`px-2 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap ${CONDITION_STYLES[item.condition]}`}>{t(CONDITION_LABEL_KEYS[item.condition])}</span>
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${CONDITION_STYLES[item.condition]}`}>{t(CONDITION_LABEL_KEYS[item.condition])}</span>
                     </td>
-                    <td className="py-3 px-4 font-semibold text-white [font-variant-numeric:tabular-nums]">
-                      {item.quantity} <span className="font-normal text-xs text-white/45">{t("inStock")}</span>
+                    <td className="py-3 px-4 text-[15px] font-semibold text-white [font-variant-numeric:tabular-nums]">
+                      {item.quantity} <span className="font-normal text-[13px] text-white/45">{t("inStock")}</span>
+                      {item.lost_quantity > 0 && (
+                        <span
+                          title={item.lost_pending > 0 ? t("lostUnitsPendingTooltip").replace("{n}", String(item.lost_pending)) : undefined}
+                          className="ml-2 inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-semibold text-red-400 whitespace-nowrap"
+                        >
+                          {t("lostUnitsBadge").replace("{n}", String(item.lost_quantity))}
+                        </span>
+                      )}
+                      {item.disposed_quantity > 0 && (
+                        <span className="ml-2 inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/55 whitespace-nowrap">
+                          {t("disposedUnitsBadge").replace("{n}", String(item.disposed_quantity))}
+                        </span>
+                      )}
                     </td>
-                    <td className="py-3 px-4 text-white/50">
+                    <td className="py-3 px-4 text-[15px] text-white/50">
                       {item.storage_location ? (
                         <span className="flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5 shrink-0 text-[#4FBEB0]" /> {item.storage_location}
+                          <MapPin className="h-4 w-4 shrink-0 text-[#4FBEB0]" /> {item.storage_location}
                         </span>
                       ) : "—"}
                     </td>
                     <td className="py-3 px-4">
                       {item.overdue_borrow_event ? (
                         <span
-                          className="px-2 py-1 rounded-full text-[11px] font-semibold bg-red-500/15 text-red-400 whitespace-nowrap"
+                          className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-500/15 text-red-400 whitespace-nowrap"
                           title={t("overdueBorrowTooltip").replace("{event}", item.overdue_borrow_event.name)}
                         >
                           {t("overdueReturnBadge")}
                         </span>
                       ) : item.borrowed_quantity > 0 ? (
-                        <span className="px-2 py-1 rounded-full text-[11px] font-semibold border border-white/10 bg-white/[0.04] text-white/50 whitespace-nowrap">{t("onLoanBadge")}</span>
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold border border-white/10 bg-white/[0.04] text-white/50 whitespace-nowrap">{t("onLoanBadge")}</span>
                       ) : (
                         <span className="text-white/25">—</span>
                       )}
@@ -601,7 +643,7 @@ export default function InventoryView() {
                 >
                   ←
                 </button>
-                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] flex items-center justify-center text-sm font-bold">
+                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
                   {currentPage}
                 </span>
                 <button
@@ -625,96 +667,85 @@ export default function InventoryView() {
           takeover, since this form is small). */}
       {showForm && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4" onClick={handleCloseForm}>
-          <div className="bg-[#0A0E1A] rounded-[30px] w-full max-w-lg p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-white">{editing ? t("editItem") : t("addInventoryItem")}</h2>
-              <button onClick={handleCloseForm} className="text-white/50 hover:text-white"><X size={20} /></button>
+          <div className="bg-[#0A0E1A] rounded-3xl w-full max-w-3xl p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl sm:text-3xl font-bold text-white">{editing ? t("editItem") : t("addInventoryItem")}</h2>
+              <button onClick={handleCloseForm} className="text-white/50 hover:text-white"><X size={26} /></button>
             </div>
-            <form onSubmit={handleFormSubmit} noValidate className="space-y-4">
+            <form onSubmit={handleFormSubmit} noValidate className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-white/80 mb-1.5">{t("photoRequiredLabel")}</label>
-                <input
-                  ref={photoInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoChange}
-                  className="hidden"
+                <label className="block text-base font-semibold text-white mb-2">{t("photoRequiredLabel")}</label>
+                <PhotoAttachment
+                  file={photoItems[0]?.file ?? null}
+                  url={photoItems[0]?.url ?? null}
+                  onPick={handlePhotoChange}
+                  onPreview={() => photoItems[0] && setViewingPhoto({ url: photoItems[0].url, name: form.name || t("itemPhotoFallbackLabel") })}
+                  onDelete={() => setPhotoItems([])}
                 />
-                <div className="flex items-center gap-3">
-                  <div className="h-16 w-16 rounded-2xl bg-[#123A38] border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
-                    {photoPreview ? (
-                      <img src={photoPreview} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <ImagePlus className="h-6 w-6 text-white/40" />
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => photoInputRef.current?.click()}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10 transition"
-                    >
-                      {photoPreview ? t("replacePhotoLabel") : t("choosePhotoLabel")}
-                    </button>
-                    {photoPreview && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setViewingPhoto({ url: photoPreview, name: form.name || t("itemPhotoFallbackLabel") })}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-[#4FBEB0]/40 px-4 py-2 text-sm font-semibold text-[#7DD8CB] hover:bg-[#4FBEB0]/10 transition"
-                        >
-                          <Eye className="h-3.5 w-3.5" /> {t("viewPhotoLabel")}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleRemovePhoto}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" /> {t("removeLabel")}
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-                <p className="mt-1.5 text-xs text-white/40">JPG, PNG, GIF, or WEBP · Max 5 MB</p>
+                <p className="mt-2 text-sm text-white/50">{t("fileHintImage")}</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-white/80 mb-1">{t("itemNameRequired")}</label>
-                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder="Plastic chairs" />
+                <label className="block text-base font-semibold text-white mb-2">{t("itemNameRequired")}</label>
+                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("opsPlaceholderPlasticChairs")} />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-medium text-white/80 mb-1">{t("quantityRequired")}</label>
-                  <NumberStepper min={0} required fullWidth value={String(form.quantity)} onChange={(v) => setForm((p) => ({ ...p, quantity: Number(v) || 0 }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-4 pr-6 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                  <label className="block text-base font-semibold text-white mb-2">{t("quantityRequired")}</label>
+                  <NumberStepper
+                    min={0}
+                    required
+                    fullWidth
+                    value={String(shownQuantity)}
+                    onChange={(v) => {
+                      const typed = Math.max(0, Number(v) || 0);
+                      // Keep the Lost/Disposed adjustment, change only the base.
+                      setForm((p) => ({ ...p, quantity: Math.max(0, typed - (shownQuantity - baseQuantity)) }));
+                    }}
+                    className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-white/80 mb-1">{t("conditionRequired")}</label>
-                  <select value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value as Condition }))} className="w-full appearance-none rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50">
-                    {(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as Condition[]).map((c) => (
+                  <label className="block text-base font-semibold text-white mb-2">{t("conditionRequired")}</label>
+                  <select value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value as Condition }))} className="w-full appearance-none rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50">
+                    {(["New", "Good", "Fair", "Poor"] as Condition[]).map((c) => (
                       <option key={c} value={c} className="bg-[#0A0E1A] text-white">{t(CONDITION_LABEL_KEYS[c])}</option>
                     ))}
                   </select>
                 </div>
               </div>
+              {editing && (
+                <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-base font-semibold text-white mb-2">{t("lostUnitsLabel")}</label>
+                      <NumberStepper min={0} max={maxLost} fullWidth value={String(form.lost_quantity)} onChange={(v) => setForm((p) => ({ ...p, lost_quantity: Math.min(maxLost, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                    </div>
+                    <div>
+                      <label className="block text-base font-semibold text-white mb-2">{t("disposedUnitsLabel")}</label>
+                      <NumberStepper min={0} max={maxDisposed} fullWidth value={String(form.disposed_quantity)} onChange={(v) => setForm((p) => ({ ...p, disposed_quantity: Math.min(maxDisposed, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                    </div>
+                  </div>
+                  <p className="mt-2 text-sm text-white/45">{t("lostUnitsHint")}</p>
+                </div>
+              )}
               <div>
-                <label className="block text-sm font-medium text-white/80 mb-1">{t("storageLocationLabel")}</label>
-                <input value={form.storage_location} onChange={(e) => setForm((p) => ({ ...p, storage_location: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("storageLocationPlaceholder")} />
+                <label className="block text-base font-semibold text-white mb-2">{t("storageLocationLabel")}</label>
+                <input value={form.storage_location} onChange={(e) => setForm((p) => ({ ...p, storage_location: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("storageLocationPlaceholder")} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-white/80 mb-1">{t("notesLabel")}</label>
-                <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={2} />
+                <label className="block text-base font-semibold text-white mb-2">{t("notesLabel")}</label>
+                <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={3} />
               </div>
-              <div className="flex gap-2 pt-2">
+              <div className="flex gap-3 pt-3">
                 <button
                   type="submit"
                   disabled={isFormUnchanged}
                   title={isFormUnchanged ? t("noChangesToSaveHint") : undefined}
-                  className="flex-1 py-2.5 rounded-full font-bold bg-gold-400 hover:bg-gold-500 text-[#08130F] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gold-400 transition"
+                  className="flex-1 py-3.5 text-base rounded-full font-bold bg-sage-700 hover:bg-sage-800 text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-700 transition"
                 >
                   {editing ? t("updateItem") : t("addItem")}
                 </button>
-                <button type="button" onClick={handleCloseForm} className="px-6 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("cancelLabel")}</button>
+                <button type="button" onClick={handleCloseForm} className="px-8 py-3.5 text-base rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("cancelLabel")}</button>
               </div>
             </form>
           </div>
@@ -799,10 +830,26 @@ export default function InventoryView() {
             <div className="flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
               <img src={viewingPhoto.url} alt={viewingPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-2xl" />
             </div>
-            <div className="px-5 py-4 border-t border-white/10 flex justify-end">
+            <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
+              {viewingPhoto.urls && viewingPhoto.urls.length > 1 ? (
+                <div className="flex items-center gap-2">
+                  {viewingPhoto.urls.map((u, i) => (
+                    <button
+                      key={u + i}
+                      type="button"
+                      onClick={() => setViewingPhoto({ ...viewingPhoto, url: u })}
+                      className={`h-10 w-10 overflow-hidden rounded-lg border transition ${u === viewingPhoto.url ? "border-[#7DD8CB]" : "border-white/20 opacity-60 hover:opacity-100"}`}
+                    >
+                      <img src={u} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <span />
+              )}
               <button
                 onClick={() => setViewingPhoto(null)}
-                className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] text-sm font-bold transition"
+                className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold transition"
               >
                 {t("closeLabel")}
               </button>

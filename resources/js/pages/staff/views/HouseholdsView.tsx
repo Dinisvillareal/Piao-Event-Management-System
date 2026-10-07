@@ -326,23 +326,23 @@ export default function HouseholdsView() {
                     <Home className="h-5 w-5 text-[#4FBEB0]" />
                   </div>
                   <div className="min-w-[140px]">
-                    <p className="text-sm font-bold text-white">{h.code}</p>
-                    <p className="text-xs text-white/45">{h.address || t("noAddressOnFile")}</p>
+                    <p className="text-base font-bold text-white">{h.code}</p>
+                    <p className="text-sm text-white/50">{h.address || t("noAddressOnFile")}</p>
                   </div>
-                  <div className="flex items-center gap-1.5 text-xs text-[#7DD8CB] bg-[#4FBEB0]/10 rounded-full px-3 py-1">
-                    <Users className="h-3.5 w-3.5" /> {h.members_count} {t("membersLabel")}
+                  <div className="flex items-center gap-1.5 text-sm text-[#7DD8CB] bg-[#4FBEB0]/10 rounded-full px-3.5 py-1.5">
+                    <Users className="h-4 w-4" /> {h.members_count} {t("membersLabel")}
                   </div>
                   {head ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gold-300 bg-gold-500/10 rounded-full px-3 py-1">
-                      <Star className="h-3.5 w-3.5 fill-gold-300" /> {fullName(head)}
+                    <span className="inline-flex items-center gap-1 text-sm font-medium text-gold-300 bg-gold-500/10 rounded-full px-3.5 py-1.5">
+                      <Star className="h-4 w-4 fill-gold-300" /> {fullName(head)}
                     </span>
                   ) : h.members_count > 0 ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-medium text-gold-300 bg-gold-500/10 rounded-full px-3 py-1">
-                      <AlertCircle className="h-3.5 w-3.5" /> {t("noHeadAssigned")}
+                    <span className="inline-flex items-center gap-1 text-sm font-medium text-gold-300 bg-gold-500/10 rounded-full px-3.5 py-1.5">
+                      <AlertCircle className="h-4 w-4" /> {t("noHeadAssigned")}
                     </span>
                   ) : null}
                   {h.contact_number && (
-                    <span className="text-xs text-white/40">{h.contact_number}</span>
+                    <span className="text-sm text-white/50">{h.contact_number}</span>
                   )}
 
                   <div className="ml-auto flex items-center gap-1">
@@ -355,11 +355,11 @@ export default function HouseholdsView() {
                 {expanded && (
                   <div className="border-t border-white/10 bg-black/20 px-5 py-4 space-y-3">
                     {h.members.length === 0 ? (
-                      <p className="text-xs text-white/40">{t("noMembersYet")}</p>
+                      <p className="text-sm text-white/50">{t("noMembersYet")}</p>
                     ) : (
                       <div className="flex flex-wrap gap-2">
                         {h.members.map((m) => (
-                          <div key={m.id} className="flex items-center gap-2 rounded-full bg-white/[0.05] border border-white/10 pl-3 pr-1.5 py-1.5 text-xs">
+                          <div key={m.id} className="flex items-center gap-2 rounded-full bg-white/[0.05] border border-white/10 pl-3 pr-1.5 py-1.5 text-sm">
                             <span className="font-medium text-white">{fullName(m)}</span>
                             {m.role === "Staff" && (
                               <span className="rounded-full bg-gold-400/15 text-gold-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
@@ -393,23 +393,23 @@ export default function HouseholdsView() {
                           value={memberSearch}
                           onChange={(e) => setMemberSearch(e.target.value)}
                           placeholder={t("searchResidentPlaceholder")}
-                          className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                          className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                         />
                         <div className="max-h-40 overflow-y-auto space-y-1">
                           {filteredUnassigned.length === 0 ? (
-                            <p className="text-xs text-white/40 px-2 py-1">{t("noUnassignedResidents")}</p>
+                            <p className="text-sm text-white/40 px-2 py-1">{t("noUnassignedResidents")}</p>
                           ) : (
                             filteredUnassigned.map((m) => (
                               <button
                                 key={m.id}
                                 type="button"
                                 onClick={() => addMember(h.id, m.id)}
-                                className="w-full text-left text-xs px-3 py-2 rounded-full hover:bg-white/[0.06] flex items-center justify-between gap-2"
+                                className="w-full text-left text-sm px-3 py-2 rounded-full hover:bg-white/[0.06] flex items-center justify-between gap-2"
                               >
                                 <span className="flex items-center gap-1.5 text-white">
                                   {fullName(m)}
                                   {m.role === "Staff" && (
-                                    <span className="rounded-full bg-gold-400/15 text-gold-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
+                                    <span className="rounded-full bg-gold-400/15 text-gold-300 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
                                   )}
                                 </span>
                                 <span className="text-white/40">{m.user_code}</span>
@@ -417,7 +417,7 @@ export default function HouseholdsView() {
                             ))
                           )}
                         </div>
-                        <button type="button" onClick={() => { setPickerFor(null); setMemberSearch(""); }} className="text-xs text-white/40 hover:text-white px-2">
+                        <button type="button" onClick={() => { setPickerFor(null); setMemberSearch(""); }} className="text-sm text-white/40 hover:text-white px-2">
                           {t("cancelLabel")}
                         </button>
                       </div>
@@ -426,26 +426,26 @@ export default function HouseholdsView() {
                         <button
                           type="button"
                           onClick={() => setPickerFor(h.id)}
-                          className="inline-flex items-center gap-1.5 text-xs font-medium text-[#4FBEB0] hover:text-[#7DD8CB]"
+                          className="inline-flex items-center gap-1.5 text-sm font-medium text-[#4FBEB0] hover:text-[#7DD8CB]"
                         >
-                          <UserPlus className="h-3.5 w-3.5" /> {t("addMemberLabel")}
+                          <UserPlus className="h-4 w-4" /> {t("addMemberLabel")}
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); openEdit(h); }}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.03] px-4 py-2 text-sm font-semibold text-white/70 hover:bg-white/10 hover:text-white transition-colors"
                             title={t("editLabel")}
                           >
-                            <Pencil className="h-3.5 w-3.5" /> {t("editLabel")}
+                            <Pencil className="h-4 w-4" /> {t("editLabel")}
                           </button>
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setDeleteRecord(h); }}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-500/10 transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-white/[0.03] px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition-colors"
                             title={t("deleteTitle")}
                           >
-                            <Trash2 className="h-3.5 w-3.5" /> {t("deleteTitle")}
+                            <Trash2 className="h-4 w-4" /> {t("deleteTitle")}
                           </button>
                         </div>
                       </div>
@@ -462,7 +462,7 @@ export default function HouseholdsView() {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`h-9 w-9 rounded-full text-sm ${p === page ? "bg-gold-400 text-[#08130F] font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
+                  className={`h-9 w-9 rounded-full text-sm ${p === page ? "bg-sage-700 text-white shadow-sm font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
                 >
                   {p}
                 </button>
@@ -503,7 +503,7 @@ export default function HouseholdsView() {
                 type="submit"
                 disabled={saving || isEditFormUnchanged}
                 title={isEditFormUnchanged ? t("noChangesToSaveHint") : undefined}
-                className="px-6 py-3 rounded-full bg-gold-400 text-[#08130F] text-base font-bold hover:bg-gold-500 transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-gold-400"
+                className="px-6 py-3 rounded-full bg-sage-700 text-white text-base font-bold hover:bg-sage-800 transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-sage-700"
               >
                 {t("saveChanges")}
               </button>

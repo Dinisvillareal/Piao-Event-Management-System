@@ -5,6 +5,8 @@ import api from "../../../lib/api";
 import { queueAttendance } from "../../../lib/offlineQueue";
 import { useOnlineStatus } from "../../../hooks/useOnlineStatus";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import Skeleton from "../../../components/ui/Skeleton";
+import { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 
 type ScanResult = {
   ok: boolean;
@@ -46,7 +48,11 @@ const SCAN_STATUS_VARIANT: Record<ModalConfig['type'], 'success' | 'warning' | '
 };
 
 export default function ScanView({ events, residents, memberships }: any) {
-          const { t } = useLanguage();
+          const { t, locale } = useLanguage();
+  // Page-open skeleton: events/residents come in as already-loaded props, so
+  // this is just the short minimum -- opening the scanner reads as a
+  // deliberate load like the other modules instead of popping in.
+  const openSkeleton = usePageOpenSkeleton(false);
   const [eventId, setEventId] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [attendance, setAttendance] = useState<Record<string, AttendanceEntry[]>>({});
@@ -91,22 +97,22 @@ export default function ScanView({ events, residents, memberships }: any) {
   // also shows each option's own date/time for the same reason).
   const [currentDateTimeLabel, setCurrentDateTimeLabel] = useState(() => {
     const now = new Date();
-    return `${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`;
+    return `${now.toLocaleDateString(locale, { month: "short", day: "numeric" })}, ${now.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", hour12: true })}`;
   });
   useEffect(() => {
     const tick = setInterval(() => {
       const now = new Date();
       setCurrentHHMM(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
-      setCurrentDateTimeLabel(`${now.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`);
+      setCurrentDateTimeLabel(`${now.toLocaleDateString(locale, { month: "short", day: "numeric" })}, ${now.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", hour12: true })}`);
     }, 15000);
     return () => clearInterval(tick);
-  }, []);
+  }, [locale]);
 
   const formatEventOptionDateTime = (isoLike?: string): string => {
     if (!isoLike) return "";
     const d = new Date(String(isoLike).replace(" ", "T"));
     if (isNaN(d.getTime())) return "";
-    return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}, ${d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`;
+    return `${d.toLocaleDateString(locale, { month: "short", day: "numeric" })}, ${d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", hour12: true })}`;
   };
 
   const isOnline = useOnlineStatus();
@@ -362,7 +368,7 @@ export default function ScanView({ events, residents, memberships }: any) {
 
     const userCode = matchedResident.user_code || fallback?.userCode || `${t("idFieldLabel")} ${userId}`;
     const photo = matchedResident.photo || matchedResident.validation_id_url;
-    const role = matchedResident.role || "Resident";
+    const role = matchedResident.role || t("residentOption");
 
     let hasAccess = true;
     let reason = t("openEventAllowedMessage");
@@ -513,6 +519,70 @@ export default function ScanView({ events, residents, memberships }: any) {
       showModal('info', t("savedOfflineTitle"), `${t("connectionIssuePrefix")} ${scan.residentName} — ${scanMode === "in" ? t("signInWord") : t("signOutWord")} ${t("queuedSyncSuffix")}`);
     }
   };
+
+  if (openSkeleton) {
+    return (
+      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+        <div className="space-y-6">
+          <div>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("scan")}</h1>
+            <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("scanSubtitle")}</p>
+          </div>
+          <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+              <div className="flex items-center justify-between gap-3 border-b border-white/10 p-5">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-2/5" />
+                  <Skeleton className="h-3 w-3/5" />
+                </div>
+                <Skeleton className="h-11 w-11 rounded-full shrink-0" />
+              </div>
+              <div className="p-5 space-y-5">
+                <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-1/4" />
+                    <Skeleton className="h-11 w-full rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-1/3" />
+                    <div className="flex gap-2">
+                      <Skeleton className="h-10 flex-1 rounded-xl" />
+                      <Skeleton className="h-10 flex-1 rounded-xl" />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Skeleton className="h-3 w-1/4" />
+                    <div className="flex gap-2">
+                      <Skeleton className="h-10 flex-1 rounded-xl" />
+                      <Skeleton className="h-10 flex-1 rounded-xl" />
+                    </div>
+                  </div>
+                </div>
+                <Skeleton className="aspect-video w-full rounded-2xl" />
+              </div>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+              <div className="border-b border-white/10 p-5 space-y-2">
+                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <div className="divide-y divide-white/[0.06]">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 px-5 py-3">
+                    <Skeleton className="h-9 w-9 rounded-full shrink-0" />
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-3/5" />
+                      <Skeleton className="h-3 w-2/5" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">

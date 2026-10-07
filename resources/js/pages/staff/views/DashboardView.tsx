@@ -23,7 +23,7 @@ export default function DashboardView({
   upcomingEvents = [],
   pastEventsCount = 0
 }: DashboardViewProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [stats, setStats] = useState({
     residents: 0,
     memberships: 0,
@@ -68,8 +68,8 @@ export default function DashboardView({
       month: 'long',
       day: '2-digit',
     };
-    const datePart = date.toLocaleDateString('en-US', options);
-    const timePart = date.toLocaleTimeString('en-US', {
+    const datePart = date.toLocaleDateString(locale, options);
+    const timePart = date.toLocaleTimeString(locale, {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -85,7 +85,7 @@ export default function DashboardView({
     if (!dateString) return "";
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return dateString;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
   };
 
   // Current calendar quarter as a date_from/date_to pair for the budget
@@ -286,44 +286,44 @@ export default function DashboardView({
   const statsCards = [
     {
       value: stats.residents,
-      label: "RESIDENTS",
+      label: t("residents"),
       route: "residents",
-      description: "Total registered residents",
+      description: t("dashTotalResidentsDesc"),
       icon: Users,
       gradient: "from-sage-400 to-sage-700",
     },
     {
       value: stats.memberships,
-      label: "ACTIVE MEMBERSHIPS",
+      label: t("dashActiveMemberships"),
       route: "memberships",
-      description: "Active membership types",
+      description: t("dashActiveMembershipTypesDesc"),
       icon: Award,
       gradient: "from-gold-400 to-gold-700",
     },
     {
       value: stats.events,
-      label: "EVENTS",
+      label: t("events"),
       route: "events",
-      description: upcomingEvents.length > 0 ? `${upcomingEvents.length} upcoming this year` : "Upcoming + past this year",
+      description: upcomingEvents.length > 0 ? t("dashUpcomingThisYear").replace("{n}", String(upcomingEvents.length)) : t("dashUpcomingPastThisYear"),
       icon: CalendarDays,
       gradient: "from-sage-800 to-[#1C2E2B]",
     },
     {
       value: overdueBorrows.length,
-      label: "OVERDUE RETURNS",
+      label: t("dashOverdueReturns"),
       route: "returns",
-      description: overdueBorrows.length > 0 ? "Flagged for review" : "All items returned on time",
+      description: overdueBorrows.length > 0 ? t("dashFlaggedReview") : t("dashAllReturnedOnTime"),
       icon: Undo2,
       gradient: "from-[#8A3D2C] to-[#5C2A1E]",
     }
   ];
 
   const quickActions = [
-    { label: "Add Resident", icon: UserPlus, onClick: () => setActive("residents") },
-    { label: "Create Event", icon: CalendarPlus, onClick: () => setActive("events") },
-    { label: "Scan QR", icon: ScanLine, onClick: () => setActive("scan") },
-    { label: "Send Notice", icon: Bell, onClick: () => setActive("notify") },
-    { label: "View Reports", icon: BarChart3, onClick: () => setActive("reports") },
+    { label: t("dashAddResident"), icon: UserPlus, onClick: () => setActive("residents") },
+    { label: t("dashCreateEvent"), icon: CalendarPlus, onClick: () => setActive("events") },
+    { label: t("dashScanQr"), icon: ScanLine, onClick: () => setActive("scan") },
+    { label: t("dashSendNotice"), icon: Bell, onClick: () => setActive("notify") },
+    { label: t("dashViewReports"), icon: BarChart3, onClick: () => setActive("reports") },
   ];
 
   if (loading) {
@@ -392,8 +392,8 @@ export default function DashboardView({
               className="group flex flex-1 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left transition hover:border-gold-400/40 hover:bg-white/[0.06] lg:w-72"
             >
               <div>
-                <p className="font-display text-[15px] font-bold text-gold-400">Add Resident</p>
-                <p className="mt-1 text-[12px] text-white/50">Register a new resident profile</p>
+                <p className="font-display text-[15px] font-bold text-gold-400">{t("dashAddResident")}</p>
+                <p className="mt-1 text-[12px] text-white/50">{t("dashRegisterResidentDesc")}</p>
               </div>
               <UserPlus className="h-8 w-8 shrink-0 text-white/20 transition group-hover:text-gold-400" />
             </button>
@@ -402,8 +402,8 @@ export default function DashboardView({
               className="group flex flex-1 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left transition hover:border-[#4FBEB0]/40 hover:bg-white/[0.06] lg:w-72"
             >
               <div>
-                <p className="font-display text-[15px] font-bold text-[#4FBEB0]">View Reports</p>
-                <p className="mt-1 text-[12px] text-white/50">Analytics &amp; activity reports</p>
+                <p className="font-display text-[15px] font-bold text-[#4FBEB0]">{t("dashViewReports")}</p>
+                <p className="mt-1 text-[12px] text-white/50">{t("dashReportsDesc")}</p>
               </div>
               <BarChart3 className="h-8 w-8 shrink-0 text-white/20 transition group-hover:text-[#4FBEB0]" />
             </button>
@@ -471,23 +471,23 @@ export default function DashboardView({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="font-display text-xl font-bold text-white">Today's Live Snapshot</h2>
+                  <h2 className="font-display text-xl font-bold text-white">{t("dashTodaySnapshot")}</h2>
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">
                     <span className="relative flex h-1.5 w-1.5">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
                       <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
                     </span>
-                    Live
+                    {t("liveLabel")}
                   </span>
                 </div>
                 <p className="mt-1 text-[15px] text-white/50">
-                  {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                  {currentTime.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' })}
                 </p>
               </div>
               <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2">
                 <Clock className="h-4 w-4 text-[#4FBEB0]" />
                 <span className="font-display text-lg font-bold tabular-nums text-white">
-                  {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                  {currentTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
                 </span>
               </div>
             </div>
@@ -503,10 +503,10 @@ export default function DashboardView({
                 const activeStaffToday = new Set(recentActivities.map((act) => act.user_code)).size;
 
                 const snapshotTiles = [
-                  { label: "Staff Actions Today", value: recentActivities.length, icon: Activity, tone: "text-[#4FBEB0]" },
-                  { label: "Staff Active Today", value: activeStaffToday, icon: Users, tone: "text-[#7DD8CB]" },
-                  { label: "Events Today", value: eventsToday, icon: CalendarDays, tone: "text-gold-400" },
-                  { label: "Needs Attention", value: overdueBorrows.length, icon: Bell, tone: overdueBorrows.length > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
+                  { label: t("dashStaffActionsToday"), value: recentActivities.length, icon: Activity, tone: "text-[#4FBEB0]" },
+                  { label: t("dashStaffActiveToday"), value: activeStaffToday, icon: Users, tone: "text-[#7DD8CB]" },
+                  { label: t("dashEventsToday"), value: eventsToday, icon: CalendarDays, tone: "text-gold-400" },
+                  { label: t("dashNeedsAttention"), value: overdueBorrows.length, icon: Bell, tone: overdueBorrows.length > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
                 ];
 
                 return snapshotTiles.map((tile) => (
@@ -524,10 +524,13 @@ export default function DashboardView({
             <div className="mt-5 border-t border-white/10 pt-4">
               <p className="text-[11px] text-white/35">
                 {recentActivities.length === 0
-                  ? "No staff activity logged yet today."
-                  : `Last recorded action: ${recentActivities[0]?.action ?? "—"} by ${recentActivities[0]?.user_code ?? "staff"} at ${formatActivityDate(recentActivities[0]?.created_at)}.`}
+                  ? t("dashNoStaffActivity")
+                  : t("dashLastAction")
+                      .replace("{action}", String(recentActivities[0]?.action ?? "—"))
+                      .replace("{user}", String(recentActivities[0]?.user_code ?? "staff"))
+                      .replace("{time}", formatActivityDate(recentActivities[0]?.created_at))}
               </p>
-              <p className="mt-1 text-[10px] uppercase tracking-wide text-white/25">Auto-refreshes every 30 seconds</p>
+              <p className="mt-1 text-[10px] uppercase tracking-wide text-white/25">{t("dashAutoRefresh")}</p>
             </div>
           </div>
 
@@ -538,30 +541,30 @@ export default function DashboardView({
               rather than a decorative label. */}
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06]">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="font-display text-xl font-bold text-white">System Status</h2>
+              <h2 className="font-display text-xl font-bold text-white">{t("dashSystemStatus")}</h2>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
                 </span>
-                All Systems Operational
+                {t("dashAllSystemsOk")}
               </span>
             </div>
             <p className="mt-1 text-[15px] text-white/50">
               {(() => {
                 const secondsAgo = Math.max(0, Math.round((currentTime.getTime() - lastSyncedAt.getTime()) / 1000));
-                if (secondsAgo < 5) return "Synced just now";
-                if (secondsAgo < 60) return `Synced ${secondsAgo}s ago`;
-                return `Synced ${Math.floor(secondsAgo / 60)}m ago`;
+                if (secondsAgo < 5) return t("dashSyncedJustNow");
+                if (secondsAgo < 60) return t("dashSyncedSecondsAgo").replace("{n}", String(secondsAgo));
+                return t("dashSyncedMinutesAgo").replace("{n}", String(Math.floor(secondsAgo / 60)));
               })()}
             </p>
 
             <div className="mt-5 space-y-2.5">
               {[
-                { label: "Activity Log", icon: Activity },
-                { label: "Events & Attendance", icon: CalendarDays },
-                { label: "Overdue Returns", icon: Undo2 },
-                { label: "Budget Reports", icon: BarChart3 },
+                { label: t("dashActivityLog"), icon: Activity },
+                { label: t("eventsAndAttendance"), icon: CalendarDays },
+                { label: t("dashOverdueReturns"), icon: Undo2 },
+                { label: t("dashBudgetReports"), icon: BarChart3 },
               ].map((feed) => (
                 <div key={feed.label} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
                   <div className="flex items-center gap-2.5">
@@ -570,7 +573,7 @@ export default function DashboardView({
                   </div>
                   <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[#4FBEB0]">
                     <span className="h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
-                    Synced
+                    {t("dashSynced")}
                   </span>
                 </div>
               ))}
@@ -588,10 +591,10 @@ export default function DashboardView({
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/10">
                   <ScanLine className="h-5 w-5 text-[#4FBEB0]" />
                 </span>
-                <h2 className="font-display text-xl font-bold text-white">System QR Code</h2>
+                <h2 className="font-display text-xl font-bold text-white">{t("dashSystemQrCode")}</h2>
               </div>
               <p className="mt-3 text-[15px] text-white/50">
-                Residents scan this code to open the membership portal on their phone.
+                {t("dashSystemQrDesc")}
               </p>
 
               <div className="mt-5 flex flex-col items-start gap-4 sm:flex-row">
@@ -609,13 +612,13 @@ export default function DashboardView({
                 <div className="flex-1">
                   <p className="font-medium text-white">Barangay e-Membership</p>
                   <p className="mt-1 text-sm text-white/50">
-                    Print and post at the Barangay Hall lobby.
+                    {t("dashPrintPostHall")}
                   </p>
                   <button
                     onClick={downloadQRCode}
                     className="group mt-3 inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-5 pr-1.5 py-1.5 text-[15px] font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md"
                   >
-                    Download QR Code
+                    {t("downloadQrCode")}
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
                       <Download className="h-4 w-4 text-white" />
                     </span>
@@ -627,10 +630,10 @@ export default function DashboardView({
             <ConfirmDialog
               open={showQrDownloadConfirm}
               icon={<Download className="h-6 w-6" />}
-              title="Download QR Code?"
-              body="This will save the barangay system QR code as a PNG image to your device."
-              cancelLabel="Cancel"
-              confirmLabel="Download"
+              title={t("dashDownloadQrConfirmTitle")}
+              body={t("dashDownloadQrConfirmBody")}
+              cancelLabel={t("cancelLabel")}
+              confirmLabel={t("downloadLabel")}
               onCancel={() => setShowQrDownloadConfirm(false)}
               onConfirm={() => {
                 setShowQrDownloadConfirm(false);
@@ -640,26 +643,26 @@ export default function DashboardView({
             <StatusModal
               open={showQrDownloadSuccess}
               type="success"
-              title="Download complete"
-              message="The QR code image has been saved to your device."
-              okLabel="OK"
+              title={t("dashDownloadComplete")}
+              message={t("dashQrSavedMessage")}
+              okLabel={t("okLabel")}
               onClose={() => setShowQrDownloadSuccess(false)}
             />
 
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06]">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-display text-xl font-bold text-white">Budget Snapshot</h2>
-                  <p className="mt-1 text-[13px] text-white/50">Approved vs. spent — {getQuarterInfo().label}</p>
+                  <h2 className="font-display text-xl font-bold text-white">{t("dashBudgetSnapshot")}</h2>
+                  <p className="mt-1 text-[13px] text-white/50">{t("dashApprovedVsSpent").replace("{quarter}", getQuarterInfo().label)}</p>
                 </div>
                 <button onClick={() => setActive("budget")} className="shrink-0 text-xs font-bold text-[#7DD8CB] hover:underline">
-                  View all
+                  {t("dashViewAll")}
                 </button>
               </div>
 
               <div className="mt-4 space-y-3.5">
                 {!budgetSummary || budgetSummary.per_event.length === 0 ? (
-                  <p className="py-2 text-sm text-white/35">No approved event budgets this quarter.</p>
+                  <p className="py-2 text-sm text-white/35">{t("dashNoApprovedBudgets")}</p>
                 ) : (
                   (() => {
                     // Each bar just gets the next color in this fixed
@@ -707,19 +710,19 @@ export default function DashboardView({
                   <span className="absolute right-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-[#4FBEB0]" />
                 </div>
                 <button onClick={() => setActive("events")} className="shrink-0 text-xs font-bold text-white/70 transition hover:text-white hover:underline">
-                  View all
+                  {t("dashViewAll")}
                 </button>
               </div>
 
               {upcomingEvents.length === 0 ? (
-                <p className="px-5 py-6 text-sm text-[#9B9484]">No upcoming events scheduled.</p>
+                <p className="px-5 py-6 text-sm text-[#9B9484]">{t("dashNoUpcomingEvents")}</p>
               ) : (
                 <div className="flex flex-wrap">
                   {upcomingEvents.slice(0, 4).map((ev, i) => {
                     const d = new Date(ev.event_start ?? ev.date);
                     const validDate = !isNaN(d.getTime());
                     const day = validDate ? String(d.getDate()).padStart(2, "0") : "--";
-                    const month = validDate ? d.toLocaleDateString("en-US", { month: "short" }).toUpperCase() : "";
+                    const month = validDate ? d.toLocaleDateString(locale, { month: "short" }).toUpperCase() : "";
                     const year = validDate ? d.getFullYear() : "";
                     return (
                       <button

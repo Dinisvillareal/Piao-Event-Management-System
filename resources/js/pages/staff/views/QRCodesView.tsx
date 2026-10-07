@@ -771,7 +771,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 <button
                   key={p}
                   onClick={() => goToPage(p)}
-                  className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-gold-400 text-[#08130F] font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
+                  className={`h-9 w-9 rounded-full text-sm ${p === currentPage ? "bg-sage-700 text-white shadow-sm font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
                 >
                   {p}
                 </button>
@@ -848,7 +848,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             </div>
 
             <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-t border-white/10 flex justify-end">
-              <button onClick={closeModal} className="bg-gold-400 hover:bg-gold-500 text-[#08130F] px-4 py-2 rounded-full text-sm font-bold transition">
+              <button onClick={closeModal} className="bg-sage-700 hover:bg-sage-800 text-white px-4 py-2 rounded-full text-sm font-bold transition">
                 {t("closeLabel")}
               </button>
             </div>
@@ -906,7 +906,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             </div>
 
             <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-t border-white/10 flex justify-end">
-              <button onClick={() => setEligibilityCheck(null)} className="bg-gold-400 hover:bg-gold-500 text-[#08130F] px-4 py-2 rounded-full text-sm font-bold transition">
+              <button onClick={() => setEligibilityCheck(null)} className="bg-sage-700 hover:bg-sage-800 text-white px-4 py-2 rounded-full text-sm font-bold transition">
                 {t("closeLabel")}
               </button>
             </div>
@@ -1290,7 +1290,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <p className="text-[15px] text-white/50 mb-6">{t("membershipAddedSuccess")}</p>
             <button
               onClick={closeAddSuccess}
-              className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
+              className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white font-bold transition"
             >
               {t("okLabel")}
             </button>
@@ -1314,7 +1314,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <p className="text-[15px] text-white/50 mb-6">{t("membershipDeletedSuccess")}</p>
             <button
               onClick={closeDeleteSuccess}
-              className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
+              className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white font-bold transition"
             >
               {t("okLabel")}
             </button>
@@ -1337,7 +1337,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <p className="text-[15px] text-white/50 mb-6">{t("membershipUpdatedSuccess")}</p>
             <button
               onClick={closeUpdateSuccess}
-              className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
+              className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white font-bold transition"
             >
               {t("okLabel")}
             </button>
@@ -1416,7 +1416,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   if (target === "add") closeAddModal();
                   if (target === "edit") closeEditModal();
                 }}
-                className="px-5 py-2.5 rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] font-bold transition"
+                className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white font-bold transition"
               >
                 {t("discardCloseButton")}
               </button>

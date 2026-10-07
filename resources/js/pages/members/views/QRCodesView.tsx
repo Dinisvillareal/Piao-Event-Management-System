@@ -106,7 +106,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
       } catch (err) {
         console.error('Failed to fetch memberships:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load memberships');
+        setError(err instanceof Error ? err.message : t("memErrLoadMemberships"));
       } finally {
         setLoading(false);
       }
@@ -141,13 +141,13 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     setShowDownloadConfirm(false);
 
     if (!qrCodeRef.current) {
-      setDownloadError("QR code container not found");
+      setDownloadError(t("memErrQrContainer"));
       return;
     }
 
     const canvas = qrCodeRef.current.querySelector('canvas');
     if (!canvas) {
-      setDownloadError("Canvas not found. Please try again.");
+      setDownloadError(t("memErrCanvas"));
       return;
     }
 
@@ -159,9 +159,9 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
       setDownloadSuccess(true);
     } catch (err) {
       console.error('Download failed:', err);
-      setDownloadError('Failed to download QR code. Please try again.');
+      setDownloadError(t("memErrDownloadQr"));
     }
-  }, [userCode]);
+  }, [userCode, t]);
 
   // // ✅ FIXED: QR code generates even WITHOUT memberships
   // const qrData = useMemo(() => {
@@ -266,7 +266,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   ←
                 </button>
 
-                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
                   {currentPage}
                 </span>
 
@@ -328,7 +328,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                       disabled={!qrData}
                       className={`font-semibold py-3 px-6 rounded-full transition-colors duration-300 shadow-md w-full max-w-[280px] mx-auto block ${
                         qrData
-                          ? 'bg-gold-400 hover:bg-gold-300 text-[#08130F] cursor-pointer'
+                          ? 'bg-sage-700 hover:bg-sage-800 text-white cursor-pointer'
                           : 'bg-white/10 text-white/30 cursor-not-allowed'
                       }`}
                     >

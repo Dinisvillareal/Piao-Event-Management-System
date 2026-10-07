@@ -526,13 +526,41 @@ class UserController extends Controller
             }
         }
 
-            if ($request->has('has_account')) {
-                $user->has_account = filter_var($request->has_account, FILTER_VALIDATE_BOOLEAN);
-            }
+            // Account access rules (staff-managed; the frontend mirrors these
+            // but this is the source of truth):
+            //   - an existing account can be password-reset but never removed
+            //   - a resident without an account can be granted one, which
+            //     requires a password in the same request
+            //   - a resident editing their own profile can never grant or
+            //     revoke account access, only change their own password
+            $wantsAccount = $request->has('has_account')
+                ? filter_var($request->has_account, FILTER_VALIDATE_BOOLEAN)
+                : (bool) $user->has_account;
 
-            if ($request->filled('password')) {
+            if ($this->isStaff()) {
+                if ($user->has_account && !$wantsAccount) {
+                    DB::rollBack();
+                    return response()->json([
+                        'errors' => ['has_account' => ["An existing account can't be removed. You can only reset its password."]],
+                    ], 422);
+                }
+
+                if (!$user->has_account && $wantsAccount) {
+                    if (!$request->filled('password')) {
+                        DB::rollBack();
+                        return response()->json([
+                            'errors' => ['password' => ['A password is required to create this resident\'s account.']],
+                        ], 422);
+                    }
+                    $user->has_account = 1;
+                    $user->password = Hash::make($request->password);
+                    $this->createLog('Account Created', 'User', "Created a portal account for {$user->user_code}");
+                } elseif ($user->has_account && $request->filled('password')) {
+                    $user->password = Hash::make($request->password);
+                    $this->createLog('Password Reset', 'User', "Reset the password of {$user->user_code}");
+                }
+            } elseif ($user->has_account && $request->filled('password')) {
                 $user->password = Hash::make($request->password);
-                $user->has_account = 1;
             }
 
             if ($request->hasFile('validation_id')) {
@@ -737,7 +765,7 @@ class UserController extends Controller
         }
 
         $request->validate([
-            'new_password' => 'required|string|min:8|confirmed',
+            'new_password' => ['required', 'string', 'confirmed', new \App\Rules\StrongPassword()],
         ]);
 
         DB::beginTransaction();
@@ -789,16 +817,17 @@ class UserController extends Controller
                 'required',
                 'string',
                 function ($attribute, $value, $fail) {
+                    // Exactly 11 digits starting with 09 (e.g. 09171234567).
                     $stripped = preg_replace('/\D/', '', $value);
-                    if (!preg_match('/^(\+?63|0)9\d{9}$/', $stripped)) {
-                        $fail('The contact number format is invalid.');
+                    if (!preg_match('/^09\d{9}$/', $stripped)) {
+                        $fail('Contact number must be exactly 11 digits and start with 09.');
                     }
                 },
             ],
         ]);
 
         $user = User::findOrFail($id);
-        $user->contact_number = $request->contact_number;
+        $user->contact_number = preg_replace('/\D/', '', $request->contact_number);
         $user->save();
 
         $this->createLog(

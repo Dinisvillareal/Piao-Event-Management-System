@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Star, X } from "lucide-react";
 import api from "../../lib/api";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 interface PendingEvent {
   id: number;
@@ -16,6 +17,7 @@ interface PendingEvent {
  * since this is meant to be answered in a few seconds, not "managed".
  */
 export default function FeedbackPrompt() {
+  const { t } = useLanguage();
   const [queue, setQueue] = useState<PendingEvent[]>([]);
   const [dismissed, setDismissed] = useState<number[]>([]);
   const [rating, setRating] = useState(0);
@@ -59,7 +61,7 @@ export default function FeedbackPrompt() {
         <button onClick={skip} className="absolute top-3 right-3 text-white/40 hover:text-white">
           <X size={16} />
         </button>
-        <p className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB]">How was it?</p>
+        <p className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB]">{t("uiHowWasIt")}</p>
         <h3 className="text-lg font-black text-white mt-0.5 pr-6 truncate">{current.name}</h3>
         <div className="flex items-center gap-1 mt-3">
           {[1, 2, 3, 4, 5].map((n) => (
@@ -80,7 +82,7 @@ export default function FeedbackPrompt() {
         <textarea
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          placeholder="Optional comment..."
+          placeholder={t("optionalCommentPlaceholder")}
           rows={2}
           className="mt-3 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
         />
@@ -88,12 +90,12 @@ export default function FeedbackPrompt() {
           <button
             onClick={handleSubmit}
             disabled={rating < 1 || submitting}
-            className="flex-1 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-bold py-2.5 disabled:opacity-50 transition"
+            className="flex-1 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold py-2.5 disabled:opacity-50 transition"
           >
-            {submitting ? "Submitting..." : "Submit Feedback"}
+            {submitting ? t("submittingLabel") : t("uiSubmitFeedback")}
           </button>
           <button onClick={skip} className="rounded-full border border-white/15 text-white/60 hover:bg-white/5 text-sm font-medium px-4 transition">
-            Later
+            {t("uiLater")}
           </button>
         </div>
       </div>

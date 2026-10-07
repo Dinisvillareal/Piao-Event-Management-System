@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Search } from "lucide-react";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 export interface FilterDropdownOption {
   value: string;
@@ -67,9 +68,10 @@ export default function FilterDropdown({
   wrapperClassName = "",
   dark = false,
   searchable = false,
-  searchPlaceholder = "Search...",
-  noResultsLabel = "No matches found.",
+  searchPlaceholder,
+  noResultsLabel,
 }: FilterDropdownProps) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -201,7 +203,7 @@ export default function FilterDropdown({
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder={searchPlaceholder}
+                    placeholder={searchPlaceholder ?? t("uiSearchPlaceholder")}
                     className={`w-full rounded-full border pl-8 pr-3 py-1.5 text-sm focus:outline-none ${
                       dark
                         ? "border-white/10 bg-white/[0.06] text-white placeholder-white/30 focus:border-[#4FBEB0]/50"
@@ -213,7 +215,7 @@ export default function FilterDropdown({
             )}
             <div className={`max-h-[280px] overflow-y-auto ${dark ? "filter-dropdown-scroll-dark" : "filter-dropdown-scroll-light"}`}>
               {searchable && filteredOptions.length === 0 ? (
-                <p className={`px-4 py-2.5 text-sm italic ${dark ? "text-white/40" : "text-gray-400"}`}>{noResultsLabel}</p>
+                <p className={`px-4 py-2.5 text-sm italic ${dark ? "text-white/40" : "text-gray-400"}`}>{noResultsLabel ?? t("noMatchesFoundLabel")}</p>
               ) : (
                 filteredOptions.map((opt) => (
                   <button

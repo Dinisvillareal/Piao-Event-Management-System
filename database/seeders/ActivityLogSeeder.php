@@ -8,6 +8,7 @@ use App\Models\CivilStatus;
 use App\Models\Event;
 use App\Models\EventAttendance;
 use App\Models\EventExpense;
+use App\Models\EventInventoryRelease;
 use App\Models\Household;
 use App\Models\InventoryItem;
 use App\Models\User;
@@ -86,6 +87,27 @@ class ActivityLogSeeder extends Seeder
             $push($actor($i++), 'Create', 'Inventory', "Added inventory item: {$item->name}", $now->copy()->subDays(rand(75, 90)));
         }
 
+        // Lost / disposed units -- reported through Edit Item, same wording
+        // InventoryController::update writes.
+        foreach (InventoryItem::where(function ($q) {
+            $q->where('lost_quantity', '>', 0)->orWhere('disposed_quantity', '>', 0);
+        })->orderBy('id')->get() as $item) {
+            if ($item->lost_quantity > 0) {
+                $push($actor($i++), 'Update', 'Inventory', "Updated lost units for {$item->name}: {$item->lost_quantity} lost", $now->copy()->subDays(rand(8, 30)));
+            }
+            if ($item->disposed_quantity > 0) {
+                $push($actor($i++), 'Update', 'Inventory', "Updated disposed units for {$item->name}: {$item->disposed_quantity} disposed", $now->copy()->subDays(rand(8, 30)));
+            }
+        }
+
+        // Returns -- one entry per seeded release, at the release's own time.
+        foreach (EventInventoryRelease::with(['event', 'inventoryItem'])->orderBy('id')->get() as $release) {
+            if (!$release->event || !$release->inventoryItem) {
+                continue;
+            }
+            $push($release->released_by ?? $actor($i++), 'Return Items', 'Inventory', "Returned {$release->quantity}x {$release->inventoryItem->name} from event: {$release->event->name}", Carbon::parse($release->created_at));
+        }
+
         // Budget expenses ---------------------------------------------------------
         foreach (EventExpense::with('event')->get() as $expense) {
             if (!$expense->event) {
@@ -122,7 +144,7 @@ class ActivityLogSeeder extends Seeder
             'user_code' => 'SYSTEM',
             'action' => 'Database Seed',
             'module' => 'System',
-            'description' => 'Demo data seeded for users, households, events, attendance, budget, inventory, and feedback.',
+            'description' => 'Demo data seeded for users, households, events, attendance, budget, inventory, returns, and feedback.',
             'created_at' => $now,
             'updated_at' => $now,
         ];

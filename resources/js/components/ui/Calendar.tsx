@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { monthLong, monthShort, weekdayShort } from "./dateNames";
 
 interface CalendarProps {
   /** Selected date as an ISO "yyyy-mm-dd" string, or "" for none selected. */
@@ -13,9 +15,6 @@ interface CalendarProps {
       this shared component keeps the original light card look. */
   dark?: boolean;
 }
-
-const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function toISO(d: Date): string {
   const y = d.getFullYear();
@@ -52,6 +51,7 @@ function isSameDay(a: Date, b: Date): boolean {
  * at once.
  */
 export default function Calendar({ value, onSelect, min, max, dark = false }: CalendarProps) {
+  const { t } = useLanguage();
   const selected = parseISO(value);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -103,7 +103,7 @@ export default function Calendar({ value, onSelect, min, max, dark = false }: Ca
     return false;
   };
 
-  const monthLabel = viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const monthLabel = `${monthLong(t, month)} ${year}`;
 
   if (viewMode === "year") {
     return (
@@ -113,7 +113,7 @@ export default function Calendar({ value, onSelect, min, max, dark = false }: Ca
             type="button"
             onClick={() => setViewDate(new Date(year - 1, month, 1))}
             className={`h-8 w-8 flex items-center justify-center rounded-full active:scale-95 transition ${dark ? "text-[#4FBEB0] hover:bg-white/10" : "text-[#005f63] hover:bg-teal-50"}`}
-            aria-label="Previous year"
+            aria-label={t("uiPrevYear")}
           >
             <ChevronLeft size={18} />
           </button>
@@ -122,14 +122,14 @@ export default function Calendar({ value, onSelect, min, max, dark = false }: Ca
             type="button"
             onClick={() => setViewDate(new Date(year + 1, month, 1))}
             className={`h-8 w-8 flex items-center justify-center rounded-full active:scale-95 transition ${dark ? "text-[#4FBEB0] hover:bg-white/10" : "text-[#005f63] hover:bg-teal-50"}`}
-            aria-label="Next year"
+            aria-label={t("uiNextYear")}
           >
             <ChevronRight size={18} />
           </button>
         </div>
 
         <div className="grid grid-cols-3 gap-2">
-          {MONTH_ABBR.map((label, m) => {
+          {Array.from({ length: 12 }, (_, m) => monthShort(t, m)).map((label, m) => {
             const isCurrentView = m === month;
             const disabled = isMonthDisabled(year, m);
             return (
@@ -165,7 +165,7 @@ export default function Calendar({ value, onSelect, min, max, dark = false }: Ca
           type="button"
           onClick={() => setViewDate(new Date(year, month - 1, 1))}
           className={`h-8 w-8 flex items-center justify-center rounded-full active:scale-95 transition ${dark ? "text-[#4FBEB0] hover:bg-white/10" : "text-[#005f63] hover:bg-teal-50"}`}
-          aria-label="Previous month"
+          aria-label={t("uiPrevMonth")}
         >
           <ChevronLeft size={18} />
         </button>
@@ -173,7 +173,7 @@ export default function Calendar({ value, onSelect, min, max, dark = false }: Ca
           type="button"
           onClick={() => setViewMode("year")}
           className={`flex items-center gap-1 rounded-full px-2 py-1 text-sm font-bold transition ${dark ? "text-[#4FBEB0] hover:bg-white/10" : "text-[#005f63] hover:bg-teal-50"}`}
-          title="Jump to a different year"
+          title={t("uiJumpToYear")}
         >
           {monthLabel}
           <ChevronRight size={14} className="rotate-90 opacity-60" />
@@ -182,15 +182,15 @@ export default function Calendar({ value, onSelect, min, max, dark = false }: Ca
           type="button"
           onClick={() => setViewDate(new Date(year, month + 1, 1))}
           className={`h-8 w-8 flex items-center justify-center rounded-full active:scale-95 transition ${dark ? "text-[#4FBEB0] hover:bg-white/10" : "text-[#005f63] hover:bg-teal-50"}`}
-          aria-label="Next month"
+          aria-label={t("uiNextMonth")}
         >
           <ChevronRight size={18} />
         </button>
       </div>
 
       <div className="grid grid-cols-7 gap-y-1 mb-1">
-        {WEEKDAYS.map((w) => (
-          <div key={w} className={`h-7 flex items-center justify-center text-[11px] font-semibold ${dark ? "text-white/40" : "text-gray-400"}`}>
+        {Array.from({ length: 7 }, (_, i) => weekdayShort(t, i)).map((w, i) => (
+          <div key={i} className={`h-7 flex items-center justify-center text-[11px] font-semibold ${dark ? "text-white/40" : "text-gray-400"}`}>
             {w}
           </div>
         ))}

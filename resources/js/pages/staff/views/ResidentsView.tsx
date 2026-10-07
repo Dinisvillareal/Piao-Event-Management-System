@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
+import { checkPassword, isStrongPassword, PASSWORD_MAX } from "../../../lib/passwordPolicy";
 import {
   Search,
   X as XIcon,
@@ -15,6 +16,10 @@ import {
   ArrowLeft,
   Trash2,
   Save,
+  Lock,
+  Eye,
+  EyeOff,
+  ImagePlus,
 } from "lucide-react";
 import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
@@ -98,6 +103,10 @@ type AddForm = {
   lastName: string;
   contactNumber: string;
   role: string;
+  // Portal login -- optional at registration. When on, a password is
+  // required (the username is the generated PR-#### code).
+  hasAccount: boolean;
+  password: string;
   hasMemberships: boolean;
   selectedMemberships: number[];
   birthDate: string;
@@ -151,11 +160,11 @@ const formatContactNumber = (v: string) => {
 
 const displayContact = (num: string) => formatContactNumber(num);
 
-const formatDateShort = (value: string | null | undefined) => {
+const formatDateShort = (value: string | null | undefined, locale?: string) => {
   if (!value) return "—";
   const d = new Date(value);
   if (isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" });
 };
 
 const safeParseJson = async (res: Response): Promise<any> => {
@@ -210,6 +219,8 @@ const emptyAdd = (): AddForm => ({
   lastName: "",
   contactNumber: "",
   role: "",
+  hasAccount: false,
+  password: "",
   hasMemberships: false,
   selectedMemberships: [],
   birthDate: "",
@@ -227,7 +238,7 @@ const normalizeName = (s: string) =>
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ResidentsView() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [residentsData, setResidentsData] = useState<ResidentRow[]>([]);
   const [availableMemberships, setAvailableMemberships] = useState<Membership[]>([]);
   const [householdOptions, setHouseholdOptions] = useState<HouseholdOption[]>([]);
@@ -279,6 +290,41 @@ export default function ResidentsView() {
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const [editRecord, setEditRecord] = useState<string | null>(null);
+
+  // The Add/Edit panels are `fixed` full-page take-overs, so they need to
+  // start exactly where the page content starts (right under the top header).
+  // A hardcoded offset drifts whenever the header height changes (wrapped
+  // title, banner, zoom), which let the table strip peek out above the
+  // panel. Measure the real content scroller instead.
+  const [panelTop, setPanelTop] = useState(73);
+  // Show/hide toggle for the account password field (Add + Edit forms).
+  const [showPassword, setShowPassword] = useState(false);
+  const panelOpen = showAddForm || !!editRecord;
+  useLayoutEffect(() => {
+    if (!panelOpen) return;
+    const measure = () => {
+      const el = document.getElementById("staff-content-scroll");
+      if (el) setPanelTop(Math.round(el.getBoundingClientRect().top));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [panelOpen]);
+
+  // Always reopen a form with the password hidden.
+  useEffect(() => {
+    if (!panelOpen) setShowPassword(false);
+  }, [panelOpen]);
+
+  // Attendance status arrives from the API in mixed case ("missed",
+  // "Incomplete", ...). Normalize, then show the translated, capitalized label.
+  const attendanceStatusLabel = (status: string) => {
+    const key = String(status ?? "").trim().toLowerCase();
+    if (key === "complete") return t("statusComplete");
+    if (key === "incomplete") return t("statusIncomplete");
+    if (key === "missed") return t("statusMissed");
+    return key ? key.charAt(0).toUpperCase() + key.slice(1) : "";
+  };
   const [deleteRecord, setDeleteRecord] = useState<string | null>(null);
   const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
   const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
@@ -318,6 +364,15 @@ export default function ResidentsView() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [initialAddData, setInitialAddData] = useState("");
   const [initialEditData, setInitialEditData] = useState("");
+
+  // Whether the resident being edited already had a portal account when the
+  // form opened. An existing account can be password-reset but never turned
+  // off here (the server enforces the same rule); a missing one can be
+  // granted by switching it on and setting a password.
+  const editOriginalHasAccount = useMemo(
+    () => !!residentsData.find((x) => x.id === editRecord)?.hasAccount,
+    [residentsData, editRecord]
+  );
 
   const hasAddChanges = useMemo(
     () => JSON.stringify(newResident) !== initialAddData || addPhotoFile !== null,
@@ -444,7 +499,7 @@ export default function ResidentsView() {
       });
       const body = await safeParseJson(res);
       if (!res.ok) {
-        setAddHouseholdError(body?.message || "Failed to create household.");
+        setAddHouseholdError(body?.message || t("resFailedCreateHousehold"));
         return;
       }
       const created: HouseholdOption = { id: body.id, code: body.code, address: body.address };
@@ -461,7 +516,7 @@ export default function ResidentsView() {
       setNewHouseholdAddress("");
       setNewHouseholdContact("");
     } catch (e: any) {
-      setAddHouseholdError(e?.message || "Failed to create household.");
+      setAddHouseholdError(e?.message || t("resFailedCreateHousehold"));
     } finally {
       setAddHouseholdSaving(false);
     }
@@ -586,6 +641,12 @@ export default function ResidentsView() {
       e.target.value = "";
       return;
     }
+    if (file.size > 5 * 1024 * 1024) {
+      setApiErrorTitle(t("validationErrorTitle"));
+      setApiError(t("photoTooLarge"));
+      e.target.value = "";
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (ev) => {
       const preview = ev.target?.result as string;
@@ -645,6 +706,9 @@ export default function ResidentsView() {
     if (!raw) err.contactNumber = t("contactNumberRequired");
     else if (!raw.startsWith("09")) err.contactNumber = t("contactNumberMustStart09");
     else if (raw.length !== 11) err.contactNumber = t("mustBe11Digits");
+    if (!newResident.civilStatusId) err.civilStatusId = t("civilStatusRequired");
+    if (!newResident.gender) err.gender = t("genderRequired");
+    if (newResident.hasAccount && !isStrongPassword(newResident.password)) err.password = t("passwordPolicyError");
     setFormErrors(err);
     if (Object.keys(err).length > 0) setApiError(Object.values(err)[0]);
     return Object.keys(err).length === 0;
@@ -660,6 +724,11 @@ export default function ResidentsView() {
     if (!raw) err.contactNumber = t("contactNumberRequired");
     else if (!raw.startsWith("09")) err.contactNumber = t("contactNumberMustStart09");
     else if (raw.length !== 11) err.contactNumber = t("mustBe11Digits");
+    // Granting a new account needs a password; resetting an existing one
+    // is optional, but if one is typed it must meet the same rule.
+    if (editingResident.hasAccount && (!editOriginalHasAccount || editingResident.password.trim() !== "")) {
+      if (!isStrongPassword(editingResident.password)) err.password = t("passwordPolicyError");
+    }
     setFormErrors(err);
     if (Object.keys(err).length > 0) setApiError(Object.values(err)[0]);
     return Object.keys(err).length === 0;
@@ -704,10 +773,11 @@ export default function ResidentsView() {
     fd.append("last_name", newResident.lastName);
     fd.append("contact_number", newResident.contactNumber.replace(/\D/g, ""));
     fd.append("role", newResident.role);
-    // Registering a resident here never creates a portal login -- account
-    // access is granted separately, not as a side effect of adding a
-    // resident record. Omitting has_account leaves it false server-side
-    // (see UserController::store).
+    // Portal login is opt-in: only when "Has account" is ticked do we send
+    // has_account + the password (the server requires a password in that
+    // case -- see StoreUserRequest). Otherwise has_account stays false.
+    fd.append("has_account", newResident.hasAccount ? "1" : "0");
+    if (newResident.hasAccount) fd.append("password", newResident.password);
     if (addPhotoFile) fd.append("validation_id", addPhotoFile);
     if (newResident.hasMemberships && newResident.selectedMemberships.length > 0)
       newResident.selectedMemberships.forEach((id) => fd.append("membership_ids[]", String(id)));
@@ -851,9 +921,10 @@ export default function ResidentsView() {
     fd.append("contact_number", editingResident.contactNumber.replace(/\D/g, ""));
     fd.append("role", editingResident.role);
 
-    // This page only manages an account that already exists (a password
-    // reset) -- it never grants a new one, so has_account simply carries
-    // the resident's current state through unchanged.
+    // has_account can only ever go false -> true here (an existing account
+    // is locked on in the UI, and the server rejects removal). Turning it
+    // on requires a password; for an existing account a password is just
+    // an optional reset.
     fd.append("has_account", editingResident.hasAccount ? "1" : "0");
     if (editingResident.hasAccount && editingResident.password.trim()) {
       fd.append("password", editingResident.password);
@@ -1083,6 +1154,126 @@ const handleDeleteResident = async () => {
     );
   };
 
+  // "Account Access" fields shared by the Add and Edit forms (called as a
+  // plain function, not a component, so typing in the password box doesn't
+  // remount it). Rules:
+  //   - Add: optional "Has account" -- ticking it reveals a required password.
+  //   - Edit, no account yet: can be switched on (password required).
+  //   - Edit, account already exists: locked on -- an account can be
+  //     password-reset but never removed (the server enforces this too).
+  const renderAccountAccess = (isEdit: boolean) => {
+    const form = isEdit ? editingResident : newResident;
+    if (!form) return null;
+    const locked = isEdit && editOriginalHasAccount;
+    const archived = isEdit && editingResident?.deleted_at !== null;
+    const disabled = locked || archived;
+    const setForm = (patch: { hasAccount?: boolean; password?: string }) =>
+      isEdit
+        ? setEditingResident((p) => (p ? { ...p, ...patch } : p))
+        : setNewResident((p) => ({ ...p, ...patch }));
+    const inputCls =
+      "resident-password-field w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 border-white/10";
+    return (
+      <div className="space-y-4">
+        <label
+          className={`flex items-start gap-3 rounded-2xl border px-4 py-3 transition ${
+            form.hasAccount ? "border-[#4FBEB0]/30 bg-[#4FBEB0]/[0.06]" : "border-white/10 bg-white/[0.04]"
+          } ${disabled ? "cursor-not-allowed" : "cursor-pointer"}`}
+        >
+          <input
+            type="checkbox"
+            checked={form.hasAccount}
+            disabled={disabled}
+            onChange={(e) => setForm({ hasAccount: e.target.checked, password: "" })}
+            className="mt-1 w-5 h-5 text-[#4FBEB0] disabled:opacity-60"
+          />
+          <span className="min-w-0">
+            <span className="flex items-center gap-2 text-base font-semibold text-white">
+              {t("hasAccountCheckboxLabel")}
+              {locked && <Lock className="h-3.5 w-3.5 text-white/50" />}
+            </span>
+            <span className="mt-0.5 block text-sm text-white/60">
+              {locked
+                ? t("resAccountLockedNote")
+                : isEdit
+                ? t("resAccountTurnOnEdit")
+                : t("resAccountTurnOnAdd")}
+            </span>
+          </span>
+        </label>
+
+        {form.hasAccount && (
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-base font-semibold text-white mb-1.5">{t("usernameLabel")}</label>
+              <input
+                type="text"
+                value={isEdit ? `PR-${String(editingResident!.real_id).padStart(4, "0")}` : ""}
+                placeholder={t("resGeneratedWhenSaved")}
+                disabled
+                className="w-full rounded-full border px-5 py-3.5 text-base bg-white/[0.05] text-white placeholder:text-white/40 border-white/10 cursor-not-allowed"
+              />
+            </div>
+            <div>
+              <label className="block text-base font-semibold text-white mb-1.5">
+                {t("passwordLabel")}
+                {!locked && <span className="text-red-400"> *</span>}
+              </label>
+              <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                autoComplete="new-password"
+                value={form.password}
+                disabled={archived}
+                onChange={(e) => setForm({ password: e.target.value })}
+                maxLength={PASSWORD_MAX}
+                className={`${inputCls} pr-14`}
+                placeholder={locked ? t("resetPasswordPlaceholder") : t("resPasswordPlaceholder")}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? t("resHidePassword") : t("resShowPassword")}
+                aria-pressed={showPassword}
+                title={showPassword ? t("resHidePassword") : t("resShowPassword")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 transition"
+              >
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
+              </div>
+              <p className="mt-1.5 text-sm text-white/60">
+                {locked ? t("passwordResetNote") : t("resPasswordRequiredNote")}
+              </p>
+              {!archived && (form.password.length > 0 || !locked) && (
+                <ul className="mt-2 grid grid-cols-1 gap-1">
+                  {checkPassword(form.password).map((c) => (
+                    <li
+                      key={c.key}
+                      className={`flex items-center gap-2 text-xs transition-colors ${
+                        c.ok ? "text-[#7DD8CB]" : "text-white/45"
+                      }`}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold ${
+                          c.ok ? "bg-[#4FBEB0]/20 text-[#7DD8CB]" : "bg-white/[0.06] text-white/40"
+                        }`}
+                      >
+                        {c.ok ? "✓" : "•"}
+                      </span>
+                      {t(`resPw_${c.key}`)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {formErrors.password && <p className="text-red-400 text-xs mt-1">{formErrors.password}</p>}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const MembershipPicker = ({ isEdit }: { isEdit: boolean }) => {
     const [membershipSearch, setMembershipSearch] = useState("");
     const selMems = isEdit ? editingResident?.selectedMemberships ?? [] : newResident.selectedMemberships;
@@ -1099,16 +1290,16 @@ const handleDeleteResident = async () => {
     return (
       <div className="rounded-2xl border border-white/25 bg-white/10 p-5 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-bold uppercase tracking-wide text-gold-300">Membership</p>
+          <p className="text-sm font-bold uppercase tracking-wide text-gold-300">{t("reportTypeMembership")}</p>
           <span
             className={`inline-flex items-center rounded-full text-[11px] font-semibold px-2.5 py-1 transition-colors ${
               count > 0 ? "bg-[#4FBEB0]/10 text-[#7DD8CB]" : "bg-white/[0.05] text-white/40"
             }`}
           >
-            {count > 0 ? `${count} selected` : "None selected"}
+            {count > 0 ? t("resNSelected").replace("{n}", String(count)) : t("resNoneSelected")}
           </span>
         </div>
-        <p className="text-sm text-white/60">Search and tap a program to enroll this resident in real time.</p>
+        <p className="text-sm text-white/60">{t("resMembershipHint")}</p>
 
         {count > 0 && (
           <div className="flex flex-wrap gap-2 pb-1">
@@ -1121,7 +1312,7 @@ const handleDeleteResident = async () => {
                 <button
                   type="button"
                   onClick={() => toggleMembership(mem.id, isEdit)}
-                  aria-label={`Remove ${mem.name}`}
+                  aria-label={t("resRemoveMember").replace("{name}", mem.name)}
                   className="rounded-full p-0.5 hover:bg-white/10 transition-colors"
                 >
                   <XIcon className="h-3.5 w-3.5" />
@@ -1138,7 +1329,7 @@ const handleDeleteResident = async () => {
               type="text"
               value={membershipSearch}
               onChange={(e) => setMembershipSearch(e.target.value)}
-              placeholder="Search membership programs..."
+              placeholder={t("resSearchMembershipPrograms")}
               className="h-12 w-full rounded-full border border-white/25 bg-white/10 pl-11 pr-4 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
             />
           </div>
@@ -1148,7 +1339,7 @@ const handleDeleteResident = async () => {
           <p className="text-sm text-white/60 italic">{t("noMembershipsAvailable")}</p>
         ) : filteredAvailable.length === 0 ? (
           <p className="text-sm text-white/60 italic">
-            {query ? "No matching programs." : "All programs have been added."}
+            {query ? t("resNoMatchingPrograms") : t("resAllProgramsAdded")}
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -1180,37 +1371,26 @@ const handleDeleteResident = async () => {
     // A resident being edited may already have a saved photo (preview set
     // from the server) with no freshly-picked File yet -- fall back to a
     // generic label instead of claiming "No file chosen" in that case.
-    const displayName = file ? file.name : preview ? "Current photo" : "No file chosen";
+    const displayName = file ? file.name : preview ? t("resCurrentPhoto") : t("resNoFileChosen");
+    const openPreview = () =>
+      setPhotoPreviewModal({
+        url: preview,
+        label: t("idPhotoFieldLabel"),
+        name: displayName,
+        size: file ? file.size : null,
+      });
     return (
       <div
         className={`rounded-2xl border p-5 sm:p-6 transition-colors bg-white/10 ${
           preview ? "border-[#4FBEB0]/50" : formErrors.photo ? "border-red-500" : "border-white/25"
         }`}
       >
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-base font-bold uppercase tracking-wide text-white">
-              {t("idPhotoFieldLabel")}{" "}
-              <span className="text-white/50 font-medium normal-case">({t("optionalLabel")})</span>
-            </p>
-            <p className="mt-1 text-sm text-white/60 italic">A clear, recent photo used for the resident's ID.</p>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0">
-            {preview && (
-              <img src={preview} alt="Preview" className="h-14 w-14 rounded-full object-cover border border-white/15 shrink-0" />
-            )}
-            <div className="w-full sm:w-64">
-              <div
-                className={`flex items-center justify-between gap-2 rounded-full border px-5 py-2.5 text-base bg-white/10 ${
-                  preview ? "border-[#4FBEB0]/50 text-[#7DD8CB]" : "border-white/25 text-white/50"
-                }`}
-              >
-                <span className="truncate">{displayName}</span>
-                {preview && <CheckCircle className="h-4 w-4 text-[#4FBEB0] shrink-0" />}
-              </div>
-            </div>
-          </div>
+        <div className="min-w-0">
+          <p className="text-base font-bold uppercase tracking-wide text-white">
+            {t("idPhotoFieldLabel")}{" "}
+            <span className="text-white/50 font-medium normal-case">({t("optionalLabel")})</span>
+          </p>
+          <p className="mt-1 text-sm text-white/60 italic">{t("resPhotoHint")}</p>
         </div>
 
         <input
@@ -1221,40 +1401,87 @@ const handleDeleteResident = async () => {
           className="hidden"
         />
 
-        <div className="mt-4 flex flex-wrap items-center gap-2.5">
-          <label
-            htmlFor={inputId}
-            className="cursor-pointer inline-flex items-center rounded-full border border-white/25 px-5 py-2.5 text-base font-semibold text-white hover:bg-white/15 transition"
-          >
-            {preview ? "Replace" : "Choose File"}
-          </label>
-          {preview && (
-            <>
-              <button
-                type="button"
-                onClick={() =>
-                  setPhotoPreviewModal({
-                    url: preview,
-                    label: t("idPhotoFieldLabel"),
-                    name: displayName,
-                    size: file ? file.size : null,
-                  })
-                }
-                className="inline-flex items-center rounded-full border border-white/25 px-5 py-2.5 text-base font-semibold text-white hover:bg-white/15 transition"
-              >
-                Preview
-              </button>
-              <button
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+          <div className="flex min-w-0 flex-1 basis-56 items-center gap-3">
+            {preview ? (
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={openPreview}
+                  title={t("photoPreviewBtn")}
+                  aria-label={t("photoPreviewBtn")}
+                  className="block h-16 w-16 overflow-hidden rounded-xl border border-[#4FBEB0]/40 bg-black/20 hover:border-[#7DD8CB] transition"
+                >
+                  <img src={preview} alt="" className="h-full w-full object-cover" />
+                </button>
+                <button
                 type="button"
                 onClick={() => handleRemovePhoto(isEdit)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-5 py-2.5 text-base font-semibold text-red-400 hover:bg-red-500/10 transition"
+                title={t("photoDeleteBtn")}
+                aria-label={t("photoDeleteBtn")}
+                className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-black/50 hover:bg-black/70 border border-white/40 text-white backdrop-blur-sm flex items-center justify-center transition"
               >
-                <Trash2 className="h-4 w-4" /> Delete
+                <XIcon className="h-3.5 w-3.5" />
               </button>
-            </>
-          )}
-          <span className="text-[11px] text-white/40 sm:ml-auto">JPG, PNG, GIF, or WEBP</span>
+              </div>
+            ) : (
+              <div className="h-16 w-16 shrink-0 rounded-xl border border-dashed border-white/25 bg-white/[0.03] flex items-center justify-center text-white/40">
+                <ImagePlus className="h-6 w-6" />
+              </div>
+            )}
+            <div className="min-w-0">
+              {preview ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={openPreview}
+                    className="block max-w-full truncate text-left text-base font-semibold text-[#7DD8CB] hover:underline"
+                  >
+                    {displayName}
+                  </button>
+                  <p className="text-sm text-white/50">
+                    {file ? `${t("photoImageKind")} · ${file.size >= 1048576 ? (file.size / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(file.size / 1024)) + " KB"}` : t("savedPhotoLabel")}
+                  </p>
+                </>
+              ) : (
+                <p className="text-base text-white/50">{t("resNoPhotoYet")}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <label
+              htmlFor={inputId}
+              className={`cursor-pointer ${
+                preview
+                  ? "inline-flex items-center rounded-full border border-white/25 px-5 py-2.5 text-base font-semibold text-white hover:bg-white/15 transition"
+                  : "inline-flex items-center gap-1.5 rounded-full border border-[#4FBEB0]/40 px-5 py-2.5 text-base font-semibold text-[#7DD8CB] hover:bg-[#4FBEB0]/10 transition"
+              }`}
+            >
+              {!preview && <ImagePlus className="h-4 w-4" />}
+              {preview ? t("photoReplaceBtn") : t("resChooseFile")}
+            </label>
+            {preview && (
+              <>
+                <button
+                  type="button"
+                  onClick={openPreview}
+                  className="inline-flex items-center rounded-full border border-white/25 px-5 py-2.5 text-base font-semibold text-white hover:bg-white/15 transition"
+                >
+                  {t("photoPreviewBtn")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRemovePhoto(isEdit)}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-red-500/30 px-5 py-2.5 text-base font-semibold text-red-400 hover:bg-red-500/10 transition"
+                >
+                  <Trash2 className="h-4 w-4" /> {t("photoDeleteBtn")}
+                </button>
+              </>
+            )}
+          </div>
         </div>
+        <p className="mt-3 text-sm text-white/50">{t("fileHintImage")}</p>
 
         {formErrors.photo && (
           <p className="text-red-400 text-xs mt-2 font-medium">⚠ {formErrors.photo}</p>
@@ -1288,7 +1515,7 @@ const handleDeleteResident = async () => {
           onClick={handleOpenAddForm}
           className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
         >
-          Register resident
+          {t("resRegisterResident")}
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
             <UserPlus className="h-5 w-5 text-white" />
           </span>
@@ -1311,14 +1538,14 @@ const handleDeleteResident = async () => {
           <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
             {[
               { key: "all" as const, label: `${t("allRecordsOption")} (${activeResidents.length})` },
-              { key: "members" as const, label: `Members (${membersCount})` },
-              { key: "not-members" as const, label: "Not yet members" },
+              { key: "members" as const, label: t("resMembersFilter").replace("{n}", String(membersCount)) },
+              { key: "not-members" as const, label: t("resNotYetMembers") },
             ].map((opt) => (
               <button
                 key={opt.key}
                 onClick={() => setMembershipFilter(opt.key)}
                 className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
-                  membershipFilter === opt.key ? "bg-gold-400 text-[#08130F]" : "bg-white/[0.04] text-white/60 hover:bg-white/[0.08]"
+                  membershipFilter === opt.key ? "bg-sage-700 text-white shadow-sm" : "bg-white/[0.04] text-white/60 hover:bg-white/[0.08]"
                 }`}
               >
                 {opt.label}
@@ -1338,20 +1565,20 @@ const handleDeleteResident = async () => {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
               </span>
-              Live
+              {t("liveLabel")}
             </span>
           </div>
-          <p className="text-xs text-white/45">{filteredResidents.length} records</p>
+          <p className="text-xs text-white/45">{t("resRecordsCount").replace("{n}", String(filteredResidents.length))}</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[760px]">
             <thead>
               <tr className="border-b border-white/10">
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">Resident</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">Age</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">Contact</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">Household</th>
-                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">Membership</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("residentOption")}</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("ageColumn")}</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("rptColContact")}</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("householdLabel")}</th>
+                <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("reportTypeMembership")}</th>
                 <th className="py-3 px-4 w-10" />
               </tr>
             </thead>
@@ -1407,7 +1634,7 @@ const handleDeleteResident = async () => {
                           }`}
                         >
                           <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-[#4FBEB0]" : "bg-white/30"}`} />
-                          {active ? "Active member" : "Not a member"}
+                          {active ? t("resActiveMember") : t("resNotAMember")}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
@@ -1429,7 +1656,7 @@ const handleDeleteResident = async () => {
             >
               ←
             </button>
-            <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] flex items-center justify-center text-sm font-bold">
+            <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
               {currentPage}
             </span>
             <button
@@ -1461,15 +1688,26 @@ const handleDeleteResident = async () => {
         });
 
         const infoRows: [string, React.ReactNode][] = [
-          ["Contact number", r.contactNumber || "—"],
-          ["Birthdate", formatDateShort(r.birthDate)],
-          ["Purok", r.address || "—"],
+          [t("contactNumberLabel"), r.contactNumber || "—"],
+          [t("resBirthdate"), formatDateShort(r.birthDate, locale)],
+          [t("resPurok"), r.address || "—"],
         ];
-        if (r.age !== null) infoRows.push(["Age", `${r.age}${r.ageGroup ? ` · ${r.ageGroup}` : ""}`]);
-        if (r.gender) infoRows.push(["Gender", r.gender === "Male" ? t("maleOption") : t("femaleOption")]);
-        if (r.civilStatus) infoRows.push(["Civil status", r.civilStatus]);
-        infoRows.push(["Household size", size > 0 ? `${size} member${size === 1 ? "" : "s"}` : "—"]);
-        infoRows.push(["Role", r.role]);
+        if (r.age !== null) infoRows.push([t("ageLabel"), `${r.age}${r.ageGroup ? ` · ${r.ageGroup}` : ""}`]);
+        if (r.gender) infoRows.push([t("genderLabel"), r.gender === "Male" ? t("maleOption") : t("femaleOption")]);
+        if (r.civilStatus) infoRows.push([t("civilStatusLabel"), r.civilStatus]);
+        infoRows.push([t("resHouseholdSize"), size > 0 ? t(size === 1 ? "resOneMember" : "resNMembers").replace("{n}", String(size)) : "—"]);
+        infoRows.push([t("roleColumn"), r.role === "Resident" ? t("residentOption") : r.role === "Staff" ? t("staffOption") : r.role]);
+        infoRows.push([
+          t("resAccount"),
+          r.hasAccount ? (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#4FBEB0]/15 text-[#7DD8CB]">{t("yesLabel")}</span>
+              <span className="text-xs text-white/50">{r.id}</span>
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/10 text-white/60">{t("noLabel")}</span>
+          ),
+        ]);
 
         return (
           <>
@@ -1496,7 +1734,7 @@ const handleDeleteResident = async () => {
               />
 
               <div className="relative z-10 flex items-center justify-between px-6 py-5 border-b border-white/10 shrink-0 bg-[#0A0E1A]">
-                <h2 className="font-display text-lg font-bold text-white">Residents Profile</h2>
+                <h2 className="font-display text-lg font-bold text-white">{t("resProfileTitle")}</h2>
                 <button onClick={() => setViewRecord(null)} className="text-white/50 hover:text-white">
                   <XIcon size={20} />
                 </button>
@@ -1529,13 +1767,13 @@ const handleDeleteResident = async () => {
                     }`}
                   >
                     <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-[#4FBEB0]" : "bg-white/30"}`} />
-                    {active ? "Active" : "Not a member"}
+                    {active ? t("resActive") : t("resNotAMember")}
                   </span>
                 </div>
 
                 <section className="mt-8">
                   <h2 className="text-sm font-bold uppercase tracking-wider text-white pb-2.5 border-b-2 border-white/40 mb-5">
-                    Personal Information
+                    {t("resPersonalInfo")}
                   </h2>
                   <div className="grid grid-cols-1 gap-y-4">
                     {infoRows.map(([label, value]) => (
@@ -1546,12 +1784,12 @@ const handleDeleteResident = async () => {
                     ))}
                     {r.household && (
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-white/40">Household</span>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-white/40">{t("householdLabel")}</span>
                         <span className="text-sm font-medium text-white text-right">
                           {r.household.code}
                           {r.isHouseholdHead && (
                             <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gold-400/15 text-gold-300 align-middle">
-                              {t("headBadgeLabel") || "Head"}
+                              {t("headBadgeLabel")}
                             </span>
                           )}
                         </span>
@@ -1559,7 +1797,7 @@ const handleDeleteResident = async () => {
                     )}
                     {r.currentStatuses.length > 0 && (
                       <div className="flex items-start justify-between gap-3">
-                        <span className="text-xs font-semibold uppercase tracking-wide text-white/40 shrink-0">Status</span>
+                        <span className="text-xs font-semibold uppercase tracking-wide text-white/40 shrink-0">{t("statusColumn")}</span>
                         <div className="flex flex-wrap justify-end gap-1.5">
                           {r.currentStatuses.map((cs) => (
                             <span key={cs.id} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#4FBEB0]/10 text-[#7DD8CB]">
@@ -1574,7 +1812,7 @@ const handleDeleteResident = async () => {
 
                 <section className="mt-8">
                   <h2 className="text-sm font-bold uppercase tracking-wider text-white pb-2.5 border-b-2 border-white/40 mb-5">
-                    Membership
+                    {t("reportTypeMembership")}
                   </h2>
                   {allMems.length > 0 && (
                     <div className="flex flex-wrap gap-1.5">
@@ -1589,13 +1827,13 @@ const handleDeleteResident = async () => {
                     onClick={() => setShowQrPanel(true)}
                     className="mt-3 inline-flex items-center gap-2 rounded-full border border-gold-400/30 px-4 py-2 text-xs font-semibold text-gold-300 hover:bg-gold-400/10 transition-colors"
                   >
-                    <QrCode className="h-3.5 w-3.5" /> View QR code
+                    <QrCode className="h-3.5 w-3.5" /> {t("resViewQr")}
                   </button>
                 </section>
 
                 <section className="mt-8">
                   <h2 className="text-sm font-bold uppercase tracking-wider text-white pb-2.5 border-b-2 border-white/40 mb-5">
-                    Attendance History
+                    {t("resAttendanceHistory")}
                   </h2>
                   {attendanceLoading ? (
                     <div className="space-y-2">
@@ -1610,21 +1848,21 @@ const handleDeleteResident = async () => {
                       ))}
                     </div>
                   ) : attendanceHistory.length === 0 ? (
-                    <p className="text-sm text-white/40 italic">No attendance recorded yet.</p>
+                    <p className="text-sm text-white/40 italic">{t("resNoAttendanceYet")}</p>
                   ) : (
                     <div className="space-y-2">
                       {attendanceHistory.slice(0, 8).map((a) => (
                         <div key={a.id} className="flex items-center justify-between gap-3 text-sm rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
                           <div className="min-w-0">
-                            <p className="font-medium text-white truncate">{a.isEventDeleted ? "(deleted event)" : a.eventTitle}</p>
-                            {a.eventDate && <p className="text-xs text-white/40">{formatDateShort(a.eventDate)}</p>}
+                            <p className="font-medium text-white truncate">{a.isEventDeleted ? t("resDeletedEvent") : a.eventTitle}</p>
+                            {a.eventDate && <p className="text-xs text-white/40">{formatDateShort(a.eventDate, locale)}</p>}
                           </div>
                           <span
                             className={`shrink-0 px-2 py-0.5 rounded-full text-[11px] font-medium ${
-                              a.status === "Complete" ? "bg-[#4FBEB0]/10 text-[#7DD8CB]" : "bg-gold-400/15 text-gold-300"
+                              String(a.status).toLowerCase() === "complete" ? "bg-[#4FBEB0]/10 text-[#7DD8CB]" : "bg-gold-400/15 text-gold-300"
                             }`}
                           >
-                            {a.status}
+                            {attendanceStatusLabel(a.status)}
                           </span>
                         </div>
                       ))}
@@ -1639,7 +1877,7 @@ const handleDeleteResident = async () => {
                     onClick={() => setDeleteRecord(r.id)}
                     className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-300 hover:underline"
                   >
-                    <Archive className="h-3.5 w-3.5" /> Archive
+                    <Archive className="h-3.5 w-3.5" /> {t("archiveActivityOption")}
                   </button>
                 )}
                 <div className="flex items-center gap-2 ml-auto">
@@ -1651,7 +1889,7 @@ const handleDeleteResident = async () => {
                       }}
                       className="inline-flex items-center gap-1.5 rounded-full border border-[#4FBEB0]/30 px-4 py-2 text-sm font-semibold text-[#7DD8CB] hover:bg-[#4FBEB0]/10 transition-colors"
                     >
-                      <UserPlus className="h-3.5 w-3.5" /> Add account
+                      <UserPlus className="h-3.5 w-3.5" /> {t("resAddAccount")}
                     </button>
                   )}
                   {r.deleted_at === null && (
@@ -1662,14 +1900,14 @@ const handleDeleteResident = async () => {
                       }}
                       className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
                     >
-                      <Pencil className="h-3.5 w-3.5" /> Edit record
+                      <Pencil className="h-3.5 w-3.5" /> {t("editRecordTitle")}
                     </button>
                   )}
                   <button
                     onClick={() => setViewRecord(null)}
-                    className="rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] px-5 py-2 text-sm font-bold transition-colors"
+                    className="rounded-full bg-sage-700 hover:bg-sage-800 text-white px-5 py-2 text-sm font-bold transition-colors"
                   >
-                    Done
+                    {t("resDone")}
                   </button>
                 </div>
               </div>
@@ -1690,19 +1928,19 @@ const handleDeleteResident = async () => {
                       <QRCodeCanvas ref={qrCanvasRef} value={qrPayload} size={180} bgColor="#ffffff" fgColor="#0A0E1A" />
                     </div>
                   </div>
-                  <p className="text-xs text-white/45 mb-4">Scan this at the QR Scanner to sign this resident in or out.</p>
+                  <p className="text-xs text-white/45 mb-4">{t("resQrScanHint")}</p>
                   <div className="flex items-center justify-center gap-2">
                     <button
                       onClick={() => setShowQrDownloadConfirm(true)}
                       className="rounded-full border border-white/15 px-5 py-2 text-sm font-semibold text-white hover:bg-white/5 transition-colors"
                     >
-                      Download
+                      {t("downloadLabel")}
                     </button>
                     <button
                       onClick={() => setShowQrPanel(false)}
-                      className="rounded-full bg-gold-400 hover:bg-gold-500 text-[#08130F] px-5 py-2 text-sm font-bold transition-colors"
+                      className="rounded-full bg-sage-700 hover:bg-sage-800 text-white px-5 py-2 text-sm font-bold transition-colors"
                     >
-                      Close
+                      {t("closeLabel")}
                     </button>
                   </div>
                 </div>
@@ -1712,10 +1950,10 @@ const handleDeleteResident = async () => {
             <ConfirmDialog
               open={showQrDownloadConfirm}
               icon={<QrCode className="h-6 w-6" />}
-              title="Download QR Code?"
-              body={`This will save ${r.firstName} ${r.lastName}'s QR code as a PNG image to your device.`}
-              cancelLabel="Cancel"
-              confirmLabel="Download"
+              title={t("resQrDownloadTitle")}
+              body={t("resQrDownloadBody").replace("{name}", `${r.firstName} ${r.lastName}`)}
+              cancelLabel={t("cancel")}
+              confirmLabel={t("downloadLabel")}
               onCancel={() => setShowQrDownloadConfirm(false)}
               onConfirm={() => {
                 setShowQrDownloadConfirm(false);
@@ -1734,9 +1972,9 @@ const handleDeleteResident = async () => {
             <StatusModal
               open={showQrDownloadSuccess}
               type="success"
-              title="Download complete"
-              message="The QR code image has been saved to your device."
-              okLabel="OK"
+              title={t("downloadSuccessTitle")}
+              message={t("resQrDownloadedMsg")}
+              okLabel={t("okLabel")}
               onClose={() => setShowQrDownloadSuccess(false)}
               z={70}
             />
@@ -1751,12 +1989,12 @@ const handleDeleteResident = async () => {
           sage caption pills, per the "register resident" layout redesign. Same
           fields, same handlers -- styling only. */}
       {showAddForm && (
-        <div className="fixed top-[73px] bottom-0 left-0 right-0 md:left-[280px] z-30 bg-[#0A0E1A] overflow-y-auto">
+        <div style={{ top: panelTop }} className="fixed bottom-0 left-0 right-0 md:left-[280px] z-30 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
             aria-hidden="true"
-            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-20"
+            className="pointer-events-none select-none fixed z-0 bottom-[-3rem] right-[-3rem] h-[22rem] w-[22rem] sm:h-[30rem] sm:w-[30rem] object-contain opacity-[0.06]"
           />
 
           <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
@@ -1772,13 +2010,13 @@ const handleDeleteResident = async () => {
               {t("addNewRecordTitle")}
             </h1>
             <p className="mt-3 text-base text-white/60 text-center max-w-md mx-auto">
-              Fill in the resident's basic information, profile, and household details.
+              {t("resAddFormIntro")}
             </p>
 
             <form onSubmit={handleAddResident} noValidate className="mt-10 space-y-10">
               <section>
                 <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
-                  Basic Information
+                  {t("resBasicInfo")}
                 </h2>
                 <div className="space-y-4">
                   <div className="grid md:grid-cols-3 gap-4">
@@ -1877,32 +2115,46 @@ const handleDeleteResident = async () => {
                       <label className="block text-base font-semibold text-white mb-1.5">{t("civilStatusLabel")}</label>
                       <div className="relative">
                         <select
+                          required
                           value={newResident.civilStatusId ?? ""}
-                          onChange={(e) => setNewResident((p) => ({ ...p, civilStatusId: e.target.value ? Number(e.target.value) : null }))}
-                          className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                          onChange={(e) => {
+                            setNewResident((p) => ({ ...p, civilStatusId: e.target.value ? Number(e.target.value) : null }));
+                            setFormErrors((p) => ({ ...p, civilStatusId: "" }));
+                          }}
+                          className={`w-full appearance-none rounded-full border px-5 py-3.5 pr-11 text-base bg-white/10 font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 ${
+                            newResident.civilStatusId ? "text-white" : "text-white/50"
+                          } ${formErrors.civilStatusId ? "border-red-500" : "border-white/25"}`}
                         >
-                          <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                          <option value="" disabled hidden className="bg-[#0A0E1A] text-white">{t("selectOptionLabel")}</option>
                           {civilStatuses.map((cs) => (
                             <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                           ))}
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
                       </div>
+                      {formErrors.civilStatusId && <p className="text-red-400 text-xs mt-1">{formErrors.civilStatusId}</p>}
                     </div>
                     <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("genderLabel")}</label>
                       <div className="relative">
                         <select
+                          required
                           value={newResident.gender}
-                          onChange={(e) => setNewResident((p) => ({ ...p, gender: e.target.value }))}
-                          className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                          onChange={(e) => {
+                            setNewResident((p) => ({ ...p, gender: e.target.value }));
+                            setFormErrors((p) => ({ ...p, gender: "" }));
+                          }}
+                          className={`w-full appearance-none rounded-full border px-5 py-3.5 pr-11 text-base bg-white/10 font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 ${
+                            newResident.gender ? "text-white" : "text-white/50"
+                          } ${formErrors.gender ? "border-red-500" : "border-white/25"}`}
                         >
-                          <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                          <option value="" disabled hidden className="bg-[#0A0E1A] text-white">{t("selectOptionLabel")}</option>
                           <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
                           <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
                       </div>
+                      {formErrors.gender && <p className="text-red-400 text-xs mt-1">{formErrors.gender}</p>}
                     </div>
                   </div>
                   <CurrentStatusCheckboxes isEdit={false} />
@@ -1917,7 +2169,7 @@ const handleDeleteResident = async () => {
                       onSelect={(value) => setNewResident((p) => ({ ...p, householdId: Number(value), isHouseholdHead: false }))}
                       placeholder={t("householdCodePlaceholder")}
                       noResultsLabel={t("householdLinkNoResults")}
-                      footerLabel="Add new household"
+                      footerLabel={t("resAddNewHousehold")}
                       onFooterClick={() => setShowAddHousehold({ isEdit: false })}
                       dark
                     />
@@ -1965,6 +2217,19 @@ const handleDeleteResident = async () => {
 
               <MembershipPicker isEdit={false} />
 
+              <section>
+                <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
+                  {t("resAccountAccess")}
+                </h2>
+                {renderAccountAccess(false)}
+                <style>{`
+                  .resident-password-field::-ms-reveal,
+                  .resident-password-field::-ms-clear {
+                    filter: invert(1);
+                  }
+                `}</style>
+              </section>
+
               <div className="pt-2 pb-4">
                 <button
                   type="submit"
@@ -1996,12 +2261,12 @@ const handleDeleteResident = async () => {
           headers -- for a consistent Add/Edit experience. Same fields, same
           handlers -- styling only. */}
       {editRecord && editingResident && (
-        <div className="fixed top-[73px] bottom-0 left-0 right-0 md:left-[280px] z-30 bg-[#0A0E1A] overflow-y-auto">
+        <div style={{ top: panelTop }} className="fixed bottom-0 left-0 right-0 md:left-[280px] z-30 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
             aria-hidden="true"
-            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-20"
+            className="pointer-events-none select-none fixed z-0 bottom-[-3rem] right-[-3rem] h-[22rem] w-[22rem] sm:h-[30rem] sm:w-[30rem] object-contain opacity-[0.06]"
           />
 
           <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
@@ -2017,7 +2282,7 @@ const handleDeleteResident = async () => {
               {t("editRecordTitle")}
             </h1>
             <p className="mt-3 text-base text-white/60 text-center max-w-md mx-auto">
-              Update this resident's basic information, profile, and household details.
+              {t("resEditFormIntro")}
             </p>
 
             {editingResident.deleted_at !== null && (
@@ -2037,7 +2302,7 @@ const handleDeleteResident = async () => {
             >
               <section>
                 <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
-                  Basic Information
+                  {t("resBasicInfo")}
                 </h2>
                 <div className="space-y-4">
                   <div className="grid md:grid-cols-3 gap-4">
@@ -2143,7 +2408,7 @@ const handleDeleteResident = async () => {
                           onChange={(e) => setEditingResident((p) => p ? { ...p, civilStatusId: e.target.value ? Number(e.target.value) : null } : p)}
                           className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                         >
-                          <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                          <option value="" disabled hidden className="bg-[#0A0E1A] text-white">{t("selectOptionLabel")}</option>
                           {civilStatuses.map((cs) => (
                             <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
                           ))}
@@ -2159,7 +2424,7 @@ const handleDeleteResident = async () => {
                           onChange={(e) => setEditingResident((p) => p ? { ...p, gender: e.target.value } : p)}
                           className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                         >
-                          <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                          <option value="" disabled hidden className="bg-[#0A0E1A] text-white">{t("selectOptionLabel")}</option>
                           <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
                           <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
                         </select>
@@ -2179,7 +2444,7 @@ const handleDeleteResident = async () => {
                       onSelect={(value) => setEditingResident((p) => p ? { ...p, householdId: Number(value), isHouseholdHead: false } : p)}
                       placeholder={t("householdCodePlaceholder")}
                       noResultsLabel={t("householdLinkNoResults")}
-                      footerLabel="Add new household"
+                      footerLabel={t("resAddNewHousehold")}
                       onFooterClick={() => setShowAddHousehold({ isEdit: true })}
                       dark
                     />
@@ -2229,59 +2494,9 @@ const handleDeleteResident = async () => {
 
               <section>
                 <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
-                  Account Access
+                  {t("resAccountAccess")}
                 </h2>
-                <div className="space-y-3">
-                  {editingResident.hasAccount ? (
-                    <div className="space-y-3">
-                      <p className="text-sm font-medium text-white">{t("hasAccountCheckboxLabel")}</p>
-                      <div className="grid sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-base font-semibold text-white mb-1.5">{t("usernameLabel")}</label>
-                          <input
-                            type="text"
-                            value={`PR-${String(editingResident.real_id).padStart(4, "0")}`}
-                            disabled
-                            className="w-full rounded-full border px-5 py-3.5 text-base bg-white/[0.05] text-white border-white/10 cursor-not-allowed"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-base font-semibold text-white mb-1.5">{t("passwordLabel")}</label>
-                          <input
-                            type="password"
-                            value={editingResident.password}
-                            onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
-                            className="resident-password-field w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 border-white/10"
-                            placeholder={t("resetPasswordPlaceholder")}
-                          />
-                          <p className="mt-1.5 text-sm text-white/60">{t("passwordResetNote")}</p>
-                          {formErrors.password && <p className="text-red-400 text-xs mt-1">{formErrors.password}</p>}
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-base text-white/60 italic">This resident does not have a portal account yet.</p>
-                      <div>
-                        <label className="block text-base font-semibold text-white mb-1.5">
-                          {t("passwordLabel")}{" "}
-                          <span className="text-white/40 text-xs font-normal">(set to create their account)</span>
-                        </label>
-                        <input
-                          type="password"
-                          value={editingResident.password}
-                          onChange={(e) => setEditingResident((p) => p ? { ...p, password: e.target.value } : p)}
-                          className="resident-password-field w-full sm:w-1/2 rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 border-white/10"
-                          placeholder="Set an initial password"
-                        />
-                        {formErrors.password && <p className="text-red-400 text-xs mt-1">{formErrors.password}</p>}
-                        <p className="mt-1 text-sm text-white/60">
-                          Username will be {`PR-${String(editingResident.real_id).padStart(4, "0")}`}. Saving with a password creates the account.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                {renderAccountAccess(true)}
                 {/* Edge/IE draw their own native reveal-password eye inside
                     the field itself; it renders dark and is nearly invisible
                     against our dark navy inputs, so invert it to white. */}
@@ -2372,43 +2587,47 @@ const handleDeleteResident = async () => {
 
       {/* ─── Delete Confirm Modal ─────────────────────────────────────────────── */}
       {showAddHousehold && (
+        // Dark-navy card, same as the delete-confirm dialog just below and
+        // every other popup in this view -- this one was still the old
+        // light "paper" card (bg-white, sage button) left over from before
+        // the page moved to the dark theme.
         <div
           className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] px-4"
           onClick={() => !addHouseholdSaving && setShowAddHousehold(false)}
         >
           <div
-            className="bg-white rounded-[30px] w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
+            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-lg font-bold text-[#1A1A1A]">Add new household</h3>
+              <h3 className="text-lg font-bold text-white">{t("resAddNewHousehold")}</h3>
               <button
                 onClick={() => !addHouseholdSaving && setShowAddHousehold(false)}
-                className="text-[#6B7280] hover:text-[#1A1A1A]"
+                className="text-white/50 hover:text-white transition"
               >
                 <XIcon size={20} />
               </button>
             </div>
-            <p className="text-sm text-[#6B7280] mb-5">
-              A household code is generated automatically. It'll appear on the Households page right away and be linked to this resident.
+            <p className="text-sm text-white/50 mb-5">
+              {t("resHouseholdAutoNote")}
             </p>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
-                  Address / Purok <span className="text-[#6B7280] font-normal">(optional)</span>
+                <label className="block text-sm font-medium text-white/70 mb-1">
+                  {t("addressPurokLabel")} <span className="text-white/40 font-normal">({t("optionalLabel")})</span>
                 </label>
                 <input
                   type="text"
                   value={newHouseholdAddress}
                   onChange={(e) => setNewHouseholdAddress(e.target.value)}
-                  placeholder="Purok 1, Barangay Piao"
-                  className="w-full rounded-full border border-sage-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                  placeholder={t("purokPlaceholder")}
+                  className="w-full rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-[#1A1A1A] mb-1">
-                  Contact number <span className="text-[#6B7280] font-normal">(optional)</span>
+                <label className="block text-sm font-medium text-white/70 mb-1">
+                  {t("contactNumberLabel")} <span className="text-white/40 font-normal">({t("optionalLabel")})</span>
                 </label>
                 <input
                   type="text"
@@ -2416,10 +2635,10 @@ const handleDeleteResident = async () => {
                   onChange={(e) => setNewHouseholdContact(formatContactNumber(e.target.value))}
                   placeholder="09XX-XXX-XXXX"
                   maxLength={13}
-                  className="w-full rounded-full border border-sage-200 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-sage-700/30"
+                  className="w-full rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                 />
               </div>
-              {addHouseholdError && <p className="text-red-500 text-xs">{addHouseholdError}</p>}
+              {addHouseholdError && <p className="text-red-400 text-xs">{addHouseholdError}</p>}
             </div>
 
             <div className="flex justify-end gap-3 pt-5">
@@ -2427,17 +2646,17 @@ const handleDeleteResident = async () => {
                 type="button"
                 onClick={() => setShowAddHousehold(false)}
                 disabled={addHouseholdSaving}
-                className="px-5 py-2.5 rounded-full border border-[#E6E0D3] text-[#1A1A1A] hover:bg-sage-50 transition disabled:opacity-50"
+                className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition disabled:opacity-50"
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 type="button"
                 onClick={submitNewHousehold}
                 disabled={addHouseholdSaving}
-                className="px-5 py-2.5 rounded-full bg-sage-800 hover:bg-sage-900 text-white font-semibold transition disabled:opacity-50"
+                className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white font-bold transition disabled:opacity-50"
               >
-                {addHouseholdSaving ? "Creating…" : "Create household"}
+                {addHouseholdSaving ? t("resCreating") : t("resCreateHousehold")}
               </button>
             </div>
           </div>

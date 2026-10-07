@@ -212,7 +212,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 border border-white/15 font-black shrink-0 overflow-hidden">
             <img
               src="/logo-removebg-preview.png"
-              alt="Logo"
+              alt={t("dashLogoAlt")}
               className="w-full h-full object-contain"
             />
           </div>
@@ -232,7 +232,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
               type="text"
               value={navQuery}
               onChange={(e) => setNavQuery(e.target.value)}
-              placeholder="Search"
+              placeholder={t("search")}
               className="w-full rounded-xl border border-white/10 bg-white/[0.05] py-2.5 pl-10 pr-3 text-[13.5px] text-white placeholder-white/35 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-2 focus:ring-[#4FBEB0]/20"
             />
           </div>
@@ -242,7 +242,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           {trimmedQuery ? (
             <>
               <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">
-                {searchResults.length > 0 ? "Search Results" : "No Matches"}
+                {searchResults.length > 0 ? t("dashSearchResults") : t("dashNoMatches")}
               </p>
               {searchResults.length > 0 ? (
                 <div className="space-y-1.5">
@@ -264,7 +264,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
               ) : (
                 <div className="flex flex-col items-center gap-2 px-4 py-8 text-center text-white/35">
                   <SearchX className="h-6 w-6" />
-                  <p className="text-[13px]">Nothing matches "{navQuery}"</p>
+                  <p className="text-[13px]">{t("dashNothingMatches").replace("{query}", navQuery)}</p>
                 </div>
               )}
             </>

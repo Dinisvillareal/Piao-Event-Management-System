@@ -9,14 +9,51 @@ use App\Models\Notification;
 use App\Models\EventAttendance;
 use App\Models\EventInventoryItem;
 use App\Models\EventInventoryRelease;
+use App\Models\EventInventoryReleaseUndo;
 use App\Models\InventoryItem;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use App\Services\SmsService;
+use App\Support\PhotoSet;
 use App\Services\FacebookService;
 
 class EventController extends Controller
 {
+    // Same upload/delete convention as InventoryController::localUpload --
+    // evidence photos for a release ("the item came back") and for an undo
+    // ("why this release is being reversed") are required proof images
+    // stored on the public disk, exposed via EventInventoryRelease's
+    // evidence_photo_url / undo_photo_url accessors. $folder keeps the two
+    // kinds in separate storage/app/public subfolders.
+    private function localUpload($file, string $folder): string
+    {
+        $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $ext      = $file->getClientOriginalExtension();
+        $clean    = preg_replace('/[^A-Za-z0-9\-_.]/', '_', $original);
+        $filename = time() . '_' . $clean . '.' . $ext;
+
+        $path = $file->storeAs($folder, $filename, 'public');
+
+        if (!$path) {
+            throw new \Exception('File upload failed');
+        }
+
+        return $path;
+    }
+
+    private function localDelete(?string $path): void
+    {
+        if (!$path) {
+            return;
+        }
+        try {
+            Storage::disk('public')->delete($path);
+        } catch (\Exception $e) {
+            \Log::warning($e->getMessage());
+        }
+    }
+
     // Mirrors the frontend's Upcoming/Ongoing/Past classification
     // (EventsView.tsx getEventStatus): an event is "ongoing" once its own
     // event_start has passed and until event_end (falling back to
@@ -659,9 +696,11 @@ public function destroy($id)
      */
     private function releaseBorrowedItems(Event $event, bool $logRelease = true): void
     {
+        $touchedItems = [];
         foreach ($event->borrowedItems()->get() as $borrowed) {
             $item = InventoryItem::withTrashed()->find($borrowed->inventory_item_id);
             if ($item) {
+                $touchedItems[$item->id] = $item;
                 $item->quantity += $borrowed->quantity;
                 $item->save();
             }
@@ -677,6 +716,10 @@ public function destroy($id)
         }
 
         $event->borrowedItems()->delete();
+
+        foreach ($touchedItems as $touched) {
+            $touched->settleLostOnLoan();
+        }
     }
 
     /**
@@ -765,8 +808,14 @@ public function destroy($id)
         // the 3 borrowed blood pressure monitors is free again, the other
         // 2 are still out. Defaults to the full remaining quantity so the
         // request is optional, not required, from any other caller.
+        // An evidence photo (proof the item physically came back) is
+        // required on every release -- see EventInventoryRelease::evidence_photo_url.
         $request->validate([
             'quantity' => 'nullable|integer|min:1|max:' . $borrow->quantity,
+            // One or more evidence photos (first = cover), up to 5.
+            'photos' => 'required_without:photo|array|min:1|max:5',
+            'photos.*' => 'image|max:5120',
+            'photo' => 'required_without:photos|image|max:5120',
         ]);
         $releaseQty = $request->filled('quantity') ? (int) $request->quantity : $borrow->quantity;
 
@@ -785,11 +834,23 @@ public function destroy($id)
             $borrow->save();
         }
 
+        // Units reported lost while out on loan are settled here once nothing
+        // real is left to return (see InventoryItem::settleLostOnLoan).
+        $item?->settleLostOnLoan();
+
+        if ($request->hasFile('photos')) {
+            $evidence = PhotoSet::resolve([], $request, fn ($f) => $this->localUpload($f, 'release_evidence_photos'))['final'];
+        } else {
+            $evidence = [$this->localUpload($request->file('photo'), 'release_evidence_photos')];
+        }
+
         $release = EventInventoryRelease::create([
             'event_id' => $event->id,
             'inventory_item_id' => $borrow->inventory_item_id,
             'quantity' => $releaseQty,
             'released_by' => auth()->user()?->user_code,
+            'evidence_photo_path' => $evidence[0] ?? null,
+            'extra_evidence_photo_paths' => count($evidence) > 1 ? array_slice($evidence, 1) : null,
         ]);
 
         $this->createLog('Return Items', 'Inventory', "Returned {$releaseQty}x {$itemName} from event: {$event->name}");
@@ -838,19 +899,32 @@ public function destroy($id)
         $lastPage = max(1, (int) ceil($total / $perPage));
         $page = min($page, $lastPage);
 
-        $releases = $base->with(['event:id,name', 'inventoryItem:id,name'])
+        $rows = $base->with(['event:id,name', 'inventoryItem:id,name'])
             ->latest()
             ->skip(($page - 1) * $perPage)
             ->take($perPage)
+            ->get();
+
+        // How much of each item the event still has out -- the Edit Return
+        // form lets staff raise a release up to (already released + still
+        // borrowed), so it needs that ceiling up front.
+        $stillBorrowed = EventInventoryItem::whereIn('event_id', $rows->pluck('event_id')->unique())
+            ->whereIn('inventory_item_id', $rows->pluck('inventory_item_id')->unique())
             ->get()
-            ->map(fn ($r) => [
+            ->groupBy(fn ($b) => $b->event_id . '-' . $b->inventory_item_id)
+            ->map(fn ($group) => (int) $group->sum('quantity'));
+
+        $releases = $rows->map(fn ($r) => [
                 'id' => $r->id,
                 'event_id' => $r->event_id,
                 'event_name' => $r->event?->name ?? 'Deleted event',
                 'item_name' => $r->inventoryItem->name ?? 'Unknown item',
                 'quantity' => $r->quantity,
+                'max_quantity' => $r->quantity + ($stillBorrowed[$r->event_id . '-' . $r->inventory_item_id] ?? 0),
                 'released_by' => $r->released_by,
                 'released_at' => $r->created_at,
+                'evidence_photo_url' => $r->evidence_photo_url,
+                'evidence_photo_urls' => $r->evidence_photo_urls,
             ]);
 
         return response()->json([
@@ -873,6 +947,13 @@ public function destroy($id)
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
+
+        // Moving a release back to Pending doesn't need a second photo -- the
+        // release already carries its own evidence. One can still be sent
+        // with the request, but it's optional.
+        $request->validate([
+            'photo' => 'nullable|image|max:5120',
+        ]);
 
         $release = EventInventoryRelease::whereNull('undone_at')->findOrFail($releaseId);
         $event = Event::withoutTrashed()->find($release->event_id);
@@ -917,6 +998,19 @@ public function destroy($id)
             $item->save();
         }
 
+        $undoPhotoPath = null;
+        if ($request->hasFile('photo')) {
+            $undoPhotoPath = $this->localUpload($request->file('photo'), 'release_undo_photos');
+
+            // Replace any earlier undo photo pointer on this same release row --
+            // a convenience for anything that just wants "the latest undo
+            // evidence for this release" without joining through the log table.
+            // The full per-action record (every undo, including earlier partial
+            // ones) lives in event_inventory_release_undos, created below.
+            $this->localDelete($release->undo_photo_path);
+            $release->undo_photo_path = $undoPhotoPath;
+        }
+
         // Shrink this release record by however much of it was just
         // undone; once nothing is left of it, mark it fully undone so it
         // drops off the Recently Released list. A partial undo leaves the
@@ -928,9 +1022,188 @@ public function destroy($id)
         }
         $release->save();
 
+        // One row per Undo click -- see EventInventoryReleaseUndo's own
+        // doc comment for why this is a separate log rather than a single
+        // field on the release. This is what the Returns page's "Recently
+        // Undone" record reads.
+        EventInventoryReleaseUndo::create([
+            'event_inventory_release_id' => $release->id,
+            'quantity' => $requestedQty,
+            'undone_by' => auth()->user()?->user_code,
+            'photo_path' => $undoPhotoPath,
+        ]);
+
         $itemName = $item->name ?? 'item';
         $this->createLog('Undo Return', 'Inventory', "Undid return of {$requestedQty}x {$itemName} for event: {$event->name}");
 
         return response()->json(['message' => 'Release undone -- the item is marked borrowed again.']);
+    }
+
+    /**
+     * Edits a release in place -- the "fix it right where it is" path for a
+     * mis-entered return, instead of undoing it and releasing again:
+     *  - quantity: lower it and the difference goes back to the event's
+     *    borrowed items (and out of Inventory's stock); raise it and the
+     *    extra is taken from what the event still has borrowed.
+     *  - photo: optional; when sent it REPLACES the saved evidence photo
+     *    (the old file is deleted), when omitted the existing one is kept.
+     */
+    public function updateRelease(Request $request, $releaseId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $release = EventInventoryRelease::whereNull('undone_at')->findOrFail($releaseId);
+        $event = Event::withoutTrashed()->find($release->event_id);
+
+        if (!$event) {
+            return response()->json(['message' => 'That event no longer exists, so this return can\'t be edited.'], 422);
+        }
+
+        $borrow = $event->borrowedItems()->where('inventory_item_id', $release->inventory_item_id)->first();
+        $maxQty = $release->quantity + ($borrow?->quantity ?? 0);
+
+        $request->validate([
+            'quantity' => 'nullable|integer|min:1|max:' . $maxQty,
+            'photo' => 'nullable|image|max:5120',
+            // The whole evidence-photo list: keep_photos[] = indexes of the
+            // saved photos to keep (cover first), photos[] = new files.
+            'photos_sync' => 'nullable|boolean',
+            'photos' => 'nullable|array|max:5',
+            'photos.*' => 'image|max:5120',
+            'keep_photos' => 'nullable|array',
+            'keep_photos.*' => 'integer|min:0',
+        ]);
+
+        // Validate the photo list up front (nothing is uploaded or changed
+        // yet): a return always keeps at least one evidence photo, max 5.
+        if ($request->boolean('photos_sync')) {
+            $plan = PhotoSet::plan($release->allEvidencePhotoPaths(), $request);
+            if (count($plan['kept']) + count($plan['files']) === 0) {
+                return response()->json(['message' => 'A return needs at least one evidence photo.'], 422);
+            }
+        }
+
+        $newQty = $request->filled('quantity') ? (int) $request->quantity : $release->quantity;
+        $delta = $newQty - $release->quantity; // < 0: send back to pending, > 0: release more
+
+        $item = InventoryItem::withTrashed()->find($release->inventory_item_id);
+
+        if ($delta < 0) {
+            $back = -$delta;
+
+            if ($item && $item->quantity < $back) {
+                return response()->json([
+                    'message' => "Can't lower this -- only {$item->quantity} of this item is left in Inventory now. Some of it may have already been lent out again since it was released.",
+                ], 422);
+            }
+
+            if ($borrow) {
+                $borrow->quantity += $back;
+                $borrow->save();
+            } else {
+                $event->borrowedItems()->create([
+                    'inventory_item_id' => $release->inventory_item_id,
+                    'quantity' => $back,
+                ]);
+            }
+
+            if ($item) {
+                $item->quantity -= $back;
+                $item->save();
+            }
+        } elseif ($delta > 0) {
+            // $borrow is guaranteed by the max rule above ($delta <= its quantity).
+            if ($delta >= $borrow->quantity) {
+                $borrow->delete();
+            } else {
+                $borrow->quantity -= $delta;
+                $borrow->save();
+            }
+
+            if ($item) {
+                $item->quantity += $delta;
+                $item->save();
+            }
+        }
+
+        if ($request->boolean('photos_sync')) {
+            $res = PhotoSet::resolve($release->allEvidencePhotoPaths(), $request, fn ($f) => $this->localUpload($f, 'release_evidence_photos'));
+            $release->evidence_photo_path = $res['final'][0];
+            $release->extra_evidence_photo_paths = count($res['final']) > 1 ? array_slice($res['final'], 1) : null;
+            foreach ($res['removed'] as $gone) {
+                $this->localDelete($gone);
+            }
+        } elseif ($request->hasFile('photo')) {
+            $this->localDelete($release->evidence_photo_path);
+            $release->evidence_photo_path = $this->localUpload($request->file('photo'), 'release_evidence_photos');
+        }
+
+        $release->quantity = $newQty;
+        $release->save();
+
+        $itemName = $item->name ?? 'item';
+        $this->createLog('Edit Return', 'Inventory', "Edited return of {$itemName} for event: {$event->name} -- now {$newQty} returned");
+
+        return response()->json([
+            'message' => 'Return updated.',
+            'quantity' => $newQty,
+            'moved_back_to_pending' => $delta < 0 ? -$delta : 0,
+        ]);
+    }
+
+    /**
+     * Undo actions from roughly the last two weeks, across every event,
+     * newest first -- the permanent "who undid what" record for the
+     * Returns page, same shape and lookback window as recentReleases()
+     * above. Unlike that list (which only shows releases still eligible to
+     * be undone), this one never empties out an entry -- undoing is the
+     * thing being logged here, not something still pending an action.
+     */
+    public function recentUndos(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $perPage = 5;
+        $page = max(1, (int) $request->query('page', 1));
+        $search = trim((string) $request->query('search', ''));
+
+        $base = EventInventoryReleaseUndo::where('created_at', '>=', now()->subDays(14));
+
+        if ($search !== '') {
+            $base->where(function ($query) use ($search) {
+                $query->whereHas('release.event', fn ($q) => $q->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('release.inventoryItem', fn ($q) => $q->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        $total = (clone $base)->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $lastPage);
+
+        $undos = $base->with(['release.event:id,name', 'release.inventoryItem:id,name'])
+            ->latest()
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
+            ->get()
+            ->map(fn ($u) => [
+                'id' => $u->id,
+                'event_name' => $u->release?->event?->name ?? 'Deleted event',
+                'item_name' => $u->release?->inventoryItem?->name ?? 'Unknown item',
+                'quantity' => $u->quantity,
+                'undone_by' => $u->undone_by,
+                'undone_at' => $u->created_at,
+                'photo_url' => $u->photo_url,
+            ]);
+
+        return response()->json([
+            'data' => $undos,
+            'current_page' => $page,
+            'last_page' => $lastPage,
+            'total' => $total,
+        ]);
     }
 }

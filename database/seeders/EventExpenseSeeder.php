@@ -20,7 +20,8 @@ class EventExpenseSeeder extends Seeder
      * on-budget and over-budget events to interpret instead of either all
      * green or all red. Events that are still upcoming get no expenses
      * yet -- matching real life, where nothing has been spent on an event
-     * that hasn't happened.
+     * that hasn't happened. Events that are ongoing or upcoming (including
+     * the ones scheduled through December 31, 2026) intentionally have none.
      */
     public function run(): void
     {
@@ -153,6 +154,108 @@ class EventExpenseSeeder extends Seeder
                 ['item' => 'Wellness Check Supplies', 'amount' => 3000.00, 'notes' => null],
                 ['item' => 'Medical Team Fee', 'amount' => 3500.00, 'notes' => null],
                 ['item' => 'Snacks for Families', 'amount' => 1800.00, 'notes' => null],
+            ],
+
+            // ---- August -> early October 2026 events ----
+            'Buwan ng Wika Cultural Program' => [
+                ['item' => 'Costumes & Props', 'amount' => 3500.00, 'notes' => null],
+                ['item' => 'Sound & Lighting Rental', 'amount' => 2800.00, 'notes' => null],
+                ['item' => 'Snacks for Performers', 'amount' => 2200.00, 'notes' => null],
+            ],
+            'Senior Citizen Blood Sugar Screening' => [
+                ['item' => 'Glucometer Strips & Lancets', 'amount' => 2600.00, 'notes' => null],
+                ['item' => 'Snacks for Seniors', 'amount' => 1500.00, 'notes' => null],
+                ['item' => 'Volunteer Allowance', 'amount' => 1200.00, 'notes' => null],
+            ],
+            'Pantawid Pamilya Financial Literacy Seminar' => [
+                ['item' => 'Printed Modules', 'amount' => 1200.00, 'notes' => null],
+                ['item' => 'Resource Speaker Fee', 'amount' => 3500.00, 'notes' => null],
+                ['item' => 'Snacks for Participants', 'amount' => 1500.00, 'notes' => 'Ran slightly over the approved budget.'],
+            ],
+            'PWD Livelihood Skills Training' => [
+                ['item' => 'Training Materials', 'amount' => 3000.00, 'notes' => null],
+                ['item' => 'Trainer Honorarium', 'amount' => 3500.00, 'notes' => null],
+                ['item' => 'Lunch for Participants', 'amount' => 1800.00, 'notes' => 'Ran slightly over the approved budget.'],
+            ],
+            'Solo Parent Livelihood Bazaar' => [
+                ['item' => 'Booth Setup', 'amount' => 2500.00, 'notes' => null],
+                ['item' => 'Promotional Tarpaulins', 'amount' => 1500.00, 'notes' => null],
+                ['item' => 'Snacks for Vendors', 'amount' => 1800.00, 'notes' => null],
+            ],
+            'Walang Gutom Urban Gardening Workshop' => [
+                ['item' => 'Seedlings & Soil', 'amount' => 2200.00, 'notes' => null],
+                ['item' => 'Gardening Tools', 'amount' => 1500.00, 'notes' => null],
+                ['item' => 'Snacks for Participants', 'amount' => 900.00, 'notes' => null],
+            ],
+            'Health Insurance Dental Mission' => [
+                ['item' => 'Dental Supplies', 'amount' => 5500.00, 'notes' => null],
+                ['item' => 'Dentist Professional Fee', 'amount' => 4500.00, 'notes' => null],
+                ['item' => 'Snacks for Patients', 'amount' => 1500.00, 'notes' => null],
+            ],
+            'Housing Program Community Planning' => [
+                ['item' => 'Printed Maps & Forms', 'amount' => 900.00, 'notes' => null],
+                ['item' => 'Snacks', 'amount' => 1200.00, 'notes' => null],
+                ['item' => 'Facilitator Fee', 'amount' => 1000.00, 'notes' => null],
+            ],
+            'Educational Assistance Tutorial Kickoff' => [
+                ['item' => 'Tutor Stipends', 'amount' => 2400.00, 'notes' => null],
+                ['item' => 'Learning Kits', 'amount' => 1500.00, 'notes' => null],
+                ['item' => 'Snacks for Students', 'amount' => 800.00, 'notes' => 'Ran slightly over the approved budget.'],
+            ],
+            'Barangay Flood Preparedness Drill' => [
+                ['item' => 'Drill Supplies', 'amount' => 3200.00, 'notes' => null],
+                ['item' => 'Signage', 'amount' => 1500.00, 'notes' => null],
+                ['item' => 'Refreshments', 'amount' => 2000.00, 'notes' => null],
+            ],
+            'Senior Citizen Zumba & Wellness Session' => [
+                ['item' => 'Instructor Fee', 'amount' => 2000.00, 'notes' => null],
+                ['item' => 'Water & Fruits', 'amount' => 900.00, 'notes' => null],
+                ['item' => 'Banner', 'amount' => 400.00, 'notes' => null],
+            ],
+            'Barangay Tree Planting Day' => [
+                ['item' => 'Seedlings', 'amount' => 3000.00, 'notes' => null],
+                ['item' => 'Gloves & Hand Tools', 'amount' => 1800.00, 'notes' => null],
+                ['item' => 'Refreshments', 'amount' => 1500.00, 'notes' => null],
+            ],
+            'Livelihood Product Showcase' => [
+                ['item' => 'Booth Materials', 'amount' => 3200.00, 'notes' => null],
+                ['item' => 'Promotion & Tarpaulins', 'amount' => 2300.00, 'notes' => null],
+                ['item' => 'Lunch for Vendors', 'amount' => 3000.00, 'notes' => null],
+            ],
+            'PWD Sign Language Basics Workshop' => [
+                ['item' => 'Interpreter & Trainer Fee', 'amount' => 3000.00, 'notes' => null],
+                ['item' => 'Handouts', 'amount' => 800.00, 'notes' => null],
+                ['item' => 'Snacks', 'amount' => 900.00, 'notes' => null],
+            ],
+            'Pantawid Pamilya Nutrition & Cooking Demo' => [
+                ['item' => 'Cooking Ingredients', 'amount' => 4500.00, 'notes' => null],
+                ['item' => 'LPG Refill', 'amount' => 950.00, 'notes' => null],
+                ['item' => 'Nutritionist Fee', 'amount' => 2000.00, 'notes' => null],
+            ],
+            'Emergency Relief Mock Evacuation' => [
+                ['item' => 'Evacuation Signage', 'amount' => 1800.00, 'notes' => null],
+                ['item' => 'Refreshments', 'amount' => 1600.00, 'notes' => null],
+                ['item' => 'First Aid Standby Team', 'amount' => 2500.00, 'notes' => null],
+            ],
+            'Solo Parent Counseling Day' => [
+                ['item' => 'Counselor Fee', 'amount' => 3500.00, 'notes' => null],
+                ['item' => 'Snacks', 'amount' => 1400.00, 'notes' => null],
+                ['item' => 'Childcare Volunteers', 'amount' => 1200.00, 'notes' => 'Ran slightly over the approved budget.'],
+            ],
+            'Health Insurance Vaccination Drive' => [
+                ['item' => 'Vaccination Supplies', 'amount' => 7000.00, 'notes' => null],
+                ['item' => 'Nurse Allowance', 'amount' => 4000.00, 'notes' => null],
+                ['item' => 'Snacks', 'amount' => 2000.00, 'notes' => null],
+            ],
+            'Barangay Sports Fest Opening' => [
+                ['item' => 'Trophies & Medals', 'amount' => 4500.00, 'notes' => null],
+                ['item' => 'Emcee & Sound', 'amount' => 2500.00, 'notes' => null],
+                ['item' => 'Refreshments', 'amount' => 2800.00, 'notes' => null],
+            ],
+            'Educational Assistance School Supplies Distribution' => [
+                ['item' => 'School Supply Kits', 'amount' => 8500.00, 'notes' => null],
+                ['item' => 'Packing Materials', 'amount' => 1200.00, 'notes' => null],
+                ['item' => 'Volunteer Meals', 'amount' => 1500.00, 'notes' => null],
             ],
         ];
 

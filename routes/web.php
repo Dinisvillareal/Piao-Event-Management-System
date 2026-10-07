@@ -165,6 +165,8 @@ Route::middleware('auth')->group(function () {
     // {id} value.
     Route::get('/events/borrowed-items/releases/recent', [EventController::class, 'recentReleases']);
     Route::post('/events/borrowed-items/releases/{releaseId}/undo', [EventController::class, 'undoRelease']);
+    Route::post('/events/borrowed-items/releases/{releaseId}/update', [EventController::class, 'updateRelease']);
+    Route::get('/events/borrowed-items/undos/recent', [EventController::class, 'recentUndos']);
     Route::post('/events', [EventController::class, 'store']);
     Route::put('/events/{id}', [EventController::class, 'update']);
     Route::delete('/events/{id}', [EventController::class, 'destroy']);  // Now soft deletes
@@ -256,6 +258,7 @@ Route::middleware('auth')->group(function () {
     */
     Route::get('/events/{eventId}/expenses', [EventExpenseController::class, 'index']);
     Route::post('/events/{eventId}/expenses', [EventExpenseController::class, 'store']);
+    Route::put('/events/{eventId}/budget', [EventExpenseController::class, 'updateBudget']);
     Route::put('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'update']);
     Route::delete('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'destroy']);
 

@@ -94,7 +94,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 border border-white/15 shrink-0 overflow-hidden">
             <img
               src="/logo-removebg-preview.png"
-              alt="Logo"
+              alt={t("dashLogoAlt")}
               className="w-full h-full object-contain"
             />
           </div>

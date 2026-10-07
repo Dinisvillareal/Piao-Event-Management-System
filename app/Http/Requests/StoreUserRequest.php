@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\StrongPassword;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreUserRequest extends FormRequest
 {
@@ -31,7 +33,13 @@ class StoreUserRequest extends FormRequest
             ],
 
             'role'             => 'required|in:Staff,Resident',
-            'password'         => 'nullable|string|min:6|max:100',
+            // Portal login is opt-in. When has_account is on, a password is
+            // required (strong, 8+ chars) -- the username is the generated PR-#### code.
+            'has_account'      => 'nullable|boolean',
+            'password'         => [
+                Rule::requiredIf(fn () => filter_var($this->input('has_account'), FILTER_VALIDATE_BOOLEAN)),
+                'nullable', 'string', new StrongPassword(),
+            ],
             'validation_id'    => 'nullable',
             'membership_ids'   => 'nullable|array',
             'membership_ids.*' => 'exists:memberships,id',

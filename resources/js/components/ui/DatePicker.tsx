@@ -2,6 +2,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Calendar as CalendarIcon, X } from "lucide-react";
 import Calendar from "./Calendar";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { formatShortDate } from "./dateNames";
 
 interface DatePickerProps {
   /** ISO "yyyy-mm-dd" string, or "" for none selected. */
@@ -28,11 +30,11 @@ function todayISO(): string {
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
 }
 
-function formatDisplay(v: string): string | null {
+function formatDisplay(v: string, t: (key: string) => string): string | null {
   if (!v) return null;
   const [y, m, d] = v.split("-").map(Number);
   if (!y || !m || !d) return null;
-  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return formatShortDate(new Date(y, m - 1, d), t);
 }
 
 /**
@@ -47,14 +49,17 @@ export default function DatePicker({
   min,
   max,
   placeholder = "dd/mm/yyyy",
-  todayLabel = "Today",
-  clearLabel = "Clear",
+  todayLabel,
+  clearLabel,
   className = "",
   dark = false,
   disabled = false,
   required = false,
   align = "left",
 }: DatePickerProps) {
+  const { t } = useLanguage();
+  const todayText = todayLabel ?? t("todayLabel");
+  const clearText = clearLabel ?? t("clearLabel");
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -137,7 +142,7 @@ export default function DatePicker({
       >
         <CalendarIcon className={`shrink-0 ${dark ? "h-5 w-5 text-[#4FBEB0]" : "h-4 w-4 text-[#005f63]/70"}`} />
         <span className={`flex-1 truncate ${value ? (dark ? "text-white" : "text-gray-800") : (dark ? "text-white/50" : "text-gray-400")}`}>
-          {formatDisplay(value) ?? placeholder}
+          {formatDisplay(value, t) ?? placeholder}
         </span>
         {required && !value && <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" aria-hidden />}
       </button>
@@ -170,7 +175,7 @@ export default function DatePicker({
                 }}
                 className={`inline-flex items-center gap-1 text-xs font-medium transition ${dark ? "text-white/50 hover:text-red-400" : "text-gray-500 hover:text-red-500"}`}
               >
-                <X className="h-3.5 w-3.5" /> {clearLabel}
+                <X className="h-3.5 w-3.5" /> {clearText}
               </button>
               <button
                 type="button"
@@ -184,7 +189,7 @@ export default function DatePicker({
                   dark ? "bg-[#4FBEB0] hover:bg-[#7DD8CB] text-[#08130F]" : "bg-[#005f63] hover:bg-[#004a4d] text-white"
                 }`}
               >
-                {todayLabel}
+                {todayText}
               </button>
             </div>
           </div>,

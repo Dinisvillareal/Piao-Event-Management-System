@@ -6,6 +6,7 @@ use Illuminate\Database\Seeder;
 use App\Models\Event;
 use App\Models\User;
 use App\Models\Notification;
+use Carbon\Carbon;
 
 class EventSeeder extends Seeder
 {
@@ -415,6 +416,10 @@ class EventSeeder extends Seeder
             ],
         ];
 
+        // Past, ongoing, incoming and upcoming events filling out the calendar
+        // from August through December 31, 2026.
+        $events = array_merge($events, $this->additionalEvents());
+
         foreach ($events as $eventData) {
             // Create the event
             $event = Event::create($eventData);
@@ -430,6 +435,93 @@ class EventSeeder extends Seeder
         $this->command->info("\n🎉 Event seeding completed successfully!");
     }
     
+    /**
+     * Extra events so the calendar is populated from August all the way to
+     * December 31, 2026:
+     *  - PAST (hard-coded Aug 2 -> Oct 5): finished events, each with
+     *    attendance, expenses, and borrowed/returned equipment seeded by the
+     *    other seeders.
+     *  - ONGOING / INCOMING (relative to now()): one event that is in progress
+     *    right now and one that starts tomorrow, so the dashboard and the QR
+     *    scanner always have something live regardless of the run date.
+     *  - UPCOMING (hard-coded Oct 10 -> Dec 31): scheduled events through the
+     *    end of the year, a few with equipment already reserved.
+     * Names are unique, because the Budget / Inventory seeders find events by name.
+     */
+    private function additionalEvents(): array
+    {
+        $make = function (string $name, string $description, string $location, array $membershipIds, Carbon $start, Carbon $end, string $message, float $budget): array {
+            return [
+                'name' => $name,
+                'description' => $description,
+                'location' => $location,
+                'membership_ids' => $membershipIds,
+                'event_start' => $start->format('Y-m-d H:i:s'),
+                'event_end' => $end->format('Y-m-d H:i:s'),
+                'call_time_start' => $start->copy()->subHour()->format('Y-m-d H:i:s'),
+                'call_time_end' => $end->copy()->addMinutes(30)->format('Y-m-d H:i:s'),
+                'notification_message' => $message,
+                'approved_budget' => $budget,
+            ];
+        };
+
+        return [
+            // ---------- PAST ----------
+            $make('Buwan ng Wika Cultural Program', 'Community celebration of Filipino language and culture with performances from residents and school groups.', 'Barangay Covered Court', [], Carbon::parse('2026-08-02 15:00:00'), Carbon::parse('2026-08-02 18:00:00'), 'Wear your traditional attire and join the program.', 9000.00),
+            $make('Senior Citizen Blood Sugar Screening', 'Free blood sugar and blood pressure screening for senior citizen members.', 'Barangay Health Center', [3], Carbon::parse('2026-08-05 08:00:00'), Carbon::parse('2026-08-05 11:00:00'), 'Fasting is recommended before the screening.', 5500.00),
+            $make('Pantawid Pamilya Financial Literacy Seminar', 'Budgeting and savings seminar for Pantawid Pamilya households.', 'Community Training Room', [1], Carbon::parse('2026-08-09 09:00:00'), Carbon::parse('2026-08-09 12:00:00'), 'Learn how to stretch and save your household budget.', 6000.00),
+            $make('PWD Livelihood Skills Training', 'Hands-on skills training to help PWD Assistance members start small income projects.', 'Community Training Room', [4], Carbon::parse('2026-08-12 09:00:00'), Carbon::parse('2026-08-12 15:00:00'), 'Bring a valid PWD ID.', 8000.00),
+            $make('Solo Parent Livelihood Bazaar', 'A bazaar where Solo Parent Support members can sell homemade products.', 'Barangay Covered Court', [5], Carbon::parse('2026-08-15 09:00:00'), Carbon::parse('2026-08-15 16:00:00'), 'Bring your products and a table cloth if you have one.', 7000.00),
+            $make('Walang Gutom Urban Gardening Workshop', 'Backyard and container gardening workshop for Walang Gutom beneficiaries.', 'Barangay Gymnasium', [2], Carbon::parse('2026-08-19 09:00:00'), Carbon::parse('2026-08-19 12:00:00'), 'Free seedlings for every participant.', 5000.00),
+            $make('Health Insurance Dental Mission', 'Free dental check-ups and tooth extraction for Health Insurance Program members.', 'Barangay Health Center', [6], Carbon::parse('2026-08-22 08:00:00'), Carbon::parse('2026-08-22 16:00:00'), 'Bring your PhilHealth ID.', 12000.00),
+            $make('Housing Program Community Planning', 'Planning session with Housing Support Program members on repair and relocation priorities.', 'Barangay Hall', [9], Carbon::parse('2026-08-26 14:00:00'), Carbon::parse('2026-08-26 17:00:00'), 'Share your housing concerns with the team.', 3500.00),
+            $make('Educational Assistance Tutorial Kickoff', 'Kickoff of the free after-school tutorial program for Educational Assistance members.', 'Community Training Room', [8], Carbon::parse('2026-08-30 13:00:00'), Carbon::parse('2026-08-30 16:00:00'), 'Students must bring a notebook and pen.', 4500.00),
+            $make('Barangay Flood Preparedness Drill', 'Flood response drill covering evacuation routes, life vest use, and rescue basics.', 'Barangay Covered Court', [10], Carbon::parse('2026-09-02 07:00:00'), Carbon::parse('2026-09-02 11:00:00'), 'Wear comfortable clothes and closed shoes.', 8000.00),
+            $make('Senior Citizen Zumba & Wellness Session', 'Light exercise and wellness session for senior citizen members.', 'Barangay Gymnasium', [3], Carbon::parse('2026-09-06 06:00:00'), Carbon::parse('2026-09-06 08:00:00'), 'Wear light clothes and bring a towel.', 3500.00),
+            $make('Barangay Tree Planting Day', 'Community tree planting along the riverside to prevent erosion and flooding.', 'Barangay Riverside Park', [], Carbon::parse('2026-09-09 06:30:00'), Carbon::parse('2026-09-09 10:30:00'), 'Bring a hat and a water bottle.', 6500.00),
+            $make('Livelihood Product Showcase', 'Showcase and sale of products made by Livelihood Assistance Program members.', 'Barangay Covered Court', [7], Carbon::parse('2026-09-13 09:00:00'), Carbon::parse('2026-09-13 16:00:00'), 'Display your products to the community.', 9000.00),
+            $make('PWD Sign Language Basics Workshop', 'Introductory Filipino Sign Language workshop for PWD members, families, and volunteers.', 'Community Training Room', [4], Carbon::parse('2026-09-16 13:00:00'), Carbon::parse('2026-09-16 16:00:00'), 'Open to family members and volunteers.', 5000.00),
+            $make('Pantawid Pamilya Nutrition & Cooking Demo', 'Cooking demonstration of low-cost, nutritious meals for Pantawid Pamilya households.', 'Barangay Covered Court', [1], Carbon::parse('2026-09-20 09:00:00'), Carbon::parse('2026-09-20 12:00:00'), 'Free taste test for all attendees.', 8000.00),
+            $make('Emergency Relief Mock Evacuation', 'Barangay-wide mock evacuation to test response times and relief logistics.', 'Barangay Covered Court', [10], Carbon::parse('2026-09-23 06:00:00'), Carbon::parse('2026-09-23 10:00:00'), 'Participate with your household.', 7000.00),
+            $make('Solo Parent Counseling Day', 'One-on-one and group counseling for Solo Parent Support members.', 'Barangay Multipurpose Hall', [5], Carbon::parse('2026-09-27 09:00:00'), Carbon::parse('2026-09-27 15:00:00'), 'Free counseling and childcare on site.', 6000.00),
+            $make('Health Insurance Vaccination Drive', 'Community vaccination drive for Health Insurance Program members and their families.', 'Barangay Health Center', [6], Carbon::parse('2026-09-30 08:00:00'), Carbon::parse('2026-09-30 15:00:00'), 'Bring your vaccination card.', 14000.00),
+            $make('Barangay Sports Fest Opening', 'Opening ceremony and first games of the barangay sports festival.', 'Barangay Gymnasium', [], Carbon::parse('2026-10-03 08:00:00'), Carbon::parse('2026-10-03 12:00:00'), 'Wear your team color.', 10000.00),
+            $make('Educational Assistance School Supplies Distribution', 'Distribution of school supply kits to Educational Assistance Program members.', 'Barangay Hall', [8], Carbon::parse('2026-10-05 09:00:00'), Carbon::parse('2026-10-05 12:00:00'), 'Bring your school ID or enrollment form.', 12000.00),
+
+            // ---------- ONGOING & INCOMING (relative to now) ----------
+            $make('Barangay Health & Wellness Caravan', 'All-day caravan with free check-ups, consultations, and wellness booths -- happening right now.', 'Barangay Hall', [], now()->subHour(), now()->addHours(5), 'Free check-ups and consultations all day.', 9500.00),
+            $make('Barangay Disaster Risk Reduction Orientation', 'Orientation on disaster risk reduction, hazard maps, and household preparedness -- starting soon.', 'Barangay Hall', [], now()->addDay()->setTime(9, 0, 0), now()->addDay()->setTime(12, 0, 0), 'Learn how to prepare your household for disasters.', 4500.00),
+
+            // ---------- UPCOMING (through December 31, 2026) ----------
+            $make('Pantawid Pamilya Family Day', 'A day of games, sharing, and family activities for Pantawid Pamilya households.', 'Barangay Covered Court', [1], Carbon::parse('2026-10-10 09:00:00'), Carbon::parse('2026-10-10 15:00:00'), 'Bring your family and a packed lunch.', 9500.00),
+            $make('Senior Citizen Flu Vaccination', 'Free seasonal flu vaccination for senior citizen members.', 'Barangay Health Center', [3], Carbon::parse('2026-10-14 08:00:00'), Carbon::parse('2026-10-14 11:00:00'), 'Bring your senior citizen ID.', 8000.00),
+            $make('Livelihood Soap-Making Training', 'Hands-on soap and detergent making training for Livelihood Assistance members.', 'Community Training Room', [7], Carbon::parse('2026-10-17 09:00:00'), Carbon::parse('2026-10-17 15:00:00'), 'All materials are provided.', 6500.00),
+            $make('PWD Employment Orientation', 'Orientation on job opportunities, rights, and application tips for PWD members.', 'Barangay Hall', [4], Carbon::parse('2026-10-21 09:00:00'), Carbon::parse('2026-10-21 12:00:00'), 'Bring a copy of your resume if you have one.', 4500.00),
+            $make('Walang Gutom Harvest Festival', 'Harvest festival and produce exchange for Walang Gutom urban gardeners.', 'Barangay Covered Court', [2], Carbon::parse('2026-10-24 08:00:00'), Carbon::parse('2026-10-24 14:00:00'), 'Bring your harvest to share or swap.', 9000.00),
+            $make('Barangay Safe Trick-or-Treat Parade', 'A supervised, family-friendly costume parade for the barangay children.', 'Barangay Covered Court', [], Carbon::parse('2026-10-31 16:00:00'), Carbon::parse('2026-10-31 19:00:00'), 'Costumes must be safe and children must be accompanied.', 5000.00),
+            $make('Housing Support Orientation Part 2', 'Follow-up orientation on housing repair claims and requirements.', 'Barangay Hall', [9], Carbon::parse('2026-11-03 09:00:00'), Carbon::parse('2026-11-03 12:00:00'), 'Bring your claim documents.', 4000.00),
+            $make('Solo Parent Financial Planning Workshop', 'Budgeting, savings, and small business planning for Solo Parent Support members.', 'Barangay Multipurpose Hall', [5], Carbon::parse('2026-11-07 13:00:00'), Carbon::parse('2026-11-07 16:00:00'), 'Free childcare on site.', 6000.00),
+            $make('Educational Assistance Scholarship Interviews', 'Panel interviews for scholarship applicants under the Educational Assistance Program.', 'Barangay Hall', [8], Carbon::parse('2026-11-11 09:00:00'), Carbon::parse('2026-11-11 16:00:00'), 'Dress neatly and bring your application documents.', 5000.00),
+            $make('Health Insurance Diabetes Awareness Day', 'Screening and awareness talks on diabetes for Health Insurance Program members.', 'Barangay Health Center', [6], Carbon::parse('2026-11-14 08:00:00'), Carbon::parse('2026-11-14 12:00:00'), 'Fasting is recommended before the screening.', 9000.00),
+            $make('Emergency Relief Earthquake Drill', 'Barangay earthquake drill with duck-cover-hold practice and evacuation.', 'Barangay Covered Court', [10], Carbon::parse('2026-11-18 09:00:00'), Carbon::parse('2026-11-18 12:00:00'), 'Participate with your household.', 7500.00),
+            $make('Barangay Clean-Up & Recycling Drive', 'Community clean-up with a waste segregation and recycling station.', 'Barangay Hall', [], Carbon::parse('2026-11-21 07:00:00'), Carbon::parse('2026-11-21 11:00:00'), 'Bring gloves and a reusable bag.', 5500.00),
+            $make('Senior Citizen Grandparents Day Lunch', 'A shared lunch and program honoring the barangay senior citizens.', 'Barangay Hall', [3], Carbon::parse('2026-11-25 11:00:00'), Carbon::parse('2026-11-25 14:00:00'), 'Lunch is free for all senior citizen members.', 8500.00),
+            $make('Pantawid Pamilya Savings Group Launch', 'Launch of community savings groups for Pantawid Pamilya households.', 'Community Training Room', [1], Carbon::parse('2026-11-28 09:00:00'), Carbon::parse('2026-11-28 12:00:00'), 'Bring a valid ID.', 4000.00),
+            $make('Barangay Christmas Lantern Making', 'Community lantern making for the barangay Christmas lantern parade.', 'Barangay Gymnasium', [], Carbon::parse('2026-12-02 14:00:00'), Carbon::parse('2026-12-02 17:00:00'), 'Materials provided. Families welcome.', 6000.00),
+            $make('Livelihood Holiday Bazaar', 'Holiday bazaar for Livelihood Assistance members to sell Christmas products.', 'Barangay Covered Court', [7], Carbon::parse('2026-12-05 09:00:00'), Carbon::parse('2026-12-05 18:00:00'), 'Reserve your booth with the barangay staff.', 10000.00),
+            $make('PWD Christmas Party', 'Christmas party and gift-giving for PWD Assistance members.', 'Barangay Hall', [4], Carbon::parse('2026-12-08 14:00:00'), Carbon::parse('2026-12-08 18:00:00'), 'Gifts and snacks for every member.', 12000.00),
+            $make('Human Rights Day Community Forum', 'Community forum on human rights, child protection, and violence against women.', 'Barangay Hall', [], Carbon::parse('2026-12-10 09:00:00'), Carbon::parse('2026-12-10 12:00:00'), 'Open to all residents.', 4500.00),
+            $make('Solo Parent Christmas Gift Giving', 'Gift-giving and fellowship for Solo Parent Support members and their children.', 'Barangay Multipurpose Hall', [5], Carbon::parse('2026-12-12 13:00:00'), Carbon::parse('2026-12-12 17:00:00'), 'Bring your children for the Christmas program.', 9000.00),
+            $make('Senior Citizen Christmas Celebration', 'Christmas program, lunch, and raffle for senior citizen members.', 'Barangay Hall', [3], Carbon::parse('2026-12-15 10:00:00'), Carbon::parse('2026-12-15 15:00:00'), 'Free lunch and raffle for all members.', 20000.00),
+            $make('Walang Gutom Noche Buena Pack Distribution', 'Distribution of Noche Buena packs to Walang Gutom households.', 'Barangay Covered Court', [2], Carbon::parse('2026-12-17 08:00:00'), Carbon::parse('2026-12-17 12:00:00'), 'Bring your beneficiary ID.', 30000.00),
+            $make('Educational Assistance Year-End Awards', 'Recognition of outstanding scholars under the Educational Assistance Program.', 'Barangay Hall', [8], Carbon::parse('2026-12-19 14:00:00'), Carbon::parse('2026-12-19 17:00:00'), 'Scholars should wear formal attire.', 7500.00),
+            $make('Housing Support Year-End Assessment', 'Year-end assessment of housing repair and relocation applications.', 'Barangay Hall', [9], Carbon::parse('2026-12-22 09:00:00'), Carbon::parse('2026-12-22 12:00:00'), 'Bring your acknowledgment receipt.', 3500.00),
+            $make('Health Insurance Year-End Health Check', 'Year-end health check and PhilHealth claims assistance for members.', 'Barangay Health Center', [6], Carbon::parse('2026-12-26 08:00:00'), Carbon::parse('2026-12-26 12:00:00'), 'Bring your PhilHealth ID.', 8000.00),
+            $make('Emergency Relief Preparedness Review', 'Year-end review of emergency plans, supplies, and volunteer assignments.', 'Barangay Hall', [10], Carbon::parse('2026-12-29 09:00:00'), Carbon::parse('2026-12-29 12:00:00'), 'Volunteers are encouraged to attend.', 5000.00),
+            $make('Barangay Year-End Assembly & Thanksgiving', 'Year-end assembly with barangay accomplishments, awards, and thanksgiving.', 'Barangay Covered Court', [], Carbon::parse('2026-12-31 18:00:00'), Carbon::parse('2026-12-31 21:00:00'), 'Join the barangay in welcoming the new year.', 15000.00),
+        ];
+    }
+
     /**
      * Create notifications for all eligible users for a given event
      */

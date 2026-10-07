@@ -14,6 +14,7 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 
@@ -67,13 +68,15 @@ const MODULE_ICONS: Record<string, typeof ActivityIcon> = {
 const DEFAULT_MODULE_ICON = ActivityIcon;
 
 export default function ActivityLogsView() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [activities, setActivities] = useState<Activity[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState("all");
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
+  const statsLoading = usePageOpenSkeleton(loading);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
@@ -263,7 +266,7 @@ export default function ActivityLogsView() {
       if (key === "unknown") label = t("unknownDateLabel");
       else if (key === todayKey) label = t("todayLabel");
       else if (key === yesterdayKey) label = t("yesterdayLabel");
-      else label = new Date(key).toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+      else label = new Date(key).toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" });
       return { key, label, items: map.get(key)! };
     });
   }, [filteredActivities, t]);
@@ -373,6 +376,7 @@ export default function ActivityLogsView() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {statCards.map((card) => {
+          if (statsLoading) return <StatCardSkeleton key={card.key} />;
           const Icon = card.icon;
           return (
             <div key={card.key} className={`rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white`}>
@@ -458,7 +462,7 @@ export default function ActivityLogsView() {
                   const iconWrap = MODULE_ICON_WRAP[act.type ?? ""] ?? DEFAULT_ICON_WRAP;
                   const secondsAgo = Math.max(0, Math.floor((nowTick - new Date(act.created_at).getTime()) / 1000));
                   const isFresh = !isNaN(secondsAgo) && secondsAgo < 60;
-                  const timeOfDay = new Date(act.created_at).toLocaleTimeString("en-PH", {
+                  const timeOfDay = new Date(act.created_at).toLocaleTimeString(locale, {
                     hour: "2-digit",
                     minute: "2-digit",
                     hour12: true,
@@ -519,7 +523,7 @@ export default function ActivityLogsView() {
             >
               ←
             </button>
-            <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+            <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
               {currentPage}
             </span>
             <button

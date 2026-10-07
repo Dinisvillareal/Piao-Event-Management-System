@@ -53,7 +53,7 @@ export default function DashboardView({
   pastEventsCount,
   highlightText,
 }: DashboardViewProps) {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
 
   // Ticks every second purely for the live clock in the "My Activity" panel
   // below, the same real-time touch the staff portal's own Dashboard uses --
@@ -218,7 +218,7 @@ export default function DashboardView({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-display text-xl font-bold text-white">My Activity</h2>
+                <h2 className="font-display text-xl font-bold text-white">{t("memMyActivity")}</h2>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
@@ -228,23 +228,23 @@ export default function DashboardView({
                 </span>
               </div>
               <p className="mt-1 text-[15px] text-white/50">
-                {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                {currentTime.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' })}
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2">
               <Clock className="h-4 w-4 text-[#4FBEB0]" />
               <span className="font-display text-lg font-bold tabular-nums text-white">
-                {currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                {currentTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
               </span>
             </div>
           </div>
 
           <div className="mt-6 grid grid-cols-2 gap-3.5">
             {[
-              { label: "Unread Notifications", value: unreadCount, icon: BellIcon, tone: unreadCount > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
-              { label: "Next Event In", value: daysUntilNextEvent !== null ? `${daysUntilNextEvent}d` : "—", icon: CalendarDays, tone: "text-gold-400" },
-              { label: "Last Check-in", value: lastCheckIn ? formatDateCard(lastCheckIn.eventDate) : "—", icon: ClipboardCheck, tone: "text-[#7DD8CB]" },
-              { label: "Missed Check-ins", value: missedCount, icon: AlertCircle, tone: missedCount > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
+              { label: t("memUnreadNotifs"), value: unreadCount, icon: BellIcon, tone: unreadCount > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
+              { label: t("memNextEventIn"), value: daysUntilNextEvent !== null ? `${daysUntilNextEvent}d` : "—", icon: CalendarDays, tone: "text-gold-400" },
+              { label: t("memLastCheckIn"), value: lastCheckIn ? formatDateCard(lastCheckIn.eventDate) : "—", icon: ClipboardCheck, tone: "text-[#7DD8CB]" },
+              { label: t("memMissedCheckIns"), value: missedCount, icon: AlertCircle, tone: missedCount > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
             ].map((tile) => (
               <div key={tile.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                 <div className="flex items-center justify-between gap-2">
@@ -288,12 +288,12 @@ export default function DashboardView({
             </div>
             <div className="flex-1">
               <p className="font-medium text-white">{fullName}</p>
-              <p className="mt-1 text-sm text-white/50">Show this to staff when checking in at events.</p>
+              <p className="mt-1 text-sm text-white/50">{t("memShowToStaff")}</p>
               <button
                 onClick={() => setActive("qr")}
                 className="group mt-3 inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-5 pr-1.5 py-1.5 text-[15px] font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md"
               >
-                View Full QR Code
+                {t("memViewFullQr")}
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
                   <QrCode className="h-4 w-4 text-white" />
                 </span>

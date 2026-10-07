@@ -216,7 +216,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                   ←
                 </button>
 
-                <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
                   {currentPage}
                 </span>
 

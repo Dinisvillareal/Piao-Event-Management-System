@@ -35,7 +35,7 @@ interface NotificationsViewProps {
 
 
 export default function NotificationsView({ highlightText }: NotificationsViewProps) {
-   const { t } = useLanguage();
+   const { t, locale } = useLanguage();
    const [notifications, setNotifications] = useState<Notification[]>([]);
    const [loading, setLoading] = useState(true);
    const [notificationSearch, setNotificationSearch] = useState("");
@@ -170,9 +170,9 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    const formatDateModal = (dateStr: string): string => {
        const d = new Date(dateStr);
        const day = String(d.getDate()).padStart(2, '0');
-       const month = d.toLocaleString('en-US', { month: 'short' });
+       const month = d.toLocaleString(locale, { month: 'short' });
        const year = d.getFullYear();
-       const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+       const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: true });
        return `${day} ${month} ${year}, ${time}`;
    };
 
@@ -180,7 +180,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    const formatEventDate = (dateStr: string): string => {
        const d = new Date(dateStr);
        const day = String(d.getDate()).padStart(2, '0');
-       const month = d.toLocaleString('en-US', { month: 'short' });
+       const month = d.toLocaleString(locale, { month: 'short' });
        const year = d.getFullYear();
        return `${day} ${month} ${year}`;
    };
@@ -188,7 +188,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
    const formatEventTime = (dateStr: string): string => {
        const d = new Date(dateStr);
-       return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+       return d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', hour12: true });
    };
 
 
@@ -389,7 +389,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                ←
                            </button>
 
-                           <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+                           <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
                                {currentPage}
                            </span>
 

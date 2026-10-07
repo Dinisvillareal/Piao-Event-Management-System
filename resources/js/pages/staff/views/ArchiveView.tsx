@@ -3,6 +3,7 @@ import { RefreshCw, Filter, Search, Trash2, Layers, Clock, AlertTriangle } from 
 import FilterDropdown from '../../../components/ui/FilterDropdown';
 import StatusModal from '../../../components/ui/StatusModal';
 import { useLanguage } from "../../../i18n/LanguageContext";
+import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 
 interface TrashedItem {
   id: string | number;
@@ -49,6 +50,8 @@ export default function ArchiveView() {
   const { t } = useLanguage();
   const [allTrashedItems, setAllTrashedItems] = useState<TrashedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
+  const statsLoading = usePageOpenSkeleton(loading);
   const [restoringId, setRestoringId] = useState<string | number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -118,7 +121,7 @@ export default function ArchiveView() {
           return {
             id: item.id,
             type: item.type === 'user' ? 'resident' : item.type,
-            name: item.name || item.title || 'Unnamed',
+            name: item.name || item.title || t("opsUnnamed"),
             deletedAt: formatTimeOnly(raw),
             deletedAtRaw: raw,
             deletedBy: item.deleted_by || item.deletedBy,
@@ -354,6 +357,7 @@ export default function ArchiveView() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {statCards.map((card) => {
+          if (statsLoading) return <StatCardSkeleton key={card.key} />;
           const Icon = card.icon;
           return (
             <div key={card.key} className={`rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white`}>
@@ -470,7 +474,7 @@ export default function ArchiveView() {
               disabled={currentPage === 1}
               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >←</button>
-            <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+            <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
               {currentPage}
             </span>
             <button

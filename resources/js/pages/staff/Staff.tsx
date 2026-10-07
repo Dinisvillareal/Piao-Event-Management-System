@@ -22,6 +22,7 @@ import IntegrationsView from "./views/IntegrationsView";
 import ProfilingSettingsView from "./views/ProfilingSettingsView";
 import OfflineBanner from "../../components/ui/OfflineBanner";
 import api from "../../lib/api";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 // --- TYPES & MOCK DATA ---
 export type Resident = { id: string; name: string; age: number; address: string; contact: string; };
@@ -49,6 +50,7 @@ export const highlightText = (text: string, query: string) => {
 // MAIN COMPONENT
 // --------------------------
 export default function StaffDashboard() {
+  const { t } = useLanguage();
   const getInitialActive = () => {
     const path = window.location.pathname;
     const lastSegment = path.split('/').pop() || "";
@@ -88,7 +90,7 @@ export default function StaffDashboard() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
-  const staff = { id: "STAFF-001", name: "Brgy. Captain", role: "STAFF / ADMIN" };
+  const staff = { id: "STAFF-001", name: "Brgy. Captain", role: t("dashStaffAdminRole") };
 
   const [membershipOptions, setMembershipOptions] = useState<Membership[]>([]);
   const [allEvents, setAllEvents] = useState<any[]>([]);
@@ -279,7 +281,7 @@ export default function StaffDashboard() {
         />
         <OfflineBanner />
 
-        <div className="h-[calc(100vh-73px)] overflow-y-auto p-3 sm:p-6 smooth-scroll print:h-auto print:overflow-visible print:p-0">
+        <div id="staff-content-scroll" className="h-[calc(100vh-73px)] overflow-y-auto p-3 sm:p-6 smooth-scroll print:h-auto print:overflow-visible print:p-0">
           {active === "dashboard" && (
             <DashboardView
               membershipsCount={membershipOptions.length}

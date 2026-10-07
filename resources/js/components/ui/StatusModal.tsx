@@ -1,5 +1,6 @@
 import React from "react";
 import { CheckCircle, AlertTriangle, XCircle } from "lucide-react";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 type StatusType = "success" | "warning" | "error";
 
@@ -17,12 +18,16 @@ interface StatusModalProps {
   type: StatusType;
   title: string;
   message: string;
-  okLabel: string;
+  /** Defaults to the translated "OK" when omitted. */
+  okLabel?: string;
   onClose: () => void;
   /** z-index bump for a status popup opened on top of an already-open form/confirm modal (e.g. an inline validation error shown above an Add/Edit form). */
   z?: number;
   /** Override the default per-type icon -- rare, only for a call site whose message needs a more specific icon than the generic success/warning/error glyph. */
   icon?: React.ReactNode;
+  /** Optional second button (e.g. "View in Recently Released") shown beside OK -- both buttons close the popup; this one also runs onSecondary. */
+  secondaryLabel?: string;
+  onSecondary?: () => void;
 }
 
 /**
@@ -31,7 +36,8 @@ interface StatusModalProps {
  * action across both portals, so every module reports outcomes the same
  * way instead of each screen growing its own bespoke result popup.
  */
-export default function StatusModal({ open, type, title, message, okLabel, onClose, z = 50, icon }: StatusModalProps) {
+export default function StatusModal({ open, type, title, message, okLabel, onClose, z = 50, icon, secondaryLabel, onSecondary }: StatusModalProps) {
+  const { t } = useLanguage();
   if (!open) return null;
   const { Icon, accent, button } = TYPE_STYLES[type];
   return (
@@ -47,9 +53,22 @@ export default function StatusModal({ open, type, title, message, okLabel, onClo
         <div className={`mb-3 flex justify-center ${accent}`}>{icon ?? <Icon size={44} />}</div>
         <h3 className={`text-xl font-bold mb-2 ${type === "success" ? "text-white" : accent}`}>{title}</h3>
         <p className="text-[15px] text-white/50 mb-6">{message}</p>
-        <button onClick={onClose} className={`px-6 py-2.5 rounded-full transition ${button}`}>
-          {okLabel}
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {secondaryLabel && onSecondary && (
+            <button
+              onClick={() => {
+                onClose();
+                onSecondary();
+              }}
+              className="px-6 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition"
+            >
+              {secondaryLabel}
+            </button>
+          )}
+          <button onClick={onClose} className={`px-6 py-2.5 rounded-full transition ${button}`}>
+            {okLabel ?? t("okLabel")}
+          </button>
+        </div>
       </div>
     </div>
   );

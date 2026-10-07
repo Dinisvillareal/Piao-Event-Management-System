@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Search, ChevronDown, Plus } from "lucide-react";
+import { useLanguage } from "../../i18n/LanguageContext";
 
 export interface SearchableSelectOption {
   value: string;
@@ -41,6 +42,7 @@ export default function SearchableSelect({
   onFooterClick,
   dark = false,
 }: SearchableSelectProps) {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(0);
@@ -218,7 +220,7 @@ export default function SearchableSelect({
                   dark ? "border-white/10 text-[#7DD8CB] hover:bg-white/10" : "border-gray-100 text-[#005f63] hover:bg-teal-50"
                 }`}
               >
-                <Plus className="h-3.5 w-3.5" /> {footerLabel ?? "Add new"}
+                <Plus className="h-3.5 w-3.5" /> {footerLabel ?? t("uiAddNew")}
               </button>
             )}
           </div>,
