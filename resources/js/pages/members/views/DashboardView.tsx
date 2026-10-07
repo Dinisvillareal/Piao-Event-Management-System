@@ -4,6 +4,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import { Award, CheckCircle2, CalendarDays, Clock, QrCode, ClipboardCheck, Bell as BellIcon, AlertCircle } from "lucide-react";
 import type { AttendanceRecord } from "./AttendanceView";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 
 interface Notification {
   id: number;
@@ -53,7 +54,7 @@ export default function DashboardView({
   pastEventsCount,
   highlightText,
 }: DashboardViewProps) {
-  const { t, locale } = useLanguage();
+  const { t, language, locale } = useLanguage();
 
   // Ticks every second purely for the live clock in the "My Activity" panel
   // below, the same real-time touch the staff portal's own Dashboard uses --
@@ -218,7 +219,7 @@ export default function DashboardView({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-display text-xl font-bold text-white">{t("memMyActivity")}</h2>
+                <h2 className="font-display text-xl font-bold text-white">{t("myActivityTitle")}</h2>
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
@@ -241,10 +242,10 @@ export default function DashboardView({
 
           <div className="mt-6 grid grid-cols-2 gap-3.5">
             {[
-              { label: t("memUnreadNotifs"), value: unreadCount, icon: BellIcon, tone: unreadCount > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
-              { label: t("memNextEventIn"), value: daysUntilNextEvent !== null ? `${daysUntilNextEvent}d` : "—", icon: CalendarDays, tone: "text-gold-400" },
-              { label: t("memLastCheckIn"), value: lastCheckIn ? formatDateCard(lastCheckIn.eventDate) : "—", icon: ClipboardCheck, tone: "text-[#7DD8CB]" },
-              { label: t("memMissedCheckIns"), value: missedCount, icon: AlertCircle, tone: missedCount > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
+              { label: t("unreadNotificationsTile"), value: unreadCount, icon: BellIcon, tone: unreadCount > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
+              { label: t("nextEventInTile"), value: daysUntilNextEvent !== null ? `${daysUntilNextEvent}d` : "—", icon: CalendarDays, tone: "text-gold-400" },
+              { label: t("lastCheckInTile"), value: lastCheckIn ? formatDateCard(lastCheckIn.eventDate) : "—", icon: ClipboardCheck, tone: "text-[#7DD8CB]" },
+              { label: t("missedCheckInsTile"), value: missedCount, icon: AlertCircle, tone: missedCount > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
             ].map((tile) => (
               <div key={tile.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
                 <div className="flex items-center justify-between gap-2">
@@ -288,12 +289,12 @@ export default function DashboardView({
             </div>
             <div className="flex-1">
               <p className="font-medium text-white">{fullName}</p>
-              <p className="mt-1 text-sm text-white/50">{t("memShowToStaff")}</p>
+              <p className="mt-1 text-sm text-white/50">{t("showQrToStaffCaption")}</p>
               <button
                 onClick={() => setActive("qr")}
                 className="group mt-3 inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-5 pr-1.5 py-1.5 text-[15px] font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md"
               >
-                {t("memViewFullQr")}
+                {t("viewFullQrCode")}
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
                   <QrCode className="h-4 w-4 text-white" />
                 </span>
@@ -426,9 +427,9 @@ export default function DashboardView({
                   onClick={() => setActive("events")}
                   className="cursor-pointer rounded-xl border-l-4 border-gold-400 bg-white/[0.04] border border-white/10 p-4 transition-all duration-200 hover:bg-white/[0.07] hover:-translate-y-[1px]"
                 >
-                  <h3 className="text-base font-bold text-white line-clamp-1">{e.title}</h3>
-                  <p className="mt-1 text-xs text-white/40">{e.date} · {e.location}</p>
-                  <p className="mt-2 text-sm text-white/60 line-clamp-2">{e.description}</p>
+                  <h3 className="text-base font-bold text-white line-clamp-1">{tc(e.title, language as any)}</h3>
+                  <p className="mt-1 text-xs text-white/40">{e.date} · {tc(e.location, language as any)}</p>
+                  <p className="mt-2 text-sm text-white/60 line-clamp-2">{tc(e.description, language as any)}</p>
                 </div>
               ))
             )}

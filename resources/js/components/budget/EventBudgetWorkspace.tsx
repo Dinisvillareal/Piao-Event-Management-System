@@ -10,6 +10,7 @@ import Skeleton from "../ui/Skeleton";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { makeEventTiming, STATUS_META, type EventTimingInput } from "../../lib/eventTiming";
 
+import { tc } from "../../lib/contentTranslations";
 export type EventOption = EventTimingInput;
 
 export interface ExpenseSummary {
@@ -61,7 +62,7 @@ interface EventBudgetWorkspaceProps {
  * change made in one shows up in the other.
  */
 export default function EventBudgetWorkspace({ event, onChanged, onSummary, showHeader = true, reloadToken }: EventBudgetWorkspaceProps) {
-  const { t, locale } = useLanguage();
+  const { t, locale, language } = useLanguage();
   const { formatTimeFriendly, parseEventDateTime, getEventStatus, eventStatusLabel, relativeLabel } = makeEventTiming(t);
   const selectedEventId = String(event.id);
   const selectedEvent = event;
@@ -939,7 +940,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                                <p className="text-[15px] font-semibold text-white truncate">{exp.item}</p>
+                                <p className="text-[15px] font-semibold text-white truncate">{tc(exp.item, language as any)}</p>
                                 {receipts.length > 0 && (
                                   <button
                                     type="button"
@@ -960,7 +961,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                                   <span className="rounded-full border border-red-400/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">{t("ledgerOverBudgetTag")}</span>
                                 )}
                               </div>
-                              {exp.notes && <p className="mt-0.5 text-xs text-white/50 whitespace-pre-wrap break-words">{exp.notes}</p>}
+                              {exp.notes && <p className="mt-0.5 text-xs text-white/50 whitespace-pre-wrap break-words">{tc(exp.notes, language as any)}</p>}
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <span className={`mr-2 text-[15px] font-bold [font-variant-numeric:tabular-nums] ${meta?.over ? "text-red-300" : "text-[#7DD8CB]"}`}>{money(amt)}</span>

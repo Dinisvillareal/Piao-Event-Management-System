@@ -11,6 +11,7 @@ import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 
+import { tc } from "../../../lib/contentTranslations";
 // An item's condition covers the units still in use. Lost and disposed units
 // are separate counters on the item, so they are only *filters*, not conditions.
 type Condition = "New" | "Good" | "Fair" | "Poor";
@@ -73,7 +74,7 @@ const CONDITION_LABEL_KEYS: Record<ConditionFilter, string> = {
  * of the card-grid layout this page used previously.
  */
 export default function InventoryView() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [items, setItems] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
@@ -551,9 +552,9 @@ export default function InventoryView() {
                           )}
                         </div>
                         <div className="min-w-0 max-w-[280px]">
-                          <p className="text-[15px] font-semibold text-white truncate" title={item.name}>{item.name}</p>
+                          <p className="text-[15px] font-semibold text-white truncate" title={tc(item.name, language as any)}>{tc(item.name, language as any)}</p>
                           {item.notes && (
-                            <p className="text-[13px] text-white/40 leading-snug mt-0.5 line-clamp-2" title={item.notes}>{item.notes}</p>
+                            <p className="text-[13px] text-white/40 leading-snug mt-0.5 line-clamp-2" title={tc(item.notes, language as any)}>{tc(item.notes, language as any)}</p>
                           )}
                         </div>
                       </div>
@@ -580,7 +581,7 @@ export default function InventoryView() {
                     <td className="py-3 px-4 text-[15px] text-white/50">
                       {item.storage_location ? (
                         <span className="flex items-center gap-1">
-                          <MapPin className="h-4 w-4 shrink-0 text-[#4FBEB0]" /> {item.storage_location}
+                          <MapPin className="h-4 w-4 shrink-0 text-[#4FBEB0]" /> {tc(item.storage_location, language as any)}
                         </span>
                       ) : "—"}
                     </td>
@@ -821,7 +822,7 @@ export default function InventoryView() {
                   <Eye className="h-3 w-3" />
                   {t("viewPhotoLabel")}
                 </span>
-                <span className="text-sm font-medium text-white truncate">{viewingPhoto.name}</span>
+                <span className="text-sm font-medium text-white truncate">{tc(viewingPhoto.name, language as any)}</span>
               </div>
               <button onClick={() => setViewingPhoto(null)} className="text-white/50 hover:text-white p-1 shrink-0">
                 <X className="h-5 w-5" />

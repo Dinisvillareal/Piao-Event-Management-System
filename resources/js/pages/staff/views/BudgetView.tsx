@@ -7,6 +7,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import EventBudgetWorkspace, { type EventOption, NEAR_LIMIT_PCT, money, roundCents, budgetStateOf, type BudgetState } from "../../../components/budget/EventBudgetWorkspace";
 import { makeEventTiming, STATUS_META } from "../../../lib/eventTiming";
 
+import { tc } from "../../../lib/contentTranslations";
 /**
  * UC-8: Record Event Budget and Expenses. A portfolio-wide KPI strip (total
  * approved, total spent, remaining, events over budget) sits on top of the
@@ -15,7 +16,7 @@ import { makeEventTiming, STATUS_META } from "../../../lib/eventTiming";
  * before drilling into any one event's ledger.
  */
 export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption[] }) {
-  const { t, locale } = useLanguage();
+  const { t, locale, language } = useLanguage();
   const [search, setSearch] = useState("");
   // Left list: which time bucket to show. "all" keeps every bucket on screen, in sections.
   const [timeTab, setTimeTab] = useState<"all" | "ongoing" | "upcoming" | "past">("all");
@@ -326,7 +327,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                               {rowOver && <span className="shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">{t("budgetRowOverTag")}</span>}
                               {rowNear && <span className="shrink-0 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">{t("budgetRowNearTag")}</span>}
                             </div>
-                            <p className="mt-1.5 break-words text-[15px] font-semibold leading-snug">{e.title}</p>
+                            <p className="mt-1.5 break-words text-[15px] font-semibold leading-snug">{tc(e.title, language as any)}</p>
                             {dateLine && <p className={`mt-1 text-xs ${isSelected ? "text-white/70" : "text-white/45"}`}>{dateLine}</p>}
                             {rowPct !== null ? (
                               <div className="mt-3.5">

@@ -6,6 +6,7 @@ import Skeleton from "../../../components/ui/Skeleton";
 import NumberStepper from "../../../components/ui/NumberStepper";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
+import { tc } from "../../../lib/contentTranslations";
 /**
  * Adviser example (Senior Citizen eligibility) — extended to Youth and
  * Solo Parent: this screen lets Staff manage the age brackets, civil
@@ -44,7 +45,7 @@ const csrfToken = () =>
   );
 
 export default function ProfilingSettingsView() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   const [ageBrackets, setAgeBrackets] = useState<AgeBracket[]>([]);
   const [civilStatuses, setCivilStatuses] = useState<CivilStatus[]>([]);
@@ -510,7 +511,7 @@ export default function ProfilingSettingsView() {
                           <Users2 className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white truncate">{b.label}</p>
+                          <p className="text-sm font-semibold text-white truncate">{tc(b.label, language as any)}</p>
                           <p className="text-xs text-white/40">{b.min_age} - {b.max_age ?? "∞"} {t("yearsOldSuffix")}</p>
                         </div>
                       </div>
@@ -624,7 +625,7 @@ export default function ProfilingSettingsView() {
                         <div className="shrink-0 h-9 w-9 rounded-full bg-gold-400/10 text-gold-300 flex items-center justify-center">
                           <Heart className="h-4 w-4" />
                         </div>
-                        <p className="text-sm font-semibold text-white truncate">{s.label}</p>
+                        <p className="text-sm font-semibold text-white truncate">{tc(s.label, language as any)}</p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button
@@ -715,7 +716,7 @@ export default function ProfilingSettingsView() {
                         <div className="shrink-0 h-9 w-9 rounded-full bg-sage-400/10 text-sage-300 flex items-center justify-center">
                           <Tag className="h-4 w-4" />
                         </div>
-                        <p className="text-sm font-semibold text-white truncate">{s.label}</p>
+                        <p className="text-sm font-semibold text-white truncate">{tc(s.label, language as any)}</p>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button

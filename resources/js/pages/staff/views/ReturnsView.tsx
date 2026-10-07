@@ -11,6 +11,7 @@ import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 
+import { tc } from "../../../lib/contentTranslations";
 interface OverdueEventItem {
   id: number;
   name: string;
@@ -48,7 +49,7 @@ const RELEASES_PER_PAGE = 5;
 // the dedicated home for that queue; the Dashboard only shows a short
 // summary that links back here.
 export default function ReturnsView() {
-  const { t, locale } = useLanguage();
+  const { t, locale, language } = useLanguage();
   const [events, setEvents] = useState<OverdueEvent[]>([]);
   const [loading, setLoading] = useState(true);
   // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
@@ -413,7 +414,7 @@ export default function ReturnsView() {
       });
       setFlowToast({
         title: t("returnSuccessTitle"),
-        message: t("returnSuccessMessage").replace("{qty}", String(qty)).replace("{item}", item.name),
+        message: t("returnSuccessMessage").replace("{qty}", String(qty)).replace("{item}", tc(item.name, language as any)),
         target: "released",
         tone: "ok",
       });
@@ -487,7 +488,7 @@ export default function ReturnsView() {
           title: t("bulkReleaseSuccessTitle"),
           message: anyFailed
             ? t("bulkReleasePartialFailureMessage")
-            : t("bulkReleaseSuccessMessage").replace("{event}", event.name),
+            : t("bulkReleaseSuccessMessage").replace("{event}", tc(event.name, language as any)),
           target: "released",
           tone: anyFailed ? "warn" : "ok",
         });
@@ -537,7 +538,7 @@ export default function ReturnsView() {
       if (movedBack > 0) {
         setFlowToast({
           title: t("editReturnSuccessTitle"),
-          message: t("editMovedBackMessage").replace("{qty}", String(movedBack)).replace("{item}", release.item_name),
+          message: t("editMovedBackMessage").replace("{qty}", String(movedBack)).replace("{item}", tc(release.item_name, language as any)),
           target: "pending",
           tone: "ok",
         });
@@ -546,7 +547,7 @@ export default function ReturnsView() {
       } else {
         setFlowToast({
           title: t("editReturnSuccessTitle"),
-          message: t("editReturnSuccessMessage").replace("{item}", release.item_name).replace("{event}", release.event_name),
+          message: t("editReturnSuccessMessage").replace("{item}", tc(release.item_name, language as any)).replace("{event}", tc(release.event_name, language as any)),
           target: "released",
           tone: "ok",
         });
@@ -829,7 +830,7 @@ export default function ReturnsView() {
                               <PackageX className="h-4 w-4 text-[#E2A088]" />
                             </div>
                             <div className="min-w-0">
-                              <p className="font-semibold text-white truncate">{ev.name}</p>
+                              <p className="font-semibold text-white truncate">{tc(ev.name, language as any)}</p>
                               {flashEventIds.includes(ev.id) && (
                                 <p className="text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB] mt-0.5">{t("backInPendingChipLabel")}</p>
                               )}
@@ -845,7 +846,7 @@ export default function ReturnsView() {
                         <td className="py-3.5 px-4 text-white/50">
                           <ul className="space-y-0.5">
                             {ev.items.map((it) => (
-                              <li key={it.id} className="text-xs">{it.quantity}&times; {it.name}</li>
+                              <li key={it.id} className="text-xs">{it.quantity}&times; {tc(it.name, language as any)}</li>
                             ))}
                           </ul>
                         </td>
@@ -975,7 +976,7 @@ export default function ReturnsView() {
                     )}
                     <div className="min-w-0">
                       <p className="text-sm text-white truncate">
-                        {r.quantity}&times; {r.item_name} <span className="text-white/40">&bull;</span> {r.event_name}
+                        {r.quantity}&times; {tc(r.item_name, language as any)} <span className="text-white/40">&bull;</span> {tc(r.event_name, language as any)}
                       </p>
                       <p className="text-xs text-white/40 mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
                         <span className="inline-flex items-center gap-1 rounded-full bg-[#4FBEB0]/15 text-[#7DD8CB] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
@@ -1058,7 +1059,7 @@ export default function ReturnsView() {
           >
             <div className="px-6 sm:px-8 py-5 border-b border-white/10 flex items-start justify-between gap-3">
               <div>
-                <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">{modalEvent.name}</h2>
+                <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">{tc(modalEvent.name, language as any)}</h2>
                 <p className="text-sm text-[#E2A088] mt-1">{t("endedOnLabel")} {formatEndedAt(modalEvent.ended_at)}</p>
               </div>
               <button onClick={() => setSelectedEventId(null)} className="text-white/50 hover:text-white p-1">
@@ -1097,7 +1098,7 @@ export default function ReturnsView() {
                       onChange={() => toggleItemSelected(it)}
                       className="h-5 w-5 shrink-0 rounded border-white/25 bg-white/[0.03] accent-[#4FBEB0]"
                     />
-                    <span className="text-base font-semibold text-white truncate">{it.quantity}&times; {it.name}</span>
+                    <span className="text-base font-semibold text-white truncate">{it.quantity}&times; {tc(it.name, language as any)}</span>
                   </label>
                   <div className="flex items-center gap-2 ml-auto">
                     <label className="text-sm text-white/60">{t("qtyLabel")}</label>
@@ -1173,7 +1174,7 @@ export default function ReturnsView() {
         title={t("confirmReturnTitle")}
         body={
           confirmRelease
-            ? t("confirmReturnBody").replace("{qty}", String(confirmRelease.qty)).replace("{item}", confirmRelease.item.name)
+            ? t("confirmReturnBody").replace("{qty}", String(confirmRelease.qty)).replace("{item}", tc(confirmRelease.item.name, language as any))
             : ""
         }
         cancelLabel={t("cancelLabel")}
@@ -1190,7 +1191,7 @@ export default function ReturnsView() {
         title={t("confirmReleaseSelectedTitle")}
         body={
           modalEvent
-            ? t("confirmReleaseSelectedBody").replace("{n}", String(selectedCount)).replace("{event}", modalEvent.name)
+            ? t("confirmReleaseSelectedBody").replace("{n}", String(selectedCount)).replace("{event}", tc(modalEvent.name, language as any))
             : ""
         }
         cancelLabel={t("cancelLabel")}

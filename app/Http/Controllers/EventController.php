@@ -125,7 +125,7 @@ class EventController extends Controller
 
         // Check portal mode from request header
         $portalMode = $request->header('X-Portal-Mode', 'auto');
-        
+
         // Determine effective role based on portal mode
         $effectiveRole = $user->role;
         if ($user->role === 'Staff' && $portalMode === 'member') {
@@ -247,11 +247,28 @@ class EventController extends Controller
             $this->applyBorrowedItems($event, $request->borrowed_items ?? []);
             $this->sendEventNotifications($event, false);
 
+            // // Adviser recommendation: "2 in 1 — Facebook Page" second announcement channel
+            // if (filter_var($request->post_to_facebook, FILTER_VALIDATE_BOOLEAN)) {
+            //     app(FacebookService::class)->postEvent(
+            //         'New Event: ' . $event->name,
+            //         $event->notification_message ?? $event->description
+            //     );
+            // }
+
             // Adviser recommendation: "2 in 1 — Facebook Page" second announcement channel
             if (filter_var($request->post_to_facebook, FILTER_VALIDATE_BOOLEAN)) {
+                // Build the Facebook post body: Description first (the "what is
+                // this event" context), then the short Message reminder underneath
+                // (the call to action). Both are optional, so this only includes
+                // whichever ones actually have content.
+                $facebookBody = trim(
+                    ($event->description ? $event->description : '') .
+                    ($event->notification_message ? "\n\n" . $event->notification_message : '')
+                );
+
                 app(FacebookService::class)->postEvent(
                     'New Event: ' . $event->name,
-                    $event->notification_message ?? $event->description
+                    $facebookBody
                 );
             }
 
@@ -429,104 +446,104 @@ class EventController extends Controller
     }
 
     // ✅ MODIFIED: Implement SOFT DELETE instead of hard delete
-public function destroy($id)
-{
-    // Only Staff archive events -- same reasoning as store() above.
-    if (!$this->isStaff()) {
-        return response()->json(['message' => 'Unauthorized'], 403);
+    public function destroy($id)
+    {
+        // Only Staff archive events -- same reasoning as store() above.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $user = auth()->user();
+
+        // ✅ Find only active (non-deleted) events
+        $event = Event::withoutTrashed()->findOrFail($id);
+        $eventName = $event->name;
+
+        // Ongoing/Past events are locked -- same rule as update() above.
+        if ($this->isEventOngoing($event)) {
+            return response()->json([
+                'message' => "\"{$eventName}\" is currently ongoing and can't be archived until it ends.",
+            ], 409);
+        }
+
+        if ($event->event_end && now()->gt($event->event_end)) {
+            return response()->json([
+                'message' => "\"{$eventName}\" has already ended and can't be archived.",
+            ], 409);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            // ✅ Record who archived before soft deleting
+            $event->deleted_by = $user->user_code;
+            $event->save();
+
+            // ✅ Return any borrowed inventory items -- an archived event no
+            // longer needs them out on loan.
+            $this->releaseBorrowedItems($event);
+
+            // ✅ Step 1: Soft delete the event (sets deleted_at timestamp)
+            $event->delete();
+
+            // ✅ Step 2: Update notifications to show event was cancelled
+            Notification::where('event_id', $id)->update([
+                'type' => 'event_deleted',
+                'title' => '❌ Event Cancelled: ' . $eventName,
+                'message' => 'We apologize for the inconvenience. This event has been cancelled.',
+                'is_updated' => true,
+                'read' => false,
+                'updated_at' => now(),
+            ]);
+
+            // ✅ Step 3: Log the archive action
+            $this->createLog('Archive Event', 'Events', "Archived event: {$eventName}");
+
+            DB::commit();
+
+            return response()->json(['message' => 'Event archived successfully']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to archive event: ' . $e->getMessage()
+            ], 500);
+        }
     }
-
-    $user = auth()->user();
-
-    // ✅ Find only active (non-deleted) events
-    $event = Event::withoutTrashed()->findOrFail($id);
-    $eventName = $event->name;
-
-    // Ongoing/Past events are locked -- same rule as update() above.
-    if ($this->isEventOngoing($event)) {
-        return response()->json([
-            'message' => "\"{$eventName}\" is currently ongoing and can't be archived until it ends.",
-        ], 409);
-    }
-
-    if ($event->event_end && now()->gt($event->event_end)) {
-        return response()->json([
-            'message' => "\"{$eventName}\" has already ended and can't be archived.",
-        ], 409);
-    }
-
-    DB::beginTransaction();
-
-    try {
-        // ✅ Record who archived before soft deleting
-        $event->deleted_by = $user->user_code;
-        $event->save();
-
-        // ✅ Return any borrowed inventory items -- an archived event no
-        // longer needs them out on loan.
-        $this->releaseBorrowedItems($event);
-
-        // ✅ Step 1: Soft delete the event (sets deleted_at timestamp)
-        $event->delete();
-
-        // ✅ Step 2: Update notifications to show event was cancelled
-        Notification::where('event_id', $id)->update([
-            'type' => 'event_deleted',
-            'title' => '❌ Event Cancelled: ' . $eventName,
-            'message' => 'We apologize for the inconvenience. This event has been cancelled.',
-            'is_updated' => true,
-            'read' => false,
-            'updated_at' => now(),
-        ]);
-
-        // ✅ Step 3: Log the archive action
-        $this->createLog('Archive Event', 'Events', "Archived event: {$eventName}");
-
-        DB::commit();
-
-        return response()->json(['message' => 'Event archived successfully']);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json([
-            'message' => 'Failed to archive event: ' . $e->getMessage()
-        ], 500);
-    }
-}
 
     // ✅ NEW: Restore soft-deleted event (admin feature)
-   public function restore($id)
-{
-    // Only Staff restore archived events -- same reasoning as store() above.
-    if (!$this->isStaff()) {
-        return response()->json(['message' => 'Unauthorized'], 403);
+    public function restore($id)
+    {
+        // Only Staff restore archived events -- same reasoning as store() above.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $user = auth()->user();
+
+        $event = Event::onlyTrashed()->findOrFail($id);
+        $eventName = $event->name;
+
+        try {
+            // ✅ Clear the deleted_by when restoring
+            $event->deleted_by = null;
+            $event->save();
+
+            $event->restore();
+
+            $this->createLog('Restore Event', 'Events', "Restored event from archive: {$eventName}");
+
+            return response()->json([
+                'message' => 'Event restored successfully',
+                'event'   => $event,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to restore event: ' . $e->getMessage()
+            ], 500);
+        }
     }
-
-    $user = auth()->user();
-
-    $event = Event::onlyTrashed()->findOrFail($id);
-    $eventName = $event->name;
-
-    try {
-        // ✅ Clear the deleted_by when restoring
-        $event->deleted_by = null;
-        $event->save();
-        
-        $event->restore();
-
-        $this->createLog('Restore Event', 'Events', "Restored event from archive: {$eventName}");
-
-        return response()->json([
-            'message' => 'Event restored successfully',
-            'event'   => $event,
-        ]);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'message' => 'Failed to restore event: ' . $e->getMessage()
-        ], 500);
-    }
-}
 
     // ✅ NEW: Force delete (permanent) - for admin only
     public function forceDelete($id)
@@ -582,20 +599,26 @@ public function destroy($id)
                 ->pluck('user_id')
                 ->unique();
 
-        // Adviser recommendation: household-head SMS, sent once per household so
-        // it complements (not duplicates) the in-app notifications below.
-        // Fired on the initial announcement AND on a meaningful update -- see
-        // update(), which only calls this with $isUpdate=true when the
-        // schedule, venue, or message actually changed.
+        // Eligible residents -- still used below for IN-APP notifications.
+        // Not used for the SMS blast anymore (that goes to all heads).
         $residents = User::where('role', 'Resident')
             ->whereIn('id', $userIds)
             ->with('household:id,contact_number')
-            ->get(['id', 'contact_number', 'household_id', 'household_code', 'is_household_head', 'household_contact_number']);
+            ->get(['id', 'first_name', 'last_name', 'contact_number', 'household_id', 'household_code', 'is_household_head', 'household_contact_number']);
 
         $smsPrefix = $isUpdate ? 'UPDATED: ' : '';
         $smsMessage = $smsPrefix . trim($event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.'));
-        app(SmsService::class)->notifyHouseholds($residents, $event->id, $smsMessage);
 
+        // === THE ONLY LINE THAT CHANGED ===
+        // Broadcast the SMS to EVERY household head in the barangay, not
+        // just heads of households that matched this event's membership
+        // targeting. The in-app notifications further below still only go
+        // to the eligible residents -- this SMS blast is intentionally
+        // broader than that, so a head with no personal stake in the event
+        // still gets it and can relay the info to neighbors.
+        app(SmsService::class)->broadcastToAllHouseholdHeads($event->id, $smsMessage);
+
+        // --- In-app notifications (unchanged) ---
         $staff = auth()->user();
         $staffName = 'Staff: ' . $staff->last_name;
 
@@ -681,11 +704,6 @@ public function destroy($id)
         }
     }
 
-    /**
-     * Returns every item currently borrowed by this event back to
-     * Inventory and clears its borrow records. Called before re-applying
-     * an edited borrow list, and when an event is archived.
-     */
     /**
      * @param bool $logRelease Whether this counts as a real "item came
      * back" release worth logging for the Returns page's Undo trail.
@@ -785,7 +803,6 @@ public function destroy($id)
 
         return response()->json(['message' => 'Borrowed items returned to Inventory.']);
     }
-
 
     /**
      * Release a single borrowed item back to Inventory, instead of an
