@@ -4,6 +4,7 @@ import { Users, Plus, Pencil, Trash2, Search, CheckCircle, AlertCircle, AlertTri
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 
 
 export interface Membership {
@@ -39,7 +40,7 @@ interface QRCodesViewProps {
 // template -- so this screen reads as part of the same product instead of
 // an older, differently-themed page bolted on.
 export default function QRCodesView({ highlightText }: QRCodesViewProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [memberships, setMemberships] = useState<any[]>([]);
   const [allResidents, setAllResidents] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -731,15 +732,15 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   </div>
 
                   <h2 className="mt-4 text-base font-bold text-white break-words">
-                    {highlightText(m.name, searchQuery)}
+                    {highlightText(tc(m.name, language as any), searchQuery)}
                   </h2>
                   <p className="mt-1 text-sm text-white/50 break-words line-clamp-2">
-                    {highlightText(m.description || t("noDescription"), searchQuery)}
+                    {highlightText(tc(m.description || t("noDescription"), language as any), searchQuery)}
                   </p>
 
                   {hasEligibility && (
                     <p className="mt-2.5 inline-flex items-center gap-1 rounded-full bg-gold-400/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold-300">
-                      {t("requiresLabelShort")} {[m.eligible_age_bracket?.label, m.eligible_civil_status?.label, m.eligible_current_status?.label, m.eligible_gender].filter(Boolean).join(" • ")}
+                      {t("requiresLabelShort")} {[tc(m.eligible_age_bracket?.label, language as any), tc(m.eligible_civil_status?.label, language as any), tc(m.eligible_current_status?.label, language as any), m.eligible_gender].filter(Boolean).join(" • ")}
                     </p>
                   )}
 
@@ -793,8 +794,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           <div className="bg-[#0A0E1A] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl relative mx-4 sm:mx-auto">
             <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between">
               <div>
-                <h2 className="text-lg sm:text-xl font-bold text-white">{selectedMembership.name}</h2>
-                <p className="text-xs sm:text-sm text-white/50 mt-0.5 line-clamp-2">{selectedMembership.description || t("noDescriptionModal")}</p>
+                <h2 className="text-lg sm:text-xl font-bold text-white">{tc(selectedMembership.name, language as any)}</h2>
+                <p className="text-xs sm:text-sm text-white/50 mt-0.5 line-clamp-2">{tc(selectedMembership.description || t("noDescriptionModal"), language as any)}</p>
               </div>
               <button onClick={closeModal} className="text-white/50 hover:text-white p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -870,7 +871,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-white">{t("eligibilityCheckTitle")}</h2>
-                <p className="text-xs sm:text-sm text-white/50 mt-0.5">{eligibilityCheck.membershipName}</p>
+                <p className="text-xs sm:text-sm text-white/50 mt-0.5">{tc(eligibilityCheck.membershipName, language as any)}</p>
               </div>
               <button onClick={() => setEligibilityCheck(null)} className="text-white/50 hover:text-white p-1">
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -4,6 +4,7 @@ import FilterDropdown from "../../../components/ui/FilterDropdown";
 import { Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, AlertTriangle, Filter } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 
@@ -35,7 +36,7 @@ interface NotificationsViewProps {
 
 
 export default function NotificationsView({ highlightText }: NotificationsViewProps) {
-   const { t } = useLanguage();
+   const { t, language } = useLanguage();
    const [notifications, setNotifications] = useState<Notification[]>([]);
    const [loading, setLoading] = useState(true);
    const [notificationSearch, setNotificationSearch] = useState("");
@@ -555,7 +556,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                            <MapPin size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
                                            <div className="text-sm">
                                                <span className="font-medium text-white">{t("locationColon")}</span>{' '}
-                                               <span>{selectedNotification.event.location}</span>
+                                               <span>{tc(selectedNotification.event.location, language as any)}</span>
                                            </div>
                                        </div>
                                    )}
@@ -566,7 +567,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                            <FileText size={16} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
                                            <div className="text-sm">
                                                <span className="font-medium text-white">{t("eventDetailsColon")}</span>
-                                               <p className="text-white/50 mt-1">{selectedNotification.event.description}</p>
+                                               <p className="text-white/50 mt-1">{tc(selectedNotification.event.description, language as any)}</p>
                                            </div>
                                        </div>
                                    )}

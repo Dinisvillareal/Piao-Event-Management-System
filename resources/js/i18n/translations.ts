@@ -136,6 +136,20 @@ export const translations: Dict = {
   checkBackLater: { en: "Check back later for updates", tl: "Bumalik mamaya para sa mga update", ceb: "Balik-i unya para sa mga update" },
   noUpcomingEvents: { en: "No upcoming events", tl: "Walang paparating na kaganapan", ceb: "Walay umaabot nga kalihokan" },
 
+
+
+  myActivityTitle: { en: "My Activity", tl: "Aking Aktibidad", ceb: "Akong Kalihokan" },
+  unreadNotificationsTile: { en: "Unread Notifications", tl: "Mga Hindi pa Nabasa", ceb: "Mga Wala pa Nabasa" },
+  nextEventInTile: { en: "Next Event In", tl: "Susunod na Kaganapan Sa", ceb: "Sunod nga Kalihokan Sa" },
+  lastCheckInTile: { en: "Last Check-in", tl: "Huling Pag-check In", ceb: "Kataposang Pag-check In" },
+  missedCheckInsTile: { en: "Missed Check-ins", tl: "Mga Hindi Nadaluhan", ceb: "Mga Wala Matambongi" },
+  showQrToStaffCaption: { en: "Show this to staff when checking in at events.", tl: "Ipakita ito sa kawani kapag nag-check in sa mga kaganapan.", ceb: "Ipakita kini sa kawani kung mag-check-in sa mga kalihokan." },
+  viewFullQrCode: { en: "View Full QR Code", tl: "Tingnan ang Buong QR Code", ceb: "Tan-awa ang Tibuok QR Code" },
+
+
+
+
+
   search: { en: "Search", tl: "Maghanap", ceb: "Pangita" },
   noMatchesFoundLabel: { en: "No matches found.", tl: "Walang nahanap na tugma.", ceb: "Walay natukiban nga tugma." },
   cancel: { en: "Cancel", tl: "Kanselahin", ceb: "Kanselahon" },
@@ -981,6 +995,83 @@ export const translations: Dict = {
   addCurrentStatusLabel: { en: "Add Current Status", tl: "Magdagdag ng Current Status", ceb: "Pagdugang og Current Status" },
   statusLabelPlaceholder: { en: "Status label (e.g. Divorced)", tl: "Label ng status (hal. Divorced)", ceb: "Label sa status (pananglitan Divorced)" },
   currentStatusLabelPlaceholder: { en: "Status label (e.g. Solo Parent)", tl: "Label ng status (hal. Solo Parent)", ceb: "Label sa status (pananglitan Solo Parent)" },
+
+
+    // ─── Staff: Dashboard ───
+  addResidentAction: { en: "Add Resident", tl: "Magdagdag ng Residente", ceb: "Pagdugang og Residente" },
+  addResidentActionDesc: { en: "Register a new resident profile", tl: "Magrehistro ng bagong profile ng residente", ceb: "Magparehistro og bag-ong profile sa residente" },
+  viewReportsAction: { en: "View Reports", tl: "Tingnan ang mga Ulat", ceb: "Tan-awa ang mga Report" },
+  viewReportsActionDesc: { en: "Analytics & activity reports", tl: "Analytics at mga ulat ng aktibidad", ceb: "Analytics ug mga report sa kalihokan" },
+
+  // Stat strip
+  statResidentsLabel: { en: "RESIDENTS", tl: "MGA RESIDENTE", ceb: "MGA RESIDENTE" },
+  statResidentsDesc: { en: "Total registered residents", tl: "Kabuuang nakarehistrong residente", ceb: "Kinatibuk-ang narehistro nga residente" },
+  statMembershipsLabel: { en: "ACTIVE MEMBERSHIPS", tl: "AKTIBONG MEMBERSHIP", ceb: "AKTIBONG MEMBERSHIP" },
+  statMembershipsDesc: { en: "Active membership types", tl: "Mga aktibong uri ng membership", ceb: "Mga aktibo nga klase sa membership" },
+  statEventsLabel: { en: "EVENTS", tl: "MGA KAGANAPAN", ceb: "MGA KALIHOKAN" },
+  statEventsDescUpcoming: { en: "{n} upcoming this year", tl: "{n} paparating ngayong taon", ceb: "{n} umaabot karong tuiga" },
+  statEventsDescGeneric: { en: "Upcoming + past this year", tl: "Paparating at nakaraang taon", ceb: "Umaabot ug nangaging tuig" },
+  statOverdueLabel: { en: "OVERDUE RETURNS", tl: "MGA OVERDUE NA PAGBALIK", ceb: "MGA OVERDUE NGA PAGBALIK" },
+  statOverdueDescFlagged: { en: "Flagged for review", tl: "Naka-flag para sa pagsusuri", ceb: "Gi-flag para sa pagsusi" },
+  statOverdueDescClean: { en: "All items returned on time", tl: "Lahat ng item ay naibalik sa oras", ceb: "Tanan nga item nauli sa oras" },
+
+  // Quick actions
+  createEventAction: { en: "Create Event", tl: "Gumawa ng Kaganapan", ceb: "Paghimo og Kalihokan" },
+  scanQrAction: { en: "Scan QR", tl: "I-scan ang QR", ceb: "I-scan ang QR" },
+  sendNoticeAction: { en: "Send Notice", tl: "Magpadala ng Abiso", ceb: "Magpadala og Pahibalo" },
+
+  // Live snapshot card
+  liveSnapshotTitle: { en: "Today's Live Snapshot", tl: "Live na Snapshot Ngayong Araw", ceb: "Live nga Snapshot Karong Adlawa" },
+  liveBadge: { en: "Live", tl: "Live", ceb: "Live" },
+  snapshotStaffActions: { en: "Staff Actions Today", tl: "Aksyon ng Kawani Ngayong Araw", ceb: "Aksyon sa Kawani Karong Adlawa" },
+  snapshotStaffActive: { en: "Staff Active Today", tl: "Aktibong Kawani Ngayong Araw", ceb: "Aktibong Kawani Karong Adlawa" },
+  snapshotEventsToday: { en: "Events Today", tl: "Mga Kaganapan Ngayong Araw", ceb: "Mga Kalihokan Karong Adlawa" },
+  snapshotNeedsAttention: { en: "Needs Attention", tl: "Kailangan ng Pansin", ceb: "Nagkinahanglan og Atensyon" },
+  snapshotNoActivity: { en: "No staff activity logged yet today.", tl: "Wala pang aktibidad ng kawani ngayong araw.", ceb: "Wala pay kalihokan sa kawani karong adlawa." },
+  snapshotLastAction: { en: "Last recorded action: {action} by {staff} at {time}.", tl: "Huling naitalang aksyon: {action} ni {staff} noong {time}.", ceb: "Kataposang natala nga aksyon: {action} ni {staff} niadtong {time}." },
+  snapshotAutoRefresh: { en: "Auto-refreshes every 30 seconds", tl: "Awtomatikong nagre-refresh kada 30 segundo", ceb: "Awtomatik nga nag-refresh matag 30 ka segundo" },
+
+  // System status card
+  systemStatusTitle: { en: "System Status", tl: "Katayuan ng Sistema", ceb: "Kahimtang sa Sistema" },
+  systemOperational: { en: "All Systems Operational", tl: "Lahat ng Sistema ay Gumagana", ceb: "Tanan nga Sistema Naglihok" },
+  systemSyncedJustNow: { en: "Synced just now", tl: "Kararaang nag-sync", ceb: "Bag-o lang nag-sync" },
+  systemSyncedSeconds: { en: "Synced {n}s ago", tl: "Nag-sync {n}s ang nakalipas", ceb: "Nag-sync {n}s ang milabay" },
+  systemSyncedMinutes: { en: "Synced {n}m ago", tl: "Nag-sync {n}m ang nakalipas", ceb: "Nag-sync {n}m ang milabay" },
+  feedActivityLog: { en: "Activity Log", tl: "Log ng Aktibidad", ceb: "Log sa Kalihokan" },
+  feedEventsAttendance: { en: "Events & Attendance", tl: "Mga Kaganapan at Pagdalo", ceb: "Mga Kalihokan ug Pagtambong" },
+  feedOverdueReturns: { en: "Overdue Returns", tl: "Mga Overdue na Pagbabalik", ceb: "Mga Overdue nga Pagbalik" },
+  feedBudgetReports: { en: "Budget Reports", tl: "Mga Ulat ng Badyet", ceb: "Mga Report sa Badyet" },
+  feedSynced: { en: "Synced", tl: "Naka-sync", ceb: "Naka-sync" },
+
+  // System QR card
+  systemQrTitle: { en: "System QR Code", tl: "System QR Code", ceb: "System QR Code" },
+  systemQrDesc: { en: "Residents scan this code to open the membership portal on their phone.", tl: "I-scan ng mga residente ang code na ito para buksan ang portal ng membership sa kanilang telepono.", ceb: "I-scan sa mga residente kini nga code aron maablihan ang portal sa membership sa ilang telepono." },
+  systemQrName: { en: "Barangay e-Membership", tl: "Barangay e-Membership", ceb: "Barangay e-Membership" },
+  systemQrHint: { en: "Print and post at the Barangay Hall lobby.", tl: "I-print at ipaskil sa lobby ng Barangay Hall.", ceb: "I-print ug ipaskil sa lobby sa Barangay Hall." },
+  downloadQrCodeBtn: { en: "Download QR Code", tl: "I-download ang QR Code", ceb: "I-download ang QR Code" },
+  confirmQrDownloadTitle: { en: "Download QR Code?", tl: "I-download ang QR Code?", ceb: "I-download ang QR Code?" },
+  confirmQrDownloadBody: { en: "This will save the barangay system QR code as a PNG image to your device.", tl: "Ise-save nito ang system QR code ng barangay bilang PNG image sa iyong device.", ceb: "I-save niini ang system QR code sa barangay isip PNG image sa imong device." },
+  confirmQrDownloadBtn: { en: "Download", tl: "I-download", ceb: "I-download" },
+  qrDownloadSuccessTitle: { en: "Download complete", tl: "Tapos na ang pag-download", ceb: "Nahuman na ang pag-download" },
+  qrDownloadSuccessMsg: { en: "The QR code image has been saved to your device.", tl: "Na-save na ang larawan ng QR code sa iyong device.", ceb: "Na-save na ang hulagway sa QR code sa imong device." },
+
+  // Budget snapshot card
+  budgetSnapshotTitle: { en: "Budget Snapshot", tl: "Snapshot ng Badyet", ceb: "Snapshot sa Badyet" },
+  budgetSnapshotDesc: { en: "Approved vs. spent — {period}", tl: "Aprubado vs. nagastos — {period}", ceb: "Aprubado vs. nagasto — {period}" },
+  viewAllLabel: { en: "View all", tl: "Tingnan lahat", ceb: "Tan-awa tanan" },
+  budgetNoData: { en: "No approved event budgets this quarter.", tl: "Walang aprubadong badyet ng kaganapan ngayong quarter.", ceb: "Walay aprubadong badyet sa kalihokan karong quarter." },
+  noUpcomingEventsShort: { en: "No upcoming events scheduled.", tl: "Walang nakatakdang paparating na kaganapan.", ceb: "Walay nakatakda nga umaabot nga kalihokan." },
+
+  // Overdue banner
+  overdueBannerTitle: { en: "Ended events still holding inventory", tl: "Mga tapos na kaganapan na may hawak pa ring imbentaryo", ceb: "Mga nahuman nga kalihokan nga naa pay gihuptan nga imbentaryo" },
+  overdueBannerBody: { en: "{n} {event} — these events are over, but nobody has returned what they borrowed yet.", tl: "{n} {event} — tapos na ang mga kaganapang ito, pero wala pang nagbabalik ng kanilang hiniram.", ceb: "{n} {event} — nahuman na kining mga kalihokan, apan wala pay nibalik sa ilang gihuwam." },
+  overdueBannerEventSingular: { en: "event", tl: "kaganapan", ceb: "kalihokan" },
+  overdueBannerEventPlural: { en: "events", tl: "mga kaganapan", ceb: "mga kalihokan" },
+  overdueBannerAction: { en: "Review Returns", tl: "Suriin ang mga Pagbabalik", ceb: "Susiha ang mga Pagbalik" },
+
+  // Dashboard download modal button labels
+  cancelLabelGlobal: { en: "Cancel", tl: "Kanselahin", ceb: "Kanselaha" },
+
 
   // Households module (view-body copy -- English only, see file header note)
   householdsTitle: { en: "Households", tl: "Mga Sambahayan", ceb: "Mga Panimalay" },

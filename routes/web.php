@@ -278,6 +278,20 @@ Route::middleware('auth')->group(function () {
     Route::get('/integrations/facebook', [IntegrationController::class, 'facebookStatus']);
     Route::post('/integrations/facebook', [IntegrationController::class, 'connectFacebook']);
     Route::delete('/integrations/facebook', [IntegrationController::class, 'disconnectFacebook']);
+
+     /*
+    |--------------------------------------------------------------------------
+    | TRANSLATIONS (UC-17) -- for React frontend to fetch all translations in one go
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/content-translations', function () {
+        $rows = \App\Models\ContentTranslation::all();
+        $map = [];
+        foreach ($rows as $r) {
+            $map[$r->key][$r->locale] = $r->value;
+        }
+        return response()->json($map);
+    });
 });
 
 /*
