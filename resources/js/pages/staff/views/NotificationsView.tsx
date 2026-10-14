@@ -95,13 +95,31 @@ export default function NotificationsView({ memberships = [], highlightText }: N
    // contact number per household" — a staff-facing view of what was sent.
    const [smsLogs, setSmsLogs] = useState<any[]>([]);
    const [smsLoading, setSmsLoading] = useState<boolean>(true);
+   const [smsPage, setSmsPage] = useState<number>(1);
+   const [smsLastPage, setSmsLastPage] = useState<number>(1);
+   const [smsTotal, setSmsTotal] = useState<number>(0);
+   const smsPerPage = 10;
+   // Notifications | Household SMS -- same pill switcher as Returns.
+   const [activeTab, setActiveTab] = useState<"notifications" | "sms">("notifications");
+   // Switching tabs flashes the skeleton briefly, same as a page switch.
+   const switchTab = (tab: "notifications" | "sms") => {
+       if (tab === activeTab) return;
+       setActiveTab(tab);
+       setPageSwitching(true);
+       if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+       pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+   };
 
-   const fetchSmsLogs = async (): Promise<void> => {
+   // Server-paginated: each page is its own request, so the skeleton shows
+   // while the next page loads.
+   const fetchSmsLogs = async (page: number): Promise<void> => {
        setSmsLoading(true);
        try {
-           const response = await api.get('/notifications/sms-logs', { params: { per_page: 20 } });
+           const response = await api.get('/notifications/sms-logs', { params: { per_page: smsPerPage, page } });
            const data = response.data;
            setSmsLogs(Array.isArray(data) ? data : (data.data || []));
+           setSmsLastPage(Array.isArray(data) ? 1 : (data.last_page || 1));
+           setSmsTotal(Array.isArray(data) ? data.length : (typeof data.total === 'number' ? data.total : (data.data || []).length));
        } catch (error) {
            console.error('Error fetching SMS logs:', error);
        } finally {
@@ -110,8 +128,8 @@ export default function NotificationsView({ memberships = [], highlightText }: N
    };
 
    useEffect(() => {
-       fetchSmsLogs();
-   }, []);
+       fetchSmsLogs(smsPage);
+   }, [smsPage]);
 
 
    const filteredNotifications = useMemo(() => {
@@ -253,6 +271,41 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                </div>
 
 
+               {/* Flow switcher -- same pill buttons as Returns */}
+               <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                   <button
+                       type="button"
+                       onClick={() => switchTab("notifications")}
+                       className={`inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-base font-bold transition ${
+                           activeTab === "notifications"
+                               ? "bg-sage-700 text-white shadow-sm"
+                               : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                       }`}
+                   >
+                       <Bell className="h-5 w-5" />
+                       {t("notify")}
+                       <span className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "notifications" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
+                           {loading ? 0 : allNotifications.length}
+                       </span>
+                   </button>
+                   <button
+                       type="button"
+                       onClick={() => switchTab("sms")}
+                       className={`inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-base font-bold transition ${
+                           activeTab === "sms"
+                               ? "bg-sage-700 text-white shadow-sm"
+                               : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                       }`}
+                   >
+                       <Smartphone className="h-5 w-5" />
+                       {t("householdSmsDeliveries")}
+                       <span className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "sms" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
+                           {smsLoading ? 0 : smsTotal}
+                       </span>
+                   </button>
+               </div>
+
+               {activeTab === "notifications" ? (<>
                <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                        <div className="flex-1 min-w-[220px]">
@@ -323,10 +376,40 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                        </div>
                    ))}
                </div>
+               </>) : (<>
+               {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+               <p className="mt-4 text-xs text-white/40">
+                   {smsLoading || pageSwitching ? 0 : smsTotal} {t("smsFoundCount")} — {t("showingLabel")} {smsPerPage} {t("perPage")}
+               </p>
+               <div className="flex justify-end mt-4">
+                   {smsLastPage > 1 && ((smsLoading || pageSwitching) ? <PagerSkeleton /> : (
+                       <div className="flex items-center gap-2">
+                           <button
+                               onClick={() => setSmsPage(p => Math.max(1, p - 1))}
+                               disabled={smsPage === 1}
+                               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                           >
+                               ←
+                           </button>
+                           <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                               {smsPage}
+                           </span>
+                           <button
+                               onClick={() => setSmsPage(p => Math.min(smsLastPage, p + 1))}
+                               disabled={smsPage === smsLastPage}
+                               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                           >
+                               →
+                           </button>
+                       </div>
+                   ))}
+               </div>
+               </>)}
            </div>
 
 
-           {/* Scrollable Content Area - Only notifications scroll */}
+           {/* Scrollable content area - only the list scrolls */}
+           {activeTab === "notifications" ? (
            <div className="flex-1 overflow-y-auto pb-4">
                {pageSwitching || loading ? (
                    <div className="space-y-3">
@@ -390,29 +473,32 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                    </div>
                )}
            </div>
-
-           {/* Adviser recommendation: household-head SMS delivery log */}
-           <div className="px-1 sm:px-2 pb-6">
-               <div className="rounded-3xl border border-white/10 bg-white/[0.04] p-5">
-                   <div className="flex items-center gap-2 mb-1">
-                       <Smartphone className="h-5 w-5 text-white/40" />
-                       <h2 className="text-lg font-bold text-white">{t("householdSmsDeliveries")}</h2>
+           ) : (
+           <div className="flex-1 overflow-y-auto pb-4">
+               {smsLoading || pageSwitching ? (
+                   <div className="space-y-2">
+                       {Array.from({ length: 6 }).map((_, i) => (
+                           <div key={i} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                               <div className="flex items-center gap-3 min-w-0 flex-1">
+                                   <Skeleton className="h-4 w-4 rounded-full shrink-0" />
+                                   <div className="space-y-2 flex-1">
+                                       <Skeleton className="h-4 w-1/3 rounded-md" />
+                                       <Skeleton className="h-3 w-1/5 rounded-md" />
+                                   </div>
+                               </div>
+                               <Skeleton className="h-6 w-28 rounded-full shrink-0" />
+                           </div>
+                       ))}
                    </div>
-                   <p className="text-xs text-white/50 mb-4">
-                       {t("householdSmsDesc")}
-                   </p>
-                   {smsLoading ? (
-                       <div className="space-y-2">
-                           {Array.from({ length: 3 }).map((_, i) => (
-                               <Skeleton key={i} className="h-[52px] rounded-2xl" />
-                           ))}
-                       </div>
-                   ) : smsLogs.length === 0 ? (
-                       <p className="text-sm text-white/40 italic text-center py-6">{t("noSmsSentYet")}</p>
-                   ) : (
-                       <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-                           {smsLogs.map((log: any) => (
-                               <div key={log.id} className="flex items-center justify-between gap-3 rounded-2xl bg-white/[0.03] px-4 py-3">
+               ) : smsLogs.length === 0 ? (
+                   <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
+                       <Smartphone size={40} className="mx-auto mb-3 text-white/20" />
+                       <p>{t("noSmsSentYet")}</p>
+                   </div>
+               ) : (
+                   <div className="space-y-2">
+                       {smsLogs.map((log: any) => (
+                               <div key={log.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
                                    <div className="min-w-0 flex items-center gap-2">
                                        {log.user?.is_household_head && <span title={t("householdHeadTitle")}><Home className="h-4 w-4 text-orange-400 shrink-0" /></span>}
                                        <div className="min-w-0">
@@ -431,11 +517,10 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                    </span>
                                </div>
                            ))}
-                       </div>
-                   )}
-               </div>
+                   </div>
+               )}
            </div>
-
+           )}
 
            {/* Notification Detail Modal — dark navy card matching the rest of
                the app's popups (StatusModal / ConfirmDialog) instead of the
