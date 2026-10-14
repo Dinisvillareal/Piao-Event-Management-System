@@ -78,6 +78,75 @@ class EventController extends Controller
         return $now->gte($start) && $now->lte($end);
     }
 
+    /**
+     * Compact, human-readable schedule line for outbound announcements
+     * (Facebook post body / SMS body). Both channels need the full picture:
+     * when sign-in opens (call time) AND when the event itself runs.
+     *
+     * Wording rule: call time is always labeled "sign-in opens" (or similar),
+     * never presented as part of the event's own start/end range -- a
+     * resident reading "6 AM - 11:30 AM" would think the event itself runs
+     * that long, which is not what call time means.
+     *
+     * Returns an empty string when there's nothing to show, so callers can
+     * safely append it without further checks.
+     */
+    private function eventScheduleLine(Event $event, string $channel = 'sms'): string
+    {
+        $start = $event->event_start;
+        if (!$start) {
+            return '';
+        }
+
+        $end       = $event->event_end;
+        $callStart = $event->call_time_start;
+
+        // Show the sign-in line only when the call time actually gives
+        // residents extra time before the event. If call_time_start is
+        // missing or equals/after event_start, skip it.
+        $hasCallTime = $callStart && $callStart->lt($start);
+
+        if ($channel === 'facebook') {
+            $when = $start->format('F j, Y g:i A');
+            if ($end) {
+                $when .= ' – ' . $end->format('g:i A');
+            }
+
+            $parts = ["📅 {$when}"];
+
+            if ($hasCallTime) {
+                $parts[] = "⏰ Sign-in opens at " . $callStart->format('g:i A') .
+                    " — please arrive early for check-in";
+            }
+
+            if ($event->location) {
+                $parts[] = "📍 {$event->location}";
+            }
+
+            return implode("\n", $parts);
+        }
+
+        // SMS: single line, compact, no year.
+        if ($hasCallTime) {
+            $datePart = $start->format('M j');
+            $line = $datePart
+                . ', sign-in ' . $callStart->format('g:i A')
+                . ', event ' . $start->format('g:i A')
+                . ($end ? '-' . $end->format('g:i A') : '');
+        } else {
+            $line = $start->format('M j, g:i A');
+            if ($end) {
+                $line .= '-' . $end->format('g:i A');
+            }
+        }
+
+        if ($event->location) {
+            $line .= ' @ ' . $event->location;
+        }
+
+        return $line;
+    }
+
     public function index(Request $request)
     {
         $user = Auth::user();
@@ -247,23 +316,17 @@ class EventController extends Controller
             $this->applyBorrowedItems($event, $request->borrowed_items ?? []);
             $this->sendEventNotifications($event, false);
 
-            // // Adviser recommendation: "2 in 1 — Facebook Page" second announcement channel
-            // if (filter_var($request->post_to_facebook, FILTER_VALIDATE_BOOLEAN)) {
-            //     app(FacebookService::class)->postEvent(
-            //         'New Event: ' . $event->name,
-            //         $event->notification_message ?? $event->description
-            //     );
-            // }
-
             // Adviser recommendation: "2 in 1 — Facebook Page" second announcement channel
             if (filter_var($request->post_to_facebook, FILTER_VALIDATE_BOOLEAN)) {
                 // Build the Facebook post body: Description first (the "what is
                 // this event" context), then the short Message reminder underneath
-                // (the call to action). Both are optional, so this only includes
-                // whichever ones actually have content.
+                // (the call to action), then the schedule + venue. Every part is
+                // optional, so this only includes whichever ones actually have
+                // content.
                 $facebookBody = trim(
                     ($event->description ? $event->description : '') .
-                    ($event->notification_message ? "\n\n" . $event->notification_message : '')
+                    ($event->notification_message ? "\n\n" . $event->notification_message : '') .
+                    "\n\n" . $this->eventScheduleLine($event, 'facebook')
                 );
 
                 // postEvent() never throws -- it returns [ok, message]. Keep the
@@ -273,7 +336,15 @@ class EventController extends Controller
                     'New Event: ' . $event->name,
                     $facebookBody
                 );
-                if (!$fbOk) {
+
+                if ($fbOk) {
+                    // Remember that this event's announcement was actually
+                    // published, so update() can decide whether a future edit
+                    // should re-announce it. An event that was never posted on
+                    // create stays silent on edit, even if its schedule changes.
+                    $event->posted_to_facebook = true;
+                    $event->save();
+                } else {
                     \Illuminate\Support\Facades\Log::warning('Facebook post failed: ' . $fbMessage, ['event' => $event->name]);
                 }
             }
@@ -385,7 +456,7 @@ class EventController extends Controller
 
         // Track the details residents actually rely on -- schedule and
         // venue -- not just the notification message, so a rescheduled or
-        // moved event re-notifies people too (see $meaningfulChange below).
+        // moved event re-notifies people too (see $scheduleOrVenueChanged below).
         $originalEventStart = optional($event->event_start)->toDateTimeString();
         $originalLocation = $event->location;
 
@@ -429,6 +500,31 @@ class EventController extends Controller
             if ($messageChanged || $scheduleOrVenueChanged) {
                 $this->sendEventNotifications($event, true);
                 $notificationUpdated = true;
+            }
+
+            // Adviser recommendation: "2 in 1 — Facebook Page" -- re-post a
+            // correction to the Page whenever a resident-visible detail
+            // actually changed (schedule, venue, or the notification
+            // message) AND the event was originally announced on Facebook
+            // at create time. Events that were never posted to Facebook
+            // stay silent on edit, even if their schedule changes. Title is
+            // different from the create-time post ("Event Updated:" instead
+            // of "New Event:"), so followers immediately understand this
+            // is a correction/reminder, not a duplicate announcement.
+            if ($event->posted_to_facebook && ($scheduleOrVenueChanged || $messageChanged)) {
+                $facebookBody = trim(
+                    ($event->description ?: '') .
+                    ($event->notification_message ? "\n\n" . $event->notification_message : '') .
+                    "\n\n" . $this->eventScheduleLine($event, 'facebook')
+                );
+
+                [$fbOk, $fbMessage] = app(FacebookService::class)->postEvent(
+                    'Event Updated: ' . $event->name,
+                    $facebookBody
+                );
+                if (!$fbOk) {
+                    \Illuminate\Support\Facades\Log::warning('Facebook update post failed: ' . $fbMessage, ['event' => $event->name]);
+                }
             }
 
             DB::commit();
@@ -614,9 +710,17 @@ class EventController extends Controller
             ->get(['id', 'first_name', 'last_name', 'contact_number', 'household_id', 'household_code', 'is_household_head', 'household_contact_number']);
 
         $smsPrefix = $isUpdate ? 'UPDATED: ' : '';
-        $smsMessage = $smsPrefix . trim($event->name . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.'));
 
-        // === THE ONLY LINE THAT CHANGED ===
+        // Message + compact schedule line. SMS is length-sensitive (one
+        // segment ~160 chars), so the schedule uses short forms
+        // ("Oct 14, sign-in 6:00 AM, event 7:00 AM-11:00 AM"), and the
+        // notification_message is kept short.
+        $smsMessage = $smsPrefix . trim(
+            $event->name
+            . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.')
+            . ' — ' . $this->eventScheduleLine($event, 'sms')
+        );
+
         // Broadcast the SMS to EVERY household head in the barangay, not
         // just heads of households that matched this event's membership
         // targeting. The in-app notifications further below still only go
