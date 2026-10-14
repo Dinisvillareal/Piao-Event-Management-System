@@ -336,7 +336,15 @@ class EventController extends Controller
                     'New Event: ' . $event->name,
                     $facebookBody
                 );
-                if (!$fbOk) {
+
+                if ($fbOk) {
+                    // Remember that this event's announcement was actually
+                    // published, so update() can decide whether a future edit
+                    // should re-announce it. An event that was never posted on
+                    // create stays silent on edit, even if its schedule changes.
+                    $event->posted_to_facebook = true;
+                    $event->save();
+                } else {
                     \Illuminate\Support\Facades\Log::warning('Facebook post failed: ' . $fbMessage, ['event' => $event->name]);
                 }
             }
@@ -497,12 +505,13 @@ class EventController extends Controller
             // Adviser recommendation: "2 in 1 — Facebook Page" -- re-post a
             // correction to the Page whenever a resident-visible detail
             // actually changed (schedule, venue, or the notification
-            // message). Skipped when nothing meaningful changed, so a
-            // description-only typo fix doesn't spam the Page. Title is
+            // message) AND the event was originally announced on Facebook
+            // at create time. Events that were never posted to Facebook
+            // stay silent on edit, even if their schedule changes. Title is
             // different from the create-time post ("Event Updated:" instead
             // of "New Event:"), so followers immediately understand this
             // is a correction/reminder, not a duplicate announcement.
-            if ($scheduleOrVenueChanged || $messageChanged) {
+            if ($event->posted_to_facebook && ($scheduleOrVenueChanged || $messageChanged)) {
                 $facebookBody = trim(
                     ($event->description ?: '') .
                     ($event->notification_message ? "\n\n" . $event->notification_message : '') .
