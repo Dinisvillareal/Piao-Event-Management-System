@@ -74,10 +74,10 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
         aria-haspopup="listbox"
         aria-expanded={open}
         title="Change interface language"
-        className="flex h-10 items-center gap-2 rounded-full border border-white/15 bg-[#0A0E1A] pl-3.5 pr-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-white/10 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/60"
+        className="flex h-9 sm:h-10 items-center gap-1.5 sm:gap-2 rounded-full border border-white/15 bg-[#0A0E1A] pl-2.5 pr-2 sm:pl-3.5 sm:pr-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-white/10 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/60"
       >
         <Languages className="h-4 w-4 text-white/70" />
-        <span>{current.label}</span>
+        <span className="hidden min-[420px]:inline">{current.label}</span>
         <ChevronDown className={`h-4 w-4 text-white/70 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
       </button>
 

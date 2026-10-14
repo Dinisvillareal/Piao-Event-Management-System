@@ -675,6 +675,7 @@ export const translations: Dict = {
   noMembershipsMatchSearch: { en: "No programs match your search.", tl: "Walang programang tumugma.", ceb: "Walay programa nga mutakdo." },
   householdSmsDeliveries: { en: "Household SMS Deliveries", tl: "Paghahatid ng SMS sa Sambahayan", ceb: "Paghatod sa SMS sa Panimalay" },
   householdSmsDesc: { en: "One SMS per household — sent to the head of household's contact number when an event is posted.", tl: "Isang SMS kada sambahayan — ipinapadala sa numero ng ulo ng sambahayan kapag may na-post na kaganapan.", ceb: "Usa ka SMS matag panimalay — ipadala sa numero sa ulo sa panimalay kung naay gi-post nga kalihokan." },
+  smsFoundCount: { en: "SMS record(s) found", tl: "SMS record na nakita", ceb: "SMS record nga nakit-an" },
   noSmsSentYet: { en: "No SMS notifications sent yet.", tl: "Wala pang naipadalang SMS notification.", ceb: "Wala pay napadala nga SMS notification." },
   householdHeadTitle: { en: "Household head", tl: "Ulo ng Sambahayan", ceb: "Pangulo sa Panimalay" },
   loggedNoGateway: { en: "Logged (no gateway set)", tl: "Naitala (walang gateway na naka-set)", ceb: "Nirekord (walay gateway nga na-set)" },

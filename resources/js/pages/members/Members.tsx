@@ -354,7 +354,7 @@ const PAGE_HEADINGS: Record<string, [string, string]> = {
 //           <FeedbackPrompt />
 
 //           <div
-//             className="h-[calc(100vh-73px)] overflow-y-auto smooth-scroll"
+//             className="h-[calc(100dvh-73px)] overflow-y-auto smooth-scroll"
 //             style={{ scrollBehavior: 'smooth', scrollbarGutter: 'stable' }}
 //           >
 //             <div className="space-y-5 p-3 sm:p-5">
@@ -780,7 +780,7 @@ export default function MemberDashboard() {
               is what allows its flex-shrink-0 header (containing the
               pagination) to stay pinned while only the list scrolls.
               ================================================================ */}
-          <div className="h-[calc(100vh-73px)] overflow-hidden flex-1">
+          <div className="h-[calc(100dvh-73px)] overflow-hidden flex-1">
             <div className="h-full">
               {/* Same behaviour as the staff portal: the shell (sidebar +
                   header) is always on screen and only the page body shows a

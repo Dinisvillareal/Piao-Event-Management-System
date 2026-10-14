@@ -80,7 +80,14 @@ export default function ReturnsView() {
   // is fixed right there with Edit (quantity / replace photo); lowering the
   // quantity sends the difference straight back to Pending.
   const [activeTab, setActiveTab] = useState<"pending" | "released">("pending");
-  const switchTab = (tab: "pending" | "released") => setActiveTab(tab);
+  // Switching panels flashes the skeleton briefly, same as a page switch.
+  const switchTab = (tab: "pending" | "released") => {
+    if (tab === activeTab) return;
+    setActiveTab(tab);
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
   // Highlights for the "where did it go?" moment after a release / undo:
   // newly logged releases glow in Recently Released, and the event that
   // just received items back glows in Pending Returns.
@@ -665,7 +672,7 @@ export default function ReturnsView() {
         Households/Inventory/Budget Edit modals); the confirm and success
         modals further below stay on their original light theme, same
         scoping used everywhere else. */}
-    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -702,7 +709,7 @@ export default function ReturnsView() {
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
           <div className="relative flex-1 min-w-[220px]">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
             <input
@@ -931,7 +938,7 @@ export default function ReturnsView() {
             <p className="text-[13px] text-white/40">{t("recentlyReleasedHint")}</p>
           </div>
         </div>
-        {recentReleasesLoading ? (
+        {recentReleasesLoading || pageSwitching ? (
           <div className="divide-y divide-white/[0.06]">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 px-4 sm:px-5 py-3">
@@ -1027,10 +1034,10 @@ export default function ReturnsView() {
                 </li>
               ))}
             </ul>
-            {recentReleasesTotalPages > 1 && ((recentReleasesLoading) ? <PagerSkeleton withLabel className="px-4 sm:px-5 py-3.5 border-t border-white/10" /> : (
+            {recentReleasesTotalPages > 1 && ((recentReleasesLoading || pageSwitching) ? <PagerSkeleton withLabel className="px-4 sm:px-5 py-3.5 border-t border-white/10" /> : (
               <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 sm:px-5 py-3.5 border-t border-white/10">
                 <p className="text-sm text-white/45 text-center sm:text-left">
-                  {t("pageOfLabel")} {recentReleasesPage} {t("ofPagesLabel")} {recentReleasesTotalPages} &bull; {recentReleasesLoading ? 0 : recentReleasesTotal} {t("recordsShownLabel")}
+                  {t("pageOfLabel")} {recentReleasesPage} {t("ofPagesLabel")} {recentReleasesTotalPages} &bull; {recentReleasesLoading || pageSwitching ? 0 : recentReleasesTotal} {t("recordsShownLabel")}
                 </p>
                 <div className="flex items-center gap-2">
                   <button

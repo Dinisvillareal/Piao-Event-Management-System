@@ -750,7 +750,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
   return (
     <>
-      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 print:m-0 print:p-0 print:bg-white print:min-h-0">
+      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 print:m-0 print:p-0 print:bg-white print:min-h-0">
         <div className="space-y-6 print:space-y-3">
       {/* Not sticky -- matches every other converted page (Inventory, Budget,
           Returns, Activity Logs, Archive), none of which pin their header

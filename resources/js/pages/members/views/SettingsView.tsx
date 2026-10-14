@@ -175,7 +175,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
   };
 
   return (
-    <div className="h-[calc(100vh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="h-[calc(100dvh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("settings")}</h1>

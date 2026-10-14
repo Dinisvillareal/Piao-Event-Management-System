@@ -206,17 +206,17 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   return (
     <>
       {mobileOpen && (
-        <div className="print:hidden fixed inset-0 bg-black/40 z-30 md:hidden" onClick={onCloseMobile} />
+        <div className="print:hidden fixed inset-0 bg-black/40 z-30 xl:hidden" onClick={onCloseMobile} />
       )}
 
       <aside
-        className={`print:hidden w-[340px] flex-col bg-[#0A0E1A] h-screen fixed md:sticky top-0 z-40 flex overflow-hidden ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+        className={`print:hidden w-[340px] max-w-[85vw] flex-col bg-[#0A0E1A] h-[100dvh] fixed xl:sticky top-0 z-40 flex overflow-hidden ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full xl:translate-x-0"
         }`}
       >
         <button
           onClick={onCloseMobile}
-          className="md:hidden absolute top-4 right-4 z-10 text-white/50 hover:text-white"
+          className="xl:hidden absolute top-4 right-4 z-10 text-white/50 hover:text-white"
         >
           <XIcon size={20} />
         </button>

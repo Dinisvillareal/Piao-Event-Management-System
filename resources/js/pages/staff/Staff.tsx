@@ -269,7 +269,7 @@ export default function StaffDashboard() {
         />
         <OfflineBanner />
 
-        <div id="staff-content-scroll" className="h-[calc(100vh-73px)] overflow-y-auto p-3 sm:p-6 smooth-scroll print:h-auto print:overflow-visible print:p-0">
+        <div id="staff-content-scroll" className="h-[calc(100dvh-73px)] overflow-y-auto p-3 sm:p-6 smooth-scroll print:h-auto print:overflow-visible print:p-0">
           {active === "dashboard" && (
             <DashboardView
               membershipsCount={membershipOptions.length}
