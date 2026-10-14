@@ -16,7 +16,7 @@ export default function TopHeader({ memberName, role, onMenuClick, userId }: Top
   return (
     <div className="print:hidden flex items-center justify-between border-b border-white/10 bg-[#0A0E1A] px-3 sm:px-6 h-[73px] box-border gap-2">
       <div className="flex items-center gap-2 min-w-0">
-        <button onClick={onMenuClick} className="md:hidden shrink-0 text-white/60 p-1 -ml-1">
+        <button onClick={onMenuClick} className="xl:hidden shrink-0 text-white/60 p-1 -ml-1">
           <Menu className="h-5 w-5" />
         </button>
         <SquareMenu className="h-5 w-5 shrink-0 text-[#7DD8CB]" />

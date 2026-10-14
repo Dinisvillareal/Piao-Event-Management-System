@@ -526,20 +526,20 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                   <h3 className="text-[16.5px] font-bold text-white">{highlightText(tc(rec.eventTitle, language as any), attendanceSearch)}</h3>
                   <p className="text-[13.5px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)} · {tc(rec.location, language as any)}</p>
                 </div>
-                <div className="flex items-center gap-6">
-                  <div className="text-right">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
+                  <div className="text-right whitespace-nowrap">
                     <span className="text-[13.5px] text-white/40">{t("timeInLabel")}</span>
-                    <span className={`ml-1.5 text-[13.5px] font-medium px-2 py-0.5 rounded-full ${rec.timeIn ? 'text-[#7DD8CB] bg-[#4FBEB0]/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
+                    <span className={`ml-1.5 inline-block whitespace-nowrap text-[13.5px] font-medium px-2 py-0.5 rounded-full ${rec.timeIn ? 'text-[#7DD8CB] bg-[#4FBEB0]/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
                       {formatTimeOnly(rec.timeIn) || '—'}
                     </span>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right whitespace-nowrap">
                     <span className="text-[13.5px] text-white/40">{t("timeOutLabel")}</span>
-                    <span className={`ml-1.5 text-[13.5px] font-medium px-2 py-0.5 rounded-full ${rec.timeOut ? 'text-gold-300 bg-gold-400/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
+                    <span className={`ml-1.5 inline-block whitespace-nowrap text-[13.5px] font-medium px-2 py-0.5 rounded-full ${rec.timeOut ? 'text-gold-300 bg-gold-400/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
                       {formatTimeOnly(rec.timeOut) || '—'}
                     </span>
                   </div>
-                  <span className={`text-[12.5px] font-semibold px-3 py-1 rounded-full ${
+                  <span className={`whitespace-nowrap text-[12.5px] font-semibold px-3 py-1 rounded-full ${
                     rec.status === 'complete' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
                     : rec.status === 'incomplete' ? 'bg-gold-400/15 text-gold-300'
                     : 'bg-red-500/15 text-red-400'}`}>
