@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { highlightMatches } from "../../../lib/highlight";
 import {
   Search,
   Filter,
@@ -17,6 +18,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 type Activity = {
   id: number;
@@ -104,7 +106,8 @@ export default function ActivityLogsView() {
   const mapType = (module: string): Activity["type"] => {
     switch (module) {
       case "Events": return "event";
-      case "User": return "resident";
+      case "User":
+      case "Residents": return "resident";
       case "Membership": return "membership";
       case "Authentication": return "system";
       case "QR": return "scan";
@@ -446,7 +449,7 @@ export default function ActivityLogsView() {
       </div>
 
       <p className="text-xs text-white/45">
-        {filteredActivities.length} {t("recordsFoundCount")} &bull; {t("showingLabel")} {itemsPerPage} {t("perPage")}
+        {loading ? 0 : filteredActivities.length} {t("recordsFoundCount")} &bull; {t("showingLabel")} {itemsPerPage} {t("perPage")}
       </p>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
@@ -492,7 +495,7 @@ export default function ActivityLogsView() {
                         <div className="flex items-start justify-between gap-3 flex-wrap">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className="text-sm font-semibold text-white">{act.action}</p>
+                              <p className="text-sm font-semibold text-white">{highlightMatches(act.action, searchQuery)}</p>
                               {isFresh && (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-[#4FBEB0]/15 text-[#7DD8CB] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
                                   <span className="h-1.5 w-1.5 rounded-full bg-[#4FBEB0] animate-pulse" />
@@ -500,12 +503,12 @@ export default function ActivityLogsView() {
                                 </span>
                               )}
                             </div>
-                            <p className="text-sm text-white/50 mt-0.5">{act.description}</p>
+                            <p className="text-sm text-white/50 mt-0.5">{highlightMatches(act.description, searchQuery)}</p>
                             <div className="mt-1.5 flex items-center gap-2 flex-wrap">
                               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold ${MODULE_BADGE_STYLES[act.type ?? ""] ?? DEFAULT_MODULE_BADGE}`}>
-                                {act.module}
+                                {highlightMatches(act.module, searchQuery)}
                               </span>
-                              <span className="text-xs text-white/40">{t("staffColon")} {act.user_code}</span>
+                              <span className="text-xs text-white/40">{t("staffColon")} {highlightMatches(act.user_code, searchQuery)}</span>
                             </div>
                           </div>
                           <div className="shrink-0 text-right">
@@ -523,7 +526,7 @@ export default function ActivityLogsView() {
         )}
       </div>
 
-      {totalPages > 1 && (
+      {totalPages > 1 && ((loading) ? <PagerSkeleton withLabel /> : (
         <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
           <p className="text-sm text-white/45 text-center sm:text-left">
             {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages}
@@ -548,7 +551,7 @@ export default function ActivityLogsView() {
             </button>
           </div>
         </div>
-      )}
+      ))}
     </div>
     </div>
     </>

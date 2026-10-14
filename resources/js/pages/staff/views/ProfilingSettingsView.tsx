@@ -405,7 +405,7 @@ export default function ProfilingSettingsView() {
       <div className="space-y-6 max-w-4xl">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("profilingSettingsTitle")}</h1>
-          <p className="mt-1.5 text-[15px] text-white/50 max-w-2xl">{t("profilingSettingsSubtitle")}</p>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("profilingSettingsSubtitle")}</p>
         </div>
 
         {/* Section switcher -- three standalone pill buttons, same pattern

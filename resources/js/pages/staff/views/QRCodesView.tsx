@@ -7,6 +7,7 @@ import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 
 export interface Membership {
@@ -659,7 +660,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         <button
           type="button"
           onClick={() => setShowAddModal(true)}
-          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
+          disabled={loading || pageSwitching}
+          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
         >
           {t("newMembershipGroupButton")}
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
@@ -712,7 +714,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         </div>
       ) : (
         <div className="space-y-4">
-          {totalPages > 1 && (
+          {totalPages > 1 && ((pageSwitching) ? <PagerSkeleton className="justify-end" /> : (
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -739,7 +741,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 &rarr;
               </button>
             </div>
-          )}
+          ))}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
             {paginatedMemberships.map((m) => {
               const residentCount = getResidentsByMembership(m.name).length;

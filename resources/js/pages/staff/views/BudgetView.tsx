@@ -1,8 +1,10 @@
 import { matchesSearch } from "../../../lib/search";
-import React, { useEffect, useMemo, useState } from "react";
+import { highlightMatches } from "../../../lib/highlight";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Wallet, Lock, Search, Banknote, PiggyBank, AlertTriangle, RefreshCw } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import Skeleton from "../../../components/ui/Skeleton";
+import DatePicker from "../../../components/ui/DatePicker";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 import EventBudgetWorkspace, { type EventOption, NEAR_LIMIT_PCT, money, roundCents, budgetStateOf, type BudgetState } from "../../../components/budget/EventBudgetWorkspace";
@@ -16,6 +18,9 @@ import { tc } from "../../../lib/contentTranslations";
  * left, work its budget on the right -- so staff get the fleet-wide picture
  * before drilling into any one event's ledger.
  */
+// Events per page in the left-hand list.
+const EVENTS_PAGE_SIZE = 5;
+
 export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption[] }) {
   const { t, locale, language } = useLanguage();
   const [search, setSearch] = useState("");
@@ -24,6 +29,10 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   // Left list filter: every event, only those close to their limit, or only the over-budget ones.
   const [budgetFilter, setBudgetFilter] = useState<"all" | "near" | "over">("all");
+  // Left list: one picked day (matches events starting that day; "" = every date) and current page.
+  const [selectedDate, setSelectedDate] = useState("");
+  const [page, setPage] = useState(1);
+  const listScrollRef = useRef<HTMLDivElement>(null);
   // Portfolio-wide KPI strip -- the same /reports/budget-summary endpoint
   // the Reports and Dashboard pages already use, called with no date
   // range so it covers every event ever recorded. Kept as its OWN fetch,
@@ -107,7 +116,9 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     const b = budgetByEventId.get(String(id));
     return budgetStateOf(b?.approved_budget != null ? Number(b.approved_budget) : null, b?.total_expenses ?? 0);
   };
-  const searchedEvents = allEvents.filter((e) => matchesSearch(search, e.title));
+  const eventDay = (e: EventOption) => String(e.event_start ?? e.date ?? "").slice(0, 10);
+  const dateFilterActive = !!selectedDate;
+  const searchedEvents = allEvents.filter((e) => matchesSearch(search, e.title) && (!selectedDate || eventDay(e) === selectedDate));
   const filterCounts = {
     all: searchedEvents.length,
     near: searchedEvents.filter((e) => stateOfEvent(e.id) === "near").length,
@@ -137,6 +148,36 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     }))
     .filter((sec) => sec.items.length > 0);
 
+  // Pagination runs over the whole ordered list (Ongoing -> Upcoming -> Past), then the
+  // visible slice is regrouped under its status headings.
+  const flatList = listSections.flatMap((sec) => sec.items.map((item) => ({ key: sec.key, item })));
+  const totalPages = Math.max(1, Math.ceil(flatList.length / EVENTS_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * EVENTS_PAGE_SIZE;
+  const pageSlice = flatList.slice(pageStart, pageStart + EVENTS_PAGE_SIZE);
+  const pagedSections = listSections
+    .map((sec) => ({ key: sec.key, total: sec.items.length, items: pageSlice.filter((x) => x.key === sec.key).map((x) => x.item) }))
+    .filter((sec) => sec.items.length > 0);
+
+  // Any change to what's being listed starts again from page 1.
+  useEffect(() => {
+    setPage(1);
+  }, [search, timeTab, budgetFilter, selectedDate]);
+
+  // Brief skeleton on every page change, same as the Residents / Events lists, so paging feels consistent app-wide.
+  const [pageSwitching, setPageSwitching] = useState(false);
+  const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const goToPage = (n: number) => {
+    const next = Math.min(Math.max(1, n), totalPages);
+    if (next === currentPage) return;
+    setPage(next);
+    setPageSwitching(true);
+    listScrollRef.current?.scrollTo({ top: 0 });
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  };
+  useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
+
   const selectedEvent = allEvents.find((e) => String(e.id) === String(selectedEventId));
 
   return (
@@ -149,8 +190,8 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
         theme, same scoping used on every other staff view; the Edit
         Expense modal is darkened along with the page, matching the
         Households/Inventory Edit modal treatment. */}
-    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-10">
-    <div className="mx-auto max-w-[1500px] space-y-8">
+    <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("budget")}</h1>
@@ -202,9 +243,10 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
         <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:sticky lg:top-6">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="font-display text-lg font-bold text-white">{t("budgetEventsHeading")}</h2>
-            <span className="text-xs font-medium text-white/45">{t("budgetEventsShowing").replace("{n}", String(filteredEvents.length)).replace("{total}", String(allEvents.length))}</span>
+            <span className="text-xs font-medium text-white/45">{t("budgetEventsShowing").replace("{n}", String(initialLoading || pageSwitching ? 0 : filteredEvents.length)).replace("{total}", String(initialLoading || pageSwitching ? 0 : allEvents.length))}</span>
           </div>
-          <div className="relative">
+          <div className="flex flex-col gap-2.5 sm:flex-row">
+          <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
             <input
               type="text"
@@ -225,8 +267,16 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               </button>
             )}
           </div>
+          {/* One date, one click: pick a day to see only the events starting then (Today / Clear live inside the picker). */}
+          <div className="sm:w-[190px] sm:shrink-0">
+            <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-12 px-4" dark align="right" />
+          </div>
+          </div>
 
           {/* When: Ongoing / Upcoming / Past, with live counts. */}
+          {initialLoading || pageSwitching ? (
+            <Skeleton className="mt-4 h-[60px] w-full rounded-xl" />
+          ) : (
           <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-white/[0.04] p-1" role="tablist" aria-label={t("budgetEventsHeading")}>
             {([
               ["all", t("budgetFilterAll")],
@@ -249,8 +299,17 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               </button>
             ))}
           </div>
+          )}
 
           {/* Budget health: all events, only those close to their limit, or only those over. */}
+          {initialLoading || pageSwitching ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2.5">
+              <Skeleton className="h-3 w-14" />
+              <Skeleton className="h-9 w-24 rounded-full" />
+              <Skeleton className="h-9 w-32 rounded-full" />
+              <Skeleton className="h-9 w-32 rounded-full" />
+            </div>
+          ) : (
           <div className="mt-3 flex flex-wrap items-center gap-2.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-white/40">{t("budgetFilterLabel")}</span>
             {([
@@ -273,9 +332,55 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               </button>
             ))}
           </div>
+          )}
 
-          <div className="mt-5 -mr-2 min-h-[320px] max-h-[calc(100vh-24rem)] overflow-y-auto pr-2 space-y-6 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.25)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20 hover:[&::-webkit-scrollbar-thumb]:bg-white/30">
-            {initialLoading ? (
+          {/* Pager: just ← ● →, same as the Residents / Events lists. */}
+          {(initialLoading || pageSwitching) && (initialLoading || totalPages > 1) && (
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <Skeleton className="h-3 w-20" />
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <Skeleton className="h-8 w-8 rounded-full" />
+              </div>
+            </div>
+          )}
+          {!initialLoading && !pageSwitching && totalPages > 1 && (
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <p className="text-xs font-medium text-white/45">
+                {t("budgetPageRange")
+                  .replace("{from}", String(pageStart + 1))
+                  .replace("{to}", String(Math.min(pageStart + EVENTS_PAGE_SIZE, flatList.length)))
+                  .replace("{total}", String(flatList.length))}
+              </p>
+              <nav className="flex items-center gap-2" aria-label="Pagination">
+                <button
+                  type="button"
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                  aria-label={t("budgetPagePrev")}
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-sm font-medium text-white/70 transition hover:bg-white/[0.08] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  ←
+                </button>
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sage-700 text-sm font-bold text-white shadow-sm" aria-current="page">
+                  {currentPage}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                  aria-label={t("budgetPageNext")}
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-sm font-medium text-white/70 transition hover:bg-white/[0.08] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  →
+                </button>
+              </nav>
+            </div>
+          )}
+
+          <div ref={listScrollRef} className="mt-4 -mr-2 min-h-[300px] max-h-[calc(100vh-24rem)] overflow-y-auto pr-2 space-y-6 [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.25)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/20 hover:[&::-webkit-scrollbar-thumb]:bg-white/30">
+            {initialLoading || pageSwitching ? (
               <div className="space-y-3">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 space-y-2">
@@ -288,17 +393,17 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               </div>
             ) : listSections.length === 0 ? (
               <p className="py-10 text-center text-sm italic text-white/40">
-                {budgetFilter !== "all" || timeTab !== "all" ? t("noEventsInFilter") : t("noEventsFound")}
+                {budgetFilter !== "all" || timeTab !== "all" || dateFilterActive ? t("noEventsInFilter") : t("noEventsFound")}
               </p>
             ) : (
-              listSections.map((sec) => {
+              pagedSections.map((sec) => {
                 const meta = STATUS_META[sec.key];
                 return (
                   <section key={sec.key}>
                     <div className="sticky top-0 z-10 -mx-1 flex items-center gap-2.5 bg-[#111420]/95 px-1 py-2 backdrop-blur">
                       <span className={`h-2 w-2 rounded-full ${meta.dot} ${sec.key === "Ongoing" ? "animate-pulse" : ""}`} />
                       <h3 className={`text-xs font-bold uppercase tracking-wider ${meta.text}`}>{eventStatusLabel(sec.key)}</h3>
-                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/70">{sec.items.length}</span>
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/70">{sec.total}</span>
                       <span className="ml-auto text-[11px] text-white/35">{t(meta.hint)}</span>
                     </div>
                     <div className="mt-2 space-y-3">
@@ -339,7 +444,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                               {rowOver && <span className="shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">{t("budgetRowOverTag")}</span>}
                               {rowNear && <span className="shrink-0 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">{t("budgetRowNearTag")}</span>}
                             </div>
-                            <p className="mt-1.5 break-words text-[15px] font-semibold leading-snug">{tc(e.title, language as any)}</p>
+                            <p className="mt-1.5 break-words text-[15px] font-semibold leading-snug">{highlightMatches(tc(e.title, language as any), search)}</p>
                             {dateLine && <p className={`mt-1 text-xs ${isSelected ? "text-white/70" : "text-white/45"}`}>{dateLine}</p>}
                             {rowPct !== null ? (
                               <div className="mt-3.5">
@@ -370,6 +475,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               })
             )}
           </div>
+
         </div>
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 sm:p-8">

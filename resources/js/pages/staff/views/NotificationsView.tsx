@@ -6,6 +6,7 @@ import FilterDropdown from "../../../components/ui/FilterDropdown";
 import Skeleton from "../../../components/ui/Skeleton";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 
 interface Membership {
@@ -240,35 +241,14 @@ export default function NotificationsView({ memberships = [], highlightText }: N
            .map((m: Membership) => ({ value: String(m.id), label: m.name })),
    ], [memberships, t]);
 
-   if (loading) {
-       // Skeleton shaped like the real page -- title, search/filter row,
-       // then a stack of notification-card placeholders -- instead of a
-       // bare centered spinner.
-       return (
-           <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 space-y-6">
-               <div className="space-y-2">
-                   <Skeleton className="h-8 w-72" />
-                   <Skeleton className="h-4 w-56" />
-               </div>
-               <Skeleton className="h-11 w-full rounded-xl" />
-               <div className="space-y-3">
-                   {Array.from({ length: 4 }).map((_, i) => (
-                       <Skeleton key={i} className="h-20 rounded-2xl sm:rounded-3xl" />
-                   ))}
-               </div>
-           </div>
-       );
-   }
-
-
    return (
        <div className="-m-3 sm:-m-6 h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col relative">
            {/* Fixed Header - Never scrolls */}
-           <div className="flex-shrink-0 pb-6 px-1 sm:px-2 shadow-b-sm">
+           <div className="flex-shrink-0 pb-6 shadow-b-sm">
                <div className="flex items-center justify-between">
                    <div>
-                       <h1 className="text-2xl sm:text-4xl font-black text-white">{t("notificationsAndAnnouncements")}</h1>
-                       <p className="text-xs sm:text-sm text-white/50 mt-1">{t("staffNotificationsSubtitle")}</p>
+                       <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("notificationsAndAnnouncements")}</h1>
+                       <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("staffNotificationsSubtitle")}</p>
                    </div>
                </div>
 
@@ -313,13 +293,13 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                </div>
 
                <p className="mt-2 text-xs text-white/40">
-                   {filteredNotifications.length} {t("notificationsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
+                   {loading || pageSwitching ? 0 : filteredNotifications.length} {t("notificationsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
                </p>
 
 
                {/* ✅ PAGINATION - ← 1 → STYLE */}
                <div className="flex justify-end mt-4">
-                   {totalPages > 1 && (
+                   {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
                        <div className="flex items-center gap-2">
                            <button
                                onClick={() => goToPage(p => Math.max(1, p - 1))}
@@ -341,14 +321,14 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                                →
                            </button>
                        </div>
-                   )}
+                   ))}
                </div>
            </div>
 
 
            {/* Scrollable Content Area - Only notifications scroll */}
-           <div className="flex-1 overflow-y-auto px-1 sm:px-2 pb-4">
-               {pageSwitching ? (
+           <div className="flex-1 overflow-y-auto pb-4">
+               {pageSwitching || loading ? (
                    <div className="space-y-3">
                        {Array.from({ length: 4 }).map((_, i) => (
                            <Skeleton key={i} className="h-20 rounded-2xl sm:rounded-3xl" />

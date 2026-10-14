@@ -175,7 +175,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
   };
 
   return (
-    <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="h-[calc(100vh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8">
     <div className="space-y-6 max-w-3xl">
       <div>
         <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("settings")}</h1>
@@ -223,30 +223,24 @@ export default function SettingsView({ member }: SettingsViewProps) {
           </button>
       </div>
 
-      {tabSwitching && (
-        <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04]">
-          <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-          <div className="p-10 space-y-3">
-            <Skeleton className="h-8 w-1/3" />
-            {Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-11 w-full rounded-full" />
-            ))}
-          </div>
-        </div>
-      )}
       {/* PROFILE / HOUSEHOLD INFO — UC-5 profiling display. Darkened like
           every other core content/edit card in the app -- this is where the
           resident actually edits their own contact number. */}
-      {activeTab === "profile" && !tabSwitching && (
+      {activeTab === "profile" && (
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
         <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-        <div className="p-10">
-          <div className="flex items-center gap-2">
-            <User className="h-5 w-5 text-[#4FBEB0]" />
-            <h2 className="text-3xl font-black text-white">{t("myProfile")}</h2>
+        <div className="p-5 sm:p-6">
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/15">
+              <User className="h-5 w-5 text-[#4FBEB0]" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-black text-white">{t("myProfile")}</h2>
+              <p className="mt-0.5 text-sm text-white/50">{t("memProfileDesc")}</p>
+            </div>
           </div>
 
-          {!profile ? (
+          {!profile || tabSwitching ? (
             <div className="mt-6 space-y-3">
               {Array.from({ length: 4 }).map((_, i) => (
                 <Skeleton key={i} className="h-11 w-full rounded-full" />
@@ -345,17 +339,28 @@ export default function SettingsView({ member }: SettingsViewProps) {
       )}
 
       {/* LANGUAGE — UC-17 Switch Interface Language */}
-      {activeTab === "language" && !tabSwitching && (
+      {activeTab === "language" && (
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
         <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-        <div className="p-10">
-          <div className="flex items-center gap-2">
-            <Globe className="h-5 w-5 text-[#4FBEB0]" />
-            <h2 className="text-3xl font-black text-white">{t("language")}</h2>
+        <div className="p-5 sm:p-6">
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/15">
+              <Globe className="h-5 w-5 text-[#4FBEB0]" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-black text-white">{t("language")}</h2>
+              <p className="mt-0.5 text-sm text-white/50">{t("languageSectionDesc")}</p>
+            </div>
           </div>
-          <p className="mt-2 text-sm text-white/50">{t("languageSectionDesc")}</p>
 
-          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {tabSwitching && (
+            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full rounded-full" />
+              ))}
+            </div>
+          )}
+          <div className={tabSwitching ? "hidden" : "mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3"}>
             {LANGUAGES.map((opt) => (
               <button
                 key={opt.code}
@@ -375,16 +380,28 @@ export default function SettingsView({ member }: SettingsViewProps) {
       )}
 
       {/* CHANGE PASSWORD */}
-      {activeTab === "password" && !tabSwitching && (
+      {activeTab === "password" && (
       <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
         <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-        <div className="p-10">
-          <div className="flex items-center gap-2">
-            <KeyRound className="h-5 w-5 text-[#4FBEB0]" />
-            <h2 className="text-3xl font-black text-white">{t("changePassword")}</h2>
+        <div className="p-5 sm:p-6">
+          <div className="flex items-center gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/15">
+              <KeyRound className="h-5 w-5 text-[#4FBEB0]" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-black text-white">{t("changePassword")}</h2>
+              <p className="mt-0.5 text-sm text-white/50">{t("memPasswordDesc")}</p>
+            </div>
           </div>
 
-          <div className="mt-6 space-y-4">
+          {tabSwitching && (
+            <div className="mt-6 space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-11 w-full rounded-full" />
+              ))}
+            </div>
+          )}
+          <div className={tabSwitching ? "hidden" : "mt-6 space-y-4"}>
 
             <div>
               <div className="relative">

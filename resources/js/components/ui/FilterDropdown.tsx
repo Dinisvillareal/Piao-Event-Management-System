@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Search } from "lucide-react";
+import { ChevronDown, Search, X } from "lucide-react";
 import { matchesSearch } from "../../lib/search";
 import { useLanguage } from "../../i18n/LanguageContext";
 
@@ -11,6 +11,8 @@ export interface FilterDropdownOption {
   disabled?: boolean;
   /** Small muted note shown at the right of the option, e.g. "Taken". */
   hint?: string;
+  /** Shows a small "x" on the row (needs `onRemoveOption`) so the option can be deleted from the list. */
+  removable?: boolean;
 }
 
 interface FilterDropdownProps {
@@ -45,6 +47,13 @@ interface FilterDropdownProps {
   /** Shown (muted) when `value` matches no option, instead of falling back to the first option. */
   placeholder?: string;
   disabled?: boolean;
+  /** Called when the "x" on a `removable` option is pressed. */
+  onRemoveOption?: (value: string) => void;
+  /** Extra content pinned under the option list inside the panel (e.g. an "add new" row). */
+  footer?: React.ReactNode;
+  /** While true the panel is forced shut -- lets a caller open its own popup
+      (confirm / result dialog) without the open panel hovering over it. */
+  forceClose?: boolean;
 }
 
 /**
@@ -83,6 +92,9 @@ export default function FilterDropdown({
   fullWidth = false,
   placeholder,
   disabled = false,
+  onRemoveOption,
+  footer,
+  forceClose = false,
 }: FilterDropdownProps) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
@@ -98,6 +110,10 @@ export default function FilterDropdown({
   const filteredOptions = searchable && query.trim()
     ? options.filter((opt) => matchesSearch(query, opt.label))
     : options;
+
+  useEffect(() => {
+    if (forceClose) setOpen(false);
+  }, [forceClose]);
 
   useEffect(() => {
     if (!open) {
@@ -116,7 +132,7 @@ export default function FilterDropdown({
       if (!wrapperRef.current) return;
       const rect = wrapperRef.current.getBoundingClientRect();
       const margin = 8;
-      const panelHeightEstimate = Math.min(options.length * 40 + (searchable ? 64 : 16), 296);
+      const panelHeightEstimate = Math.min(options.length * 40 + (searchable ? 64 : 16), 296) + (footer ? 64 : 0);
 
       const width = fullWidth ? rect.width : panelWidthPx;
       let left = align === "right" ? rect.right - width : rect.left;
@@ -138,7 +154,7 @@ export default function FilterDropdown({
       window.removeEventListener("resize", recompute);
       window.removeEventListener("scroll", recompute, true);
     };
-  }, [open, align, panelWidthPx, options.length, searchable, fullWidth]);
+  }, [open, align, panelWidthPx, options.length, searchable, fullWidth, !!footer]);
 
   useEffect(() => {
     if (!open) return;
@@ -246,8 +262,8 @@ export default function FilterDropdown({
                 <p className={`px-4 py-2.5 text-sm italic ${dark ? "text-white/40" : "text-gray-400"}`}>{noResultsLabel ?? t("noMatchesFoundLabel")}</p>
               ) : (
                 filteredOptions.map((opt) => (
+                  <div key={opt.value} className="flex items-center">
                   <button
-                    key={opt.value}
                     type="button"
                     role="option"
                     aria-selected={value === opt.value}
@@ -258,7 +274,7 @@ export default function FilterDropdown({
                       onChange(opt.value);
                       setOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2.5 text-sm truncate transition ${
+                    className={`min-w-0 flex-1 text-left px-4 py-2.5 text-sm truncate transition ${
                       opt.disabled
                         ? dark
                           ? "cursor-not-allowed text-white/30"
@@ -281,9 +297,25 @@ export default function FilterDropdown({
                       opt.label
                     )}
                   </button>
+                  {opt.removable && onRemoveOption && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onRemoveOption(opt.value); }}
+                      aria-label={`Remove ${opt.label}`}
+                      title={`Remove ${opt.label}`}
+                      className={`mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition ${dark ? "text-white/35 hover:bg-red-500/15 hover:text-red-400" : "text-gray-400 hover:bg-red-50 hover:text-red-500"}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  </div>
+
                 ))
               )}
             </div>
+            {footer && (
+              <div className={`mt-1.5 border-t px-2 pt-2 ${dark ? "border-white/10" : "border-[#E6E0D3]"}`}>{footer}</div>
+            )}
           </div>,
           document.body
         )}

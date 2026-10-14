@@ -54,6 +54,8 @@ class ReportController extends Controller
         if ($dateFrom) $eventsQuery->whereDate('event_start', '>=', $dateFrom);
         if ($dateTo) $eventsQuery->whereDate('event_start', '<=', $dateTo);
         if ($membershipId) $eventsQuery->whereJsonContains('membership_ids', $membershipId);
+        // Single-event report (the "Generate Report" button on an event's detail view).
+        if ($request->filled('event_id')) $eventsQuery->where('id', (int) $request->event_id);
 
         $events = $eventsQuery->orderBy('event_start')->get();
         $eventIds = $events->pluck('id');
@@ -441,6 +443,9 @@ class ReportController extends Controller
                 'quantity' => $i->quantity,
                 'condition' => $i->condition,
                 'storage_location' => $i->storage_location,
+                // Units written off: lost (confirmed + still pending) and disposed.
+                'lost_quantity' => (int) $i->lost_quantity + (int) $i->lost_pending,
+                'disposed_quantity' => (int) $i->disposed_quantity,
             ])->values(),
         ];
     }
@@ -624,6 +629,11 @@ class ReportController extends Controller
 
             return $event ? "the event \"{$event->name}\"" : $range();
         }
+        if ($type === 'attendance' && $request->filled('event_id')) {
+            $event = Event::find((int) $request->event_id);
+
+            return $event ? "the event \"{$event->name}\"" : $range();
+        }
         if ($type === 'attendance' || $type === 'budget') {
             return $range();
         }
@@ -689,9 +699,14 @@ class ReportController extends Controller
 
         if (in_array('summary', $included, true)) {
             $paragraphs[] = match ($type) {
-                'attendance' => $count($s['total_events'] ?? 0, 'event was', 'events were') . ' held in this period, with ' . $count($s['total_attended'] ?? 0, 'recorded attendance', 'recorded attendances')
-                    . ' out of ' . $count($s['total_eligible'] ?? 0, 'eligible resident', 'eligible residents') . ', an overall attendance rate of ' . ($s['attendance_percentage'] ?? 0) . '%.'
-                    . (isset($s['average_feedback_rating']) && $s['average_feedback_rating'] !== null ? ' Residents rated the events ' . $s['average_feedback_rating'] . ' out of 5 on average.' : ''),
+                'attendance' => str_starts_with($scope, 'the event "')
+                    // Single-event report: say it plainly instead of "1 event was held in this period".
+                    ? 'For this event, ' . $count($s['total_attended'] ?? 0, 'resident has', 'residents have') . ' signed in out of '
+                        . $count($s['total_eligible'] ?? 0, 'eligible resident', 'eligible residents') . ', an attendance rate of ' . ($s['attendance_percentage'] ?? 0) . '%.'
+                        . (isset($s['average_feedback_rating']) && $s['average_feedback_rating'] !== null ? ' Residents rated the event ' . $s['average_feedback_rating'] . ' out of 5 on average.' : '')
+                    : $count($s['total_events'] ?? 0, 'event was', 'events were') . ' held in this period, with ' . $count($s['total_attended'] ?? 0, 'recorded attendance', 'recorded attendances')
+                        . ' out of ' . $count($s['total_eligible'] ?? 0, 'eligible resident', 'eligible residents') . ', an overall attendance rate of ' . ($s['attendance_percentage'] ?? 0) . '%.'
+                        . (isset($s['average_feedback_rating']) && $s['average_feedback_rating'] !== null ? ' Residents rated the events ' . $s['average_feedback_rating'] . ' out of 5 on average.' : ''),
                 'membership' => 'The barangay maintains ' . $count($s['total_memberships'] ?? 0, 'membership program', 'membership programs') . ' with a total of ' . $count($s['total_assignments'] ?? 0, 'enrolled resident', 'enrolled residents') . '.',
                 'budget' => 'The approved budget of the covered events totals ' . $peso($s['total_approved_budget'] ?? 0) . ', against recorded expenses of ' . $peso($s['total_expenses'] ?? 0)
                     . ' (' . ($s['utilization_percentage'] ?? 0) . '% used), leaving ' . $peso($s['total_remaining'] ?? 0) . ' unspent. '
@@ -743,7 +758,7 @@ class ReportController extends Controller
 
     private function buildFilterSummaryLine(string $type, Request $request): string
     {
-        if ($type === 'budget' && $request->filled('event_id')) {
+        if (($type === 'budget' || $type === 'attendance') && $request->filled('event_id')) {
             $event = Event::find((int) $request->event_id);
             return $event ? "Event: {$event->name}" : 'Period: All Dates';
         }
@@ -1027,6 +1042,14 @@ class ReportController extends Controller
                         $c->addText($item['storage_location'] ?? '—', ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 40]);
                         $run = $c->addTextRun(['spaceAfter' => 0, 'tabs' => [new \PhpOffice\PhpWord\Style\Tab('right', $in)]]);
                         $run->addText(' ' . $item['condition'] . ' ', ['size' => 8, 'bold' => true, 'color' => $fg, 'bgColor' => $bg]);
+                        // Lost / disposed units get their own chips next to the condition.
+                        foreach (['Lost' => $item['lost_quantity'] ?? 0, 'Disposed' => $item['disposed_quantity'] ?? 0] as $label => $units) {
+                            if ($units > 0) {
+                                [$wbg, $wfg] = $this->conditionColors($label);
+                                $run->addText('  ');
+                                $run->addText(' ' . $label . ' ×' . $units . ' ', ['size' => 8, 'bold' => true, 'color' => $wfg, 'bgColor' => $wbg]);
+                            }
+                        }
                         $run->addText("\t×" . $item['quantity'], ['size' => 10, 'bold' => true, 'color' => '005F63']);
                     }, null, [4, 9]);
                 }

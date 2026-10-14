@@ -140,18 +140,7 @@ export default function IntegrationsView() {
           </button>
         </div>
 
-        {tabSwitching && (
-          <div className={cardCls}>
-            <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-            <div className="p-5 sm:p-6 space-y-3">
-              <Skeleton className="h-8 w-1/3" />
-              <Skeleton className="h-11 w-full rounded-full" />
-              <Skeleton className="h-11 w-full rounded-full" />
-            </div>
-          </div>
-        )}
-
-        {activeTab === "facebook" && !tabSwitching && (
+        {activeTab === "facebook" && (
           <div className={cardCls}>
             <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
             <div className="p-5 sm:p-6">
@@ -165,7 +154,7 @@ export default function IntegrationsView() {
                 </div>
               </div>
 
-              {loading ? (
+              {loading || tabSwitching ? (
                 <div className="mt-5 space-y-3">
                   <Skeleton className="h-10 w-full rounded-full" />
                   <Skeleton className="h-10 w-full rounded-full" />
@@ -233,7 +222,7 @@ export default function IntegrationsView() {
           </div>
         )}
 
-        {activeTab === "qr" && !tabSwitching && (
+        {activeTab === "qr" && (
           <div className={cardCls}>
             <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
             <div className="p-5 sm:p-6">
@@ -246,10 +235,18 @@ export default function IntegrationsView() {
                   <p className="mt-0.5 text-sm text-white/50">{t("physicalQrIdDesc")}</p>
                 </div>
               </div>
+              {tabSwitching ? (
+                <div className="mt-4 space-y-2.5">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-11/12" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              ) : (
               <p className="mt-4 text-sm leading-relaxed text-white/70">
                 {t("physicalQrIdBody1")} <strong className="text-white">{t("physicalQrIdToggleLabel")}</strong> {t("physicalQrIdBody2")}
                 <strong className="text-white"> {t("scan")}</strong> {t("physicalQrIdBody3")}
               </p>
+              )}
             </div>
           </div>
         )}

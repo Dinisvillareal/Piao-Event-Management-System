@@ -1,4 +1,5 @@
 import SummaryCard from "../../../components/ui/SummaryCard";
+import Skeleton from "../../../components/ui/Skeleton";
 import { useEffect, useMemo, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { Award, CheckCircle2, CalendarDays, Clock, QrCode, ClipboardCheck, Bell as BellIcon, AlertCircle } from "lucide-react";
@@ -37,6 +38,117 @@ interface DashboardViewProps {
   upcomingEvents: Event[];
   pastEventsCount: number;
   highlightText: (text: string, query: string) => React.ReactNode;
+  /** True until events / attendance first load -- shows the skeleton layout. */
+  loading?: boolean;
+}
+
+/**
+ * Page header shared by the loaded dashboard and its skeleton, so the title
+ * block never changes (or disappears) while the data underneath loads.
+ * Title type matches the staff dashboard's "Welcome back" headline.
+ */
+function MemberDashboardHeader({ memberName, loading = false }: { memberName: string; loading?: boolean }) {
+  const { t } = useLanguage();
+  if (loading) {
+    return (
+      <div>
+        <div className="flex items-center gap-2.5">
+          <Skeleton className="h-3.5 w-36" />
+          <Skeleton className="h-6 w-16 rounded-full" />
+        </div>
+        <Skeleton className="mt-3 h-9 w-80 max-w-full sm:h-10" />
+        <Skeleton className="mt-3 h-4 w-64 max-w-full" />
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2.5">
+        <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#7DD8CB]">{t("memberDashboard")}</p>
+        {/* "Live" pulse -- the page quietly re-polls every 20s (see Members.tsx). */}
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-white/50" title={t("liveLabel")}>
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]" />
+          </span>
+          {t("liveLabel")}
+        </span>
+      </div>
+      <h1 className="mt-2 font-display text-3xl font-extrabold text-white sm:text-4xl">
+        {t("welcomeBack")}, {memberName}
+      </h1>
+      <p className="mt-2 max-w-md text-[15px] text-white/55">{t("signedInAsResident")}</p>
+    </div>
+  );
+}
+
+/**
+ * Skeleton shaped exactly like the loaded member dashboard: header, three
+ * stat cards, "My activity" + QR panels, then the notifications + upcoming
+ * events lists. Used both while the account loads and while the first
+ * events / attendance fetch lands, so the page never jumps.
+ */
+export function MemberDashboardSkeleton({ memberName = "" }: { memberName?: string }) {
+  const { t } = useLanguage();
+  const panel = "rounded-2xl border border-white/10 bg-white/[0.04] p-5";
+  return (
+    <div className="h-[calc(100vh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="space-y-5">
+        <MemberDashboardHeader memberName={memberName} loading />
+
+        {/* Summary cards */}
+        <div className="grid gap-4 md:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-36 rounded-3xl" />
+          ))}
+        </div>
+
+        {/* My activity + QR */}
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+          <div className={`${panel} space-y-4`}>
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-6 w-40" />
+              <Skeleton className="h-9 w-36 rounded-xl" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-24 rounded-xl" />
+              ))}
+            </div>
+          </div>
+          <div className={`${panel} space-y-4`}>
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-10 w-10 rounded-xl" />
+              <Skeleton className="h-6 w-32" />
+            </div>
+            <div className="flex flex-col gap-4 sm:flex-row">
+              <Skeleton className="h-[166px] w-[166px] shrink-0 rounded-xl" />
+              <div className="flex-1 space-y-3">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-11 w-44 rounded-full" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Notifications + upcoming events */}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className={`${panel} space-y-3`}>
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-8 w-20 rounded-full" />
+              </div>
+              {Array.from({ length: 4 }).map((__, j) => (
+                <Skeleton key={j} className="h-[72px] w-full rounded-2xl" />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function DashboardView({
@@ -53,6 +165,7 @@ export default function DashboardView({
   upcomingEvents,
   pastEventsCount,
   highlightText,
+  loading = false,
 }: DashboardViewProps) {
   const { t, language, locale } = useLanguage();
 
@@ -154,34 +267,16 @@ export default function DashboardView({
     return JSON.stringify({ user_id: userId, user_code: userCode, name: fullName });
   }, [userId, userCode, fullName]);
 
+  if (loading) return <MemberDashboardSkeleton memberName={memberName} />;
+
   return (
     <>
       {/* Full-bleed dark page wrapper -- same convention as every converted
           staff page (Dashboard, Residents, Households, Memberships, Events,
           Inventory, Budget, Returns, Activity Logs, Archive, Reports). */}
-      <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="h-[calc(100vh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8">
         <div className="space-y-5">
-      <div>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#7DD8CB]">
-            {t("memberDashboard")}
-          </p>
-          {/* "Live" pulse -- notifications on this page quietly re-poll every
-              20s (see Members.tsx), so this is a genuine live indicator, the
-              same one the staff portal's own dashboards show. */}
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-medium text-white/50" title={t("liveLabel")}>
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]" />
-            </span>
-            {t("liveLabel")}
-          </span>
-        </div>
-        <h1 className="mt-2 font-display text-3xl font-bold text-white">{t("welcomeBack")}, {memberName}</h1>
-        <p className="mt-2 text-[15px] text-white/50">
-          {t("signedInAsResident")}
-        </p>
-      </div>
+      <MemberDashboardHeader memberName={memberName} />
 
       <div className="grid gap-4 md:grid-cols-3">
         <SummaryCard

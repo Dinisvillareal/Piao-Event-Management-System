@@ -16,6 +16,7 @@ use App\Http\Controllers\EventExpenseController;
 use App\Http\Controllers\IntegrationController;
 use App\Http\Controllers\AgeBracketController;
 use App\Http\Controllers\CivilStatusController;
+use App\Http\Controllers\NameSuffixController;
 use App\Http\Controllers\CurrentStatusController;
 use App\Http\Controllers\HouseholdController;
 
@@ -128,6 +129,11 @@ Route::middleware('auth')->group(function () {
     Route::put('/age-brackets/{id}', [AgeBracketController::class, 'update']);
     Route::delete('/age-brackets/{id}', [AgeBracketController::class, 'destroy']);
     Route::post('/age-brackets/{id}/restore', [AgeBracketController::class, 'restore']);
+
+    // Name suffixes (Jr., Sr., II ...) offered in the resident forms.
+    Route::get('/name-suffixes', [NameSuffixController::class, 'index']);
+    Route::post('/name-suffixes', [NameSuffixController::class, 'store']);
+    Route::delete('/name-suffixes/{id}', [NameSuffixController::class, 'destroy']);
 
     Route::get('/civil-statuses', [CivilStatusController::class, 'index']);
     Route::post('/civil-statuses', [CivilStatusController::class, 'store']);

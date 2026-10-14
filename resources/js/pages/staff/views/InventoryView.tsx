@@ -1,4 +1,5 @@
 import FormSelect from "../../../components/ui/FormSelect";
+import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter } from "lucide-react";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
@@ -13,6 +14,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 
 import { tc } from "../../../lib/contentTranslations";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 // An item's condition covers the units still in use. Lost and disposed units
 // are separate counters on the item, so they are only *filters*, not conditions.
 type Condition = "New" | "Good" | "Fair" | "Poor";
@@ -427,7 +429,8 @@ export default function InventoryView() {
           </div>
           <button
             onClick={openAdd}
-            className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
+            disabled={loading || pageSwitching}
+            className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
           >
             {t("addItem")}
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
@@ -565,9 +568,9 @@ export default function InventoryView() {
                           )}
                         </div>
                         <div className="min-w-0 max-w-[280px]">
-                          <p className="text-[15px] font-semibold text-white truncate" title={tc(item.name, language as any)}>{tc(item.name, language as any)}</p>
+                          <p className="text-[15px] font-semibold text-white truncate" title={tc(item.name, language as any)}>{highlightMatches(tc(item.name, language as any), search)}</p>
                           {item.notes && (
-                            <p className="text-[13px] text-white/40 leading-snug mt-0.5 line-clamp-2" title={tc(item.notes, language as any)}>{tc(item.notes, language as any)}</p>
+                            <p className="text-[13px] text-white/40 leading-snug mt-0.5 line-clamp-2" title={tc(item.notes, language as any)}>{highlightMatches(tc(item.notes, language as any), search)}</p>
                           )}
                         </div>
                       </div>
@@ -644,10 +647,10 @@ export default function InventoryView() {
             </table>
           </div>
 
-          {totalPages > 1 && (
+          {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton withLabel className="px-4 py-3 border-t border-white/10" /> : (
             <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 py-3 border-t border-white/10">
               <p className="text-sm text-white/45 text-center sm:text-left">
-                {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages} • {items.length} {t("recordsShownLabel")}
+                {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages} • {loading || pageSwitching ? 0 : items.length} {t("recordsShownLabel")}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -669,7 +672,7 @@ export default function InventoryView() {
                 </button>
               </div>
             </div>
-          )}
+          ))}
         </div>
         </>
       )}

@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   Filter, X, LogIn, LogOut, ChevronLeft, Archive,
   Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown,
-  Megaphone, ClipboardList, Users, ArrowLeft, Save,
+  Megaphone, ClipboardList, Users, ArrowLeft, Save, Download, Printer,
 } from "lucide-react";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
@@ -16,10 +16,22 @@ import NumberStepper from "../../../components/ui/NumberStepper";
 import EventBudgetWorkspace from "../../../components/budget/EventBudgetWorkspace";
 import Skeleton from "../../../components/ui/Skeleton";
 import { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
+import ReportOptionsModal, { type SectionDef, type AttendeeFilter } from "./ReportOptionsModal";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 import { tc } from "../../../lib/contentTranslations";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+// What can go on one event's printout / PDF / Word file. Keys must match the
+// backend's allowed attendance sections (ReportController::buildExportPayload).
+const EVENT_REPORT_SECTIONS: SectionDef[] = [
+  { key: "summary", labelKey: "rptSecSummary", descKey: "rptSecSummaryAtt" },
+  { key: "age", labelKey: "rptSecAge", descKey: "rptSecAgeDesc" },
+  { key: "events", labelKey: "rptSecEvents", descKey: "rptSecEventsDesc" },
+  { key: "records", labelKey: "rptSecRecords", descKey: "rptSecRecordsDesc" },
+  { key: "message", labelKey: "rptSecMessage", descKey: "rptSecMessageDesc", group: "other" },
+];
+
 interface MyEvent {
   id: number | string;
   title: string;
@@ -1031,6 +1043,125 @@ export function EventsView({
     setLocalEvents((prev) => prev.map((e) => (String(e.id) === id ? { ...e, approvedBudget: next } : e)));
   };
 
+  // ---- Generate Report (per event) -- same Print & Export Options flow as
+  // Reports & Analytics, scoped to the event open in the detail view.
+  const [reportMode, setReportMode] = useState<"print" | "download" | null>(null);
+  const [reportSections, setReportSections] = useState<string[]>(EVENT_REPORT_SECTIONS.map((x) => x.key));
+  const [reportAttendeeFilter, setReportAttendeeFilter] = useState<AttendeeFilter>("all");
+  const [reportBusy, setReportBusy] = useState(false);
+  const [reportConfirm, setReportConfirm] = useState<"pdf" | "word" | null>(null);
+  const [reportSuccess, setReportSuccess] = useState<"pdf" | "word" | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+
+  const openEventReport = (mode: "print" | "download") => {
+    setReportSections(EVENT_REPORT_SECTIONS.map((x) => x.key));
+    setReportAttendeeFilter("all");
+    setReportMode(mode);
+  };
+
+  const fetchEventReportBlob = async (format: "pdf" | "word") => {
+    if (!viewEv) throw new Error("no event");
+    const params: Record<string, string> = {
+      type: "attendance",
+      event_id: String(viewEv.id),
+      sections: reportSections.join(","),
+    };
+    if (reportSections.includes("records")) {
+      params.event_ids = String(viewEv.id);
+      params.attendee_filter = reportAttendeeFilter;
+    }
+    const response = await api.get(`/reports/export/${format}`, { params, responseType: "blob" });
+    const mime = format === "pdf"
+      ? "application/pdf"
+      : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    return new Blob([response.data], { type: mime });
+  };
+
+  const saveBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  };
+
+  const reportFileBase = () =>
+    `${String(viewEv?.title ?? "event").replace(/[^\w\-]+/g, "_").replace(/^_+|_+$/g, "") || "event"}-report`;
+
+  const isPhoneOrTabletDevice = () => {
+    if (typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    if (/Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle/i.test(ua)) return true;
+    if (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) return true;
+    return typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse) and (hover: none)").matches;
+  };
+
+  // Desktop: the PDF loads into a hidden frame on this very page and the
+  // browser's own print dialog opens straight away -- no new tab and no
+  // blob: address. Phones/tablets can't print a hidden frame reliably, so
+  // they open the PDF in the device's viewer instead (same as Reports).
+  const handleEventReportPrint = async () => {
+    const mobile = isPhoneOrTabletDevice();
+    const win = mobile ? window.open("", "_blank") : null;
+    setReportBusy(true);
+    try {
+      const blob = await fetchEventReportBlob("pdf");
+      const url = URL.createObjectURL(blob);
+      if (mobile) {
+        if (win && !win.closed) win.location.href = url;
+        else saveBlob(blob, `${reportFileBase()}.pdf`);
+        window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+        setReportMode(null);
+        return;
+      }
+      const frame = document.createElement("iframe");
+      frame.setAttribute("aria-hidden", "true");
+      frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+      const cleanup = () => {
+        window.setTimeout(() => {
+          frame.remove();
+          URL.revokeObjectURL(url);
+        }, 60000);
+      };
+      frame.onload = () => {
+        window.setTimeout(() => {
+          try {
+            frame.contentWindow?.focus();
+            frame.contentWindow?.print();
+          } catch {
+            saveBlob(blob, `${reportFileBase()}.pdf`);
+          }
+          cleanup();
+        }, 400);
+      };
+      frame.src = url;
+      document.body.appendChild(frame);
+      setReportMode(null);
+    } catch {
+      win?.close();
+      setReportError(t("downloadFailedMessage"));
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
+  const handleEventReportDownload = async (format: "pdf" | "word") => {
+    setReportBusy(true);
+    try {
+      const blob = await fetchEventReportBlob(format);
+      saveBlob(blob, `${reportFileBase()}.${format === "pdf" ? "pdf" : "docx"}`);
+      setReportMode(null);
+      setReportSuccess(format);
+    } catch {
+      setReportError(t("downloadFailedMessage"));
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {viewEv ? (
@@ -1164,12 +1295,77 @@ export function EventsView({
                     </button>
                     <button
                       type="button"
-                      disabled
-                      title={t("featureComingSoonHint")}
-                      className="inline-flex items-center gap-2 rounded-full bg-white/10 text-white/60 px-4 py-2.5 text-[15px] font-semibold opacity-70 cursor-not-allowed"
+                      onClick={() => openEventReport("print")}
+                      className="inline-flex items-center gap-2 rounded-full bg-[#1E3A5F] px-4 py-2.5 text-[15px] font-semibold text-white transition hover:bg-[#274A77] active:scale-95"
                     >
                       <ClipboardList className="h-4 w-4" /> {t("generateReportButton")}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => openEventReport("download")}
+                      title={t("downloadReportLabel")}
+                      aria-label={t("downloadReportLabel")}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white transition hover:bg-white/[0.12] active:scale-95"
+                    >
+                      <Download className="h-5 w-5" />
+                    </button>
+
+                    <ReportOptionsModal
+                      open={reportMode !== null}
+                      mode={reportMode ?? "print"}
+                      reportLabel={viewEv.title}
+                      sections={EVENT_REPORT_SECTIONS}
+                      selected={reportSections}
+                      onSelectedChange={setReportSections}
+                      recordEvents={[{
+                        id: String(viewEv.id),
+                        name: viewEv.title,
+                        date: viewEv.date,
+                        status: status.label,
+                        eligible: fullAttendanceCountForTab,
+                        attended: signedInCount,
+                      }]}
+                      recordIds={[String(viewEv.id)]}
+                      onRecordIdsChange={() => {}}
+                      attendeeFilter={reportAttendeeFilter}
+                      onAttendeeFilterChange={setReportAttendeeFilter}
+                      busy={reportBusy}
+                      onClose={() => setReportMode(null)}
+                      onPrint={handleEventReportPrint}
+                      onDownload={(format) => setReportConfirm(format)}
+                      t={t}
+                    />
+                    <ConfirmDialog
+                      open={reportConfirm !== null}
+                      icon={<Download className="h-9 w-9" />}
+                      title={t("confirmDownloadReportTitle")}
+                      body={reportConfirm === "word" ? t("confirmDownloadReportBodyWord") : t("confirmDownloadReportBodyPdf")}
+                      cancelLabel={t("cancelLabel")}
+                      confirmLabel={t("downloadLabel")}
+                      z={9999}
+                      onCancel={() => setReportConfirm(null)}
+                      onConfirm={() => {
+                        const format = reportConfirm;
+                        setReportConfirm(null);
+                        if (format) handleEventReportDownload(format);
+                      }}
+                    />
+                    <StatusModal
+                      open={reportSuccess !== null}
+                      type="success"
+                      title={t("downloadSuccessTitle")}
+                      message={reportSuccess === "word" ? t("downloadSuccessWordMessage") : t("downloadSuccessPdfMessage")}
+                      okLabel={t("okLabel")}
+                      onClose={() => setReportSuccess(null)}
+                    />
+                    <StatusModal
+                      open={reportError !== null}
+                      type="error"
+                      title={t("errorLabel")}
+                      message={reportError ?? ""}
+                      okLabel={t("okLabel")}
+                      onClose={() => setReportError(null)}
+                    />
                   </div>
                 </div>
               )}
@@ -1279,32 +1475,34 @@ export function EventsView({
                     </table>
                   </div>
 
-                  {attendanceTotalPages > 1 && (
-                    <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
-                      <p className="text-sm text-white/45 text-center sm:text-left">
-                        {t("pageOfLabel")} {attendanceCurrentPage} {t("ofPagesLabel")} {attendanceTotalPages} • {paginatedAttendance.length} {t("recordsShownLabel")}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setAttendanceCurrentPage(p => Math.max(1, p - 1))}
-                          disabled={attendanceCurrentPage === 1}
-                          className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
-                        >
-                          ←
-                        </button>
-                        <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
-                          {attendanceCurrentPage}
-                        </span>
-                        <button
-                          onClick={() => setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1))}
-                          disabled={attendanceCurrentPage === attendanceTotalPages}
-                          className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
-                        >
-                          →
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  <p className="mt-2 text-xs text-white/40">
+                    {t("pageOfLabel")} {attendanceCurrentPage} {t("ofPagesLabel")} {Math.max(1, attendanceTotalPages)} • {paginatedAttendance.length} {t("recordsShownLabel")}
+                  </p>
+
+                  {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+                  <div className="flex justify-end mt-4">
+                    {attendanceTotalPages > 1 && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setAttendanceCurrentPage(p => Math.max(1, p - 1))}
+                            disabled={attendanceCurrentPage === 1}
+                            className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                          >
+                            ←
+                          </button>
+                          <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                            {attendanceCurrentPage}
+                          </span>
+                          <button
+                            onClick={() => setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1))}
+                            disabled={attendanceCurrentPage === attendanceTotalPages}
+                            className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                          >
+                            →
+                          </button>
+                        </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1361,32 +1559,34 @@ export function EventsView({
                         );
                       })}
 
-                      {feedbackTotalPages > 1 && (
-                        <div className="flex items-center justify-between pt-2">
-                          <p className="text-xs text-white/45">
-                            {t("pageOfLabel")} {feedbackCurrentPage} {t("ofPagesLabel")} {feedbackTotalPages} • {eventFeedback.length} {t("recordsShownLabel")}
-                          </p>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              onClick={() => setFeedbackCurrentPage(p => Math.max(1, p - 1))}
-                              disabled={feedbackCurrentPage === 1}
-                              className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
-                            >
-                              ←
-                            </button>
-                            <span className="h-7 w-7 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-xs font-bold">
-                              {feedbackCurrentPage}
-                            </span>
-                            <button
-                              onClick={() => setFeedbackCurrentPage(p => Math.min(feedbackTotalPages, p + 1))}
-                              disabled={feedbackCurrentPage === feedbackTotalPages}
-                              className="h-7 w-7 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-xs font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
-                            >
-                              →
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                      <p className="mt-2 text-xs text-white/40">
+                        {t("pageOfLabel")} {feedbackCurrentPage} {t("ofPagesLabel")} {feedbackTotalPages} • {eventFeedback.length} {t("recordsShownLabel")}
+                      </p>
+
+                      {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+                      <div className="flex justify-end mt-4">
+                        {feedbackTotalPages > 1 && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setFeedbackCurrentPage(p => Math.max(1, p - 1))}
+                                disabled={feedbackCurrentPage === 1}
+                                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                              >
+                                ←
+                              </button>
+                              <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                                {feedbackCurrentPage}
+                              </span>
+                              <button
+                                onClick={() => setFeedbackCurrentPage(p => Math.min(feedbackTotalPages, p + 1))}
+                                disabled={feedbackCurrentPage === feedbackTotalPages}
+                                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                              >
+                                →
+                              </button>
+                            </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1411,7 +1611,8 @@ export function EventsView({
             <button
               type="button"
               onClick={openAddEventModal}
-              className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
+              disabled={openSkeleton || loading || pageSwitching}
+              className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
             >
               {t("postEvent")}
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
@@ -1484,38 +1685,33 @@ export function EventsView({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-white/50">
-              {filteredEvents.length} {t("eventsMatchCount")}
-            </p>
-            {totalPages > 1 && (
+          <p className="mt-2 text-xs text-white/40">
+            {openSkeleton || loading || pageSwitching ? 0 : filteredEvents.length} {t("eventsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
+          </p>
+
+          {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+          <div className="flex justify-end">
+            {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
               <div className="flex items-center gap-2">
                 <button
-                  type="button"
                   onClick={() => goToPage(Math.max(1, currentPage - 1))}
                   disabled={currentPage === 1}
-                  aria-label="Previous page"
-                  className="h-9 w-9 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
-                  &larr;
+                  ←
                 </button>
-                <span
-                  title={`${t("pageOfLabel")} ${currentPage} ${t("ofPagesLabel")} ${totalPages}`}
-                  className="h-9 w-9 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold"
-                >
+                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
                   {currentPage}
                 </span>
                 <button
-                  type="button"
                   onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
                   disabled={currentPage === totalPages}
-                  aria-label="Next page"
-                  className="h-9 w-9 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
-                  &rarr;
+                  →
                 </button>
               </div>
-            )}
+            ))}
           </div>
 
           {loading || pageSwitching || openSkeleton ? (
@@ -1898,6 +2094,34 @@ export function EventsView({
         </div>
       )}
 
+      {/* Result popups -- every Add / Update / Delete lands on one of these. */}
+      <StatusModal
+        open={showSuccessModal}
+        type="success"
+        title={t("successTitle")}
+        message={successMessage}
+        okLabel={t("okLabel")}
+        onClose={() => setShowSuccessModal(false)}
+        z={9999}
+      />
+      <StatusModal
+        open={showErrorModal}
+        type="error"
+        title={t("errorTitle")}
+        message={errorMessage}
+        okLabel={t("okLabel")}
+        onClose={() => setShowErrorModal(false)}
+        z={9999}
+      />
+      <StatusModal
+        open={deleteErrorMessage !== null}
+        type="error"
+        title={t("errorTitle")}
+        message={deleteErrorMessage ?? ""}
+        okLabel={t("okLabel")}
+        onClose={() => setDeleteErrorMessage(null)}
+        z={9999}
+      />
     </div>
   );
 }

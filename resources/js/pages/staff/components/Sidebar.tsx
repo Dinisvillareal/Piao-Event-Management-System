@@ -28,27 +28,28 @@ import {
   SearchX,
 } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { staffPathFor } from "../../../lib/staffRoutes";
 
 // --- NAVIGATION CONFIG ---
 export const NAV = [
-  { key: "dashboard", path: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { key: "scan", path: "scan", label: "QR Scanner", icon: ScanLine },
-  { key: "residents", path: "residents", label: "Residents", icon: Users },
-  { key: "households", path: "households", label: "Households", icon: Home },
-  { key: "memberships", path: "memberships", label: "Memberships", icon: Award },
-  { key: "events", path: "events", label: "Events & Attendance", icon: CalendarDays },
-  { key: "notify", path: "notifications", label: "Notifications", icon: Bell },
-  { key: "reports", path: "reports", label: "Reports & Analytics", icon: BarChart3 },
-  { key: "inventory", path: "inventory", label: "Inventory", icon: Package },
-  { key: "budget", path: "budget", label: "Budget & Expenses", icon: Wallet },
-  { key: "returns", path: "returns", label: "Returns", icon: Undo2 },
+  { key: "dashboard", path: staffPathFor("dashboard"), label: "Dashboard", icon: LayoutDashboard },
+  { key: "scan", path: staffPathFor("scan"), label: "QR Scanner", icon: ScanLine },
+  { key: "residents", path: staffPathFor("residents"), label: "Residents", icon: Users },
+  { key: "households", path: staffPathFor("households"), label: "Households", icon: Home },
+  { key: "memberships", path: staffPathFor("memberships"), label: "Memberships", icon: Award },
+  { key: "events", path: staffPathFor("events"), label: "Events & Attendance", icon: CalendarDays },
+  { key: "notify", path: staffPathFor("notify"), label: "Notifications", icon: Bell },
+  { key: "reports", path: staffPathFor("reports"), label: "Reports & Analytics", icon: BarChart3 },
+  { key: "inventory", path: staffPathFor("inventory"), label: "Inventory", icon: Package },
+  { key: "budget", path: staffPathFor("budget"), label: "Budget & Expenses", icon: Wallet },
+  { key: "returns", path: staffPathFor("returns"), label: "Returns", icon: Undo2 },
 ];
 
 export const SETTINGS_NAV = [
-  { key: "activitylogs", path: "activity-logs", label: "Activity Logs", icon: FileText },
-  { key: "archive", path: "archive", label: "Trash / Archive", icon: Archive },
-  { key: "profiling", path: "age-status-categories", label: "Age & Status Categories", icon: Tags },
-  { key: "integrations", path: "integrations", label: "Integrations", icon: Link2 },
+  { key: "activitylogs", path: staffPathFor("activitylogs"), label: "Activity Logs", icon: FileText },
+  { key: "archive", path: staffPathFor("archive"), label: "Trash / Archive", icon: Archive },
+  { key: "profiling", path: staffPathFor("profiling"), label: "Age & Status Categories", icon: Tags },
+  { key: "integrations", path: staffPathFor("integrations"), label: "Integrations", icon: Link2 },
 ];
 
 // --- MODULE GROUPING ---
@@ -199,8 +200,8 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
     }
   };
 
-  const inactiveNav = "text-white/55 hover:bg-white/[0.06] hover:text-white border border-transparent";
-  const activeNav = "bg-white/10 text-white font-semibold border border-white/40";
+  const inactiveNav = "text-white/55 hover:bg-white/[0.06] hover:text-white border border-transparent active:scale-[0.97] active:bg-white/[0.12]";
+  const activeNav = "bg-white/10 text-white font-semibold border border-white/40 active:scale-[0.97]";
 
   return (
     <>

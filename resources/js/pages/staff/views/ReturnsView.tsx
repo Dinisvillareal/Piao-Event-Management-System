@@ -1,4 +1,5 @@
 import { matchesSearch } from "../../../lib/search";
+import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Undo2, CheckCircle2, PackageX, X, RotateCcw, Pencil, Search, Package, Clock, History, Camera, Eye, ArrowRight } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -13,6 +14,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 
 import { tc } from "../../../lib/contentTranslations";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 interface OverdueEventItem {
   id: number;
   name: string;
@@ -135,6 +137,7 @@ export default function ReturnsView() {
   // The release being edited in the Edit Return modal -- fix the quantity
   // and/or replace the saved evidence photo in place.
   const [editTarget, setEditTarget] = useState<RecentRelease | null>(null);
+  const [confirmEditSave, setConfirmEditSave] = useState(false);
   const [editQty, setEditQty] = useState(1);
   // A replacement photo, only when one was picked; otherwise the saved
   // photo is kept as-is (no new photo is ever demanded for an edit).
@@ -523,6 +526,7 @@ export default function ReturnsView() {
   // Where the change lands, so the hand-off is honest: lowering the quantity
   // sends items back to Pending Returns; anything else stays in the log.
   const saveEdit = async () => {
+    setConfirmEditSave(false);
     if (!editTarget) return;
     const release = editTarget;
     const qty = clampEditQty(release, editQty);
@@ -843,7 +847,7 @@ export default function ReturnsView() {
                               <PackageX className="h-5 w-5 text-[#E2A088]" />
                             </div>
                             <div className="min-w-0">
-                              <p className="font-semibold text-white truncate">{tc(ev.name, language as any)}</p>
+                              <p className="font-semibold text-white truncate">{highlightMatches(tc(ev.name, language as any), search)}</p>
                               {flashEventIds.includes(ev.id) && (
                                 <p className="text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB] mt-0.5">{t("backInPendingChipLabel")}</p>
                               )}
@@ -879,10 +883,10 @@ export default function ReturnsView() {
               </table>
             </div>
 
-            {totalPages > 1 && (
+            {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton withLabel className="px-4 sm:px-5 py-3.5 border-t border-white/10" /> : (
               <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 sm:px-5 py-3.5 border-t border-white/10">
                 <p className="text-sm text-white/45 text-center sm:text-left">
-                  {t("pageOfLabel")} {safePage} {t("ofPagesLabel")} {totalPages} &bull; {filteredEvents.length} {t("recordsShownLabel")}
+                  {t("pageOfLabel")} {safePage} {t("ofPagesLabel")} {totalPages} &bull; {loading || pageSwitching ? 0 : filteredEvents.length} {t("recordsShownLabel")}
                 </p>
                 <div className="flex items-center gap-2">
                   <button
@@ -904,7 +908,7 @@ export default function ReturnsView() {
                   </button>
                 </div>
               </div>
-            )}
+            ))}
           </>
         )}
       </div>
@@ -989,7 +993,7 @@ export default function ReturnsView() {
                     )}
                     <div className="min-w-0">
                       <p className="text-[15px] text-white truncate">
-                        {r.quantity}&times; {tc(r.item_name, language as any)} <span className="text-white/40">&bull;</span> {tc(r.event_name, language as any)}
+                        {r.quantity}&times; {highlightMatches(tc(r.item_name, language as any), search)} <span className="text-white/40">&bull;</span> {highlightMatches(tc(r.event_name, language as any), search)}
                       </p>
                       <p className="text-[13px] text-white/40 mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
                         <span className="inline-flex items-center gap-1 rounded-full bg-[#4FBEB0]/15 text-[#7DD8CB] px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide">
@@ -1023,10 +1027,10 @@ export default function ReturnsView() {
                 </li>
               ))}
             </ul>
-            {recentReleasesTotalPages > 1 && (
+            {recentReleasesTotalPages > 1 && ((recentReleasesLoading) ? <PagerSkeleton withLabel className="px-4 sm:px-5 py-3.5 border-t border-white/10" /> : (
               <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 sm:px-5 py-3.5 border-t border-white/10">
                 <p className="text-sm text-white/45 text-center sm:text-left">
-                  {t("pageOfLabel")} {recentReleasesPage} {t("ofPagesLabel")} {recentReleasesTotalPages} &bull; {recentReleasesTotal} {t("recordsShownLabel")}
+                  {t("pageOfLabel")} {recentReleasesPage} {t("ofPagesLabel")} {recentReleasesTotalPages} &bull; {recentReleasesLoading ? 0 : recentReleasesTotal} {t("recordsShownLabel")}
                 </p>
                 <div className="flex items-center gap-2">
                   <button
@@ -1048,7 +1052,7 @@ export default function ReturnsView() {
                   </button>
                 </div>
               </div>
-            )}
+            ))}
           </>
         )}
       </div>
@@ -1182,6 +1186,18 @@ export default function ReturnsView() {
       )}
 
       <ConfirmDialog
+        open={confirmEditSave}
+        icon={<Pencil size={32} />}
+        title={t("confirmUpdateReturnTitle")}
+        body={t("confirmUpdateReturnBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesUpdate")}
+        onCancel={() => setConfirmEditSave(false)}
+        onConfirm={saveEdit}
+        z={10001}
+      />
+
+      <ConfirmDialog
         open={confirmRelease !== null}
         icon={<Undo2 size={32} />}
         title={t("confirmReturnTitle")}
@@ -1302,7 +1318,7 @@ export default function ReturnsView() {
                 </button>
                 <div className="flex items-center gap-3 ml-auto">
                   <button
-                    onClick={saveEdit}
+                    onClick={() => setConfirmEditSave(true)}
                     disabled={savingEdit || !changed || editPhotos.length === 0}
                     className="inline-flex items-center gap-1.5 rounded-full bg-sage-700 hover:bg-sage-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold px-5 py-2.5 transition"
                   >
