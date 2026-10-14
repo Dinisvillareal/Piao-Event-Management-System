@@ -4,7 +4,9 @@ import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, AlertCircle, Aler
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
+import { highlightMatches } from "../../../lib/highlight";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 /**
  * Real Household module -- staff pick an existing household (or create one)
@@ -89,6 +91,11 @@ export default function HouseholdsView() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [confirmAdd, setConfirmAdd] = useState(false);
   const [confirmEdit, setConfirmEdit] = useState(false);
+  // Pending household-member action waiting on an "Are you sure?" answer.
+  const [memberAction, setMemberAction] = useState<
+    | { kind: "add" | "remove" | "head"; household: Household; member: Member }
+    | null
+  >(null);
 
   const load = async (searchValue = search, pageValue = page) => {
     setLoading(true);
@@ -216,6 +223,7 @@ export default function HouseholdsView() {
       setPickerFor(null);
       setMemberSearch("");
       await load(search, page);
+      setSuccessMessage(t("hhMemberAddedSuccess"));
     } catch (e: any) {
       setErrorMessage(e?.message || t("addMemberFailed"));
     }
@@ -228,9 +236,7 @@ export default function HouseholdsView() {
       // The head badge on the card already flags a headless household
       // passively, but staff should also know it happened right when
       // they took the action that caused it, not just on next glance.
-      if (wasHead) {
-        setSuccessMessage(t("removedHeadNowUnassigned"));
-      }
+      setSuccessMessage(wasHead ? t("removedHeadNowUnassigned") : t("hhMemberRemovedSuccess"));
     } catch (e: any) {
       setErrorMessage(e?.message || t("removeMemberFailed"));
     }
@@ -243,10 +249,51 @@ export default function HouseholdsView() {
         body: JSON.stringify({ user_id: userId }),
       });
       await load(search, page);
+      setSuccessMessage(t("hhHeadUpdatedSuccess"));
     } catch (e: any) {
       setErrorMessage(e?.message || t("setHeadFailed"));
     }
   };
+
+  const runMemberAction = async () => {
+    if (!memberAction) return;
+    const { kind, household, member } = memberAction;
+    setMemberAction(null);
+    if (kind === "add") await addMember(household.id, member.id);
+    else if (kind === "remove") await removeMember(household.id, member.id, member.is_household_head);
+    else await setHead(household.id, member.id);
+  };
+
+  const memberActionCopy = (() => {
+    if (!memberAction) return null;
+    const { kind, household, member } = memberAction;
+    const name = fullName(member);
+    const currentHead = household.members.find((x) => x.is_household_head && x.id !== member.id);
+    const fill = (key: string) =>
+      t(key)
+        .replace("{name}", name)
+        .replace("{head}", currentHead ? fullName(currentHead) : "")
+        .replace("{code}", household.code);
+    if (kind === "add") {
+      return { icon: <UserPlus size={32} />, tone: "brand" as const, title: fill("hhConfirmAddMemberTitle"), body: fill("hhConfirmAddMemberBody"), confirm: t("hhYesAddMember") };
+    }
+    if (kind === "remove") {
+      return {
+        icon: <X size={32} />,
+        tone: "danger" as const,
+        title: fill("hhConfirmRemoveMemberTitle"),
+        body: fill(member.is_household_head ? "hhConfirmRemoveHeadBody" : "hhConfirmRemoveMemberBody"),
+        confirm: t("hhYesRemoveMember"),
+      };
+    }
+    return {
+      icon: <Star size={32} />,
+      tone: "brand" as const,
+      title: fill(currentHead ? "hhConfirmReplaceHeadTitle" : "hhConfirmSetHeadTitle"),
+      body: fill(currentHead ? "hhConfirmReplaceHeadBody" : "hhConfirmSetHeadBody"),
+      confirm: t(currentHead ? "hhYesReplaceHead" : "hhYesSetHead"),
+    };
+  })();
 
   return (
     <div className="space-y-6">
@@ -263,7 +310,8 @@ export default function HouseholdsView() {
         <button
           type="button"
           onClick={() => setConfirmAdd(true)}
-          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
+          disabled={loading}
+          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
         >
           {t("addHouseholdLabel")}
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
@@ -335,15 +383,15 @@ export default function HouseholdsView() {
                     <Home className="h-5 w-5 text-[#4FBEB0]" />
                   </div>
                   <div className="min-w-[140px]">
-                    <p className="text-base font-bold text-white">{h.code}</p>
-                    <p className="text-[13.5px] text-white/50">{h.address || t("noAddressOnFile")}</p>
+                    <p className="text-base font-bold text-white">{highlightMatches(h.code, search)}</p>
+                    <p className="text-[13.5px] text-white/50">{h.address ? highlightMatches(h.address, search) : t("noAddressOnFile")}</p>
                   </div>
                   <div className="flex items-center gap-1.5 text-[13.5px] text-[#7DD8CB] bg-[#4FBEB0]/10 rounded-full px-3.5 py-1.5">
                     <Users className="h-4 w-4" /> {h.members_count} {t("membersLabel")}
                   </div>
                   {head ? (
                     <span className="inline-flex items-center gap-1 text-[13.5px] font-medium text-gold-300 bg-gold-500/10 rounded-full px-3.5 py-1.5">
-                      <Star className="h-4 w-4 fill-gold-300" /> {fullName(head)}
+                      <Star className="h-4 w-4 fill-gold-300" /> {highlightMatches(fullName(head), search)}
                     </span>
                   ) : h.members_count > 0 ? (
                     <span className="inline-flex items-center gap-1 text-[13.5px] font-medium text-gold-300 bg-gold-500/10 rounded-full px-3.5 py-1.5">
@@ -351,7 +399,7 @@ export default function HouseholdsView() {
                     </span>
                   ) : null}
                   {h.contact_number && (
-                    <span className="text-[13.5px] text-white/50">{h.contact_number}</span>
+                    <span className="text-[13.5px] text-white/50">{highlightMatches(h.contact_number, search)}</span>
                   )}
 
                   <div className="ml-auto flex items-center gap-1">
@@ -369,14 +417,14 @@ export default function HouseholdsView() {
                       <div className="flex flex-wrap gap-2">
                         {h.members.map((m) => (
                           <div key={m.id} className="flex items-center gap-2 rounded-full bg-white/[0.05] border border-white/10 pl-3 pr-1.5 py-1.5 text-sm">
-                            <span className="font-medium text-white">{fullName(m)}</span>
+                            <span className="font-medium text-white">{highlightMatches(fullName(m), search)}</span>
                             {m.role === "Staff" && (
                               <span className="rounded-full bg-gold-400/15 text-gold-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
                             )}
-                            <span className="text-white/40">{m.user_code}</span>
+                            <span className="text-white/40">{highlightMatches(m.user_code, search)}</span>
                             <button
                               type="button"
-                              onClick={() => setHead(h.id, m.id)}
+                              onClick={() => { if (!m.is_household_head) setMemberAction({ kind: "head", household: h, member: m }); }}
                               title={m.is_household_head ? t("headOfHouseholdTitle") : t("setAsHeadLabel")}
                               className={`p-1 rounded-full ${m.is_household_head ? "text-gold-300" : "text-white/25 hover:text-gold-300"}`}
                             >
@@ -384,7 +432,7 @@ export default function HouseholdsView() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => removeMember(h.id, m.id, m.is_household_head)}
+                              onClick={() => setMemberAction({ kind: "remove", household: h, member: m })}
                               title={t("removeMemberLabel")}
                               className="p-1 rounded-full text-white/25 hover:text-red-400"
                             >
@@ -423,16 +471,16 @@ export default function HouseholdsView() {
                               <button
                                 key={m.id}
                                 type="button"
-                                onClick={() => addMember(h.id, m.id)}
+                                onClick={() => setMemberAction({ kind: "add", household: h, member: m })}
                                 className="w-full text-left text-sm px-3 py-2 rounded-full hover:bg-white/[0.06] flex items-center justify-between gap-2"
                               >
                                 <span className="flex items-center gap-1.5 text-white">
-                                  {fullName(m)}
+                                  {highlightMatches(fullName(m), memberSearch)}
                                   {m.role === "Staff" && (
                                     <span className="rounded-full bg-gold-400/15 text-gold-300 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
                                   )}
                                 </span>
-                                <span className="text-white/40">{m.user_code}</span>
+                                <span className="text-white/40">{highlightMatches(m.user_code, memberSearch)}</span>
                               </button>
                             ))
                           )}
@@ -476,7 +524,7 @@ export default function HouseholdsView() {
             );
           })}
 
-          {lastPage > 1 && (
+          {lastPage > 1 && ((loading) ? <PagerSkeleton className="justify-center pt-2" /> : (
             <div className="flex justify-center gap-2 pt-2">
               {Array.from({ length: lastPage }, (_, i) => i + 1).map((p) => (
                 <button
@@ -488,7 +536,7 @@ export default function HouseholdsView() {
                 </button>
               ))}
             </div>
-          )}
+          ))}
         </div>
       )}
       </div>
@@ -576,6 +624,18 @@ export default function HouseholdsView() {
         confirmLabel={t("yesUpdate")}
         onCancel={() => setConfirmEdit(false)}
         onConfirm={performEdit}
+      />
+
+      <ConfirmDialog
+        open={!!memberAction && !!memberActionCopy}
+        icon={memberActionCopy?.icon ?? <UserPlus size={32} />}
+        tone={memberActionCopy?.tone}
+        title={memberActionCopy?.title ?? ""}
+        body={memberActionCopy?.body ?? ""}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={memberActionCopy?.confirm}
+        onCancel={() => setMemberAction(null)}
+        onConfirm={runMemberAction}
       />
 
       {/* Delete confirm modal */}

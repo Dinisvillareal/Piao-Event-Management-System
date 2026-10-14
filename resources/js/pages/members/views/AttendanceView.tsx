@@ -313,6 +313,7 @@ import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
 import { matchesSearch } from "../../../lib/search";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 
 export interface AttendanceRecord {
@@ -336,9 +337,11 @@ interface AttendanceViewProps {
   highlightText: (text: string, query: string) => React.ReactNode;
   allEvents?: EventLite[];
   userMemberships?: { id: number; name: string }[];
+  /** True until the first attendance fetch lands -- shows the skeleton list. */
+  loading?: boolean;
 }
 
-export default function AttendanceView({ attendanceRecords, highlightText, allEvents = [], userMemberships = [] }: AttendanceViewProps) {
+export default function AttendanceView({ attendanceRecords, highlightText, allEvents = [], userMemberships = [], loading = false }: AttendanceViewProps) {
   const { t, language } = useLanguage();
   const statusLabel = (status: string) => {
     if (status === "complete") return t("statusComplete");
@@ -424,10 +427,10 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
     // <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> if dili mugana ang right ubos ani ibalik ni
     <div className="h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-hidden">
       {/* Fixed Header */}
-      <div className="flex-shrink-0 pt-2 pb-4 px-1 sm:px-2">
+      <div className="flex-shrink-0 pb-6">
         <div className="w-full pr-4">
-          <h1 className="text-4xl font-black text-white">{t("attendanceRecords")}</h1>
-          <p className="text-sm text-white/50 mt-1">{t("attendanceSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("attendanceRecords")}</h1>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("attendanceSubtitle")}</p>
 
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -468,28 +471,42 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
           </div>
 
           <p className="mt-2 text-xs text-white/40">
-            {filteredAttendance.length} of {attendanceRecords.length} {t("recordsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
+            {loading || pageSwitching ? 0 : filteredAttendance.length} of {loading || pageSwitching ? 0 : attendanceRecords.length} {t("recordsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
           </p>
 
-          {/* PAGINATION — stays pinned in the fixed header */}
-          {totalPages > 1 && (
-            <div className="flex justify-end mt-4">
+          {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+          <div className="flex justify-end mt-4">
+            {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
               <div className="flex items-center gap-2">
-                <button onClick={() => goToPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
-                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">{currentPage}</span>
-                <button onClick={() => goToPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">→</button>
+                <button
+                  onClick={() => goToPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                >
+                  ←
+                </button>
+
+                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                  {currentPage}
+                </span>
+
+                <button
+                  onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                >
+                  →
+                </button>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-1 sm:px-2 pb-4">
+      <div className="flex-1 overflow-y-auto min-h-0 pb-4">
         <div className="space-y-3">
-          {pageSwitching ? (
+          {pageSwitching || loading ? (
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
                 <div className="min-w-0 flex-1 space-y-1.5">

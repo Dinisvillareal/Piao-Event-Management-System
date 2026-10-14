@@ -1,5 +1,6 @@
 import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
+import SuffixSelect from "../../../components/ui/SuffixSelect";
 import FormSelect from "../../../components/ui/FormSelect";
 import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
@@ -43,6 +44,7 @@ import DefaultAvatar from "../../../components/ui/DefaultAvatar";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 import { tc } from "../../../lib/contentTranslations";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Membership {
   id: number;
@@ -1743,16 +1745,17 @@ const handleDeleteResident = async () => {
           light theme since they're full-screen takeovers, not part of the
           list surface itself. */}
       <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
-      <div className="space-y-5">
+      <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("residentsMasterList")}</h1>
-          <p className="text-sm text-white/50 mt-1 max-w-xl">{t("residentsSubtitle")}</p>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("residentsSubtitle")}</p>
         </div>
         <button
           onClick={handleOpenAddForm}
-          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0"
+          disabled={loading || pageSwitching}
+          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
         >
           {t("resRegisterResident")}
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
@@ -1824,7 +1827,7 @@ const handleDeleteResident = async () => {
               <button
                 type="button"
                 onClick={() => openExportDialog("excel")}
-                disabled={loading || residentsData.length === 0}
+                disabled={loading || pageSwitching || residentsData.length === 0}
                 title={t("resExportExcelTitle")}
                 className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-[13px] font-semibold text-white transition-all duration-300 hover:border-[#1E3A5F] hover:bg-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -1834,7 +1837,7 @@ const handleDeleteResident = async () => {
               <button
                 type="button"
                 onClick={() => openExportDialog("pdf")}
-                disabled={loading || residentsData.length === 0}
+                disabled={loading || pageSwitching || residentsData.length === 0}
                 title={t("resExportPdfTitle")}
                 className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-[13px] font-semibold text-white transition-all duration-300 hover:border-[#1E3A5F] hover:bg-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -1928,7 +1931,7 @@ const handleDeleteResident = async () => {
             </tbody>
           </table>
         </div>
-        {totalPages > 1 && (
+        {totalPages > 1 && ((pageSwitching) ? <PagerSkeleton className="justify-end px-5 py-3 border-t border-white/10" /> : (
           <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/10">
             <button
               onClick={() => goToPage((p) => Math.max(1, p - 1))}
@@ -1948,7 +1951,7 @@ const handleDeleteResident = async () => {
               →
             </button>
           </div>
-        )}
+        ))}
       </div>
       </div>
       </div>
@@ -2344,15 +2347,10 @@ const handleDeleteResident = async () => {
                   <div className="grid md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("suffixLabel")}</label>
-                      <FormSelect
-                        value={newResident.suffix || "__none"}
-                        onChange={(e) => setNewResident((p) => ({ ...p, suffix: e.target.value === "__none" ? "" : e.target.value }))}
-                      >
-                        <option value="__none">{t("noneOption")}</option>
-                        {SUFFIX_OPTIONS.map((o) => (
-                          <option key={o} value={o}>{o}</option>
-                        ))}
-                      </FormSelect>
+                      <SuffixSelect
+                        value={newResident.suffix}
+                        onChange={(suffix) => setNewResident((p) => ({ ...p, suffix }))}
+                      />
                     </div>
 
                     <div>
@@ -2649,15 +2647,10 @@ const handleDeleteResident = async () => {
                   <div className="grid md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("suffixLabel")}</label>
-                      <FormSelect
-                        value={editingResident.suffix || "__none"}
-                        onChange={(e) => setEditingResident((p) => p ? { ...p, suffix: e.target.value === "__none" ? "" : e.target.value } : p)}
-                      >
-                        <option value="__none">{t("noneOption")}</option>
-                        {SUFFIX_OPTIONS.map((o) => (
-                          <option key={o} value={o}>{o}</option>
-                        ))}
-                      </FormSelect>
+                      <SuffixSelect
+                        value={editingResident.suffix}
+                        onChange={(suffix) => setEditingResident((p) => p ? { ...p, suffix } : p)}
+                      />
                     </div>
 
                     <div>

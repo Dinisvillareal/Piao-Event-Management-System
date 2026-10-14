@@ -35,6 +35,8 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import ReactDOM from "react-dom/client";
 import MemberDashboard from "./pages/members/Members";
+import { MEMBER_BASE, memberKeyFromPath, memberUrlFor } from "./lib/memberRoutes";
+import { staffUrlFor } from "./lib/staffRoutes";
 import StaffDashboard from "./pages/staff/Staff";
 import LoginPage from "./pages/login/Login";
 import SplashScreen from "./components/ui/SplashScreen";
@@ -226,9 +228,14 @@ export default function App() {
       return;
     }
 
+    const isStaffPortal = userRole === "Staff" && portalMode !== "member";
     if (path === "/login" || path === "/") {
-      const isStaffPortal = userRole === "Staff" && portalMode !== "member";
-      window.history.replaceState({}, "", isStaffPortal ? "/admin/dashboard" : "/dashboard");
+      window.history.replaceState({}, "", isStaffPortal ? staffUrlFor("dashboard") : memberUrlFor("dashboard"));
+    } else if (!isStaffPortal && !path.startsWith(MEMBER_BASE + "/")) {
+      // Resident portal: normalise old bare URLs ("/attendance", "/dashboard",
+      // a leftover "/admin/..." link) to the same "/member/<page>" scheme the
+      // staff portal uses with "/admin/<page>".
+      window.history.replaceState({}, "", memberUrlFor(memberKeyFromPath(path)));
     }
   }, [loading, userRole, portalMode]);
 

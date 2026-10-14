@@ -33,7 +33,11 @@ export default function TopHeader({ memberName, onMenuClick, userId }: TopHeader
           <DefaultAvatar className="h-8 w-8" title={memberName} />
           <div className="text-left leading-tight">
             <p className="text-xs text-white/40">{t("signedInAs")}</p>
-            <p className="text-sm font-bold text-white">{memberName}</p>
+            {memberName ? (
+              <p className="text-sm font-bold text-white">{memberName}</p>
+            ) : (
+              <span className="mt-0.5 block h-3.5 w-24 animate-pulse rounded bg-white/10" />
+            )}
           </div>
         </div>
         <div className="rounded-full bg-gold-400 px-3 sm:px-4 py-1.5 sm:py-2 text-[10px] sm:text-xs font-black uppercase tracking-wide text-[#08130F] shadow-sm whitespace-nowrap">

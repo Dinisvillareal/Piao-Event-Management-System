@@ -873,6 +873,7 @@ import { renderMemberIdCard, renderMemberIdCardSides } from "../../../lib/member
 import IdCardFlip from "../../../components/ui/IdCardFlip";
 import { useBarangayOfficials } from "../../../lib/barangayOfficials";
 import { matchesSearch } from "../../../lib/search";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 export default function QRCodesView({ highlightText, userId, userCode, fullName }: any) {
   const { t, language } = useLanguage();
@@ -1012,25 +1013,49 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   }, [userId, userCode, fullName]);
 
   if (loading) {
+    // Mirrors the loaded layout class-for-class (same wrappers, gutter, sticky
+    // column widths, spacing and card ratio) so every block sits exactly where
+    // its real counterpart will land and nothing shifts when the data arrives.
     return (
-      <div className="h-full bg-[#0A0E1A] p-4 sm:p-8">
-        <div className="flex flex-col lg:flex-row gap-6">
-          <div className="w-full lg:w-[280px] lg:shrink-0">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 flex flex-col items-center">
-              <Skeleton className="h-3 w-20 self-start" />
-              <Skeleton className="h-5 w-32 self-start mt-1" />
-              <Skeleton className="h-3 w-24 self-start mt-0.5" />
-              <Skeleton className="h-[216px] w-[216px] rounded-xl mt-5" />
-              <Skeleton className="h-3 w-36 mt-3" />
-              <Skeleton className="h-10 w-full rounded-full mt-4" />
+      <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col">
+        <div className="flex-shrink-0 pb-6">
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("myQrAndMemberships")}</h1>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("qrPageSubtitle")}</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto min-h-0" style={{ scrollbarGutter: "stable" }}>
+          <div className="flex flex-col lg:flex-row gap-6 items-start">
+            {/* LEFT: ID panel */}
+            <div className="w-full lg:w-[460px] lg:shrink-0 lg:sticky lg:top-4">
+              <div className="flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                <Skeleton className="aspect-[1011/638] w-full rounded-2xl" />
+                <Skeleton className="mt-4 h-4 w-44" />
+                <Skeleton className="mt-4 h-[50px] w-full rounded-full" />
+              </div>
             </div>
-          </div>
-          <div className="flex-1 min-w-0 space-y-4">
-            <Skeleton className="h-11 w-full rounded-xl" />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-32 rounded-2xl" />
-              ))}
+
+            {/* RIGHT: search + count + cards */}
+            <div className="w-full lg:flex-1 lg:min-w-0">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                <SearchBar
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  placeholder={t("searchMembershipsPlaceholder")}
+                  dark
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
+                <p className="text-xs text-white/40">
+                  0 {t("membershipsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
+                </p>
+              </div>
+              <div className="mt-4 min-h-[500px]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {Array.from({ length: 6 }).map((_, k) => (
+                    <Skeleton key={k} className="h-32 rounded-2xl" />
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1054,9 +1079,9 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> 
     {/* <div className="h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-hidden"> */}
       {/* Fixed header: title + subtitle */}
-      <div className="flex-shrink-0 pt-2 pb-4">
-        <h1 className="text-3xl sm:text-4xl font-black text-white">{t("myQrAndMemberships")}</h1>
-        <p className="mt-1 text-sm text-white/50">{t("qrPageSubtitle")}</p>
+      <div className="flex-shrink-0 pb-6">
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("myQrAndMemberships")}</h1>
+        <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("qrPageSubtitle")}</p>
       </div>
 
       {/* Body: side-by-side layout on lg+, stacked on mobile.
@@ -1184,9 +1209,9 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                 </div>
                 <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
                   <p className="text-xs text-white/40">
-                    {totalItems} {t("membershipsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
+                    {pageSwitching ? 0 : totalItems} {t("membershipsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
                   </p>
-                  {totalPages > 1 && (
+                  {totalPages > 1 && ((pageSwitching) ? <PagerSkeleton /> : (
                     <div className="flex items-center gap-2">
                       <button onClick={() => goToPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
                         className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
@@ -1194,7 +1219,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                       <button onClick={() => goToPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
                         className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">→</button>
                     </div>
-                  )}
+                  ))}
                 </div>
               </>
             )}

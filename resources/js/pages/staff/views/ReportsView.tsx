@@ -135,6 +135,15 @@ const BUDGET_STATUS_PILL: Record<string, { cls: string; key: string }> = {
   "Within budget": { cls: "bg-[#4FBEB0]/15 text-[#7DD8CB] print:bg-teal-50 print:text-teal-700", key: "rptBSWithin" },
 };
 
+/** True on phones and tablets (including iPadOS, which reports itself as a Mac). */
+const isPhoneOrTablet = () => {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/Android|iPhone|iPad|iPod|Mobile|Tablet|Silk|Kindle/i.test(ua)) return true;
+  if (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) return true;
+  return typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse) and (hover: none)").matches;
+};
+
 const peso = (n: any) => `₱${Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
 const ATTENDANCE_PILL: Record<string, string> = {
@@ -306,23 +315,28 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
   // Add/Update/Delete Expense.
   const [downloadSuccessFormat, setDownloadSuccessFormat] = useState<"pdf" | "word" | null>(null);
 
+  // The server-built file (PDF / Word) for the current report + options.
+  const fetchReportBlob = async (format: "pdf" | "word") => {
+    const params: Record<string, string> = {
+      ...buildFilterParams(),
+      type: reportType,
+      sections: selectedSections[reportType].join(","),
+    };
+    if (reportType === "attendance" && hasSection("records")) {
+      params.event_ids = effectiveRecordIds.join(",");
+      params.attendee_filter = attendeeFilter;
+    }
+    const response = await api.get(`/reports/export/${format}`, { params, responseType: "blob" });
+    const mime = format === "pdf"
+      ? "application/pdf"
+      : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    return new Blob([response.data], { type: mime });
+  };
+
   const handleDownload = async (format: "pdf" | "word") => {
     setDownloading(true);
     try {
-      const params: Record<string, string> = {
-        ...buildFilterParams(),
-        type: reportType,
-        sections: selectedSections[reportType].join(","),
-      };
-      if (reportType === "attendance" && hasSection("records")) {
-        params.event_ids = effectiveRecordIds.join(",");
-        params.attendee_filter = attendeeFilter;
-      }
-      const response = await api.get(`/reports/export/${format}`, { params, responseType: "blob" });
-      const mime = format === "pdf"
-        ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-      const blob = new Blob([response.data], { type: mime });
+      const blob = await fetchReportBlob(format);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
@@ -586,7 +600,43 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
   // Print from the options dialog: make sure the selected events' attendee
   // lists are loaded first, then hand off to the browser.
+  // Phones and tablets: window.print() of this page is unreliable there (many
+  // mobile browsers and installed web apps print nothing, or a cut-off copy), so
+  // "Print" builds the very same report as a PDF on the server and opens it in the
+  // device's own PDF viewer, which has the native Print / Share / Save actions.
+  const printViaPdf = async () => {
+    // Open the tab right now, inside the tap -- browsers block pop-ups opened after an await.
+    const win = window.open("", "_blank");
+    setDownloading(true);
+    try {
+      const blob = await fetchReportBlob("pdf");
+      const url = URL.createObjectURL(blob);
+      if (win && !win.closed) {
+        win.location.href = url;
+      } else {
+        // Pop-up blocked (some in-app browsers): fall back to a normal download.
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${reportType}-report.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+      setOptionsMode(null);
+    } catch {
+      win?.close();
+      setError(tUI("downloadFailedMessage"));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const handlePrintConfirmed = async () => {
+    if (isPhoneOrTablet()) {
+      await printViaPdf();
+      return;
+    }
     if (reportType === "attendance" && hasSection("records")) {
       setPreparing(true);
       const ok = await fetchAttendees(effectiveRecordIds);
@@ -707,7 +757,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           while scrolling. A sticky header here fought with the full-bleed
           dark page wrapper's own top padding and let content peek through
           above it while scrolling. */}
-      <div className="pt-2 pb-4 px-1 print:pb-0">
+      <div className="print:pb-0">
         {/* Official letterhead -- print only (hidden on screen). Makes a
             printed report a self-contained barangay hall record: full
             Republic/Province/Municipality/Barangay address block, the
@@ -760,14 +810,15 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
               carries the report's own formal title for print, so this
               stays hidden on the printed page instead of duplicating it. */}
           <div className="print:hidden">
-            <h1 className="text-2xl sm:text-4xl font-black text-white">{t("reports")}</h1>
-            <p className="mt-1 text-sm text-white/50">{t("reportsSubtitle")}</p>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("reports")}</h1>
+            <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("reportsSubtitle")}</p>
           </div>
           <div className="print:hidden flex items-center gap-2 self-start sm:self-auto">
             <button
               type="button"
               onClick={() => setOptionsMode("print")}
-              className="group inline-flex items-center gap-3.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-7 pr-2 py-2 text-[17px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95"
+              disabled={loading}
+              className="group inline-flex items-center gap-3.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-7 pr-2 py-2 text-[17px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
             >
               {tUI("printReport")}
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
@@ -1435,9 +1486,21 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                   <p className="font-bold text-white text-sm truncate print:text-[#005f63]">{item.name}</p>
                   <p className="text-xs text-white/40 mt-0.5 print:text-gray-500">{item.storage_location || "—"}</p>
                   <div className="mt-2 flex items-center justify-between">
-                    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${conditionColor[item.condition] ?? "bg-white/10 text-white/60 print:bg-gray-100 print:text-gray-600"}`}>
-                      {conditionLabel(item.condition)}
-                    </span>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${conditionColor[item.condition] ?? "bg-white/10 text-white/60 print:bg-gray-100 print:text-gray-600"}`}>
+                        {conditionLabel(item.condition)}
+                      </span>
+                      {Number(item.lost_quantity) > 0 && (
+                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${conditionColor.Lost}`}>
+                          {conditionLabel("Lost")} ×{item.lost_quantity}
+                        </span>
+                      )}
+                      {Number(item.disposed_quantity) > 0 && (
+                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${conditionColor.Disposed}`}>
+                          {conditionLabel("Disposed")} ×{item.disposed_quantity}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-sm font-bold text-white print:text-gray-800">×{item.quantity}</span>
                   </div>
                 </div>

@@ -1,10 +1,12 @@
 import { matchesSearch } from "../../../lib/search";
+import { highlightMatches } from "../../../lib/highlight";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RefreshCw, Filter, Search, Trash2, Layers, Clock, AlertTriangle } from 'lucide-react';
 import FilterDropdown from '../../../components/ui/FilterDropdown';
 import StatusModal from '../../../components/ui/StatusModal';
 import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 interface TrashedItem {
   id: string | number;
@@ -415,7 +417,7 @@ export default function ArchiveView() {
       </div>
 
       <p className="text-xs text-white/45">
-        {filteredItems.length} {t("itemsFoundCount")} &bull; {t("showingLabel")} {itemsPerPage} {t("perPage")}
+        {loading || pageSwitching ? 0 : filteredItems.length} {t("itemsFoundCount")} &bull; {t("showingLabel")} {itemsPerPage} {t("perPage")}
       </p>
 
       {filteredItems.length === 0 && !loading ? (
@@ -446,12 +448,12 @@ export default function ArchiveView() {
                     <tr key={`${item.type}-${item.id}-${index}`} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.05] transition-colors">
                       <td className="py-3.5 px-4">
                         <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${TYPE_BADGE_STYLES[item.type] ?? "bg-white/10 text-white/60 border border-white/15"}`}>
-                          {t(TYPE_LABEL_KEYS[item.type])}
+                          {highlightMatches(t(TYPE_LABEL_KEYS[item.type]), searchQuery)}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 font-semibold text-white">{item.name}</td>
+                      <td className="py-3.5 px-4 font-semibold text-white">{highlightMatches(item.name, searchQuery)}</td>
                       <td className="py-3.5 px-4 text-white/60 whitespace-nowrap">{item.deletedAt}</td>
-                      <td className="py-3.5 px-4 text-white/45">{item.deletedBy}</td>
+                      <td className="py-3.5 px-4 text-white/45">{highlightMatches(item.deletedBy, searchQuery)}</td>
                       <td className="py-3.5 px-4">
                         <button
                           onClick={() => setRestoreItem(item)}
@@ -475,7 +477,7 @@ export default function ArchiveView() {
         </div>
       )}
 
-      {totalPages > 1 && (
+      {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton withLabel /> : (
         <div className="flex flex-col sm:flex-row gap-3 justify-between items-center">
           <p className="text-sm text-white/45 text-center sm:text-left">
             {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages}
@@ -496,7 +498,7 @@ export default function ArchiveView() {
             >→</button>
           </div>
         </div>
-      )}
+      ))}
       </div>
       </div>
 

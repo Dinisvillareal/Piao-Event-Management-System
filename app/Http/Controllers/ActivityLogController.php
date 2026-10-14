@@ -45,7 +45,12 @@ class ActivityLogController extends Controller
             ];
 
             if (isset($moduleMap[$request->type])) {
-                $query->where('module', $moduleMap[$request->type]);
+                // Older suffix log rows were saved under module 'Residents';
+                // keep them in the Residents filter alongside 'User'.
+                $modules = $request->type === 'resident'
+                    ? ['User', 'Residents']
+                    : [$moduleMap[$request->type]];
+                $query->whereIn('module', $modules);
             }
         }
 

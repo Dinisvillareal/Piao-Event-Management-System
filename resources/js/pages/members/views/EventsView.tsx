@@ -496,7 +496,7 @@
 //                                   <div className="mt-2 flex gap-2">
 //                                     <button
 //                                       type="button"
-//                                       onClick={() => submitReview(e.id)}
+//                                       onClick={() => setConfirmReviewEventId(e.id)}
 //                                       disabled={reviewRating < 1 || submittingReview}
 //                                       className="flex-1 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-bold py-2 disabled:opacity-50 transition"
 //                                     >
@@ -570,6 +570,9 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { matchesSearch } from "../../../lib/search";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
 
 const THIS_WEEK_KEY = "__THIS_WEEK__";
 
@@ -604,6 +607,8 @@ interface EventsViewProps {
   attendanceRecords?: AttendanceRecord[];
   myFeedback?: FeedbackEntry[];
   onFeedbackSubmitted?: (entry: FeedbackEntry) => void;
+  /** True until the first events fetch lands -- shows the skeleton grid. */
+  loading?: boolean;
 }
 
 export default function EventsView({
@@ -614,8 +619,11 @@ export default function EventsView({
   attendanceRecords = [],
   myFeedback = [],
   onFeedbackSubmitted,
+  loading = false,
 }: EventsViewProps) {
   const { t, language } = useLanguage();
+  const [confirmReviewEventId, setConfirmReviewEventId] = useState<number | null>(null);
+  const [reviewSavedOpen, setReviewSavedOpen] = useState(false);
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
@@ -679,6 +687,7 @@ export default function EventsView({
   };
 
   const submitReview = async (eventId: number) => {
+    setConfirmReviewEventId(null);
     if (reviewRating < 1) return;
     setSubmittingReview(true);
     setReviewError(null);
@@ -697,6 +706,7 @@ export default function EventsView({
       });
       setReviewingEventId(null);
       setJustSubmittedEventId(eventId);
+      setReviewSavedOpen(true);
     } catch (err) {
       setReviewError(apiErrorMessage(err, t("submitReviewFailed")));
     } finally {
@@ -798,10 +808,10 @@ export default function EventsView({
     // <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> e rollback ni if dili mugana just below ani
     <div className="h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-hidden">
       {/* Fixed Header */}
-      <div className="flex-shrink-0 px-1 pt-2 pb-4">
+      <div className="flex-shrink-0 pb-6">
         <div className="w-full">
-          <h1 className="text-4xl font-black text-white">{t("eventsAndAttendance")}</h1>
-          <p className="mt-1 text-sm text-white/50">{t("eventsSubtitle")}</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("eventsAndAttendance")}</h1>
+          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("eventsSubtitle")}</p>
 
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -839,27 +849,41 @@ export default function EventsView({
           </div>
 
           <p className="mt-2 text-xs text-white/40">
-            {filteredEvents.length} of {allEvents.length} {t("eventsMatchCount")}
+            {loading || pageSwitching ? 0 : filteredEvents.length} of {loading || pageSwitching ? 0 : allEvents.length} {t("eventsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
           </p>
 
-          {/* PAGINATION — stays pinned in the fixed header */}
-          {totalPages > 1 && (
-            <div className="flex justify-end mt-4">
+          {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+          <div className="flex justify-end mt-4">
+            {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
               <div className="flex items-center gap-2">
-                <button onClick={() => goToPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
-                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">{currentPage}</span>
-                <button onClick={() => goToPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">→</button>
+                <button
+                  onClick={() => goToPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                >
+                  ←
+                </button>
+
+                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                  {currentPage}
+                </span>
+
+                <button
+                  onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                >
+                  →
+                </button>
               </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
-      <div className="flex-1 overflow-y-auto min-h-0 px-1 pb-4">
-        {pageSwitching ? (
+      <div className="flex-1 overflow-y-auto min-h-0 pb-4">
+        {pageSwitching || loading ? (
           <div className="grid gap-5 md:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
@@ -993,6 +1017,25 @@ export default function EventsView({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmReviewEventId !== null}
+        icon={<Star size={32} />}
+        title={t("confirmSubmitReviewTitle")}
+        body={t("confirmSubmitReviewBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("yesSubmit")}
+        onCancel={() => setConfirmReviewEventId(null)}
+        onConfirm={() => confirmReviewEventId !== null && submitReview(confirmReviewEventId)}
+      />
+      <StatusModal
+        open={reviewSavedOpen}
+        type="success"
+        title={t("successTitle")}
+        message={t("feedbackSavedConfirmation")}
+        okLabel={t("okLabel")}
+        onClose={() => setReviewSavedOpen(false)}
+      />
     </div>
   );
 }

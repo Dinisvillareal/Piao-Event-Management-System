@@ -11,7 +11,7 @@
        this is what guarantees every page, including one a card gets
        pushed onto by a page break, opens with a proper gutter of white
        space instead of content butting right up against the paper edge. --}}
-  @page { margin: 14mm 12mm 18mm 12mm; }
+  @page { margin: 10mm 12mm 18mm 12mm; }
   body { font-family: 'DejaVu Sans', sans-serif; color: #1a1a1a; font-size: 11px; }
   .center { text-align: center; }
   .hdr-table { width: 100%; border-collapse: collapse; }
@@ -312,8 +312,8 @@
     <div class="card">
       <h3>Attendance by Age Group</h3>
       <p class="desc">Adviser recommendation: resident profiling filtered by age.</p>
-      @if($ageBars->isEmpty())
-        <p class="empty">No data for the selected filters.</p>
+      @if($ageBars->isEmpty() || $ageBars->sum('value') == 0)
+        <p class="empty">No attendance has been recorded yet for the selected filters.</p>
       @else
         <table class="bar-table"><tr>
           @foreach($ageBars as $b)
@@ -681,7 +681,15 @@
               <div class="mini-title">{{ $cut($item['name'], 38) }}</div>
               <div class="mini-sub">{{ $cut($item['storage_location'] ?? '—', 60) }}</div>
               <table class="progress-row"><tr>
-                <td><span class="chip" style="background:{{ $cc['bg'] }}; color:{{ $cc['text'] }};">{{ $item['condition'] }}</span></td>
+                <td>
+                  <span class="chip" style="background:{{ $cc['bg'] }}; color:{{ $cc['text'] }};">{{ $item['condition'] }}</span>
+                  @foreach(['Lost' => $item['lost_quantity'] ?? 0, 'Disposed' => $item['disposed_quantity'] ?? 0] as $wl => $wu)
+                    @if($wu > 0)
+                      @php $wc = $chipColor($wl); @endphp
+                      <span class="chip" style="background:{{ $wc['bg'] }}; color:{{ $wc['text'] }};">{{ $wl }} ×{{ $wu }}</span>
+                    @endif
+                  @endforeach
+                </td>
                 <td class="progress-pct" style="text-align:right;">×{{ $item['quantity'] }}</td>
               </tr></table>
             </td>

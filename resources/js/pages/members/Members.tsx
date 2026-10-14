@@ -13,6 +13,16 @@ import { highlightMatches } from "../../lib/highlight";
 // import FeedbackPrompt from "../../components/ui/FeedbackPrompt";
 // import Skeleton from "../../components/ui/Skeleton";
 // import api from "../../lib/api";
+import { useLanguage } from "../../i18n/LanguageContext";
+
+// Real page title / subtitle shown above the loading skeleton (keys into the i18n table).
+const PAGE_HEADINGS: Record<string, [string, string]> = {
+  qr: ["myQrAndMemberships", "qrPageSubtitle"],
+  attendance: ["attendanceRecords", "attendanceSubtitle"],
+  events: ["eventsAndAttendance", "eventsSubtitle"],
+  notify: ["notify", "notificationsSubtitle"],
+  settings: ["settings", "memberSettingsSubtitle"],
+};
 
 // export default function MemberDashboard() {
 //   const currentPath = window.location.pathname.replace('/', '');
@@ -452,11 +462,11 @@ import { highlightMatches } from "../../lib/highlight";
 // }
 
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "../../components/layout/Sidebar";
 import TopHeader from "../../components/layout/TopHeader";
 import SettingsView from "./views/SettingsView";
-import DashboardView from "./views/DashboardView";
+import DashboardView, { MemberDashboardSkeleton } from "./views/DashboardView";
 import QRCodesView from "./views/QRCodesView";
 import AttendanceView, { AttendanceRecord } from "./views/AttendanceView";
 import NotificationsView from "./views/NotificationsView";
@@ -465,14 +475,17 @@ import OfflineBanner from "../../components/ui/OfflineBanner";
 import FeedbackPrompt from "../../components/ui/FeedbackPrompt";
 import Skeleton from "../../components/ui/Skeleton";
 import api from "../../lib/api";
+import { memberKeyFromPath, memberUrlFor } from "../../lib/memberRoutes";
 
 export default function MemberDashboard() {
-  const currentPath = window.location.pathname.replace('/', '');
-  const [active, setActiveState] = useState(currentPath || "dashboard");
+  const { t } = useLanguage();
+  const [active, setActiveState] = useState(() => memberKeyFromPath(window.location.pathname));
   const [member, setMember] = useState({
     id: "",
     name: "",
-    first_name: "",
+    // Last known first name, so the dashboard headline reads "Welcome back, Ana"
+    // even during the first moments before the account call returns.
+    first_name: (() => { try { return localStorage.getItem("member_first_name") || ""; } catch { return ""; } })(),
     last_name: "",
     user_code: ""
   });
@@ -488,6 +501,10 @@ export default function MemberDashboard() {
   const [pastEvents, setPastEvents] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  // First-load flags for the data-driven pages, so each page can show its own
+  // skeleton (like the staff pages) instead of flashing empty states / zeros.
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
 
   const parseApiDate = (value: string) => {
     if (!value) return new Date(0);
@@ -520,8 +537,7 @@ export default function MemberDashboard() {
 
   useEffect(() => {
     const handlePopState = () => {
-      const path = window.location.pathname.replace('/', '') || "dashboard";
-      setActiveState(path);
+      setActiveState(memberKeyFromPath(window.location.pathname));
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -570,6 +586,7 @@ export default function MemberDashboard() {
     api.get('/me')
       .then((res) => {
         const user = res.data;
+        try { localStorage.setItem("member_first_name", user.first_name || ""); } catch { /* storage unavailable */ }
         setMember({
           id: user.id,
           name: `${user.first_name} ${user.last_name}${user.suffix ? `, ${user.suffix}` : ''}`,
@@ -620,6 +637,8 @@ export default function MemberDashboard() {
       setPastEvents(formattedEvents.filter((e: any) => parseApiDate(e.date) < now));
     } catch (err) {
       console.error('Failed to fetch events:', err);
+    } finally {
+      setEventsLoading(false);
     }
   };
 
@@ -659,6 +678,8 @@ export default function MemberDashboard() {
       }));
     } catch (err) {
       console.error('Failed to fetch attendance:', err);
+    } finally {
+      setAttendanceLoading(false);
     }
   };
 
@@ -679,6 +700,7 @@ export default function MemberDashboard() {
       setAttendanceRecords(parsedData.records);
       setAttended(parsedData.attended);
       setMissed(parsedData.missed);
+      setAttendanceLoading(false); // cached copy is good enough to show right away
     }
     fetchAttendanceRecords(member.id);
   }, [member.id]);
@@ -703,9 +725,22 @@ export default function MemberDashboard() {
       .catch((err) => console.error('Failed to fetch my feedback:', err));
   }, [member.id]);
 
+  // Data pages (Dashboard / Attendance / Events) read from state that is kept
+  // in this component, so re-opening them would otherwise appear instantly with
+  // no loading state. Like the staff pages, every visit shows the page's
+  // skeleton briefly while the data is quietly refreshed.
+  const [navSwitching, setNavSwitching] = useState(false);
+  const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const setActive = (page: string) => {
-    const url = page === "dashboard" ? "/" : `/${page}`;
-    window.history.pushState({}, "", url);
+    window.history.pushState({}, "", memberUrlFor(page));
+    if (["dashboard", "attendance", "events"].includes(page)) {
+      setNavSwitching(true);
+      if (navTimer.current) clearTimeout(navTimer.current);
+      navTimer.current = setTimeout(() => setNavSwitching(false), 450);
+      fetchEvents();
+      if (member.id) fetchAttendanceRecords(member.id);
+    }
     setActiveState(page);
   };
 
@@ -719,26 +754,6 @@ export default function MemberDashboard() {
       ) : (part)
     );
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0A0E1A] p-6 sm:p-10">
-        <div className="mx-auto max-w-5xl space-y-8">
-          <div className="flex items-center gap-4">
-            <Skeleton className="h-12 w-12 rounded-full" />
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-3 w-28" />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
-          </div>
-          <Skeleton className="h-64 rounded-2xl" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-[#0A0E1A] text-white">
@@ -767,8 +782,25 @@ export default function MemberDashboard() {
               ================================================================ */}
           <div className="h-[calc(100vh-73px)] overflow-hidden flex-1">
             <div className="h-full">
-              {active === "dashboard" && (
+              {/* Same behaviour as the staff portal: the shell (sidebar +
+                  header) is always on screen and only the page body shows a
+                  skeleton while the account loads. */}
+              {loading && active === "dashboard" && <MemberDashboardSkeleton memberName={member.first_name} />}
+              {loading && (active === "qr" || active === "settings") && (
+                <div className="h-full overflow-hidden bg-[#0A0E1A] p-4 sm:p-8">
+                  <div>
+                    <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t(PAGE_HEADINGS[active]?.[0] ?? "settings")}</h1>
+                    <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t(PAGE_HEADINGS[active]?.[1] ?? "memberSettingsSubtitle")}</p>
+                  </div>
+                    <div className="mt-6 space-y-3">
+                      <Skeleton className="h-16 w-full rounded-2xl" />
+                      {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-3xl" />)}
+                    </div>
+                </div>
+              )}
+              {!loading && active === "dashboard" && (
                 <DashboardView
+                  loading={eventsLoading || attendanceLoading || navSwitching}
                   memberName={member.first_name}
                   fullName={member.name}
                   userId={member.id}
@@ -785,7 +817,7 @@ export default function MemberDashboard() {
                 />
               )}
 
-              {active === "qr" && (
+              {!loading && active === "qr" && (
                 <QRCodesView
                   highlightText={highlightText}
                   userId={member.id}
@@ -796,6 +828,7 @@ export default function MemberDashboard() {
 
               {active === "attendance" && (
                 <AttendanceView
+                  loading={attendanceLoading || navSwitching}
                   attendanceRecords={attendanceRecords}
                   highlightText={highlightText}
                   allEvents={allEvents}
@@ -805,6 +838,7 @@ export default function MemberDashboard() {
 
               {active === "events" && (
                 <EventsView
+                  loading={eventsLoading || navSwitching}
                   allEvents={allEvents}
                   highlightText={highlightText}
                   allMemberships={memberships}
@@ -824,7 +858,7 @@ export default function MemberDashboard() {
                 <NotificationsView highlightText={highlightText} />
               )}
 
-              {active === "settings" && (
+              {!loading && active === "settings" && (
                 <SettingsView member={member} />
               )}
             </div>

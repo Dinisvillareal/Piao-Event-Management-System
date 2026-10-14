@@ -8,6 +8,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 
 interface Notification {
@@ -43,6 +44,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    const [notificationSearch, setNotificationSearch] = useState("");
    const [dateFilter, setDateFilter] = useState("all"); // All / Upcoming / Past
    const [statusFilter, setStatusFilter] = useState("all"); // All / Read / Unread
+   const [eventFilter, setEventFilter] = useState("all"); // All / one specific event
    const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
    const [showCancelledModal, setShowCancelledModal] = useState(false);
    const [currentPage, setCurrentPage] = useState(1);
@@ -213,6 +215,18 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    };
 
 
+   // One entry per event that has at least one notification, A-Z.
+   const eventFilterOptions = useMemo(() => {
+       const seen = new Map<string, string>();
+       notifications.forEach((n) => {
+           if (n.event?.id != null && n.event.name) seen.set(String(n.event.id), n.event.name);
+       });
+       const list = Array.from(seen, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
+       return [{ value: "all", label: t("allEvents") }, ...list];
+       // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [notifications, language]);
+
+
    const filteredNotifications = useMemo(() => {
        let filtered = [...notifications];
 
@@ -223,27 +237,38 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
            );
        }
 
-       // Date filter: All / Upcoming / Past
+       // Event filter: All / Ongoing / Upcoming / Past
        if (dateFilter !== 'all') {
            const now = new Date();
+           const startOf = (n: Notification) => (n.event?.event_start ? new Date(n.event.event_start) : null);
+           const endOf = (n: Notification) =>
+               n.event?.event_end ? new Date(n.event.event_end) : startOf(n);
            if (dateFilter === 'upcoming') {
-               filtered = filtered.filter(n =>
-                   n.event?.event_start && new Date(n.event.event_start) > now
-               );
+               filtered = filtered.filter(n => { const st = startOf(n); return !!st && st > now; });
+           } else if (dateFilter === 'ongoing') {
+               filtered = filtered.filter(n => {
+                   const st = startOf(n); const en = endOf(n);
+                   return !!st && !!en && st <= now && en >= now;
+               });
            } else if (dateFilter === 'past') {
-               filtered = filtered.filter(n =>
-                   n.event?.event_start && new Date(n.event.event_start) < now
-               );
+               filtered = filtered.filter(n => { const en = endOf(n); return !!en && en < now; });
            }
+       }
+
+       // Event filter: only notifications about one chosen event
+       if (eventFilter !== 'all') {
+           filtered = filtered.filter(n => String(n.event?.id ?? '') === eventFilter);
        }
 
        // Status filter: All / Unread
        if (statusFilter === 'unread') {
            filtered = filtered.filter(n => !n.read);
+       } else if (statusFilter === 'read') {
+           filtered = filtered.filter(n => n.read);
        }
 
        return filtered;
-   }, [notifications, notificationSearch, dateFilter, statusFilter]);
+   }, [notifications, notificationSearch, dateFilter, statusFilter, eventFilter]);
 
 
    // Pagination logic
@@ -257,7 +282,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    // Reset to first page when filters change
    useEffect(() => {
        setCurrentPage(1);
-   }, [notificationSearch, dateFilter, statusFilter]);
+   }, [notificationSearch, dateFilter, statusFilter, eventFilter]);
 
 
    const closeModal = () => {
@@ -289,33 +314,14 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
        return notification.type === 'event_deleted' || !notification.event || notification.event?.deleted_at;
    };
 
-
-   if (loading) {
-       return (
-           <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 space-y-6">
-               <div className="space-y-2">
-                   <Skeleton className="h-8 w-56" />
-                   <Skeleton className="h-4 w-64" />
-               </div>
-               <Skeleton className="h-11 w-full rounded-xl" />
-               <div className="space-y-3">
-                   {Array.from({ length: 4 }).map((_, i) => (
-                       <Skeleton key={i} className="h-20 rounded-2xl sm:rounded-3xl" />
-                   ))}
-               </div>
-           </div>
-       );
-   }
-
-
    return (
-       <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 h-[calc(100vh-73px)] flex flex-col relative">
+       <div className="bg-[#0A0E1A] p-4 sm:p-8 h-[calc(100vh-73px)] flex flex-col relative">
            {/* Fixed Header - Never scrolls */}
-           <div className="flex-shrink-0 pt-2 pb-6 px-1 sm:px-2">
+           <div className="flex-shrink-0 pb-6">
                <div className="flex items-center justify-between">
                    <div>
-                       <h1 className="text-2xl sm:text-4xl font-black text-white">{t("notify")}</h1>
-                       <p className="text-xs sm:text-sm text-white/50 mt-1">
+                       <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("notify")}</h1>
+                       <p className="mt-1.5 text-sm text-white/50 max-w-xl">
                            {t("notificationsSubtitle")}
                        </p>
                    </div>
@@ -342,13 +348,29 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                            />
                        </div>
 
-                       <div className="flex gap-3">
+                       <div className="flex flex-wrap gap-3">
+                           {/* Event Filter -- searchable by event name */}
+                           <FilterDropdown
+                               value={eventFilter}
+                               onChange={setEventFilter}
+                               options={eventFilterOptions}
+                               align="right"
+                               panelWidthPx={288}
+                               className="h-11 pl-10 pr-8 shrink-0 max-w-[240px]"
+                               icon={<Calendar className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+                               dark
+                               searchable
+                               searchPlaceholder={t("search")}
+                               noResultsLabel={t("noMatchesFoundLabel")}
+                           />
+
                            {/* Date Filter */}
                            <FilterDropdown
                                value={dateFilter}
                                onChange={setDateFilter}
                                options={[
                                    { value: "all", label: t("allNotifications") },
+                                   { value: "ongoing", label: t("ongoingBadge") },
                                    { value: "upcoming", label: t("upcomingOption") },
                                    { value: "past", label: t("pastOption") },
                                ]}
@@ -364,6 +386,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                options={[
                                    { value: "all", label: t("allStatus") },
                                    { value: "unread", label: t("unreadOption") },
+                                   { value: "read", label: t("readOption") },
                                ]}
                                className="h-11 pl-10 pr-8 shrink-0"
                                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
@@ -374,13 +397,13 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                </div>
 
                <p className="mt-2 text-xs text-white/40">
-                   {filteredNotifications.length} {t("notificationsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
+                   {loading || pageSwitching ? 0 : filteredNotifications.length} {t("notificationsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
                </p>
 
 
                {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
                <div className="flex justify-end mt-4">
-                   {totalPages > 1 && (
+                   {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
                        <div className="flex items-center gap-2">
                            <button
                                onClick={() => goToPage(p => Math.max(1, p - 1))}
@@ -402,14 +425,14 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                →
                            </button>
                        </div>
-                   )}
+                   ))}
                </div>
            </div>
 
 
            {/* Scrollable Content Area - Only notifications scroll */}
-           <div className="flex-1 overflow-y-auto px-1 sm:px-2 pb-4">
-               {pageSwitching ? (
+           <div className="flex-1 overflow-y-auto pb-4">
+               {pageSwitching || loading ? (
                    <div className="space-y-3">
                        {Array.from({ length: 4 }).map((_, i) => (
                            <Skeleton key={i} className="h-20 rounded-2xl sm:rounded-3xl" />

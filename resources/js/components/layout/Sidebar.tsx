@@ -82,8 +82,8 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
 
   // Same active/inactive nav classes as the staff Sidebar, so a highlighted
   // nav item looks identical in both portals.
-  const inactiveNav = "text-white/55 hover:bg-white/[0.06] hover:text-white border border-transparent";
-  const activeNav = "bg-white/10 text-white font-semibold border border-white/40";
+  const inactiveNav = "text-white/55 hover:bg-white/[0.06] hover:text-white border border-transparent active:scale-[0.97] active:bg-white/[0.12]";
+  const activeNav = "bg-white/10 text-white font-semibold border border-white/40 active:scale-[0.97]";
 
   return (
     <>

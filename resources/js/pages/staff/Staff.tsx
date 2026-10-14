@@ -2,7 +2,7 @@ import { highlightMatches } from "../../lib/highlight";
 import React, { useEffect, useMemo, useState } from "react";
 
 // --- LAYOUT IMPORTS ---
-import Sidebar, { NAV, SETTINGS_NAV } from "./components/Sidebar";
+import Sidebar from "./components/Sidebar";
 import TopHeader from "./components/TopHeader";
 
 // --- VIEW IMPORTS ---
@@ -24,6 +24,7 @@ import ProfilingSettingsView from "./views/ProfilingSettingsView";
 import OfflineBanner from "../../components/ui/OfflineBanner";
 import api from "../../lib/api";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { staffKeyFromPath, staffUrlFor } from "../../lib/staffRoutes";
 
 // --- TYPES & MOCK DATA ---
 export type Resident = { id: string; name: string; age: number; address: string; contact: string; };
@@ -45,16 +46,7 @@ export const highlightText = (text: string, query: string) => highlightMatches(t
 // --------------------------
 export default function StaffDashboard() {
   const { t } = useLanguage();
-  const getInitialActive = () => {
-    const path = window.location.pathname;
-    const lastSegment = path.split('/').pop() || "";
-    const allNavItems = [...NAV, ...SETTINGS_NAV];
-    // Match on the friendly URL "path" first (e.g. "notifications"), and
-    // fall back to the internal "key" (e.g. "notify") so older bookmarked
-    // or previously-shared /staff/... links still resolve correctly.
-    const matched = allNavItems.find((item) => item.path === lastSegment || item.key === lastSegment);
-    return matched ? matched.key : "dashboard";
-  };
+  const getInitialActive = () => staffKeyFromPath(window.location.pathname);
 
   const [active, setActiveState] = useState(getInitialActive());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -72,7 +64,7 @@ export default function StaffDashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
 
   const setActive = (page: string, path?: string) => {
-    window.history.pushState({}, "", `/admin/${path ?? page}`);
+    window.history.pushState({}, "", staffUrlFor(page));
     setActiveState(page);
   };
 

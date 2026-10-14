@@ -266,10 +266,16 @@ class EventController extends Controller
                     ($event->notification_message ? "\n\n" . $event->notification_message : '')
                 );
 
-                app(FacebookService::class)->postEvent(
+                // postEvent() never throws -- it returns [ok, message]. Keep the
+                // result so a failed post is visible (laravel.log + response)
+                // instead of the event saving as if Facebook had worked.
+                [$fbOk, $fbMessage] = app(FacebookService::class)->postEvent(
                     'New Event: ' . $event->name,
                     $facebookBody
                 );
+                if (!$fbOk) {
+                    \Illuminate\Support\Facades\Log::warning('Facebook post failed: ' . $fbMessage, ['event' => $event->name]);
+                }
             }
 
             DB::commit();
@@ -283,6 +289,7 @@ class EventController extends Controller
             return response()->json([
                 'message' => 'Event created successfully',
                 'event'   => $event->load('borrowedItems.inventoryItem'),
+                'facebook' => isset($fbOk) ? ['posted' => $fbOk, 'message' => $fbMessage] : null,
             ], 201);
 
         } catch (\Exception $e) {

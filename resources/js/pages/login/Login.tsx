@@ -319,7 +319,7 @@ export default function LoginPage() {
         } else {
           sessionStorage.setItem("portalMode", "member");
         }
-        window.location.href = "/dashboard";
+        window.location.href = "/member/dashboard";
       } else {
         if (response.status === 401) {
           if (data.message && data.message.includes("deleted")) {
@@ -379,7 +379,7 @@ export default function LoginPage() {
     }
     setPortalTransitionVisible(true);
     setTimeout(() => {
-      window.location.href = "/dashboard";
+      window.location.href = "/member/dashboard";
     }, PORTAL_TRANSITION_MS);
   };
 
