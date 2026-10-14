@@ -184,6 +184,16 @@ export function EventsView({
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
+  // Same brief flash inside an event's detail view (tab switch, attendance /
+  // feedback page switch).
+  const [detailSwitching, setDetailSwitching] = useState(false);
+  const detailSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashDetail = () => {
+    setDetailSwitching(true);
+    if (detailSwitchTimer.current) clearTimeout(detailSwitchTimer.current);
+    detailSwitchTimer.current = setTimeout(() => setDetailSwitching(false), 350);
+  };
+  useEffect(() => () => { if (detailSwitchTimer.current) clearTimeout(detailSwitchTimer.current); }, []);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -694,8 +704,14 @@ export function EventsView({
     return sortedFilteredEvents.slice(startIndex, startIndex + itemsPerPage);
   }, [sortedFilteredEvents, currentPage, itemsPerPage]);
 
+  // Filters / search changing flashes the list skeleton too (not on first mount).
+  const filtersMounted = useRef(false);
   useEffect(() => {
     setCurrentPage(1);
+    if (!filtersMounted.current) { filtersMounted.current = true; return; }
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
   }, [eventSearch, eventFilter, membershipFilter, selectedDate]);
 
   // Runs the field-level checks that used to live at the top of the old
@@ -1184,7 +1200,7 @@ export function EventsView({
             // the list view right below this (and the Dashboard/Residents/
             // Households pages), so the event detail reads as part of the
             // same system instead of the light page it used to be.
-            <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+            <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
             <div className="space-y-6">
               <button
                 onClick={() => setViewEv(null)}
@@ -1234,7 +1250,7 @@ export function EventsView({
                 {tabs.map((tab) => (
                   <button
                     key={tab.key}
-                    onClick={() => setDetailTab(tab.key)}
+                    onClick={() => { if (tab.key !== detailTab) flashDetail(); setDetailTab(tab.key); }}
                     className={`pb-3 px-1 text-[15px] font-semibold border-b-2 whitespace-nowrap transition ${
                       detailTab === tab.key ? "border-[#4FBEB0] text-[#4FBEB0]" : "border-transparent text-white/50 hover:text-white"
                     }`}
@@ -1376,7 +1392,7 @@ export function EventsView({
                       Households, Memberships and main Events search --
                       the status filter sits alongside it, unchanged. */}
                   <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
                       <div className="relative flex-1 min-w-[220px]">
                         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                         <input
@@ -1428,7 +1444,17 @@ export function EventsView({
                         </tr>
                       </thead>
                       <tbody>
-                        {paginatedAttendance.length === 0 ? (
+                        {detailSwitching ? (
+                          Array.from({ length: 6 }).map((_, i) => (
+                            <tr key={`sk-${i}`} className="border-t border-white/[0.06]">
+                              <td className="px-5 py-4"><Skeleton className="h-4 w-8" /></td>
+                              <td className="px-5 py-4"><Skeleton className="h-4 w-3/4" /></td>
+                              <td className="px-5 py-4"><Skeleton className="h-4 w-20" /></td>
+                              <td className="px-5 py-4"><Skeleton className="h-4 w-20" /></td>
+                              <td className="px-5 py-4"><Skeleton className="h-6 w-20 rounded-full" /></td>
+                            </tr>
+                          ))
+                        ) : paginatedAttendance.length === 0 ? (
                           <tr>
                             <td colSpan={5} className="p-6 text-center text-white/40 italic bg-white/[0.03]">
                               {t("noMatchingRecords")}
@@ -1481,10 +1507,10 @@ export function EventsView({
 
                   {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
                   <div className="flex justify-end mt-4">
-                    {attendanceTotalPages > 1 && (
+                    {attendanceTotalPages > 1 && (detailSwitching ? <PagerSkeleton /> : (
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setAttendanceCurrentPage(p => Math.max(1, p - 1))}
+                            onClick={() => { flashDetail(); setAttendanceCurrentPage(p => Math.max(1, p - 1)); }}
                             disabled={attendanceCurrentPage === 1}
                             className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                           >
@@ -1494,14 +1520,14 @@ export function EventsView({
                             {attendanceCurrentPage}
                           </span>
                           <button
-                            onClick={() => setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1))}
+                            onClick={() => { flashDetail(); setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1)); }}
                             disabled={attendanceCurrentPage === attendanceTotalPages}
                             className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                           >
                             →
                           </button>
                         </div>
-                    )}
+                    ))}
                   </div>
                 </div>
               )}
@@ -1530,8 +1556,19 @@ export function EventsView({
                     <p className="mt-1.5 text-xs text-white/45">{eventFeedback.length} {t("ratingsCountLabel")}</p>
                   </div>
 
-                  {feedbackLoading ? (
-                    <p className="text-sm text-white/40 italic text-center py-6">{t("loadingLabel")}</p>
+                  {feedbackLoading || detailSwitching ? (
+                    <div className="space-y-2">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 flex items-start gap-3">
+                          <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+                          <div className="flex-1 space-y-2">
+                            <Skeleton className="h-4 w-1/3" />
+                            <Skeleton className="h-3 w-1/4" />
+                            <Skeleton className="h-3 w-4/5" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   ) : eventFeedback.length === 0 ? (
                     <p className="text-sm text-white/40 italic bg-white/[0.03] rounded-2xl p-6 text-center">{t("noFeedbackYetLabel")}</p>
                   ) : (
@@ -1565,10 +1602,10 @@ export function EventsView({
 
                       {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
                       <div className="flex justify-end mt-4">
-                        {feedbackTotalPages > 1 && (
+                        {feedbackTotalPages > 1 && (detailSwitching ? <PagerSkeleton /> : (
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => setFeedbackCurrentPage(p => Math.max(1, p - 1))}
+                                onClick={() => { flashDetail(); setFeedbackCurrentPage(p => Math.max(1, p - 1)); }}
                                 disabled={feedbackCurrentPage === 1}
                                 className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                               >
@@ -1578,14 +1615,14 @@ export function EventsView({
                                 {feedbackCurrentPage}
                               </span>
                               <button
-                                onClick={() => setFeedbackCurrentPage(p => Math.min(feedbackTotalPages, p + 1))}
+                                onClick={() => { flashDetail(); setFeedbackCurrentPage(p => Math.min(feedbackTotalPages, p + 1)); }}
                                 disabled={feedbackCurrentPage === feedbackTotalPages}
                                 className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                               >
                                 →
                               </button>
                             </div>
-                        )}
+                        ))}
                       </div>
                     </div>
                   )}
@@ -1601,7 +1638,7 @@ export function EventsView({
               Households/Memberships background and palette. The Add/Edit
               Event modal further down stays in the original light theme,
               same scoping used on those pages. */}
-          <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+          <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
           <div className="space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
@@ -1626,7 +1663,7 @@ export function EventsView({
               status filter and date filter sit alongside it in the same
               card, resized to match, instead of being removed. */}
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
               <div className="relative flex-1 min-w-[220px]">
                 <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                 <input
@@ -1691,7 +1728,7 @@ export function EventsView({
 
           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
           <div className="flex justify-end">
-            {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
+            {((openSkeleton || pageSwitching || loading) || totalPages > 1) && ((openSkeleton || pageSwitching || loading) ? <PagerSkeleton /> : (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => goToPage(Math.max(1, currentPage - 1))}
@@ -1717,17 +1754,23 @@ export function EventsView({
           {loading || pageSwitching || openSkeleton ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <Skeleton className="h-4 w-2/3" />
-                    <Skeleton className="h-5 w-16 rounded-full shrink-0" />
+                <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                  <div className="flex items-start justify-between gap-2">
+                    <Skeleton className="h-11 w-11 rounded-full shrink-0" />
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Skeleton className="h-6 w-6 rounded-full" />
+                      <Skeleton className="h-6 w-6 rounded-full" />
+                      <Skeleton className="h-6 w-20 rounded-full" />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Skeleton className="h-3 w-1/2" />
-                    <Skeleton className="h-3 w-2/5" />
-                    <Skeleton className="h-3 w-1/3" />
+                  <Skeleton className="mt-4 h-4 w-2/3" />
+                  <Skeleton className="mt-3 h-3 w-1/2" />
+                  <Skeleton className="mt-2 h-3 w-2/5" />
+                  <Skeleton className="mt-3 h-3 w-full" />
+                  <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-2">
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-3 w-24" />
                   </div>
-                  <Skeleton className="h-9 w-full rounded-xl" />
                 </div>
               ))}
             </div>

@@ -195,7 +195,7 @@
 //   // Loading state
 //   if (loading) {
 //     return (
-//       <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 space-y-6">
+//       <div className="-m-3 sm:-m-5 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 space-y-6">
 //         <div className="space-y-2">
 //           <Skeleton className="h-8 w-64" />
 //           <Skeleton className="h-4 w-48" />
@@ -212,7 +212,7 @@
 //   // Error state
 //   if (error) {
 //     return (
-//       <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-5">
+//       <div className="-m-3 sm:-m-5 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-5">
 //         <div className="bg-red-500/10 border border-red-500/25 rounded-xl p-4 text-red-400">
 //           <p className="font-semibold">{t("errorLabel")}</p>
 //           <p className="text-sm mt-1">{error}</p>
@@ -228,7 +228,7 @@
 //   }
 
 //   return (
-//     <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] h-[calc(100vh-73px)] p-4 sm:p-8 flex flex-col">
+//     <div className="-m-3 sm:-m-5 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] h-[calc(100dvh-73px)] p-4 sm:p-8 flex flex-col">
 //       {/* Fixed Header - Never scrolls */}
 //       <div className="flex-shrink-0 px-2 sm:px-3 pt-2 z-10">
 //         <div className="max-w-6xl pb-4 border-b border-white/10">
@@ -1077,7 +1077,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
   return (
     <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> 
-    {/* <div className="h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-hidden"> */}
+    {/* <div className="h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-hidden"> */}
       {/* Fixed header: title + subtitle */}
       <div className="flex-shrink-0 pb-6">
         <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("myQrAndMemberships")}</h1>

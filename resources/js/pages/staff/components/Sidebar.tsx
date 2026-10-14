@@ -210,7 +210,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
       )}
 
       <aside
-        className={`print:hidden w-[340px] flex-col bg-[#0A0E1A] h-screen fixed md:sticky top-0 z-40 flex overflow-hidden ${
+        className={`print:hidden w-[340px] max-w-[85vw] flex-col bg-[#0A0E1A] h-[100dvh] fixed md:sticky top-0 z-40 flex overflow-hidden ${
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >

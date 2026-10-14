@@ -315,7 +315,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    };
 
    return (
-       <div className="bg-[#0A0E1A] p-4 sm:p-8 h-[calc(100vh-73px)] flex flex-col relative">
+       <div className="bg-[#0A0E1A] p-4 sm:p-8 h-[calc(100dvh-73px)] flex flex-col relative overflow-y-auto lg:overflow-visible">
            {/* Fixed Header - Never scrolls */}
            <div className="flex-shrink-0 pb-6">
                <div className="flex items-center justify-between">
@@ -338,7 +338,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
 
                <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                   <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                   <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
                        <div className="flex-1 min-w-[220px]">
                            <SearchBar
                                value={notificationSearch}
@@ -431,7 +431,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
 
            {/* Scrollable Content Area - Only notifications scroll */}
-           <div className="flex-1 overflow-y-auto pb-4">
+           <div className="lg:flex-1 lg:overflow-y-auto pb-4">
                {pageSwitching || loading ? (
                    <div className="space-y-3">
                        {Array.from({ length: 4 }).map((_, i) => (

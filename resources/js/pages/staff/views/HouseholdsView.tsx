@@ -300,7 +300,7 @@ export default function HouseholdsView() {
       {/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents
           background and palette. Modals further down stay in the original
           light theme, same scoping used on the Residents page. */}
-      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
       <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>

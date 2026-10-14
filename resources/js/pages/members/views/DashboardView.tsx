@@ -92,7 +92,7 @@ export function MemberDashboardSkeleton({ memberName = "" }: { memberName?: stri
   const { t } = useLanguage();
   const panel = "rounded-2xl border border-white/10 bg-white/[0.04] p-5";
   return (
-    <div className="h-[calc(100vh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="h-[calc(100dvh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8">
       <div className="space-y-5">
         <MemberDashboardHeader memberName={memberName} loading />
 
@@ -274,7 +274,7 @@ export default function DashboardView({
       {/* Full-bleed dark page wrapper -- same convention as every converted
           staff page (Dashboard, Residents, Households, Memberships, Events,
           Inventory, Budget, Returns, Activity Logs, Archive, Reports). */}
-      <div className="h-[calc(100vh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="h-[calc(100dvh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8">
         <div className="space-y-5">
       <MemberDashboardHeader memberName={memberName} />
 

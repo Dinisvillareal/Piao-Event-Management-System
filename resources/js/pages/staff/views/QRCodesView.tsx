@@ -650,7 +650,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents/
           Households background and palette. Modals further down stay in
           the original light theme, same scoping used on those pages. */}
-      <div className="-m-3 sm:-m-6 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
       <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

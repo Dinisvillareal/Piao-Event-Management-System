@@ -282,7 +282,7 @@
 //   }, [paginatedEvents]);
 
 //   return (
-//     <div className="-m-3 sm:-m-5 min-h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+//     <div className="-m-3 sm:-m-5 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
 //     <div className="space-y-6">
 //       {/* Not sticky -- matches every other converted page. */}
 //       <div className="px-1 pt-2 pb-4">
@@ -293,7 +293,7 @@
 //           </p>
 
 //           <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-//             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+//             <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
 //               <div className="flex-1 min-w-[220px]">
 //                 <SearchBar
 //                   value={eventSearch}
@@ -806,7 +806,7 @@ export default function EventsView({
 
   return (
     // <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> e rollback ni if dili mugana just below ani
-    <div className="h-[calc(100vh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-hidden">
+    <div className="h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-y-auto lg:overflow-hidden">
       {/* Fixed Header */}
       <div className="flex-shrink-0 pb-6">
         <div className="w-full">
@@ -814,7 +814,7 @@ export default function EventsView({
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("eventsSubtitle")}</p>
 
           <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
               <div className="flex-1 min-w-[220px]">
                 <SearchBar value={eventSearch} onChange={setEventSearch} placeholder={t("searchEventsPlaceholder")} dark />
               </div>
@@ -882,7 +882,7 @@ export default function EventsView({
       </div>
 
       {/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
-      <div className="flex-1 overflow-y-auto min-h-0 pb-4">
+      <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0 pb-4">
         {pageSwitching || loading ? (
           <div className="grid gap-5 md:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
