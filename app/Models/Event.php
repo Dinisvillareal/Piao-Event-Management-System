@@ -24,6 +24,7 @@ class Event extends Model
         'notification_message',
         'deleted_by',
         'approved_budget',
+        'posted_to_facebook',
     ];
 
     protected $casts = [
@@ -33,6 +34,7 @@ class Event extends Model
         'call_time_start' => 'datetime',
         'call_time_end' => 'datetime',
         'approved_budget' => 'decimal:2',
+        'posted_to_facebook' => 'boolean',
     ];
 
     private $_cachedMemberships = null;
@@ -52,7 +54,7 @@ class Event extends Model
             ->all();
 
         $this->attributes['membership_ids'] = json_encode($ids);
-        
+
         $this->_cachedMemberships = null;
         $this->_cachedNotificationTarget = null;
         $this->_cachedFormattedNotification = null;
@@ -69,7 +71,7 @@ class Event extends Model
         if ($this->_cachedMemberships !== null) {
             return $this->_cachedMemberships;
         }
-        
+
         $ids = $this->membership_ids ?? [];
         if (empty($ids)) {
             $this->_cachedMemberships = collect();
@@ -85,20 +87,20 @@ class Event extends Model
         if ($this->_cachedNotificationTarget !== null) {
             return $this->_cachedNotificationTarget;
         }
-        
+
         $ids = $this->membership_ids ?? [];
-        
+
         if (empty($ids)) {
             $this->_cachedNotificationTarget = 'All Residents';
             return $this->_cachedNotificationTarget;
         }
-        
+
         $memberships = $this->memberships;
         if ($memberships->count() === 1) {
             $this->_cachedNotificationTarget = $memberships->first()->name . ' Members';
             return $this->_cachedNotificationTarget;
         }
-        
+
         $this->_cachedNotificationTarget = $memberships->pluck('name')->join(', ');
         return $this->_cachedNotificationTarget;
     }
@@ -108,7 +110,7 @@ class Event extends Model
         if ($this->_cachedFormattedNotification !== null) {
             return $this->_cachedFormattedNotification;
         }
-        
+
         $target = $this->notification_target;
         $message = $this->notification_message ?? 'New event announced';
         $this->_cachedFormattedNotification = "To: {$target} • {$this->name} • {$message}";
@@ -120,7 +122,7 @@ class Event extends Model
         if ($this->_cachedFormattedUpdatedNotification !== null) {
             return $this->_cachedFormattedUpdatedNotification;
         }
-        
+
         $target = $this->notification_target;
         $message = $this->notification_message ?? 'Event details updated';
         $this->_cachedFormattedUpdatedNotification = "✏️ UPDATED: To: {$target} • {$this->name} • {$message}";
@@ -172,7 +174,7 @@ class Event extends Model
         $avg = $this->feedback()->avg('rating');
         return $avg !== null ? round((float) $avg, 1) : null;
     }
-    
+
     public function clearCache()
     {
         $this->_cachedMemberships = null;
@@ -184,23 +186,23 @@ class Event extends Model
     public function getEligibleResidents()
     {
         $membershipIds = $this->membership_ids ?? [];
-        
+
         if (empty($membershipIds)) {
             return User::where('role', 'Resident')->get();
         }
-        
+
         return User::where('role', 'Resident')
             ->whereHas('memberships', function ($query) use ($membershipIds) {
                 $query->whereIn('membership_id', $membershipIds);
             })
             ->get();
     }
-    
+
     public function createAttendanceRecords()
     {
         $residents = $this->getEligibleResidents();
         $now = now();
-        
+
         $records = [];
         foreach ($residents as $resident) {
             $records[] = [
@@ -213,19 +215,19 @@ class Event extends Model
                 'updated_at' => $now,
             ];
         }
-        
+
         if (!empty($records)) {
             EventAttendance::insert($records);
         }
-        
+
         return count($records);
     }
-    
+
     public function syncAttendanceRecords()
     {
         $eligibleResidentIds = $this->getEligibleResidents()->pluck('id')->toArray();
         $existingResidentIds = $this->attendances()->pluck('user_id')->toArray();
-        
+
         // Add records for new eligible residents
         $newResidentIds = array_diff($eligibleResidentIds, $existingResidentIds);
         foreach ($newResidentIds as $residentId) {
@@ -237,7 +239,7 @@ class Event extends Model
                 'status' => 'missed'
             ]);
         }
-        
+
         // Remove records for residents no longer eligible. Deliberate
         // project decision: when an event's targeting changes, anyone no
         // longer on the eligible list is removed ENTIRELY, including
