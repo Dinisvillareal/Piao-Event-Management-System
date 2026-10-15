@@ -159,14 +159,20 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     .map((sec) => ({ key: sec.key, total: sec.items.length, items: pageSlice.filter((x) => x.key === sec.key).map((x) => x.item) }))
     .filter((sec) => sec.items.length > 0);
 
-  // Any change to what's being listed starts again from page 1.
-  useEffect(() => {
-    setPage(1);
-  }, [search, timeTab, budgetFilter, selectedDate]);
-
   // Brief skeleton on every page change, same as the Residents / Events lists, so paging feels consistent app-wide.
   const [pageSwitching, setPageSwitching] = useState(false);
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Any change to what's being listed (tab, budget filter, search, date) starts
+  // again from page 1 and flashes the same skeleton as a page change.
+  const filtersMounted = useRef(false);
+  useEffect(() => {
+    setPage(1);
+    if (!filtersMounted.current) { filtersMounted.current = true; return; }
+    setPageSwitching(true);
+    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+  }, [search, timeTab, budgetFilter, selectedDate]);
   const goToPage = (n: number) => {
     const next = Math.min(Math.max(1, n), totalPages);
     if (next === currentPage) return;
@@ -274,9 +280,6 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           </div>
 
           {/* When: Ongoing / Upcoming / Past, with live counts. */}
-          {initialLoading || pageSwitching ? (
-            <Skeleton className="mt-4 h-[60px] w-full rounded-xl" />
-          ) : (
           <div className="mt-4 grid grid-cols-4 gap-1 rounded-xl bg-white/[0.04] p-1" role="tablist" aria-label={t("budgetEventsHeading")}>
             {([
               ["all", t("budgetFilterAll")],
@@ -295,21 +298,12 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                 }`}
               >
                 <span className="text-[13px] font-bold">{label}</span>
-                <span className={`mt-0.5 text-xs font-semibold ${timeTab === key ? "text-white/80" : "text-white/40"}`}>{statusCounts[key]}</span>
+                <span className={`mt-0.5 text-xs font-semibold ${timeTab === key ? "text-white/80" : "text-white/40"}`}>{initialLoading ? 0 : statusCounts[key]}</span>
               </button>
             ))}
           </div>
-          )}
 
           {/* Budget health: all events, only those close to their limit, or only those over. */}
-          {initialLoading || pageSwitching ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2.5">
-              <Skeleton className="h-3 w-14" />
-              <Skeleton className="h-9 w-24 rounded-full" />
-              <Skeleton className="h-9 w-32 rounded-full" />
-              <Skeleton className="h-9 w-32 rounded-full" />
-            </div>
-          ) : (
           <div className="mt-3 flex flex-wrap items-center gap-2.5">
             <span className="text-xs font-semibold uppercase tracking-wide text-white/40">{t("budgetFilterLabel")}</span>
             {([
@@ -328,11 +322,10 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                 }`}
               >
                 {label}
-                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${budgetFilter === key ? "bg-white/25" : "bg-white/10"}`}>{filterCounts[key]}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${budgetFilter === key ? "bg-white/25" : "bg-white/10"}`}>{initialLoading ? 0 : filterCounts[key]}</span>
               </button>
             ))}
           </div>
-          )}
 
           {/* Pager: just ← ● →, same as the Residents / Events lists. */}
           {(initialLoading || pageSwitching) && (initialLoading || totalPages > 1) && (

@@ -59,13 +59,39 @@ class HouseholdController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        // A household must be created WITH a head -- the head is the one
+        // person event SMS is sent to, so a headless household silently
+        // receives nothing. Members are optional extras; the head always
+        // counts as a member of the household.
         $request->validate([
             'address'         => 'nullable|string|max:255',
             'contact_number'  => 'nullable|string|max:15',
+            'head_user_id'    => 'required|integer|exists:users,id',
             'member_ids'      => 'nullable|array',
             'member_ids.*'    => 'integer|exists:users,id',
-            'head_user_id'    => 'nullable|integer|exists:users,id',
+        ], [
+            'head_user_id.required' => 'Please choose a head of household.',
         ]);
+
+        $memberIds = collect($request->member_ids ?? [])
+            ->push((int) $request->head_user_id)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        // Everyone being linked in must be an active resident/staff who is
+        // not already in another household.
+        $eligible = User::whereIn('id', $memberIds)
+            ->whereNull('household_id')
+            ->whereNull('deleted_at')
+            ->whereIn('role', ['Resident', 'Staff'])
+            ->pluck('id');
+
+        if ($eligible->count() !== $memberIds->count()) {
+            return response()->json([
+                'message' => 'One or more selected residents already belong to a household. Please refresh and try again.',
+            ], 422);
+        }
 
         DB::beginTransaction();
         try {
@@ -75,26 +101,16 @@ class HouseholdController extends Controller
                 'contact_number'  => $request->contact_number,
             ]);
 
-            $memberIds = $request->member_ids ?? [];
-            if (!empty($memberIds)) {
-                // Same reasoning as addMember() below: a resident being
-                // linked in here never carries a stale is_household_head
-                // flag from wherever they were before -- otherwise this
-                // bulk assignment can silently hand the new household a
-                // head nobody actually chose.
-                User::whereIn('id', $memberIds)->update([
-                    'household_id'      => $household->id,
-                    'is_household_head' => false,
-                ]);
-            }
+            // A resident being linked in never carries a stale
+            // is_household_head flag from wherever they were before.
+            User::whereIn('id', $memberIds)->update([
+                'household_id'      => $household->id,
+                'is_household_head' => false,
+            ]);
 
-            if ($request->filled('head_user_id') && in_array($request->head_user_id, $memberIds)) {
-                // Only one head per household -- clear any stale flag first.
-                User::where('household_id', $household->id)->update(['is_household_head' => false]);
-                $head = User::find($request->head_user_id);
-                $head->update(['is_household_head' => true]);
-                $household->backfillFromHead($head);
-            }
+            $head = User::find($request->head_user_id);
+            $head->update(['is_household_head' => true]);
+            $household->backfillFromHead($head);
 
             DB::commit();
 
@@ -232,12 +248,18 @@ class HouseholdController extends Controller
         $household = Household::findOrFail($id);
         $user = User::where('household_id', $household->id)->findOrFail($userId);
 
+        $wasHead = (bool) $user->is_household_head;
+
         $user->update([
             'household_id'      => null,
             'is_household_head' => false,
         ]);
 
         $this->createLog('Update', "Removed {$user->first_name} {$user->last_name} from household '{$household->code}'");
+
+        if ($wasHead) {
+            $this->createLog('Warning', "Household '{$household->code}' now has no head of household -- event SMS will not reach it until a new head is assigned");
+        }
 
         return response()->json($household->load('members'));
     }
@@ -322,6 +344,27 @@ class HouseholdController extends Controller
             ->get();
 
         return response()->json($residents);
+    }
+
+    /**
+     * Households that currently have no head of household. Computed live
+     * (not stored) so the warning is always accurate and clears by itself
+     * the moment a head is assigned -- whether the head was removed, the
+     * head's resident record was archived, or the household predates the
+     * "head required" rule.
+     */
+    public function alerts()
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $households = Household::withCount('members')
+            ->whereDoesntHave('head')
+            ->orderBy('code')
+            ->get(['id', 'code', 'address', 'contact_number']);
+
+        return response()->json($households);
     }
 
     /**

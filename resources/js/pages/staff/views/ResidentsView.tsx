@@ -1796,7 +1796,11 @@ const handleDeleteResident = async () => {
             ].map((opt) => (
               <button
                 key={opt.key}
-                onClick={() => setMembershipFilter(opt.key)}
+                onClick={() => {
+                  if (opt.key === membershipFilter) return;
+                  setMembershipFilter(opt.key);
+                  goToPage(1);
+                }}
                 className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
                   membershipFilter === opt.key ? "bg-sage-700 text-white shadow-sm" : "bg-white/[0.04] text-white/60 hover:bg-white/[0.08]"
                 }`}
@@ -1851,11 +1855,11 @@ const handleDeleteResident = async () => {
           <table className="w-full text-[15px] min-w-[760px]">
             <thead>
               <tr className="border-b border-white/10">
-                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("residentOption")}</th>
-                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("ageColumn")}</th>
-                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("rptColContact")}</th>
-                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("householdLabel")}</th>
-                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("reportTypeMembership")}</th>
+                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-20" /> : t("residentOption")}</th>
+                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-10" /> : t("ageColumn")}</th>
+                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-16" /> : t("rptColContact")}</th>
+                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-20" /> : t("householdLabel")}</th>
+                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-24" /> : t("reportTypeMembership")}</th>
                 <th className="py-3 px-4 w-10" />
               </tr>
             </thead>

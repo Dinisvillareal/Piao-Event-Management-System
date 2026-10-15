@@ -1544,16 +1544,29 @@ export function EventsView({
 
               {detailTab === "feedback" && (
                 <div className="space-y-5">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center">
-                    <p className="text-4xl font-black text-white">{averageRating > 0 ? averageRating.toFixed(1) : "—"}</p>
-                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-white/45">{t("averageRatingLabel")}</p>
-                    <div className="mt-2.5 flex justify-center gap-1">
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <Star key={n} className={`h-5 w-5 ${n <= Math.round(averageRating) ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
-                      ))}
+                  {feedbackLoading || detailSwitching ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 flex flex-col items-center">
+                      <Skeleton className="h-10 w-16" />
+                      <Skeleton className="mt-2 h-3 w-28" />
+                      <div className="mt-3 flex justify-center gap-1">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Skeleton key={n} className="h-5 w-5 rounded-md" />
+                        ))}
+                      </div>
+                      <Skeleton className="mt-2 h-3 w-20" />
                     </div>
-                    <p className="mt-1.5 text-xs text-white/45">{eventFeedback.length} {t("ratingsCountLabel")}</p>
-                  </div>
+                  ) : (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center">
+                      <p className="text-4xl font-black text-white">{averageRating > 0 ? averageRating.toFixed(1) : "—"}</p>
+                      <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-white/45">{t("averageRatingLabel")}</p>
+                      <div className="mt-2.5 flex justify-center gap-1">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star key={n} className={`h-5 w-5 ${n <= Math.round(averageRating) ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
+                        ))}
+                      </div>
+                      <p className="mt-1.5 text-xs text-white/45">{eventFeedback.length} {t("ratingsCountLabel")}</p>
+                    </div>
+                  )}
 
                   {feedbackLoading || detailSwitching ? (
                     <div className="space-y-2">

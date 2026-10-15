@@ -740,7 +740,9 @@ class UserController extends Controller
             // head per household is allowed) and would show a deleted
             // resident as the active head if the household is viewed
             // before this record is restored.
+            $headOfHouseholdId = null;
             if ($user->is_household_head) {
+                $headOfHouseholdId = $user->household_id;
                 $user->is_household_head = false;
             }
 
@@ -768,6 +770,20 @@ class UserController extends Controller
                 'User',
                 "Deleted user {$user->user_code} by " . auth()->user()->user_code
             );
+
+            // The household just lost its head -- leave a warning in the
+            // activity log (the staff Notifications "Household alerts" tab
+            // and the Households page banner pick it up live).
+            if ($headOfHouseholdId) {
+                $hh = Household::find($headOfHouseholdId);
+                if ($hh) {
+                    $this->createLog(
+                        'Warning',
+                        'Households',
+                        "Household '{$hh->code}' lost its head of household ({$user->user_code} was archived) -- assign a new head so event SMS keeps reaching it"
+                    );
+                }
+            }
 
             DB::commit();
 
