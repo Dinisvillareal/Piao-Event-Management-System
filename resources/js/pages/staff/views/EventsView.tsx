@@ -21,7 +21,6 @@ import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 import { tc } from "../../../lib/contentTranslations";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 // What can go on one event's printout / PDF / Word file. Keys must match the
 // backend's allowed attendance sections (ReportController::buildExportPayload).
 const EVENT_REPORT_SECTIONS: SectionDef[] = [
@@ -1507,7 +1506,7 @@ export function EventsView({
 
                   {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
                   <div className="flex justify-end mt-4">
-                    {attendanceTotalPages > 1 && (detailSwitching ? <PagerSkeleton /> : (
+                    {attendanceTotalPages > 1 && (detailSwitching ? null : (
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => { flashDetail(); setAttendanceCurrentPage(p => Math.max(1, p - 1)); }}
@@ -1602,7 +1601,7 @@ export function EventsView({
 
                       {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
                       <div className="flex justify-end mt-4">
-                        {feedbackTotalPages > 1 && (detailSwitching ? <PagerSkeleton /> : (
+                        {feedbackTotalPages > 1 && (detailSwitching ? null : (
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() => { flashDetail(); setFeedbackCurrentPage(p => Math.max(1, p - 1)); }}
@@ -1728,7 +1727,7 @@ export function EventsView({
 
           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
           <div className="flex justify-end">
-            {((openSkeleton || pageSwitching || loading) || totalPages > 1) && ((openSkeleton || pageSwitching || loading) ? <PagerSkeleton /> : (
+            {totalPages > 1 && ((openSkeleton || pageSwitching || loading) ? null : (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => goToPage(Math.max(1, currentPage - 1))}

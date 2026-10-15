@@ -476,6 +476,7 @@ import FeedbackPrompt from "../../components/ui/FeedbackPrompt";
 import Skeleton from "../../components/ui/Skeleton";
 import api from "../../lib/api";
 import { memberKeyFromPath, memberUrlFor } from "../../lib/memberRoutes";
+import { attendanceStatus } from "../../lib/attendanceStatus";
 
 export default function MemberDashboard() {
   const { t } = useLanguage();
@@ -497,6 +498,8 @@ export default function MemberDashboard() {
   const [myFeedback, setMyFeedback] = useState<{ id: number; event_id: number; rating: number; comment: string | null }[]>([]);
   const [attended, setAttended] = useState(0);
   const [missed, setMissed] = useState(0);
+  // Missed = no sign-in for an event that has already ENDED (upcoming / ongoing events don't count).
+  const missedNow = useMemo(() => attendanceRecords.filter((r) => attendanceStatus(r) === 'missed').length, [attendanceRecords]);
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
   const [pastEvents, setPastEvents] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -663,13 +666,14 @@ export default function MemberDashboard() {
         eventId: item.eventId,
         eventTitle: item.eventTitle ?? '—',
         eventDate: item.eventDate ?? '',
+        eventEnd: item.eventEnd ?? '',
         location: item.location ?? '—',
         timeIn: item.timeIn ?? '',
         timeOut: item.timeOut ?? '',
         status: (!item.timeIn && !item.timeOut) ? 'missed' : (item.status?.toLowerCase() ?? 'incomplete'),
       }));
       const attendedCount = records.filter(r => r.status === 'complete').length;
-      const missedCount = records.filter(r => r.status === 'missed').length;
+      const missedCount = records.filter(r => attendanceStatus(r) === 'missed').length;
       setAttendanceRecords(records);
       setAttended(attendedCount);
       setMissed(missedCount);
@@ -807,7 +811,7 @@ export default function MemberDashboard() {
                   userCode={member.user_code}
                   membershipsCount={userMembershipsCount}
                   attendedCount={attended}
-                  missedCount={missed}
+                  missedCount={missedNow}
                   attendanceRecords={attendanceRecords}
                   setActive={setActive}
                   notifications={notifications}

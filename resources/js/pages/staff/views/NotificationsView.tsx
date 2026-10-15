@@ -6,7 +6,6 @@ import FilterDropdown from "../../../components/ui/FilterDropdown";
 import Skeleton from "../../../components/ui/Skeleton";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 
 interface Membership {
@@ -352,7 +351,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
 
                {/* ✅ PAGINATION - ← 1 → STYLE */}
                <div className="flex justify-end mt-4">
-                   {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
+                   {totalPages > 1 && ((pageSwitching || loading) ? null : (
                        <div className="flex items-center gap-2">
                            <button
                                onClick={() => goToPage(p => Math.max(1, p - 1))}
@@ -382,7 +381,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                    {smsLoading || pageSwitching ? 0 : smsTotal} {t("smsFoundCount")} — {t("showingLabel")} {smsPerPage} {t("perPage")}
                </p>
                <div className="flex justify-end mt-4">
-                   {smsLastPage > 1 && ((smsLoading || pageSwitching) ? <PagerSkeleton /> : (
+                   {smsLastPage > 1 && ((smsLoading || pageSwitching) ? null : (
                        <div className="flex items-center gap-2">
                            <button
                                onClick={() => setSmsPage(p => Math.max(1, p - 1))}

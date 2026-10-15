@@ -313,7 +313,7 @@ import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
 import { matchesSearch } from "../../../lib/search";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import { attendanceStatus, weekFirstOrder } from "../../../lib/attendanceStatus";
 
 
 export interface AttendanceRecord {
@@ -321,6 +321,7 @@ export interface AttendanceRecord {
   eventId?: number;
   eventTitle: string;
   eventDate: string;
+  eventEnd?: string;
   location: string;
   timeIn: string;
   timeOut: string;
@@ -346,6 +347,8 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   const statusLabel = (status: string) => {
     if (status === "complete") return t("statusComplete");
     if (status === "incomplete") return t("statusIncomplete");
+    if (status === "upcoming") return t("upcomingBadge");
+    if (status === "ongoing") return t("ongoingBadge");
     return t("statusMissed");
   };
 
@@ -395,7 +398,8 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
 
   const filteredAttendance = useMemo(() => {
     let result = attendanceRecords;
-    if (attendanceFilter !== "all") result = result.filter((rec) => rec.status === attendanceFilter);
+    if (attendanceFilter === "upcoming") result = result.filter((rec) => ["upcoming", "ongoing"].includes(attendanceStatus(rec)));
+    else if (attendanceFilter !== "all") result = result.filter((rec) => attendanceStatus(rec) === attendanceFilter);
     if (showMembershipFilter && membershipFilter !== "all") {
       const selectedId = Number(membershipFilter);
       result = result.filter((rec) => {
@@ -408,7 +412,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
         matchesSearch(attendanceSearch, rec.eventTitle, rec.eventDate, rec.location, rec.timeIn, rec.timeOut)
       );
     }
-    return [...result].sort((a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime());
+    return weekFirstOrder(result);
   }, [attendanceRecords, attendanceFilter, membershipFilter, showMembershipFilter, allEvents, attendanceSearch]);
 
   const totalPages = Math.ceil(filteredAttendance.length / itemsPerPage);
@@ -445,6 +449,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                   { value: "complete", label: t("completeInOut") },
                   { value: "incomplete", label: t("incompleteInOut") },
                   { value: "missed", label: t("missedNoRecord") },
+                  { value: "upcoming", label: t("upcomingOption") },
                 ]}
                 className="h-11 pl-10 pr-8 shrink-0"
                 icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
@@ -476,7 +481,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
 
           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
           <div className="flex justify-end mt-4">
-            {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
+            {totalPages > 1 && ((pageSwitching || loading) ? null : (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => goToPage(p => Math.max(1, p - 1))}
@@ -540,10 +545,12 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                     </span>
                   </div>
                   <span className={`whitespace-nowrap text-[12.5px] font-semibold px-3 py-1 rounded-full ${
-                    rec.status === 'complete' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
-                    : rec.status === 'incomplete' ? 'bg-gold-400/15 text-gold-300'
+                    attendanceStatus(rec) === 'complete' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
+                    : attendanceStatus(rec) === 'incomplete' ? 'bg-gold-400/15 text-gold-300'
+                    : attendanceStatus(rec) === 'upcoming' ? 'bg-[#6BA8FF]/15 text-[#9CC4FF]'
+                    : attendanceStatus(rec) === 'ongoing' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
                     : 'bg-red-500/15 text-red-400'}`}>
-                    {statusLabel(rec.status)}
+                    {statusLabel(attendanceStatus(rec))}
                   </span>
                 </div>
               </div>

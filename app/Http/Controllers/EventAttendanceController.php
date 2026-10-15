@@ -290,6 +290,7 @@ class EventAttendanceController extends Controller
                 'eventId' => $attendance->event_id,
                 'eventTitle' => $isEventDeleted ? '' : $attendance->event->name,
                 'eventDate' => $isEventDeleted ? '' : $attendance->event->event_start,
+                'eventEnd' => $isEventDeleted ? '' : $attendance->event->event_end,
                 'location' => $isEventDeleted ? '' : $attendance->event->location,
                 'timeIn' => $attendance->time_in,
                 'timeOut' => $attendance->time_out,

@@ -8,7 +8,6 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 
 interface Notification {
@@ -403,7 +402,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
                {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
                <div className="flex justify-end mt-4">
-                   {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
+                   {totalPages > 1 && ((pageSwitching || loading) ? null : (
                        <div className="flex items-center gap-2">
                            <button
                                onClick={() => goToPage(p => Math.max(1, p - 1))}

@@ -562,7 +562,7 @@
 // }
 
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Filter, Star, Pencil, CheckCircle } from "lucide-react";
+import { Filter, Star, Pencil, CheckCircle, X } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import Skeleton from "../../../components/ui/Skeleton";
@@ -570,7 +570,6 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { matchesSearch } from "../../../lib/search";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 
@@ -624,6 +623,8 @@ export default function EventsView({
   const { t, language } = useLanguage();
   const [confirmReviewEventId, setConfirmReviewEventId] = useState<number | null>(null);
   const [reviewSavedOpen, setReviewSavedOpen] = useState(false);
+  const [reviewSavedKind, setReviewSavedKind] = useState<"added" | "updated">("added");
+  const [confirmCancelReviewOpen, setConfirmCancelReviewOpen] = useState(false);
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
@@ -689,6 +690,7 @@ export default function EventsView({
   const submitReview = async (eventId: number) => {
     setConfirmReviewEventId(null);
     if (reviewRating < 1) return;
+    const wasEdit = !!getFeedbackForEvent(eventId);
     setSubmittingReview(true);
     setReviewError(null);
     try {
@@ -706,6 +708,7 @@ export default function EventsView({
       });
       setReviewingEventId(null);
       setJustSubmittedEventId(eventId);
+      setReviewSavedKind(wasEdit ? "updated" : "added");
       setReviewSavedOpen(true);
     } catch (err) {
       setReviewError(apiErrorMessage(err, t("submitReviewFailed")));
@@ -763,7 +766,31 @@ export default function EventsView({
       );
     }
 
-    result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Order the WHOLE list before it is paginated, so page 1 always opens with
+    // what matters now and the order never shuffles between pages:
+    //   1. This week, still to come / happening  -- soonest first
+    //   2. This week, already finished           -- most recent first
+    //   3. Later than this week                  -- soonest first
+    //   4. Before this week                      -- most recent first
+    const nowMs = Date.now();
+    const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+    const wkStart = getStartOfWeek(dayStart).getTime();
+    const wkEnd = getEndOfWeek(dayStart).getTime();
+    const startMs = (e: { date: string }) => new Date(e.date).getTime() || 0;
+    const endMs = (e: { date: string; event_end?: string | null }) => {
+      const end = e.event_end ? new Date(e.event_end).getTime() : NaN;
+      return Number.isNaN(end) ? startMs(e) : end;
+    };
+    const bucket = (e: { date: string; event_end?: string | null }) => {
+      const st = startMs(e);
+      if (st >= wkStart && st <= wkEnd) return endMs(e) >= nowMs ? 0 : 1;
+      return st > wkEnd ? 2 : 3;
+    };
+    result.sort((a, b) => {
+      const ba = bucket(a), bb = bucket(b);
+      if (ba !== bb) return ba - bb;
+      return (ba === 0 || ba === 2) ? startMs(a) - startMs(b) : startMs(b) - startMs(a);
+    });
     return result;
   }, [allEvents, eventFilter, membershipFilter, eventSearch]);
 
@@ -795,13 +822,9 @@ export default function EventsView({
       groups[sectionKey].push(e);
     });
 
-    const sortedGroups = Object.entries(groups).sort(([keyA], [keyB]) => {
-      if (keyA === THIS_WEEK_KEY) return -1;
-      if (keyB === THIS_WEEK_KEY) return 1;
-      return new Date(keyB).getTime() - new Date(keyA).getTime();
-    });
-
-    return Object.fromEntries(sortedGroups);
+    // The events arrive already in their final order (see filteredEvents), and
+    // object keys keep insertion order -- so the sections do too.
+    return groups;
   }, [paginatedEvents]);
 
   return (
@@ -854,7 +877,7 @@ export default function EventsView({
 
           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
           <div className="flex justify-end mt-4">
-            {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
+            {totalPages > 1 && ((pageSwitching || loading) ? null : (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => goToPage(p => Math.max(1, p - 1))}
@@ -946,6 +969,11 @@ export default function EventsView({
                         {canReviewEvent(e.id) && (() => {
                           const feedback = getFeedbackForEvent(e.id);
                           const isReviewing = reviewingEventId === e.id;
+                          // Add: dirty once there is anything to save. Edit: dirty only if the
+                          // rating or comment actually differs from what is already saved.
+                          const reviewDirty = feedback
+                            ? reviewRating !== feedback.rating || reviewComment.trim() !== (feedback.comment ?? "").trim()
+                            : reviewRating > 0 || reviewComment.trim() !== "";
                           return (
                             <div className="mt-4 pt-4 border-t border-white/10">
                               {isReviewing ? (
@@ -966,11 +994,11 @@ export default function EventsView({
                                     className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70" />
                                   {reviewError && <p className="mt-1 text-xs text-red-400">{reviewError}</p>}
                                   <div className="mt-2 flex gap-2">
-                                    <button type="button" onClick={() => submitReview(e.id)} disabled={reviewRating < 1 || submittingReview}
+                                    <button type="button" onClick={() => setConfirmReviewEventId(e.id)} disabled={reviewRating < 1 || submittingReview || !reviewDirty}
                                       className="flex-1 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold py-2 disabled:opacity-50 transition">
                                       {submittingReview ? t("submittingLabel") : t("submitReviewButton")}
                                     </button>
-                                    <button type="button" onClick={cancelReview} disabled={submittingReview}
+                                    <button type="button" onClick={() => (reviewDirty ? setConfirmCancelReviewOpen(true) : cancelReview())} disabled={submittingReview}
                                       className="rounded-full border border-white/15 text-white/60 hover:bg-white/5 text-sm font-medium px-4 disabled:opacity-50 transition">
                                       {t("cancelLabel")}
                                     </button>
@@ -1021,18 +1049,29 @@ export default function EventsView({
       <ConfirmDialog
         open={confirmReviewEventId !== null}
         icon={<Star size={32} />}
-        title={t("confirmSubmitReviewTitle")}
-        body={t("confirmSubmitReviewBody")}
+        title={confirmReviewEventId !== null && getFeedbackForEvent(confirmReviewEventId) ? t("confirmUpdateReviewTitle") : t("confirmAddReviewTitle")}
+        body={confirmReviewEventId !== null && getFeedbackForEvent(confirmReviewEventId) ? t("confirmUpdateReviewBody") : t("confirmAddReviewBody")}
         cancelLabel={t("cancelLabel")}
-        confirmLabel={t("yesSubmit")}
+        confirmLabel={confirmReviewEventId !== null && getFeedbackForEvent(confirmReviewEventId) ? t("yesUpdateReview") : t("yesAddReview")}
         onCancel={() => setConfirmReviewEventId(null)}
         onConfirm={() => confirmReviewEventId !== null && submitReview(confirmReviewEventId)}
+      />
+      <ConfirmDialog
+        open={confirmCancelReviewOpen}
+        icon={<X size={32} />}
+        title={t("confirmCancelReviewTitle")}
+        body={t("confirmCancelReviewBody")}
+        cancelLabel={t("keepEditingLabel")}
+        confirmLabel={t("yesCancelReview")}
+        tone="danger"
+        onCancel={() => setConfirmCancelReviewOpen(false)}
+        onConfirm={() => { setConfirmCancelReviewOpen(false); cancelReview(); }}
       />
       <StatusModal
         open={reviewSavedOpen}
         type="success"
         title={t("successTitle")}
-        message={t("feedbackSavedConfirmation")}
+        message={reviewSavedKind === "updated" ? t("reviewUpdatedSuccess") : t("reviewAddedSuccess")}
         okLabel={t("okLabel")}
         onClose={() => setReviewSavedOpen(false)}
       />
