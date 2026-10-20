@@ -161,6 +161,9 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
 
   // Brief skeleton on every page change, same as the Residents / Events lists, so paging feels consistent app-wide.
   const [pageSwitching, setPageSwitching] = useState(false);
+  // Filters/search change WHAT is listed, so the counters and pager skeleton too;
+  // a plain page change only reloads the rows (counters and pager stay put).
+  const [filterSwitching, setFilterSwitching] = useState(false);
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Any change to what's being listed (tab, budget filter, search, date) starts
@@ -170,8 +173,9 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     setPage(1);
     if (!filtersMounted.current) { filtersMounted.current = true; return; }
     setPageSwitching(true);
+    setFilterSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => { setPageSwitching(false); setFilterSwitching(false); }, 350);
   }, [search, timeTab, budgetFilter, selectedDate]);
   const goToPage = (n: number) => {
     const next = Math.min(Math.max(1, n), totalPages);
@@ -249,7 +253,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
         <div className="flex flex-col rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6 lg:sticky lg:top-6">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="font-display text-lg font-bold text-white">{t("budgetEventsHeading")}</h2>
-            <span className="text-xs font-medium text-white/45">{t("budgetEventsShowing").replace("{n}", String(initialLoading || pageSwitching ? 0 : filteredEvents.length)).replace("{total}", String(initialLoading || pageSwitching ? 0 : allEvents.length))}</span>
+            <span className="text-xs font-medium text-white/45">{t("budgetEventsShowing").replace("{n}", String(initialLoading || filterSwitching ? 0 : filteredEvents.length)).replace("{total}", String(initialLoading || filterSwitching ? 0 : allEvents.length))}</span>
           </div>
           <div className="flex flex-col gap-2.5 sm:flex-row">
           <div className="relative min-w-0 flex-1">
@@ -328,7 +332,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           </div>
 
           {/* Pager: just ← ● →, same as the Residents / Events lists. */}
-          {(initialLoading || pageSwitching) && (initialLoading || totalPages > 1) && (
+          {!initialLoading && filterSwitching && totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between gap-3">
               <Skeleton className="h-3 w-20" />
               <div className="flex items-center gap-2">
@@ -338,7 +342,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               </div>
             </div>
           )}
-          {!initialLoading && !pageSwitching && totalPages > 1 && (
+          {!initialLoading && !filterSwitching && totalPages > 1 && (
             <div className="mt-4 flex items-center justify-between gap-3">
               <p className="text-xs font-medium text-white/45">
                 {t("budgetPageRange")

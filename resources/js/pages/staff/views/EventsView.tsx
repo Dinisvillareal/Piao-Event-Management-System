@@ -1,3 +1,5 @@
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import FormSelect from "../../../components/ui/FormSelect";
 import React, { useEffect, useMemo, useState, useRef } from "react";
@@ -84,13 +86,14 @@ export function EventsView({
   loading = false,
 }: EventsViewProps) {
   const { t, locale, language } = useLanguage();
-  const eventStatusLabel = (label: string) => (label === "Upcoming" ? t("upcomingBadge") : label === "Ongoing" ? t("ongoingBadge") : t("pastBadge"));
+  const eventStatusLabel = (label: string) => (label === "CheckIn" ? t("checkInOpenLabel") : label === "Upcoming" ? t("upcomingBadge") : label === "Ongoing" ? t("ongoingBadge") : t("pastBadge"));
   // The card/detail-view chip reads "Completed" for a finished event instead
   // of "Past" -- "Past" stays as-is everywhere else (filter dropdown option,
   // etc.) since that wording is still correct there.
   const eventStatusChipLabel = (label: string) => (label === "Past" ? t("completedBadge") : eventStatusLabel(label));
   const statusPillClasses = (label: string, dark = false) => {
     if (dark) {
+      if (label === "CheckIn") return "bg-sky-400/15 text-sky-300";
       if (label === "Upcoming") return "bg-[#4FBEB0]/15 text-[#7DD8CB]";
       if (label === "Ongoing") return "bg-gold-400/15 text-gold-300";
       return "bg-white/10 text-white/50";
@@ -101,6 +104,7 @@ export function EventsView({
   };
   const statusDotClasses = (label: string, dark = false) => {
     if (dark) {
+      if (label === "CheckIn") return "bg-sky-400 animate-pulse";
       if (label === "Upcoming") return "bg-[#4FBEB0]";
       if (label === "Ongoing") return "bg-gold-400";
       return "bg-white/40";
@@ -171,13 +175,17 @@ export function EventsView({
   // Activity Logs page (which re-fetches per page). This list paginates
   // client-side over already-loaded data, so there's nothing to actually
   // wait on -- the flash is purely so switching pages always feels the same.
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const filterSwitching = useFilterSwitching([eventSearch, eventFilter, membershipFilter, selectedDate]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   // Page-open skeleton -- `loading` is only true during Staff's very first
   // fetch, so without this, opening Events later showed the cards instantly.
   const openSkeleton = usePageOpenSkeleton(loading);
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (page: number) => {
     setCurrentPage(page);
+    scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
@@ -193,6 +201,8 @@ export function EventsView({
     detailSwitchTimer.current = setTimeout(() => setDetailSwitching(false), 350);
   };
   useEffect(() => () => { if (detailSwitchTimer.current) clearTimeout(detailSwitchTimer.current); }, []);
+  // Opening an event also flashes the detail skeleton, same as switching tabs.
+  useEffect(() => { if (viewEv?.id) flashDetail(); }, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -357,34 +367,33 @@ export function EventsView({
 
   const [liveAttendances, setLiveAttendances] = useState<Record<string, any[]>>({});
 
+  // Only the event being viewed needs its attendance list, so fetch just that
+  // one (instead of every event one-by-one). Cached copy shows instantly while
+  // a fresh one loads in the background.
   useEffect(() => {
-    if (!localEvents || localEvents.length === 0) return;
+    if (!viewEv?.id) return;
+    const event = viewEv;
+    let cancelled = false;
 
-    const fetchAttendance = async () => {
-      for (const event of localEvents) {
-        if (liveAttendances[event.id]) continue;
-
-        try {
-          const response = await api.get(`/events/${event.id}/attendances`);
-          const data = response.data;
-          const formatted = data.map((record: any) => ({
-            eventId: event.id,
-            residentId: record.user_id,
-            residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
-            userCode: record.user?.user_code ?? "",
-            timeIn: record.time_in,
-            timeOut: record.time_out
-          }));
-
-          setLiveAttendances(prev => ({ ...prev, [event.id]: formatted }));
-        } catch (error) {
-          console.error("Failed to fetch live attendance for event:", error);
-        }
+    (async () => {
+      try {
+        const response = await api.get(`/events/${event.id}/attendances`);
+        const formatted = (response.data as any[]).map((record: any) => ({
+          eventId: event.id,
+          residentId: record.user_id,
+          residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
+          userCode: record.user?.user_code ?? "",
+          timeIn: record.time_in,
+          timeOut: record.time_out
+        }));
+        if (!cancelled) setLiveAttendances(prev => ({ ...prev, [event.id]: formatted }));
+      } catch (error) {
+        console.error("Failed to fetch live attendance for event:", error);
       }
-    };
+    })();
 
-    fetchAttendance();
-  }, [localEvents]);
+    return () => { cancelled = true; };
+  }, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real-time-ish refresh: this app has no websocket/push layer, so a
   // second staff member adding/editing/attending an event elsewhere is
@@ -544,6 +553,11 @@ export function EventsView({
 
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState("all");
+  // Skeleton flash on every search/status change, and always jump back to
+  // page 1 -- otherwise a filter applied from page 3 left the table empty
+  // (page 3 of a 1-page result), which looked like the filter did nothing.
+  const attendanceFiltering = useFilterSwitching([attendanceSearch, attendanceStatusFilter]);
+  useEffect(() => { setAttendanceCurrentPage(1); }, [attendanceSearch, attendanceStatusFilter]);
 
   const formatTime12Hour = (timeStr: string | undefined): string => {
     if (!timeStr) return "";
@@ -614,6 +628,15 @@ export function EventsView({
     if (now < start) return upcoming;
     if (now > end) return past;
     return ongoing;
+  };
+
+  // Display-only: an upcoming event whose sign-in window (call time start)
+  // has already opened reads "Check-in open". Filters/locking still use the
+  // real Upcoming/Ongoing/Past status.
+  const chipKey = (event: MyEvent, label: string) => {
+    if (label !== "Upcoming") return label;
+    const open = parseEventDateTime(event.call_time_start);
+    return open && new Date() >= open ? "CheckIn" : label;
   };
 
   const isEventLocked = (label: "Upcoming" | "Ongoing" | "Past") => label === "Past" || label === "Ongoing";
@@ -702,6 +725,30 @@ export function EventsView({
     const startIndex = (currentPage - 1) * itemsPerPage;
     return sortedFilteredEvents.slice(startIndex, startIndex + itemsPerPage);
   }, [sortedFilteredEvents, currentPage, itemsPerPage]);
+
+  // The cards on the visible page show an attendee count, so load just those
+  // few events' attendance, in parallel, once each (cached afterwards).
+  const requestedAttendance = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    paginatedEvents.forEach((event) => {
+      const key = String(event.id);
+      if (requestedAttendance.current.has(key) || liveAttendances[event.id]) return;
+      requestedAttendance.current.add(key);
+      api.get(`/events/${event.id}/attendances`)
+        .then((response) => {
+          const formatted = (response.data as any[]).map((record: any) => ({
+            eventId: event.id,
+            residentId: record.user_id,
+            residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
+            userCode: record.user?.user_code ?? "",
+            timeIn: record.time_in,
+            timeOut: record.time_out
+          }));
+          setLiveAttendances(prev => ({ ...prev, [event.id]: formatted }));
+        })
+        .catch(() => requestedAttendance.current.delete(key));
+    });
+  }, [paginatedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filters / search changing flashes the list skeleton too (not on first mount).
   const filtersMounted = useRef(false);
@@ -998,6 +1045,19 @@ export function EventsView({
       }
     });
 
+    // Sort: Complete -> Incomplete -> Missed (who actually attended first),
+    // then last name A-Z inside each group so a name is easy to find.
+    const rank = (r: any) => (r.timeIn && r.timeOut ? 0 : r.timeIn || r.timeOut ? 1 : 2);
+    const lastName = (name: string) => {
+      const parts = String(name ?? "").trim().split(/\s+/);
+      return (parts[parts.length - 1] || "").toLowerCase();
+    };
+    combinedList.sort((x: any, y: any) =>
+      rank(x) - rank(y) ||
+      lastName(x.residentName).localeCompare(lastName(y.residentName)) ||
+      String(x.residentName).localeCompare(String(y.residentName))
+    );
+
     return combinedList;
   };
   const getAttendanceStatus = (record: any) => {
@@ -1114,45 +1174,55 @@ export function EventsView({
     return typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse) and (hover: none)").matches;
   };
 
-  // Desktop: the PDF loads into a hidden frame on this very page and the
-  // browser's own print dialog opens straight away -- no new tab and no
-  // blob: address. Phones/tablets can't print a hidden frame reliably, so
+  // Desktop: the report is rendered by the browser itself in a hidden frame
+  // on this very page and the print dialog opens straight away -- no new tab
+  // and no blob: address. Printing the browser's own HTML (instead of a PDF
+  // inside a frame) is what lets the page margins be exact, with no blank
+  // band at the top. Phones/tablets can't print a hidden frame reliably, so
   // they open the PDF in the device's viewer instead (same as Reports).
   const handleEventReportPrint = async () => {
     const mobile = isPhoneOrTabletDevice();
     const win = mobile ? window.open("", "_blank") : null;
     setReportBusy(true);
     try {
-      const blob = await fetchEventReportBlob("pdf");
-      const url = URL.createObjectURL(blob);
       if (mobile) {
+        const blob = await fetchEventReportBlob("pdf");
+        const url = URL.createObjectURL(blob);
         if (win && !win.closed) win.location.href = url;
         else saveBlob(blob, `${reportFileBase()}.pdf`);
         window.setTimeout(() => URL.revokeObjectURL(url), 120000);
         setReportMode(null);
         return;
       }
+      const params: Record<string, string> = {
+        type: "attendance",
+        event_id: String(viewEv?.id ?? ""),
+        sections: reportSections.join(","),
+      };
+      if (reportSections.includes("records")) {
+        params.event_ids = String(viewEv?.id ?? "");
+        params.attendee_filter = reportAttendeeFilter;
+      }
+      const response = await api.get("/reports/export/html", { params, responseType: "text", transformResponse: (d: any) => d });
+      const html = String(response.data);
       const frame = document.createElement("iframe");
       frame.setAttribute("aria-hidden", "true");
-      frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
-      const cleanup = () => {
-        window.setTimeout(() => {
-          frame.remove();
-          URL.revokeObjectURL(url);
-        }, 60000);
-      };
+      frame.style.cssText = "position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;";
       frame.onload = () => {
-        window.setTimeout(() => {
+        window.setTimeout(async () => {
           try {
+            // Wait for the seal image / fonts so the preview is complete.
+            await (frame.contentDocument as any)?.fonts?.ready;
             frame.contentWindow?.focus();
             frame.contentWindow?.print();
           } catch {
+            const blob = await fetchEventReportBlob("pdf");
             saveBlob(blob, `${reportFileBase()}.pdf`);
           }
-          cleanup();
+          window.setTimeout(() => frame.remove(), 60000);
         }, 400);
       };
-      frame.src = url;
+      frame.srcdoc = html;
       document.body.appendChild(frame);
       setReportMode(null);
     } catch {
@@ -1185,7 +1255,7 @@ export function EventsView({
           const locked = isEventLocked(status.label);
           const coverageNames = getMembershipNames(viewEv);
           const coverageDisplay = coverageNames.length === 0 ? t("allResidentsCoverageLabel") : coverageNames.join(", ");
-          const signedInCount = getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length;
+          const signedInCount = getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn || a.timeOut).length;
 
           const tabs: { key: typeof detailTab; label: string; count?: number }[] = [
             { key: "overview", label: t("overviewTabLabel") },
@@ -1212,16 +1282,16 @@ export function EventsView({
                 <div className="min-w-0">
                   <div className="flex items-center gap-2.5 flex-wrap">
                     <h1 className="font-display text-2xl sm:text-3xl font-bold text-white break-words">{viewEv.title}</h1>
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${statusPillClasses(status.label, true)}`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(status.label, true)}`} />
-                      {eventStatusChipLabel(status.label)}
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${statusPillClasses(chipKey(viewEv, status.label), true)}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(chipKey(viewEv, status.label), true)}`} />
+                      {eventStatusChipLabel(chipKey(viewEv, status.label))}
                     </span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/50">
                     <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-gold-300 shrink-0" /> {viewEv.location}</span>
                     <span className="inline-flex items-center gap-1.5">
                       <Clock className="h-4 w-4 text-gold-300 shrink-0" />
-                      {(viewEv.startDate || viewEv.date)} · {formatTime12Hour(viewEv.startTime)}
+                      {(viewEv.startDate || viewEv.date)} · {formatTime12Hour(viewEv.startTime)}{viewEv.endTime ? ` – ${formatTime12Hour(viewEv.endTime)}` : ""}
                     </span>
                   </div>
                 </div>
@@ -1261,7 +1331,32 @@ export function EventsView({
 
               {detailTab === "overview" && (
                 <div className="space-y-5">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                  {detailSwitching && (
+                    <>
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
+                        <Skeleton className="h-3 w-28" />
+                        <Skeleton className="h-4 w-2/3" />
+                        <div className="pt-4 mt-4 border-t border-white/10 space-y-3">
+                          <Skeleton className="h-3 w-36" />
+                          <Skeleton className="h-11 w-full rounded-xl" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {[0, 1, 2].map((k) => (
+                          <div key={k} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 flex flex-col items-center gap-2.5">
+                            <Skeleton className="h-3 w-24" />
+                            <Skeleton className="h-5 w-20" />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <Skeleton className="h-11 w-52 rounded-full" />
+                        <Skeleton className="h-11 w-44 rounded-full" />
+                        <Skeleton className="h-11 w-11 rounded-full" />
+                      </div>
+                    </>
+                  )}
+                  <div className={`rounded-2xl border border-white/10 bg-white/[0.04] p-5 ${detailSwitching ? "hidden" : ""}`}>
                     <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">{t("descriptionLabel")}</h3>
                     <p className="text-[15px] text-white leading-relaxed whitespace-pre-wrap">{viewEv.description || t("noDescription")}</p>
                     {viewEv.notificationMessage && (
@@ -1277,7 +1372,7 @@ export function EventsView({
                       colors, just flat instead of the Dashboard's gradient.
                       These already read fine on the dark page, so only the
                       surrounding surfaces needed to change. */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className={`grid grid-cols-1 sm:grid-cols-3 gap-4 ${detailSwitching ? "hidden" : ""}`}>
                     <div className="rounded-2xl bg-sage-700 p-4 text-center">
                       <p className="text-[13px] font-semibold uppercase tracking-wide text-white/70">{t("coverageStatLabel")}</p>
                       <p className="mt-1.5 text-base font-bold text-white break-words">{coverageDisplay}</p>
@@ -1299,7 +1394,7 @@ export function EventsView({
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-3">
+                  <div className={`flex flex-wrap gap-3 ${detailSwitching ? "hidden" : ""}`}>
                     <button
                       type="button"
                       disabled
@@ -1443,7 +1538,7 @@ export function EventsView({
                         </tr>
                       </thead>
                       <tbody>
-                        {detailSwitching ? (
+                        {detailSwitching || attendanceFiltering ? (
                           Array.from({ length: 6 }).map((_, i) => (
                             <tr key={`sk-${i}`} className="border-t border-white/[0.06]">
                               <td className="px-5 py-4"><Skeleton className="h-4 w-8" /></td>
@@ -1506,7 +1601,7 @@ export function EventsView({
 
                   {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
                   <div className="flex justify-end mt-4">
-                    {attendanceTotalPages > 1 && (detailSwitching ? null : (
+                    {attendanceTotalPages > 1 && (detailSwitching || attendanceFiltering ? null : (
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => { flashDetail(); setAttendanceCurrentPage(p => Math.max(1, p - 1)); }}
@@ -1560,9 +1655,19 @@ export function EventsView({
                       <p className="text-4xl font-black text-white">{averageRating > 0 ? averageRating.toFixed(1) : "—"}</p>
                       <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-white/45">{t("averageRatingLabel")}</p>
                       <div className="mt-2.5 flex justify-center gap-1">
-                        {[1, 2, 3, 4, 5].map((n) => (
-                          <Star key={n} className={`h-5 w-5 ${n <= Math.round(averageRating) ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
-                        ))}
+                        {[1, 2, 3, 4, 5].map((n) => {
+                          // Whole, half or empty star (4.5 -> four and a half).
+                          const rounded = Math.round(averageRating * 2) / 2;
+                          const fill = Math.max(0, Math.min(1, rounded - (n - 1)));
+                          return (
+                            <span key={n} className="relative inline-block h-5 w-5">
+                              <Star className="absolute inset-0 h-5 w-5 text-white/15" />
+                              <span className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
+                                <Star className="h-5 w-5 max-w-none text-amber-400 fill-amber-400" />
+                              </span>
+                            </span>
+                          );
+                        })}
                       </div>
                       <p className="mt-1.5 text-xs text-white/45">{eventFeedback.length} {t("ratingsCountLabel")}</p>
                     </div>
@@ -1735,12 +1840,12 @@ export function EventsView({
           </div>
 
           <p className="mt-2 text-xs text-white/40">
-            {openSkeleton || loading || pageSwitching ? 0 : filteredEvents.length} {t("eventsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
+            {openSkeleton || loading || filterSwitching ? 0 : filteredEvents.length} {t("eventsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
           </p>
 
           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
           <div className="flex justify-end">
-            {totalPages > 1 && ((openSkeleton || pageSwitching || loading) ? null : (
+            {totalPages > 1 && ((openSkeleton || filterSwitching || loading) ? null : (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => goToPage(Math.max(1, currentPage - 1))}
@@ -1763,6 +1868,7 @@ export function EventsView({
             ))}
           </div>
 
+          <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
           {loading || pageSwitching || openSkeleton ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
               {Array.from({ length: 6 }).map((_, i) => (
@@ -1798,7 +1904,7 @@ export function EventsView({
                   const locked = isEventLocked(status.label);
                   const eligibleMembers = getMembersForEvent(e);
                   const attendanceList = getFullAttendanceList(e.id, eligibleMembers);
-                  const signedIn = attendanceList.filter((a: any) => a.timeIn).length;
+                  const signedIn = attendanceList.filter((a: any) => a.timeIn || a.timeOut).length;
 
                   return (
                     <div
@@ -1827,9 +1933,9 @@ export function EventsView({
                           >
                             <Archive className="h-3.5 w-3.5" />
                           </button>
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${statusPillClasses(status.label, true)}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(status.label, true)}`} />
-                            {eventStatusChipLabel(status.label)}
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${statusPillClasses(chipKey(e, status.label), true)}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(chipKey(e, status.label), true)}`} />
+                            {eventStatusChipLabel(chipKey(e, status.label))}
                           </span>
                         </div>
                       </div>
@@ -1844,7 +1950,7 @@ export function EventsView({
                       <p className="mt-1 text-sm text-white/50 flex items-center gap-1.5">
                         <Clock className="h-3.5 w-3.5 text-gold-300 shrink-0" />
                         <span className="truncate">
-                          {(e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || "")} · {formatTime12Hour(e.startTime)}
+                          {(e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || "")} · {formatTime12Hour(e.startTime)}{e.endTime ? ` – ${formatTime12Hour(e.endTime)}` : ""}
                         </span>
                       </p>
                       <p className="mt-2 text-sm text-white/50 break-words line-clamp-2">

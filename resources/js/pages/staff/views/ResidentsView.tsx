@@ -1,3 +1,4 @@
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
 import SuffixSelect from "../../../components/ui/SuffixSelect";
@@ -5,6 +6,7 @@ import FormSelect from "../../../components/ui/FormSelect";
 import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
+import { createPortal } from "react-dom";
 import { renderMemberIdCard, renderMemberIdCardSides } from "../../../lib/memberIdCard";
 import IdCardFlip from "../../../components/ui/IdCardFlip";
 import BarangayPositionField, { type BarangayPositionValue } from "../../../components/ui/BarangayPositionField";
@@ -44,7 +46,6 @@ import DefaultAvatar from "../../../components/ui/DefaultAvatar";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 import { tc } from "../../../lib/contentTranslations";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Membership {
   id: number;
@@ -296,9 +297,9 @@ export default function ResidentsView() {
   // Categories / Archive pages.
   const [membershipFilter, setMembershipFilter] = useState<"all" | "members" | "not-members">("all");
   const [currentPage, setCurrentPage] = useState(1);
-  // Brief skeleton flash on every page switch, same as Activity Logs --
-  // this list paginates client-side so there's nothing to actually wait
-  // on, but the flash keeps page switches feeling consistent app-wide.
+  // Brief skeleton flash on every page switch (table rows + pager), same
+  // as Inventory -- the list paginates client-side so there's nothing to
+  // actually wait on, but the flash keeps paging consistent app-wide.
   const [pageSwitching, setPageSwitching] = useState(false);
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
@@ -308,9 +309,7 @@ export default function ResidentsView() {
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
-  // High enough that every real barangay resident list renders on one
-  // page -- the table itself scrolls, so there's no real ceiling here.
-  const itemsPerPage = 5000;
+  const itemsPerPage = 10;
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [viewRecord, setViewRecord] = useState<string | null>(null);
@@ -341,8 +340,25 @@ export default function ResidentsView() {
       if (el) setPanelTop(Math.round(el.getBoundingClientRect().top));
     };
     measure();
+    // Banners (offline notice, etc.) can change the pane's position after the
+    // panel opens, so keep re-measuring while it is open.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(document.body);
+    const raf = requestAnimationFrame(measure);
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    // Focusing a field or scrollIntoView can scroll the page itself (not just
+    // the content pane), which moves the pane's top edge without resizing
+    // anything -- re-measure on any scroll so the panel never leaves a strip
+    // of the list peeking out above it.
+    window.addEventListener("scroll", measure, true);
+    const settle = window.setTimeout(measure, 350);
+    return () => {
+      ro?.disconnect();
+      cancelAnimationFrame(raf);
+      window.clearTimeout(settle);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
   }, [panelOpen]);
 
   // Always reopen a form with the password hidden.
@@ -1935,25 +1951,37 @@ const handleDeleteResident = async () => {
             </tbody>
           </table>
         </div>
-        {totalPages > 1 && ((pageSwitching) ? <PagerSkeleton className="justify-end px-5 py-3 border-t border-white/10" /> : (
-          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/10">
-            <button
-              onClick={() => goToPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
-            >
-              ←
-            </button>
-            <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
-              {currentPage}
-            </span>
-            <button
-              onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
-            >
-              →
-            </button>
+        {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton withLabel className="px-5 py-3 border-t border-white/10" /> : (
+          <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-white/10">
+            <p className="text-xs font-medium text-white/45">
+              {t("budgetPageRange")
+                .replace("{from}", String((currentPage - 1) * itemsPerPage + 1))
+                .replace("{to}", String(Math.min(currentPage * itemsPerPage, filteredResidents.length)))
+                .replace("{total}", String(filteredResidents.length))}
+            </p>
+            <nav className="flex items-center gap-2" aria-label="Pagination">
+              <button
+                type="button"
+                onClick={() => goToPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                aria-label={t("budgetPagePrev")}
+                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] active:scale-95 transition"
+              >
+                ←
+              </button>
+              <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold" aria-current="page">
+                {currentPage}
+              </span>
+              <button
+                type="button"
+                onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                aria-label={t("budgetPageNext")}
+                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] active:scale-95 transition"
+              >
+                →
+              </button>
+            </nav>
           </div>
         ))}
       </div>
@@ -1969,8 +1997,8 @@ const handleDeleteResident = async () => {
         const size = householdSizeFor(r.household?.id);
         // Encodes the same shape the QR Scanner already reads back out
         // (see ScanView.handleQRCodeScan: data.user_id / user_code / name).
+        // user_id is deliberately left out; the scanner resolves by user_code.
         const qrPayload = JSON.stringify({
-          user_id: r.real_id,
           user_code: r.id,
           name: `${r.firstName} ${r.lastName}`,
         });
@@ -1997,7 +2025,7 @@ const handleDeleteResident = async () => {
           ),
         ]);
 
-        return (
+        return createPortal(
           <>
             {/* Back to a right-anchored slide-over drawer (dimmed backdrop,
                 fixed narrower width, slides in from the right edge) rather
@@ -2288,7 +2316,7 @@ const handleDeleteResident = async () => {
               z={70}
             />
           </>
-        );
+          , document.body);
       })()}
 
       {/* ─── Add Page ─────────────────────────────────────────────────────────────
@@ -2298,7 +2326,7 @@ const handleDeleteResident = async () => {
           sage caption pills, per the "register resident" layout redesign. Same
           fields, same handlers -- styling only. */}
       {showAddForm && (
-        <div style={{ top: panelTop }} className="fixed bottom-0 left-0 right-0 md:left-[280px] z-30 bg-[#0A0E1A] overflow-y-auto">
+        <div style={{ top: panelTop }} className="fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
@@ -2582,7 +2610,7 @@ const handleDeleteResident = async () => {
           headers -- for a consistent Add/Edit experience. Same fields, same
           handlers -- styling only. */}
       {editRecord && editingResident && (
-        <div style={{ top: panelTop }} className="fixed bottom-0 left-0 right-0 md:left-[280px] z-30 bg-[#0A0E1A] overflow-y-auto">
+        <div style={{ top: panelTop }} className="fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""

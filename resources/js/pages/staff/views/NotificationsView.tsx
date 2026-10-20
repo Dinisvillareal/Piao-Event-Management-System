@@ -1,3 +1,4 @@
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Filter, Users, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, Smartphone, Home } from "lucide-react";
@@ -58,7 +59,9 @@ export default function NotificationsView({ memberships = [], highlightText }: N
    // Brief skeleton flash on every page switch, same as Activity Logs --
    // this list paginates client-side so there's nothing to actually wait
    // on, but the flash keeps page switches feeling consistent app-wide.
-   const [pageSwitching, setPageSwitching] = useState(false);
+   const [pageSwitchingRaw, setPageSwitching] = useState(false);
+   const filterSwitching = useFilterSwitching([searchQuery, dateFilter, targetFilter]);
+   const pageSwitching = pageSwitchingRaw || filterSwitching;
    const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
    const goToPage = (updater: number | ((p: number) => number)) => {
        setCurrentPage(updater as any);

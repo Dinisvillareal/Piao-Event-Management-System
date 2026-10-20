@@ -58,6 +58,16 @@ class ReportController extends Controller
         if ($request->filled('event_id')) $eventsQuery->where('id', (int) $request->event_id);
 
         $events = $eventsQuery->orderBy('event_start')->get();
+
+        // Events that haven't ended yet pick up anyone newly eligible (e.g.
+        // staff, who now count as residents) so the eligible count matches
+        // the real list. Finished events keep their record untouched.
+        foreach ($events as $ev) {
+            if (!$ev->event_end || strtotime((string) $ev->event_end) > time()) {
+                $ev->addMissingAttendanceRecords();
+            }
+        }
+
         $eventIds = $events->pluck('id');
 
         $ageRanges = [
@@ -82,7 +92,8 @@ class ReportController extends Controller
             $totalEligible += $event->attendances()->count();
         }
 
-        $attendedCount = $attendances->filter(fn ($a) => $a->time_in)->count();
+        // Attended = Complete + Incomplete (any sign-in and/or sign-out on record).
+        $attendedCount = $attendances->filter(fn ($a) => $a->time_in || $a->time_out)->count();
         $percentage = $totalEligible > 0 ? round(($attendedCount / $totalEligible) * 100, 1) : 0;
 
         // Optional attendee lists (the "Event Attendance Records" section):
@@ -97,7 +108,7 @@ class ReportController extends Controller
         $perEvent = $events->map(function ($event) use ($attendances, $includeAttendees, $eventIdFilter, $attendeeFilter) {
             $eventAttendances = $attendances->where('event_id', $event->id);
             $eligible = $event->attendances()->count();
-            $attended = $eventAttendances->filter(fn ($a) => $a->time_in)->count();
+            $attended = $eventAttendances->filter(fn ($a) => $a->time_in || $a->time_out)->count();
             $status = $this->eventStatusLabel($event);
 
             $row = [
@@ -122,8 +133,8 @@ class ReportController extends Controller
             if ($includeAttendees && ($eventIdFilter === null || in_array($event->id, $eventIdFilter, true))) {
                 $row['attendees'] = $eventAttendances
                     ->filter(function ($a) use ($attendeeFilter) {
-                        if ($attendeeFilter === 'present') return (bool) $a->time_in;
-                        if ($attendeeFilter === 'absent') return !$a->time_in;
+                        if ($attendeeFilter === 'present') return (bool) ($a->time_in || $a->time_out);
+                        if ($attendeeFilter === 'absent') return !($a->time_in || $a->time_out);
                         return true;
                     })
                     ->sortBy(fn ($a) => mb_strtolower(($a->user->last_name ?? '') . ' ' . ($a->user->first_name ?? '')))
@@ -140,7 +151,11 @@ class ReportController extends Controller
                             'age_group' => $u->age_group ?? null,
                             'gender' => $u->gender ?? null,
                             'contact_number' => $u->contact_number ?? null,
-                            'attendance' => $a->time_in ? 'Present' : ($status === 'Upcoming' ? 'Expected' : 'Absent'),
+                            // Complete = signed in and out; Incomplete = only one of the two
+                            // (never a plain "Absent" for someone who did scan); Absent = no scan.
+                            'attendance' => ($a->time_in && $a->time_out)
+                                ? 'Complete'
+                                : (($a->time_in || $a->time_out) ? 'Incomplete' : ($status === 'Upcoming' ? 'Expected' : 'Absent')),
                             'time_in' => $a->time_in ? \Carbon\Carbon::parse($a->time_in)->format('g:i A') : null,
                             'time_out' => $a->time_out ? \Carbon\Carbon::parse($a->time_out)->format('g:i A') : null,
                         ];
@@ -160,7 +175,7 @@ class ReportController extends Controller
         $ageBreakdown = collect($ageRanges)->map(function ($range, $label) use ($eventIds) {
             [$min, $max] = $range;
             $count = EventAttendance::whereIn('event_id', $eventIds)
-                ->whereNotNull('time_in')
+                ->where(fn ($q) => $q->whereNotNull('time_in')->orWhereNotNull('time_out'))
                 ->whereHas('user', function ($q) use ($min, $max) {
                     $q->whereNotNull('birth_date')
                         ->whereRaw('TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN ? AND ?', [$min, $max]);
@@ -460,6 +475,23 @@ class ReportController extends Controller
      * stay translated, but these two endpoints never touch that system at
      * all. Every label below is a plain hardcoded English string.
      */
+    /**
+     * Same report as the PDF, as plain HTML for the browser's own print
+     * dialog (desktop "Print"). Printing HTML lets @page margins be exact,
+     * unlike a PDF printed from inside a frame.
+     */
+    public function exportHtml(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $payload = $this->buildExportPayload($request);
+        $payload['htmlMode'] = true;
+
+        return response(view('reports.export', $payload)->render(), 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+    }
+
     public function exportPdf(Request $request)
     {
         if (!$this->isStaff()) {
@@ -701,7 +733,7 @@ class ReportController extends Controller
             $paragraphs[] = match ($type) {
                 'attendance' => str_starts_with($scope, 'the event "')
                     // Single-event report: say it plainly instead of "1 event was held in this period".
-                    ? 'For this event, ' . $count($s['total_attended'] ?? 0, 'resident has', 'residents have') . ' signed in out of '
+                    ? 'For this event, ' . $count($s['total_attended'] ?? 0, 'resident has', 'residents have') . ' attended out of '
                         . $count($s['total_eligible'] ?? 0, 'eligible resident', 'eligible residents') . ', an attendance rate of ' . ($s['attendance_percentage'] ?? 0) . '%.'
                         . (isset($s['average_feedback_rating']) && $s['average_feedback_rating'] !== null ? ' Residents rated the event ' . $s['average_feedback_rating'] . ' out of 5 on average.' : '')
                     : $count($s['total_events'] ?? 0, 'event was', 'events were') . ' held in this period, with ' . $count($s['total_attended'] ?? 0, 'recorded attendance', 'recorded attendances')
@@ -1207,7 +1239,10 @@ class ReportController extends Controller
                 $table->addCell($gap)->addText('', ['size' => 2], ['spaceAfter' => 0]);
             }
             $cell = $table->addCell($w, ['bgColor' => $color]);
-            $cell->addText($value, ['bold' => true, 'size' => 19, 'color' => 'FFFFFF'], ['spaceAfter' => 10]);
+            // Shrink long values (e.g. P106,420.99) so they stay inside the tile.
+            $len = mb_strlen((string) $value);
+            $size = $len >= 13 ? 11 : ($len >= 11 ? 13 : ($len >= 9 ? 15 : ($len >= 7 ? 17 : 19)));
+            $cell->addText($value, ['bold' => true, 'size' => $size, 'color' => 'FFFFFF'], ['spaceAfter' => 10]);
             $cell->addText(strtoupper($label), ['bold' => true, 'size' => 7.5, 'color' => 'FFFFFF', 'spacing' => 10], ['spaceAfter' => 0]);
         }
         $section->addTextBreak(1, ['size' => 5]);

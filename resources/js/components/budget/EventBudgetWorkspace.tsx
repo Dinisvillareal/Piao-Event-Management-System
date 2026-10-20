@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Wallet, Plus, X, AlertTriangle, CheckCircle, Lock, Trash2, Pencil, Paperclip, FileText, Download, FileSpreadsheet, Banknote, PiggyBank, Search, Eye, RefreshCw, Check } from "lucide-react";
+import { Wallet, Plus, X, AlertTriangle, CheckCircle, Lock, Trash2, Pencil, Paperclip, FileText, Download, FileSpreadsheet, Banknote, PiggyBank, Search, Eye, RefreshCw, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import StatusModal from "../ui/StatusModal";
 import api, { apiErrorMessage } from "../../lib/api";
 import { exportExpenseReportXlsx } from "../../lib/expenseReportExport";
@@ -167,6 +167,24 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
   const openSavedReceipt = (urls: string[], eventItem: string) =>
     setViewingReceipt({ url: urls[0], item: eventItem, files: urls.map((u) => ({ url: u, name: eventItem })) });
   const closeReceiptViewer = () => setViewingReceipt(null);
+  // Prev/next through an expense's attached files (wraps) + ←/→ keys.
+  const stepReceipt = (dir: 1 | -1) => {
+    setViewingReceipt((cur) => {
+      if (!cur || !cur.files || cur.files.length < 2) return cur;
+      const i = Math.max(0, cur.files.findIndex((x) => x.url === cur.url));
+      const f = cur.files[(i + dir + cur.files.length) % cur.files.length];
+      return { ...cur, url: f.url, mime: f.mime };
+    });
+  };
+  useEffect(() => {
+    if (!viewingReceipt || !viewingReceipt.files || viewingReceipt.files.length < 2) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") stepReceipt(1);
+      else if (e.key === "ArrowLeft") stepReceipt(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewingReceipt]);
   const viewerKind: "image" | "pdf" | "other" = !viewingReceipt
     ? "other"
     : viewingReceipt.mime
@@ -1146,7 +1164,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
               </button>
             </div>
 
-            <div className="flex-1 overflow-auto bg-black/20 flex items-center justify-center p-4">
+            <div className="relative flex-1 overflow-auto bg-black/20 flex items-center justify-center p-4">
               {viewerKind === "image" ? (
                 <img src={viewingReceipt.url} alt={viewingReceipt.item} className="max-w-full max-h-[65vh] rounded-xl shadow-sm" />
               ) : viewerKind === "pdf" ? (
@@ -1160,6 +1178,29 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                   <FileText className="h-10 w-10 mx-auto text-white/40 mb-3" />
                   <p className="text-sm text-white/40">{t("previewNotAvailableLabel")}</p>
                 </div>
+              )}
+              {viewingReceipt.files && viewingReceipt.files.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => stepReceipt(-1)}
+                    aria-label="Previous file"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => stepReceipt(1)}
+                    aria-label="Next file"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/80">
+                    {Math.max(0, viewingReceipt.files.findIndex((x) => x.url === viewingReceipt.url)) + 1} / {viewingReceipt.files.length}
+                  </span>
+                </>
               )}
             </div>
 

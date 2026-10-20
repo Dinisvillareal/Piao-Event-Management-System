@@ -98,9 +98,6 @@ Route::middleware('auth')->group(function () {
     */
     Route::get('/users', [UserController::class, 'index']);
     Route::get('/users/all-for-memberships', [UserController::class, 'getAllForMemberships']);
-    Route::get('/users/staff', [UserController::class, 'staff']);
-    Route::get('/users/resident', [UserController::class, 'resident']);
-    Route::get('/users/deleted', [UserController::class, 'deletedUsers']);
     Route::get('/users/{id}', [UserController::class, 'show']);
     Route::post('/users', [UserController::class, 'store']);
     Route::put('/users/{id}', [UserController::class, 'update']);
@@ -272,6 +269,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/reports/inventory-summary', [ReportController::class, 'inventorySummary']);
     // Official-record downloads (always English -- see ReportController::buildExportPayload)
     Route::get('/reports/export/pdf', [ReportController::class, 'exportPdf']);
+    Route::get('/reports/export/html', [ReportController::class, 'exportHtml']);
     Route::get('/reports/export/word', [ReportController::class, 'exportWord']);
 
     /*

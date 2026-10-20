@@ -1,7 +1,9 @@
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FormSelect from "../../../components/ui/FormSelect";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter } from "lucide-react";
+import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
@@ -98,10 +100,14 @@ export default function InventoryView() {
   // Brief skeleton flash on every page switch, same as Activity Logs --
   // this list paginates client-side so there's nothing to actually wait
   // on, but the flash keeps page switches feeling consistent app-wide.
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const filterSwitching = useFilterSwitching([search, conditionFilter]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
+    scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
@@ -116,6 +122,24 @@ export default function InventoryView() {
 
   // Full-size photo viewer (dark themed, matching the rest of the app).
   const [viewingPhoto, setViewingPhoto] = useState<{ url: string; name: string; urls?: string[] } | null>(null);
+  // Prev/next through a record's photos (wraps around) + ←/→ keys, Esc closes.
+  const stepViewingPhoto = (dir: 1 | -1) => {
+    setViewingPhoto((cur) => {
+      if (!cur || !cur.urls || cur.urls.length < 2) return cur;
+      const i = Math.max(0, cur.urls.indexOf(cur.url));
+      return { ...cur, url: cur.urls[(i + dir + cur.urls.length) % cur.urls.length] };
+    });
+  };
+  useEffect(() => {
+    if (!viewingPhoto) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") stepViewingPhoto(1);
+      else if (e.key === "ArrowLeft") stepViewingPhoto(-1);
+      else if (e.key === "Escape") setViewingPhoto(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewingPhoto]);
 
   // KPI strip data -- deliberately a SEPARATE, always-unfiltered fetch from
   // the search/condition-filtered `items` list below, so the summary
@@ -505,6 +529,7 @@ export default function InventoryView() {
         </div>
       </div>
 
+      <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
       {loading || pageSwitching ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
           <div className="border-b border-white/10 px-4 py-3">
@@ -844,8 +869,31 @@ export default function InventoryView() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
+            <div className="relative flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
               <img src={viewingPhoto.url} alt={viewingPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-2xl" />
+              {viewingPhoto.urls && viewingPhoto.urls.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => stepViewingPhoto(-1)}
+                    aria-label="Previous photo"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => stepViewingPhoto(1)}
+                    aria-label="Next photo"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/80">
+                    {Math.max(0, viewingPhoto.urls.indexOf(viewingPhoto.url)) + 1} / {viewingPhoto.urls.length}
+                  </span>
+                </>
+              )}
             </div>
             <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
               {viewingPhoto.urls && viewingPhoto.urls.length > 1 ? (

@@ -1,3 +1,4 @@
+import { scrollListIntoView } from "../../../lib/scrollToList";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { highlightMatches } from "../../../lib/highlight";
 import {
@@ -87,8 +88,10 @@ export default function ActivityLogsView() {
   // top of the feed instead of leaving them wherever they'd scrolled to
   // on the previous page.
   const topRef = useRef<HTMLDivElement>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
+    scrollListIntoView(listTopRef.current);
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -453,6 +456,7 @@ export default function ActivityLogsView() {
       </p>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+        <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
         {loading ? (
           <div>{Array(6).fill(0).map((_, i) => <SkeletonItem key={i} />)}</div>
         ) : filteredActivities.length === 0 ? (

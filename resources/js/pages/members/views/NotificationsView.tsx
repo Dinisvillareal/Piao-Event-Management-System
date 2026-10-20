@@ -1,6 +1,9 @@
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import { useState, useMemo, useEffect, useRef } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
+import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import { Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, AlertTriangle, Filter } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -50,10 +53,15 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    // Brief skeleton flash on every page switch, same as Activity Logs --
    // this list paginates client-side so there's nothing to actually wait
    // on, but the flash keeps page switches feeling consistent app-wide.
-   const [pageSwitching, setPageSwitching] = useState(false);
+   const [selectedDate, setSelectedDate] = useState(""); // YYYY-MM-DD, matches the date shown on the card
+   const [pageSwitchingRaw, setPageSwitching] = useState(false);
+   const filterSwitching = useFilterSwitching([notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
+   const pageSwitching = pageSwitchingRaw || filterSwitching;
    const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+   const listTopRef = useRef<HTMLSpanElement | null>(null);
    const goToPage = (updater: number | ((p: number) => number)) => {
        setCurrentPage(updater as any);
+     scrollListIntoView(listTopRef.current);
        setPageSwitching(true);
        if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
        pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
@@ -266,8 +274,17 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
            filtered = filtered.filter(n => n.read);
        }
 
+       if (selectedDate) {
+           filtered = filtered.filter((n) => {
+               const d = new Date(n.created_at);
+               if (isNaN(d.getTime())) return false;
+               const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+               return ymd === selectedDate;
+           });
+       }
+
        return filtered;
-   }, [notifications, notificationSearch, dateFilter, statusFilter, eventFilter]);
+   }, [notifications, notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
 
 
    // Pagination logic
@@ -281,7 +298,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    // Reset to first page when filters change
    useEffect(() => {
        setCurrentPage(1);
-   }, [notificationSearch, dateFilter, statusFilter, eventFilter]);
+   }, [notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
 
 
    const closeModal = () => {
@@ -391,6 +408,9 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
                                dark
                            />
+                           <div className="h-11 shrink-0">
+                               <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
+                           </div>
                        </div>
                    </div>
                </div>
@@ -401,9 +421,9 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
 
                {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-               <div className="flex justify-end mt-4">
-                   {totalPages > 1 && ((pageSwitching || loading) ? null : (
-                       <div className="flex items-center gap-2">
+               <div className="flex justify-end mt-4 max-lg:mt-0">
+                   {totalPages > 1 && (loading ? null : (
+                       <div className="flex items-center gap-2 max-lg:fixed max-lg:bottom-5 max-lg:right-5 max-lg:z-40 max-lg:rounded-full max-lg:border max-lg:border-white/15 max-lg:bg-[#0A0E1A]/95 max-lg:px-3 max-lg:py-2 max-lg:shadow-2xl max-lg:backdrop-blur">
                            <button
                                onClick={() => goToPage(p => Math.max(1, p - 1))}
                                disabled={currentPage === 1}
@@ -430,7 +450,8 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
 
            {/* Scrollable Content Area - Only notifications scroll */}
-           <div className="lg:flex-1 lg:overflow-y-auto pb-4">
+           <div className="lg:flex-1 lg:overflow-y-auto pb-24 lg:pb-4">
+               <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
                {pageSwitching || loading ? (
                    <div className="space-y-3">
                        {Array.from({ length: 4 }).map((_, i) => (

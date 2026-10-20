@@ -1,3 +1,5 @@
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import FormSelect from "../../../components/ui/FormSelect";
 import React, { useState, useMemo, useEffect, useRef } from "react";
@@ -51,10 +53,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   // Brief skeleton flash on every page switch, same as Activity Logs --
   // this list paginates client-side so there's nothing to actually wait
   // on, but the flash keeps page switches feeling consistent app-wide.
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const filterSwitching = useFilterSwitching([searchQuery]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (page: number) => {
     setCurrentPage(page);
+    scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
@@ -694,6 +700,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         </div>
       </div>
 
+      <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
       {loading || pageSwitching ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {Array.from({ length: 6 }).map((_, i) => (

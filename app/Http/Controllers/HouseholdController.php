@@ -23,6 +23,10 @@ class HouseholdController extends Controller
      */
     public function index(Request $request)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $query = Household::with(['members' => function ($q) {
             $q->select($this->memberFields())->orderByDesc('is_household_head');
         }])->withCount('members');
@@ -46,6 +50,10 @@ class HouseholdController extends Controller
 
     public function show($id)
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $household = Household::with(['members' => function ($q) {
             $q->select($this->memberFields())->orderByDesc('is_household_head');
         }])->findOrFail($id);
@@ -333,6 +341,10 @@ class HouseholdController extends Controller
      */
     public function unassigned()
     {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         // Both Residents and Staff can belong to a household -- a barangay
         // staff member may live with a resident family and still needs to
         // show up in that household's member list.

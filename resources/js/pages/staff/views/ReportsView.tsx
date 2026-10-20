@@ -146,8 +146,20 @@ const isPhoneOrTablet = () => {
 
 const peso = (n: any) => `₱${Number(n ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
+// Big stat-tile numbers shrink as they get longer so a long peso amount such as
+// "₱106,420.99" is never cut off inside its tile (screen and print).
+const statSize = (v: any) => {
+  const n = String(v ?? "").length;
+  if (n >= 12) return "text-lg print:text-base";
+  if (n >= 10) return "text-xl print:text-lg";
+  if (n >= 8) return "text-2xl print:text-xl";
+  return "text-3xl print:text-2xl";
+};
+
 const ATTENDANCE_PILL: Record<string, string> = {
   Present: "bg-emerald-500/15 text-emerald-300",
+  Complete: "bg-emerald-500/15 text-emerald-300",
+  Incomplete: "bg-amber-500/15 text-amber-300",
   Absent: "bg-red-500/15 text-red-300",
   Expected: "bg-sky-500/15 text-sky-300",
 };
@@ -750,7 +762,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
   return (
     <>
-      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 print:m-0 print:p-0 print:bg-white print:min-h-0">
+      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 print:!m-0 print:!p-0 print:bg-white print:!min-h-0">
         <div className="space-y-6 print:space-y-3">
       {/* Not sticky -- matches every other converted page (Inventory, Budget,
           Returns, Activity Logs, Archive), none of which pin their header
@@ -1001,12 +1013,12 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           <div className={`grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3 ${ph("summary")}`}>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
               <CalendarDays className="h-5 w-5 opacity-80" />
-              <h2 className="mt-2 text-3xl font-black">{summary.total_events}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.total_events)}`}>{summary.total_events}</h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("eventsInRange")}</p>
             </div>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
               <Users className="h-5 w-5 opacity-80" />
-              <h2 className="mt-2 text-3xl font-black">{summary.total_attended}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.total_attended)}`}>{summary.total_attended}</h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("attendanceRecordsLabel")}</p>
             </div>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-800 to-[#1C2E2B] p-5 text-white shadow-sm">
@@ -1016,12 +1028,12 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             </div>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-[#8A3D2C] to-[#5C2A1E] p-5 text-white shadow-sm">
               <Star className="h-5 w-5 opacity-80" />
-              <h2 className="mt-2 text-3xl font-black">{summary.average_feedback_rating ?? "—"}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.average_feedback_rating ?? "—")}`}>{summary.average_feedback_rating ?? "—"}</h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("avgFeedbackRating")}</p>
             </div>
           </div>
 
-          <div className={`grid gap-4 lg:grid-cols-3 print:grid-cols-3 print:gap-3 ${ph("charts")}`}>
+          <div className={`grid gap-4 grid-cols-1 lg:grid-cols-3 print:grid-cols-3 print:gap-3 ${ph("charts")}`}>
             <div className="print:break-inside-avoid lg:col-span-2 print:col-span-2 rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white">
               <h3 className="text-lg font-bold text-white print:text-[#005f63]">{t("eventsPerMonth")}</h3>
               <p className="text-xs text-white/40 mt-0.5 mb-3 print:text-gray-500">{t("eventsPerMonthDesc")}</p>
@@ -1041,9 +1053,9 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
           <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("events")}`}>
             <h3 className="text-lg font-bold text-white mb-4 print:break-after-avoid print:text-[#005f63]">{t("perEventBreakdown")}</h3>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {perEvent.map((ev: any) => (
-                <div key={ev.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-5 print:border-gray-100 print:bg-gray-50">
+                <div key={ev.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-5 print:border-gray-100 print:bg-gray-50 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-bold text-white text-base truncate print:text-[#005f63]">{ev.name}</p>
                     {ev.status && (
@@ -1179,19 +1191,19 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           <div className={`grid gap-4 grid-cols-1 sm:grid-cols-2 print:grid-cols-2 print:gap-3 ${ph("summary")}`}>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
               <Award className="h-5 w-5 opacity-80" />
-              <h2 className="mt-2 text-3xl font-black">{membershipSummary.total_memberships}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(membershipSummary.total_memberships)}`}>{membershipSummary.total_memberships}</h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalMembershipsLabel")}</p>
             </div>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
               <Users className="h-5 w-5 opacity-80" />
-              <h2 className="mt-2 text-3xl font-black">{membershipSummary.total_assignments}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(membershipSummary.total_assignments)}`}>{membershipSummary.total_assignments}</h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalEnrolledResidentsLabel")}</p>
             </div>
           </div>
 
           <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("memberships")}`}>
             <h3 className="text-lg font-bold text-white mb-3 print:break-after-avoid print:text-[#005f63]">{t("enrollmentByMembershipLabel")}</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {perMembership.map((m: any) => (
                 <div key={m.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-gray-100 print:bg-gray-50">
                   <p className="font-bold text-white text-sm truncate print:text-[#005f63]">{m.name}</p>
@@ -1213,22 +1225,22 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3">
               <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
                 <Wallet className="h-5 w-5 opacity-80" />
-                <h2 className="mt-2 text-3xl font-black">{peso(budgetSummary.total_approved_budget)}</h2>
+                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_approved_budget))}`}>{peso(budgetSummary.total_approved_budget)}</h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalApprovedBudgetLabel")}</p>
               </div>
               <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
                 <TrendingUp className="h-5 w-5 opacity-80" />
-                <h2 className="mt-2 text-3xl font-black">{peso(budgetSummary.total_expenses)}</h2>
+                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_expenses))}`}>{peso(budgetSummary.total_expenses)}</h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalSpentLabel")}</p>
               </div>
               <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-800 to-[#1C2E2B] p-5 text-white shadow-sm">
                 <CalendarDays className="h-5 w-5 opacity-80" />
-                <h2 className="mt-2 text-3xl font-black">{peso(budgetSummary.total_remaining)}</h2>
+                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_remaining))}`}>{peso(budgetSummary.total_remaining)}</h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("remainingBudgetLabel")}</p>
               </div>
               <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-[#8A3D2C] to-[#5C2A1E] p-5 text-white shadow-sm">
                 <Star className="h-5 w-5 opacity-80" />
-                <h2 className="mt-2 text-3xl font-black">{budgetSummary.events_over_budget}</h2>
+                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(budgetSummary.events_over_budget)}`}>{budgetSummary.events_over_budget}</h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("eventsOverBudgetLabel")}</p>
               </div>
             </div>
@@ -1243,7 +1255,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
               </div>
               <div className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-[#ddd5ca] print:bg-white">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45 print:text-gray-500">{t("rptTotalOver")}</p>
-                <p className={`mt-1 text-2xl font-black ${(budgetSummary.total_over_amount ?? 0) > 0 ? "text-red-400 print:text-red-600" : "text-white print:text-[#005f63]"}`}>{peso(budgetSummary.total_over_amount)}</p>
+                <p className={`mt-1 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_over_amount))} ${(budgetSummary.total_over_amount ?? 0) > 0 ? "text-red-400 print:text-red-600" : "text-white print:text-[#005f63]"}`}>{peso(budgetSummary.total_over_amount)}</p>
               </div>
               <div className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-[#ddd5ca] print:bg-white">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45 print:text-gray-500">{t("rptNearLimit")}</p>
@@ -1303,7 +1315,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
           <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("perEvent")}`}>
             <h3 className="text-lg font-bold text-white mb-3 print:break-after-avoid print:text-[#005f63]">{t("budgetPerEventLabel")}</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {budgetPerEvent.map((ev: any) => {
                 const st = BUDGET_STATUS_PILL[ev.budget_status] ?? BUDGET_STATUS_PILL["Within budget"];
                 return (
@@ -1457,12 +1469,12 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           <div className={`grid gap-4 grid-cols-1 sm:grid-cols-2 print:grid-cols-2 print:gap-3 ${ph("summary")}`}>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
               <Package className="h-5 w-5 opacity-80" />
-              <h2 className="mt-2 text-3xl font-black">{inventorySummary.total_items}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.total_items)}`}>{inventorySummary.total_items}</h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalInventoryItemsLabel")}</p>
             </div>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
               <TrendingUp className="h-5 w-5 opacity-80" />
-              <h2 className="mt-2 text-3xl font-black">{inventorySummary.total_quantity}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.total_quantity)}`}>{inventorySummary.total_quantity}</h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalQuantityLabel")}</p>
             </div>
           </div>
@@ -1480,7 +1492,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
           <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("items")}`}>
             <h3 className="text-lg font-bold text-white mb-3 print:break-after-avoid print:text-[#005f63]">{t("inventoryItemsLabel")}</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {inventoryItems.map((item: any) => (
                 <div key={item.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-gray-100 print:bg-gray-50">
                   <p className="font-bold text-white text-sm truncate print:text-[#005f63]">{item.name}</p>

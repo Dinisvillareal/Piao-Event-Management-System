@@ -1,7 +1,9 @@
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Undo2, CheckCircle2, PackageX, X, RotateCcw, Pencil, Search, Package, Clock, History, Camera, Eye, ArrowRight } from "lucide-react";
+import { AlertTriangle, Undo2, CheckCircle2, PackageX, X, RotateCcw, Pencil, Search, Package, Clock, History, Camera, Eye, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { createPortal } from "react-dom";
 import api, { apiErrorMessage } from "../../../lib/api";
 import DatePicker from "../../../components/ui/DatePicker";
@@ -65,10 +67,14 @@ export default function ReturnsView() {
   // Brief skeleton flash on every page switch, same as Activity Logs --
   // this table paginates client-side so there's nothing to actually wait
   // on, but the flash keeps page switches feeling consistent app-wide.
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const filterSwitching = useFilterSwitching([search, endedDate]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
+    scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
@@ -132,6 +138,24 @@ export default function ReturnsView() {
   // "VIEW PHOTO" badge + card + gold Close button) as Inventory's own photo
   // viewer, for a consistent look across the app.
   const [viewingPhoto, setViewingPhoto] = useState<{ url: string; name: string; urls?: string[] } | null>(null);
+  // Prev/next through a record's photos (wraps around) + ←/→ keys, Esc closes.
+  const stepViewingPhoto = (dir: 1 | -1) => {
+    setViewingPhoto((cur) => {
+      if (!cur || !cur.urls || cur.urls.length < 2) return cur;
+      const i = Math.max(0, cur.urls.indexOf(cur.url));
+      return { ...cur, url: cur.urls[(i + dir + cur.urls.length) % cur.urls.length] };
+    });
+  };
+  useEffect(() => {
+    if (!viewingPhoto) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") stepViewingPhoto(1);
+      else if (e.key === "ArrowLeft") stepViewingPhoto(-1);
+      else if (e.key === "Escape") setViewingPhoto(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewingPhoto]);
 
   // Recent releases -- lets staff catch and fix a mis-entered quantity
   // ("I meant to release 2, not 3") without touching Inventory's raw
@@ -145,6 +169,7 @@ export default function ReturnsView() {
   // and/or replace the saved evidence photo in place.
   const [editTarget, setEditTarget] = useState<RecentRelease | null>(null);
   const [confirmEditSave, setConfirmEditSave] = useState(false);
+  const [confirmDiscardEdit, setConfirmDiscardEdit] = useState(false);
   const [editQty, setEditQty] = useState(1);
   // A replacement photo, only when one was picked; otherwise the saved
   // photo is kept as-is (no new photo is ever demanded for an edit).
@@ -352,10 +377,11 @@ export default function ReturnsView() {
     setReleaseQty((prev) => ({ ...prev, [item.id]: clamped }));
   };
 
-  // Checked by default -- an event with a handful of items is usually
-  // released in full, so the common case (release everything) takes zero
-  // clicks on the checkboxes themselves.
-  const isItemSelected = (item: OverdueEventItem) => selectedItemIds[item.id] ?? true;
+  // Nothing is ticked when the dialog opens -- staff choose what to release
+  // (or press Select All) so a bulk release is always deliberate.
+  const isItemSelected = (item: OverdueEventItem) => selectedItemIds[item.id] ?? false;
+  // Fresh, unticked list every time a release dialog opens or closes.
+  useEffect(() => { setSelectedItemIds({}); }, [selectedEventId]);
 
   const toggleItemSelected = (item: OverdueEventItem) => {
     setSelectedItemIds((prev) => ({ ...prev, [item.id]: !isItemSelected(item) }));
@@ -523,8 +549,19 @@ export default function ReturnsView() {
 
   const closeEdit = () => {
     if (savingEdit) return;
+    setConfirmDiscardEdit(false);
     setEditTarget(null);
     setEditPhotos([]);
+  };
+
+  // Closing with unsaved edits asks first; closing with none just closes.
+  const requestCloseEdit = () => {
+    if (savingEdit || !editTarget) return;
+    const hasChanges =
+      clampEditQty(editTarget, editQty) !== editTarget.quantity ||
+      photoItemsChanged(editPhotos, editTarget.evidence_photo_urls?.length ?? (editTarget.evidence_photo_url ? 1 : 0));
+    if (hasChanges) setConfirmDiscardEdit(true);
+    else closeEdit();
   };
 
   const clampEditQty = (release: RecentRelease, value: number) =>
@@ -734,7 +771,7 @@ export default function ReturnsView() {
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs font-semibold text-white/50 whitespace-nowrap">{t("filterEndedDateLabel")}</span>
             <div className="h-11">
-              <DatePicker value={endedDate} onChange={setEndedDate} className="h-11 px-4" dark />
+              <DatePicker value={endedDate} onChange={(v: string) => { setEndedDate(v); goToPage(1); }} className="h-11 px-4" dark />
             </div>
           </div>
         </div>
@@ -803,6 +840,7 @@ export default function ReturnsView() {
           </div>
         </div>
 
+        <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
         {loading || pageSwitching ? (
           <div className="divide-y divide-white/[0.06]">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -1249,7 +1287,7 @@ export default function ReturnsView() {
         // Same sizing and card style as the Release Items modal, so both
         // return dialogs feel like one family.
         return createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={closeEdit}>
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={requestCloseEdit}>
             <div
               className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
               onClick={(e) => e.stopPropagation()}
@@ -1261,7 +1299,7 @@ export default function ReturnsView() {
                     {editTarget.item_name} &bull; {editTarget.event_name}
                   </p>
                 </div>
-                <button onClick={closeEdit} disabled={savingEdit} className="text-white/50 hover:text-white p-1">
+                <button onClick={requestCloseEdit} disabled={savingEdit} className="text-white/50 hover:text-white p-1">
                   <X className="h-6 w-6" />
                 </button>
               </div>
@@ -1332,7 +1370,7 @@ export default function ReturnsView() {
                     {savingEdit ? t("savingLabel") : t("saveChangesLabel")}
                   </button>
                   <button
-                    onClick={closeEdit}
+                    onClick={requestCloseEdit}
                     disabled={savingEdit}
                     className="px-7 py-3 rounded-full border border-white/15 text-white text-base hover:bg-white/10 transition disabled:opacity-50"
                   >
@@ -1345,6 +1383,18 @@ export default function ReturnsView() {
           document.body
         );
       })()}
+
+      <ConfirmDialog
+        open={confirmDiscardEdit}
+        icon={<AlertTriangle size={36} />}
+        title={t("unsavedChangesTitle")}
+        body={t("unsavedChangesMessage")}
+        cancelLabel={t("stayButton")}
+        confirmLabel={t("discardCloseButton")}
+        onCancel={() => setConfirmDiscardEdit(false)}
+        onConfirm={closeEdit}
+        z={10000}
+      />
 
       <ConfirmDialog
         open={confirmMoveBack !== null}
@@ -1410,8 +1460,31 @@ export default function ReturnsView() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
+            <div className="relative flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
               <img src={viewingPhoto.url} alt={viewingPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-2xl" />
+              {viewingPhoto.urls && viewingPhoto.urls.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => stepViewingPhoto(-1)}
+                    aria-label="Previous photo"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => stepViewingPhoto(1)}
+                    aria-label="Next photo"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/80">
+                    {Math.max(0, viewingPhoto.urls.indexOf(viewingPhoto.url)) + 1} / {viewingPhoto.urls.length}
+                  </span>
+                </>
+              )}
             </div>
             <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
               {viewingPhoto.urls && viewingPhoto.urls.length > 1 ? (

@@ -561,9 +561,12 @@
 //   );
 // }
 
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Filter, Star, Pencil, CheckCircle, X } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -628,11 +631,16 @@ export default function EventsView({
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
+  const [selectedDate, setSelectedDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const filterSwitching = useFilterSwitching([eventSearch, eventFilter, membershipFilter, selectedDate]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
+    scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
@@ -766,6 +774,11 @@ export default function EventsView({
       );
     }
 
+    // Date filter: keep only events that start on the picked day.
+    if (selectedDate) {
+      result = result.filter((e) => String(e.date || "").split(/[ T]/)[0] === selectedDate);
+    }
+
     // Order the WHOLE list before it is paginated, so page 1 always opens with
     // what matters now and the order never shuffles between pages:
     //   1. This week, still to come / happening  -- soonest first
@@ -792,7 +805,7 @@ export default function EventsView({
       return (ba === 0 || ba === 2) ? startMs(a) - startMs(b) : startMs(b) - startMs(a);
     });
     return result;
-  }, [allEvents, eventFilter, membershipFilter, eventSearch]);
+  }, [allEvents, eventFilter, membershipFilter, eventSearch, selectedDate]);
 
   const totalPages = Math.ceil(filteredEvents.length / itemsPerPage);
   const paginatedEvents = useMemo(() => {
@@ -802,7 +815,7 @@ export default function EventsView({
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [eventSearch, eventFilter, membershipFilter]);
+  }, [eventSearch, eventFilter, membershipFilter, selectedDate]);
 
   const groupedEvents = useMemo(() => {
     const groups: Record<string, typeof allEvents> = {};
@@ -868,6 +881,9 @@ export default function EventsView({
                 searchPlaceholder={t("search")}
                 noResultsLabel={t("noMatchesFoundLabel")}
               />
+              <div className="h-11 shrink-0">
+                <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
+              </div>
             </div>
           </div>
 
@@ -876,9 +892,9 @@ export default function EventsView({
           </p>
 
           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-          <div className="flex justify-end mt-4">
-            {totalPages > 1 && ((pageSwitching || loading) ? null : (
-              <div className="flex items-center gap-2">
+          <div className="flex justify-end mt-4 max-lg:mt-0">
+            {totalPages > 1 && (loading ? null : (
+              <div className="flex items-center gap-2 max-lg:fixed max-lg:bottom-5 max-lg:right-5 max-lg:z-40 max-lg:rounded-full max-lg:border max-lg:border-white/15 max-lg:bg-[#0A0E1A]/95 max-lg:px-3 max-lg:py-2 max-lg:shadow-2xl max-lg:backdrop-blur">
                 <button
                   onClick={() => goToPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
@@ -905,7 +921,8 @@ export default function EventsView({
       </div>
 
       {/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
-      <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0 pb-4">
+      <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0 pb-24 lg:pb-4">
+        <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
         {pageSwitching || loading ? (
           <div className="grid gap-5 md:grid-cols-2">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -935,7 +952,8 @@ export default function EventsView({
                         ? e.membership_ids.map((id) => allMemberships.find((m) => m.id === id)?.name).filter(Boolean) as string[]
                         : [];
                     const dateOnly = formatDateOnly(e.date);
-                    const timeOnly = formatTime(e.date);
+                    const endTimeOnly = e.event_end ? formatTime(e.event_end) : "";
+                    const timeOnly = `${formatTime(e.date)}${endTimeOnly ? ` – ${endTimeOnly}` : ""}`;
 
                     return (
                       <div key={e.id} className="relative rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] p-5 hover:bg-white/[0.06] transition-all duration-200">

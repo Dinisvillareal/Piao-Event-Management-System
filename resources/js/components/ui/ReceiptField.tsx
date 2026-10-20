@@ -172,7 +172,7 @@ export default function ReceiptField({ items, onChange, onPreview, onError, empt
       ref={inputRef}
       type="file"
       multiple
-      accept={imageMode ? "image/jpeg,image/png,.jpg,.jpeg,.png" : "image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"}
+      accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
       className="hidden"
       onChange={handlePick}
     />

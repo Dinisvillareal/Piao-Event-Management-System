@@ -264,7 +264,8 @@ export default function DashboardView({
   // a live preview of that same code, not a separate/fake one.
   const qrData = useMemo(() => {
     if (!userId || !userCode || !fullName) return null;
-    return JSON.stringify({ user_id: userId, user_code: userCode, name: fullName });
+    // user_id is deliberately NOT in the QR; the scanner resolves by user_code.
+    return JSON.stringify({ user_code: userCode, name: fullName });
   }, [userId, userCode, fullName]);
 
   if (loading) return <MemberDashboardSkeleton memberName={memberName} />;

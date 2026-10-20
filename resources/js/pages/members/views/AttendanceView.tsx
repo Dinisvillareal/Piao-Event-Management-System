@@ -305,9 +305,12 @@
 //   );
 // }
 
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Filter } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -356,10 +359,15 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   const [attendanceFilter, setAttendanceFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [selectedDate, setSelectedDate] = useState("");
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const filterSwitching = useFilterSwitching([attendanceSearch, attendanceFilter, membershipFilter, selectedDate]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
+    scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
@@ -368,6 +376,19 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   const itemsPerPage = 10;
 
   const showMembershipFilter = userMemberships.length > 1;
+
+  // " – 3:00 PM" tail for the event's end time (empty when none is set).
+  const formatEndTime = (datetimeStr?: string): string => {
+    if (!datetimeStr) return "";
+    const date = new Date(datetimeStr);
+    if (isNaN(date.getTime())) return "";
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    return ` – ${hours}:${minutes} ${ampm}`;
+  };
 
   const formatEventDateTime = (datetimeStr: string): string => {
     if (!datetimeStr) return "";
@@ -412,8 +433,11 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
         matchesSearch(attendanceSearch, rec.eventTitle, rec.eventDate, rec.location, rec.timeIn, rec.timeOut)
       );
     }
+    if (selectedDate) {
+      result = result.filter((rec) => String(rec.eventDate || "").split(/[ T]/)[0] === selectedDate);
+    }
     return weekFirstOrder(result);
-  }, [attendanceRecords, attendanceFilter, membershipFilter, showMembershipFilter, allEvents, attendanceSearch]);
+  }, [attendanceRecords, attendanceFilter, membershipFilter, showMembershipFilter, allEvents, attendanceSearch, selectedDate]);
 
   const totalPages = Math.ceil(filteredAttendance.length / itemsPerPage);
   const paginatedAttendance = useMemo(() => {
@@ -423,7 +447,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [attendanceSearch, attendanceFilter, membershipFilter]);
+  }, [attendanceSearch, attendanceFilter, membershipFilter, selectedDate]);
 
   return (
     // h-full inherits from Members.tsx's h-full wrapper; flex flex-col
@@ -472,6 +496,9 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                   noResultsLabel={t("noMatchesFoundLabel")}
                 />
               )}
+              <div className="h-11 shrink-0">
+                <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
+              </div>
             </div>
           </div>
 
@@ -480,9 +507,9 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
           </p>
 
           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-          <div className="flex justify-end mt-4">
-            {totalPages > 1 && ((pageSwitching || loading) ? null : (
-              <div className="flex items-center gap-2">
+          <div className="flex justify-end mt-4 max-lg:mt-0">
+            {totalPages > 1 && (loading ? null : (
+              <div className="flex items-center gap-2 max-lg:fixed max-lg:bottom-5 max-lg:right-5 max-lg:z-40 max-lg:rounded-full max-lg:border max-lg:border-white/15 max-lg:bg-[#0A0E1A]/95 max-lg:px-3 max-lg:py-2 max-lg:shadow-2xl max-lg:backdrop-blur">
                 <button
                   onClick={() => goToPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
@@ -509,8 +536,9 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
       </div>
 
       {/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
-      <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0 pb-4">
+      <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0 pb-24 lg:pb-4">
         <div className="space-y-3">
+          <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
           {pageSwitching || loading ? (
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
@@ -529,7 +557,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                 className="rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] px-6 py-[18px] hover:bg-white/[0.06] transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex-1">
                   <h3 className="text-[16.5px] font-bold text-white">{highlightText(tc(rec.eventTitle, language as any), attendanceSearch)}</h3>
-                  <p className="text-[13.5px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)} · {tc(rec.location, language as any)}</p>
+                  <p className="text-[13.5px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)}{formatEndTime(rec.eventEnd)} · {tc(rec.location, language as any)}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
                   <div className="text-right whitespace-nowrap">

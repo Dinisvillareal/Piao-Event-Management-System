@@ -11,7 +11,16 @@
        this is what guarantees every page, including one a card gets
        pushed onto by a page break, opens with a proper gutter of white
        space instead of content butting right up against the paper edge. --}}
-  @page { margin: 10mm 12mm 18mm 12mm; }
+  @if(!empty($htmlMode))
+  {{-- Browser print: even margins on every page, page number in the bottom margin. --}}
+  @page { margin: 10mm 12mm 16mm 12mm; @bottom-right { content: "Page " counter(page) " of " counter(pages); font-family: sans-serif; font-size: 9px; color: #667777; } }
+  html, body { margin: 0; padding: 0; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @else
+  @page { margin: 8mm 12mm 18mm 12mm; }
+  /* First page starts higher: the letterhead already has its own breathing room. */
+  @page :first { margin-top: 3mm; }
+  @endif
   body { font-family: 'DejaVu Sans', sans-serif; color: #1a1a1a; font-size: 11px; }
   .center { text-align: center; }
   .hdr-table { width: 100%; border-collapse: collapse; }
@@ -140,6 +149,15 @@
       // file's bytes as-is and never needed GD to begin with.
       $logoPath = public_path('logo-removebg-preview.jpg');
       $canRenderLogo = is_file($logoPath);
+      if (!empty($htmlMode) && $canRenderLogo) {
+          $logoPath = 'data:image/jpeg;base64,' . base64_encode(file_get_contents($logoPath));
+      }
+      // Stat-tile numbers shrink as they get longer so a long peso amount
+      // (e.g. P106,420.99) is never cut off inside its tile.
+      $statFs = function ($v) {
+          $n = mb_strlen((string) $v);
+          return $n >= 13 ? 12 : ($n >= 11 ? 14 : ($n >= 9 ? 16 : ($n >= 7 ? 18 : 20)));
+      };
     @endphp
     <table class="hdr-table"><tr>
       <td class="hdr-logo-cell">
@@ -249,11 +267,11 @@
     <table class="stat-table">
       <tr>
         <td class="stat-cell"><div class="stat-box" style="background:#456F68;">
-          <div class="stat-value">{{ $data['summary']['total_events'] }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($data['summary']['total_events']) }}px; white-space:nowrap;">{{ $data['summary']['total_events'] }}</div>
           <div class="stat-label">Events in Range</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#C6953C;">
-          <div class="stat-value">{{ $data['summary']['total_attended'] }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($data['summary']['total_attended']) }}px; white-space:nowrap;">{{ $data['summary']['total_attended'] }}</div>
           <div class="stat-label">Attendance Records</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#2A423E;">
@@ -261,7 +279,7 @@
           <div class="stat-label">Attendance Rate</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#8A3D2C;">
-          <div class="stat-value">{{ $data['summary']['average_feedback_rating'] ?? '—' }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($data['summary']['average_feedback_rating'] ?? '—') }}px; white-space:nowrap;">{{ $data['summary']['average_feedback_rating'] ?? '—' }}</div>
           <div class="stat-label">Avg Feedback Rating</div>
         </div></td>
       </tr>
@@ -411,11 +429,11 @@
     <table class="stat-table">
       <tr>
         <td class="stat-cell" style="width:50%;"><div class="stat-box" style="background:#456F68;">
-          <div class="stat-value">{{ $data['summary']['total_memberships'] }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($data['summary']['total_memberships']) }}px; white-space:nowrap;">{{ $data['summary']['total_memberships'] }}</div>
           <div class="stat-label">Total Memberships</div>
         </div></td>
         <td class="stat-cell" style="width:50%;"><div class="stat-box" style="background:#C6953C;">
-          <div class="stat-value">{{ $data['summary']['total_assignments'] }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($data['summary']['total_assignments']) }}px; white-space:nowrap;">{{ $data['summary']['total_assignments'] }}</div>
           <div class="stat-label">Total Enrolled Residents</div>
         </div></td>
       </tr>
@@ -457,19 +475,19 @@
     <table class="stat-table">
       <tr>
         <td class="stat-cell"><div class="stat-box" style="background:#456F68;">
-          <div class="stat-value">{{ $peso($data['summary']['total_approved_budget']) }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($peso($data['summary']['total_approved_budget'])) }}px; white-space:nowrap;">{{ $peso($data['summary']['total_approved_budget']) }}</div>
           <div class="stat-label">Total Approved Budget</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#C6953C;">
-          <div class="stat-value">{{ $peso($data['summary']['total_expenses']) }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($peso($data['summary']['total_expenses'])) }}px; white-space:nowrap;">{{ $peso($data['summary']['total_expenses']) }}</div>
           <div class="stat-label">Total Expenses</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#2A423E;">
-          <div class="stat-value">{{ $peso($data['summary']['total_remaining']) }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($peso($data['summary']['total_remaining'])) }}px; white-space:nowrap;">{{ $peso($data['summary']['total_remaining']) }}</div>
           <div class="stat-label">Remaining Budget</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#8A3D2C;">
-          <div class="stat-value">{{ $data['summary']['events_over_budget'] }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($data['summary']['events_over_budget']) }}px; white-space:nowrap;">{{ $data['summary']['events_over_budget'] }}</div>
           <div class="stat-label">Events Over Budget</div>
         </div></td>
       </tr>
@@ -481,15 +499,15 @@
           <div class="stat-label">Budget Used</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#9A4A38;">
-          <div class="stat-value">{{ $peso($data['summary']['total_over_amount']) }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($peso($data['summary']['total_over_amount'])) }}px; white-space:nowrap;">{{ $peso($data['summary']['total_over_amount']) }}</div>
           <div class="stat-label">Total Over Budget</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#8C6A2B;">
-          <div class="stat-value">{{ $data['summary']['events_near_limit'] }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($data['summary']['events_near_limit']) }}px; white-space:nowrap;">{{ $data['summary']['events_near_limit'] }}</div>
           <div class="stat-label">Events Near Limit (90%+)</div>
         </div></td>
         <td class="stat-cell"><div class="stat-box" style="background:#33504B;">
-          <div class="stat-value">{{ $data['summary']['total_expense_entries'] }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($data['summary']['total_expense_entries']) }}px; white-space:nowrap;">{{ $data['summary']['total_expense_entries'] }}</div>
           <div class="stat-label">Expense Entries</div>
         </div></td>
       </tr>
@@ -645,11 +663,11 @@
     <table class="stat-table">
       <tr>
         <td class="stat-cell" style="width:50%;"><div class="stat-box" style="background:#456F68;">
-          <div class="stat-value">{{ $data['summary']['total_items'] }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($data['summary']['total_items']) }}px; white-space:nowrap;">{{ $data['summary']['total_items'] }}</div>
           <div class="stat-label">Total Inventory Items</div>
         </div></td>
         <td class="stat-cell" style="width:50%;"><div class="stat-box" style="background:#C6953C;">
-          <div class="stat-value">{{ $data['summary']['total_quantity'] }}</div>
+          <div class="stat-value" style="font-size:{{ $statFs($data['summary']['total_quantity']) }}px; white-space:nowrap;">{{ $data['summary']['total_quantity'] }}</div>
           <div class="stat-label">Total Quantity</div>
         </div></td>
       </tr>

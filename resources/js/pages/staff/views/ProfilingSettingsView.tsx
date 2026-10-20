@@ -87,6 +87,58 @@ export default function ProfilingSettingsView() {
   };
   useEffect(() => () => { if (tabSwitchTimer.current) clearTimeout(tabSwitchTimer.current); }, []);
 
+  // Pagination -- each list shows PER_PAGE rows, with its own page number so
+  // flipping between tabs keeps your place. A page change flashes the same
+  // skeleton the tab switch does.
+  const PER_PAGE = 6;
+  const [pages, setPages] = useState({ brackets: 1, civil: 1, current: 1 });
+  type ListTab = "brackets" | "civil" | "current";
+  const pageCountOf = (n: number) => Math.max(1, Math.ceil(n / PER_PAGE));
+  const safePageOf = (tab: ListTab, n: number) => Math.min(pages[tab], pageCountOf(n));
+  const pageSlice = <T,>(tab: ListTab, list: T[]): T[] => {
+    const start = (safePageOf(tab, list.length) - 1) * PER_PAGE;
+    return list.slice(start, start + PER_PAGE);
+  };
+  const goPage = (tab: ListTab, page: number) => {
+    setPages((prev) => ({ ...prev, [tab]: page }));
+    setTabSwitching(true);
+    if (tabSwitchTimer.current) clearTimeout(tabSwitchTimer.current);
+    tabSwitchTimer.current = setTimeout(() => setTabSwitching(false), 350);
+  };
+  const renderPager = (tab: ListTab, total: number) => {
+    const totalPages = pageCountOf(total);
+    if (totalPages <= 1) return null;
+    const current = safePageOf(tab, total);
+    return (
+      <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 sm:px-5 py-3 border-t border-white/10">
+        <p className="text-sm text-white/45 text-center sm:text-left">
+          {t("pageOfLabel")} {current} {t("ofPagesLabel")} {totalPages} • {total} {t("recordsLabelShort")} • {PER_PAGE} {t("perPage")}
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => goPage(tab, Math.max(1, current - 1))}
+            disabled={current === 1}
+            aria-label="Previous page"
+            className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
+          >
+            ←
+          </button>
+          <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">{current}</span>
+          <button
+            type="button"
+            onClick={() => goPage(tab, Math.min(totalPages, current + 1))}
+            disabled={current === totalPages}
+            aria-label="Next page"
+            className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
+          >
+            →
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -504,7 +556,7 @@ export default function ProfilingSettingsView() {
             <>
               {ageBrackets.length > 0 && (
                 <ul className="divide-y divide-white/[0.06]">
-                  {ageBrackets.map((b) => (
+                  {pageSlice("brackets", ageBrackets).map((b) => (
                     <li key={b.id} className="flex items-center justify-between gap-3.5 px-5 sm:px-6 py-3.5">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="shrink-0 h-10 w-10 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] flex items-center justify-center">
@@ -541,6 +593,7 @@ export default function ProfilingSettingsView() {
                   ))}
                 </ul>
               )}
+              {renderPager("brackets", ageBrackets.length)}
 
               <form onSubmit={submitBracket} noValidate className="border-t border-white/10 p-4 sm:p-5 space-y-3">
                 <p className="text-xs font-bold uppercase tracking-wide text-white/40">
@@ -619,7 +672,7 @@ export default function ProfilingSettingsView() {
             <>
               {civilStatuses.length > 0 && (
                 <ul className="divide-y divide-white/[0.06]">
-                  {civilStatuses.map((s) => (
+                  {pageSlice("civil", civilStatuses).map((s) => (
                     <li key={s.id} className="flex items-center justify-between gap-3.5 px-5 sm:px-6 py-3.5">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="shrink-0 h-10 w-10 rounded-full bg-gold-400/10 text-gold-300 flex items-center justify-center">
@@ -653,6 +706,7 @@ export default function ProfilingSettingsView() {
                   ))}
                 </ul>
               )}
+              {renderPager("civil", civilStatuses.length)}
 
               <form onSubmit={submitStatus} noValidate className="border-t border-white/10 p-4 sm:p-5 space-y-3">
                 <p className="text-xs font-bold uppercase tracking-wide text-white/40">
@@ -710,7 +764,7 @@ export default function ProfilingSettingsView() {
             <>
               {currentStatuses.length > 0 && (
                 <ul className="divide-y divide-white/[0.06]">
-                  {currentStatuses.map((s) => (
+                  {pageSlice("current", currentStatuses).map((s) => (
                     <li key={s.id} className="flex items-center justify-between gap-3.5 px-5 sm:px-6 py-3.5">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="shrink-0 h-10 w-10 rounded-full bg-sage-400/10 text-sage-300 flex items-center justify-center">
@@ -744,6 +798,7 @@ export default function ProfilingSettingsView() {
                   ))}
                 </ul>
               )}
+              {renderPager("current", currentStatuses.length)}
 
               <form onSubmit={submitCurrentStatus} noValidate className="border-t border-white/10 p-4 sm:p-5 space-y-3">
                 <p className="text-xs font-bold uppercase tracking-wide text-white/40">
