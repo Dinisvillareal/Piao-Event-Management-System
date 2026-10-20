@@ -1,5 +1,6 @@
 import { SquareMenu, Menu } from "lucide-react";
 import LanguageSwitcher from "../../../components/ui/LanguageSwitcher";
+import ThemeToggle from "../../../components/ui/ThemeToggle";
 import DefaultAvatar from "../../../components/ui/DefaultAvatar";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -23,6 +24,7 @@ export default function TopHeader({ memberName, role, onMenuClick, userId }: Top
         <p className="text-[10px] sm:text-[11px] uppercase tracking-[0.12em] sm:tracking-[0.2em] leading-snug text-white/40 m-0">{t("staffPortal")}</p>
       </div>
       <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
+        <ThemeToggle />
         <LanguageSwitcher userId={userId} />
         <div className="hidden sm:flex items-center gap-2.5">
           <DefaultAvatar className="h-8 w-8" title={memberName} />

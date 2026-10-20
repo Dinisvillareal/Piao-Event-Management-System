@@ -24,6 +24,7 @@ import ProfilingSettingsView from "./views/ProfilingSettingsView";
 import OfflineBanner from "../../components/ui/OfflineBanner";
 import api from "../../lib/api";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { useThemeScope } from "../../lib/theme";
 import { staffKeyFromPath, staffUrlFor } from "../../lib/staffRoutes";
 
 // --- TYPES & MOCK DATA ---
@@ -46,6 +47,7 @@ export const highlightText = (text: string, query: string) => highlightMatches(t
 // --------------------------
 export default function StaffDashboard() {
   const { t } = useLanguage();
+  useThemeScope();
   const getInitialActive = () => staffKeyFromPath(window.location.pathname);
 
   const [active, setActiveState] = useState(getInitialActive());

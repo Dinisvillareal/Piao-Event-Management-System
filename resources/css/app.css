@@ -1,5 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 
+@import './theme-light.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -102,5 +104,17 @@ input[type="password"]::-ms-reveal {
     font-family: "Public Sans", sans-serif;
     font-size: 9px;
     color: #667777;
+  }
+}
+
+/* DARK THEME -- every form / dialog field gets the same look as the Register
+   Resident and Post Event forms: a clear, slightly lighter glass pill with a
+   visible edge. Cards, toggles, checkboxes, error / disabled / focused fields
+   and the login card keep their own styling. */
+@media screen {
+  html:not([data-theme="light"]) :is(form, [class*="fixed"][class*="inset-0"])
+    :is(input, select, textarea)[class*="bg-white/"]:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(:disabled):not(:focus):not([class*="border-red"]):not([class*="border-amber"]):not(:is([class~="backdrop-blur-2xl"] *)) {
+    background-color: rgba(255, 255, 255, 0.10) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
   }
 }

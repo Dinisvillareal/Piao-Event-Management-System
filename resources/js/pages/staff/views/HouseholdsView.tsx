@@ -501,7 +501,7 @@ export default function HouseholdsView() {
                 </div>
 
                 {expanded && (
-                  <div className="border-t border-white/10 bg-black/20 px-5 py-4 space-y-3">
+                  <div className="glass-subpanel border-t border-white/10 bg-black/20 px-5 py-4 space-y-3">
                     {h.members.length === 0 ? (
                       <p className="text-sm text-white/50">{t("noMembersYet")}</p>
                     ) : (
@@ -638,38 +638,38 @@ export default function HouseholdsView() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={handleCloseAdd}>
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl p-6 sm:p-8 shadow-2xl space-y-5 max-h-[90dvh] overflow-y-auto"
+            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-3xl p-7 sm:p-10 shadow-2xl space-y-6 max-h-[90dvh] overflow-y-auto"
           >
             <div>
-              <h3 className="text-2xl font-bold text-white">{t("addHouseholdLabel")}</h3>
-              <p className="mt-1 text-sm text-white/50">{t("hhAddModalSubtitle")}</p>
+              <h3 className="text-3xl font-bold text-white">{t("addHouseholdLabel")}</h3>
+              <p className="mt-1.5 text-base text-white/50">{t("hhAddModalSubtitle")}</p>
             </div>
 
             {/* Head (required) */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Star className="h-4 w-4 text-gold-300" />
-                <p className="text-sm font-bold text-white">{t("hhHeadSectionLabel")}</p>
-                <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">{t("hhRequiredBadge")}</span>
+                <Star className="h-5 w-5 text-gold-300" />
+                <p className="text-base font-bold text-white">{t("hhHeadSectionLabel")}</p>
+                <span className="rounded-full bg-red-500/15 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-red-300">{t("hhRequiredBadge")}</span>
               </div>
               {addHead && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-500/10 border border-gold-400/25 pl-3 pr-1.5 py-1 text-sm font-medium text-gold-300">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-500/10 border border-gold-400/25 pl-3.5 pr-2 py-1.5 text-base font-medium text-gold-300">
                   <Star className="h-3.5 w-3.5 fill-gold-300" /> {fullName(addHead)}
                   <button type="button" onClick={() => setAddHeadId(null)} className="p-1 rounded-full hover:text-white" aria-label="Clear head"><X className="h-3.5 w-3.5" /></button>
                 </span>
               )}
               <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
                 <input
                   value={addHeadSearch}
                   onChange={(e) => setAddHeadSearch(e.target.value)}
                   placeholder={t("hhSearchHeadPlaceholder")}
-                  className="h-11 w-full rounded-full border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                  className="h-[52px] w-full rounded-full border border-white/10 bg-white/[0.03] pl-12 pr-5 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                 />
               </div>
-              <div className="max-h-44 overflow-y-auto rounded-2xl border border-white/10 bg-white/[0.03] p-1.5 space-y-1">
+              <div className="max-h-60 overflow-y-auto rounded-2xl border border-white/10 bg-white/[0.03] p-1.5 space-y-1">
                 {headChoices.length === 0 ? (
-                  <p className="px-3 py-2 text-sm text-white/40">{unassigned.length === 0 ? t("hhNoAvailableResidents") : t("noUnassignedResidents")}</p>
+                  <p className="px-4 py-2.5 text-base text-white/40">{unassigned.length === 0 ? t("hhNoAvailableResidents") : t("noUnassignedResidents")}</p>
                 ) : headChoices.map((m) => {
                   const on = m.id === addHeadId;
                   return (
@@ -677,12 +677,12 @@ export default function HouseholdsView() {
                       key={m.id}
                       type="button"
                       onClick={() => pickHead(m.id)}
-                      className={`w-full flex items-center justify-between gap-2 rounded-full px-3.5 py-2 text-left text-sm transition ${on ? "bg-gold-500/15 text-gold-300" : "text-white hover:bg-white/[0.06]"}`}
+                      className={`w-full flex items-center justify-between gap-2 rounded-full px-4 py-2.5 text-left text-base transition ${on ? "bg-gold-500/15 text-gold-300" : "text-white hover:bg-white/[0.06]"}`}
                     >
                       <span className="flex items-center gap-1.5 min-w-0">
                         {on ? <Star className="h-4 w-4 fill-gold-300 shrink-0" /> : <span className="h-4 w-4 shrink-0 rounded-full border border-white/25" />}
                         <span className="truncate">{highlightMatches(fullName(m), addHeadSearch)}</span>
-                        {m.role === "Staff" && <span className="rounded-full bg-gold-400/15 text-gold-300 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>}
+                        {m.role === "Staff" && <span className="rounded-full bg-gold-400/15 text-gold-300 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>}
                       </span>
                       <span className="text-white/40 shrink-0">{m.user_code}</span>
                     </button>
@@ -694,26 +694,26 @@ export default function HouseholdsView() {
             {/* Members (optional) */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <Users className="h-4 w-4 text-[#4FBEB0]" />
-                <p className="text-sm font-bold text-white">{t("hhMembersSectionLabel")}</p>
-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/60">{t("hhOptionalBadge")}</span>
+                <Users className="h-5 w-5 text-[#4FBEB0]" />
+                <p className="text-base font-bold text-white">{t("hhMembersSectionLabel")}</p>
+                <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-white/60">{t("hhOptionalBadge")}</span>
                 {addMemberIds.length > 0 && <span className="text-xs text-[#7DD8CB]">{addMemberIds.length} {t("hhSelectedCount")}</span>}
               </div>
               <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
                 <input
                   value={addMemberSearch}
                   onChange={(e) => setAddMemberSearch(e.target.value)}
                   placeholder={t("hhSearchMembersPlaceholder")}
                   disabled={addHeadId === null}
-                  className="h-11 w-full rounded-full border border-white/10 bg-white/[0.03] pl-11 pr-4 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50 disabled:opacity-50"
+                  className="h-[52px] w-full rounded-full border border-white/10 bg-white/[0.03] pl-12 pr-5 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50 disabled:opacity-50"
                 />
               </div>
-              <div className="max-h-44 overflow-y-auto rounded-2xl border border-white/10 bg-white/[0.03] p-1.5 space-y-1">
+              <div className="max-h-60 overflow-y-auto rounded-2xl border border-white/10 bg-white/[0.03] p-1.5 space-y-1">
                 {addHeadId === null ? (
-                  <p className="px-3 py-2 text-sm text-white/40">{t("hhChooseHeadError")}</p>
+                  <p className="px-4 py-2.5 text-base text-white/40">{t("hhChooseHeadError")}</p>
                 ) : memberChoices.length === 0 ? (
-                  <p className="px-3 py-2 text-sm text-white/40">{t("noUnassignedResidents")}</p>
+                  <p className="px-4 py-2.5 text-base text-white/40">{t("noUnassignedResidents")}</p>
                 ) : memberChoices.map((m) => {
                   const on = addMemberIds.includes(m.id);
                   return (
@@ -721,14 +721,14 @@ export default function HouseholdsView() {
                       key={m.id}
                       type="button"
                       onClick={() => toggleAddMember(m.id)}
-                      className={`w-full flex items-center justify-between gap-2 rounded-full px-3.5 py-2 text-left text-sm transition ${on ? "bg-[#4FBEB0]/15 text-[#7DD8CB]" : "text-white hover:bg-white/[0.06]"}`}
+                      className={`w-full flex items-center justify-between gap-2 rounded-full px-4 py-2.5 text-left text-base transition ${on ? "bg-[#4FBEB0]/15 text-[#7DD8CB]" : "text-white hover:bg-white/[0.06]"}`}
                     >
                       <span className="flex items-center gap-1.5 min-w-0">
                         <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-md border ${on ? "border-[#4FBEB0] bg-[#4FBEB0]" : "border-white/25"}`}>
                           {on && <Check className="h-3 w-3 text-[#0A0E1A]" />}
                         </span>
                         <span className="truncate">{highlightMatches(fullName(m), addMemberSearch)}</span>
-                        {m.role === "Staff" && <span className="rounded-full bg-gold-400/15 text-gold-300 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>}
+                        {m.role === "Staff" && <span className="rounded-full bg-gold-400/15 text-gold-300 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>}
                       </span>
                       <span className="text-white/40 shrink-0">{m.user_code}</span>
                     </button>
@@ -737,10 +737,10 @@ export default function HouseholdsView() {
               </div>
             </div>
 
-            <p className="text-xs text-white/40">{t("hhAutoFillNote")}</p>
+            <p className="text-sm text-white/40">{t("hhAutoFillNote")}</p>
 
             <div className="flex justify-center gap-4 pt-1">
-              <button type="button" onClick={handleCloseAdd} className="px-6 py-3 rounded-full border border-white/15 text-white text-base hover:bg-white/10 transition">
+              <button type="button" onClick={handleCloseAdd} className="px-8 py-3.5 rounded-full border border-white/15 text-white text-base hover:bg-white/10 transition">
                 {t("cancelLabel")}
               </button>
               <button
@@ -748,7 +748,7 @@ export default function HouseholdsView() {
                 onClick={() => setConfirmAdd(true)}
                 disabled={saving || addHeadId === null}
                 title={addHeadId === null ? t("hhChooseHeadError") : undefined}
-                className="px-6 py-3 rounded-full bg-sage-700 text-white text-base font-bold hover:bg-sage-800 transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-sage-700"
+                className="px-8 py-3.5 rounded-full bg-sage-700 text-white text-base font-bold hover:bg-sage-800 transition disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:bg-sage-700"
               >
                 {t("hhCreateHousehold")}
               </button>

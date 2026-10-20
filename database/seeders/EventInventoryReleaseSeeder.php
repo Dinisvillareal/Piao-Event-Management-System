@@ -31,7 +31,8 @@ class EventInventoryReleaseSeeder extends Seeder
             ['event' => 'Senior Citizen Wellness Check', 'item' => 'First Aid Kit (Complete)', 'qty' => 2, 'hours_ago' => 48],
             ['event' => 'Health Insurance Claims Clinic', 'item' => 'Multipurpose Printer/Scanner', 'qty' => 1, 'hours_ago' => 6],
             // Partly returned -- the rest of the tables is still pending.
-            ['event' => 'Pantawid Pamilya Livelihood Workshop', 'item' => 'Folding Tables (6ft)', 'qty' => 2, 'hours_ago' => 24],
+            // One of the two came back a bit worn, so it is returned as Fair.
+            ['event' => 'Pantawid Pamilya Livelihood Workshop', 'item' => 'Folding Tables (6ft)', 'qty' => 2, 'hours_ago' => 24, 'conditions' => ['Good' => 1, 'Fair' => 1]],
         ];
 
         foreach ($returns as $i => $return) {
@@ -50,23 +51,33 @@ class EventInventoryReleaseSeeder extends Seeder
 
             $qty = min((int) $return['qty'], (int) $borrow->quantity);
 
-            $item->quantity += $qty;
-            $item->save();
+            // Same rule as EventController::releaseBorrowedItem: staff can say
+            // which condition each returned unit comes back in; otherwise
+            // the units come from the largest borrowed condition.
+            $returned = $return['conditions'] ?? null;
+            if ($returned && array_sum($returned) <= $borrow->quantity) {
+                $qty = array_sum($returned);
+                $borrow->takeOutMatching($returned, $item->condition);
+                $units = $returned;
+            } else {
+                $units = $borrow->takeOutUnits($qty, $item->condition);
+            }
+            $item->giveUnits($units);
 
-            if ($qty >= $borrow->quantity) {
+            if ($borrow->quantity <= 0) {
                 $borrow->delete();
             } else {
-                $borrow->quantity -= $qty;
                 $borrow->save();
             }
 
             $at = now()->subHours($return['hours_ago']);
 
             // forceFill so the backdated created_at is kept (it isn't mass-assignable).
-            (new EventInventoryRelease())->forceFill([
+            $release = new EventInventoryRelease();
+            $release->setUnits($units);
+            $release->forceFill([
                 'event_id' => $event->id,
                 'inventory_item_id' => $item->id,
-                'quantity' => $qty,
                 'released_by' => $staffCodes[$i % max(count($staffCodes), 1)] ?? null,
                 'created_at' => $at,
                 'updated_at' => $at,

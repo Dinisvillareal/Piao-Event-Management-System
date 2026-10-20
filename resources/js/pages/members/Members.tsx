@@ -477,9 +477,11 @@ import Skeleton from "../../components/ui/Skeleton";
 import api from "../../lib/api";
 import { memberKeyFromPath, memberUrlFor } from "../../lib/memberRoutes";
 import { attendanceStatus } from "../../lib/attendanceStatus";
+import { useThemeScope } from "../../lib/theme";
 
 export default function MemberDashboard() {
   const { t } = useLanguage();
+  useThemeScope();
   const [active, setActiveState] = useState(() => memberKeyFromPath(window.location.pathname));
   const [member, setMember] = useState({
     id: "",

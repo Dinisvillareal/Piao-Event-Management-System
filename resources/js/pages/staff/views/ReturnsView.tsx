@@ -21,7 +21,38 @@ interface OverdueEventItem {
   id: number;
   name: string;
   quantity: number;
+  // Units still out, per condition (New / Good / Fair / Poor).
+  units?: Record<string, number>;
 }
+
+// Conditions a returned unit can come back in -- staff pick how many of each.
+const RETURN_CONDITIONS = [
+  { label: "New", key: "conditionNew", chip: "bg-[#4FBEB0]/20 text-[#7DD8CB]" },
+  { label: "Good", key: "conditionGood", chip: "bg-[#4FBEB0]/10 text-[#7DD8CB]" },
+  { label: "Fair", key: "conditionFair", chip: "bg-gold-400/15 text-gold-300" },
+  { label: "Poor", key: "conditionPoor", chip: "bg-[#8A3D2C]/25 text-[#E2A088]" },
+] as const;
+
+const sumUnits = (u: Record<string, number>) => Object.values(u).reduce((a, b) => a + (Number(b) || 0), 0);
+
+// What is still out after `returned` came back: the same conditions first,
+// then the largest remaining one -- mirrors HasConditionUnits::takeOutMatching.
+const remainingAfterReturn = (out: Record<string, number>, returned: Record<string, number>): Record<string, number> => {
+  const now: Record<string, number> = { ...out };
+  let left = 0;
+  Object.entries(returned).forEach(([label, n]) => {
+    const cut = Math.min(Number(n) || 0, now[label] ?? 0);
+    now[label] = (now[label] ?? 0) - cut;
+    left += (Number(n) || 0) - cut;
+  });
+  Object.keys(now).sort((a, b) => now[b] - now[a]).forEach((label) => {
+    if (left <= 0) return;
+    const cut = Math.min(left, now[label]);
+    now[label] -= cut;
+    left -= cut;
+  });
+  return now;
+};
 
 interface OverdueEvent {
   id: number;
@@ -36,8 +67,12 @@ interface RecentRelease {
   event_name: string;
   item_name: string;
   quantity: number;
+  // Condition each returned unit came back in.
+  units?: Record<string, number>;
   // Most this release can be raised to: already released + still borrowed.
   max_quantity: number;
+  // Most of each condition this return can hold: already returned + still out.
+  max_units?: Record<string, number>;
   released_by: string | null;
   released_at: string;
   evidence_photo_url: string | null;
@@ -111,7 +146,9 @@ export default function ReturnsView() {
   } | null>(null);
   // How many units to release per item, keyed by borrow-record id --
   // staff can give back fewer than the full borrowed quantity.
-  const [releaseQty, setReleaseQty] = useState<Record<number, number>>({});
+  // Per item: how many units come back in each condition (starts from what
+  // was borrowed, so a plain return gives everything back as it went out).
+  const [releaseUnits, setReleaseUnits] = useState<Record<number, Record<string, number>>>({});
 
   const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
   const [releasingItemId, setReleasingItemId] = useState<number | null>(null);
@@ -170,7 +207,7 @@ export default function ReturnsView() {
   const [editTarget, setEditTarget] = useState<RecentRelease | null>(null);
   const [confirmEditSave, setConfirmEditSave] = useState(false);
   const [confirmDiscardEdit, setConfirmDiscardEdit] = useState(false);
-  const [editQty, setEditQty] = useState(1);
+  const [editUnits, setEditUnits] = useState<Record<string, number>>({ New: 0, Good: 0, Fair: 0, Poor: 0 });
   // A replacement photo, only when one was picked; otherwise the saved
   // photo is kept as-is (no new photo is ever demanded for an edit).
   const [editPhotos, setEditPhotos] = useState<PhotoItem[]>([]);
@@ -370,11 +407,17 @@ export default function ReturnsView() {
 
   const modalEvent = events.find((ev) => ev.id === selectedEventId) ?? null;
 
-  const qtyFor = (item: OverdueEventItem) => releaseQty[item.id] ?? item.quantity;
+  const defaultUnits = (item: OverdueEventItem): Record<string, number> =>
+    item.units && sumUnits(item.units) === item.quantity ? { New: 0, Good: 0, Fair: 0, Poor: 0, ...item.units } : { New: 0, Good: item.quantity, Fair: 0, Poor: 0 };
+  const unitsFor = (item: OverdueEventItem) => releaseUnits[item.id] ?? defaultUnits(item);
+  const qtyFor = (item: OverdueEventItem) => sumUnits(unitsFor(item));
 
-  const setQtyFor = (item: OverdueEventItem, value: number) => {
-    const clamped = Math.max(1, Math.min(item.quantity, Math.floor(value) || 1));
-    setReleaseQty((prev) => ({ ...prev, [item.id]: clamped }));
+  // Each condition is capped so the total never exceeds what is still out.
+  const setUnitFor = (item: OverdueEventItem, label: string, value: number) => {
+    const current = unitsFor(item);
+    const others = sumUnits(current) - (current[label] ?? 0);
+    const clamped = Math.max(0, Math.min(item.quantity - others, Math.floor(value) || 0));
+    setReleaseUnits((prev) => ({ ...prev, [item.id]: { ...current, [label]: clamped } }));
   };
 
   // Nothing is ticked when the dialog opens -- staff choose what to release
@@ -421,12 +464,14 @@ export default function ReturnsView() {
 
   const releaseOneItem = async (eventId: number, item: OverdueEventItem, qty: number) => {
     const photos = (releasePhotos[item.id] ?? []).filter((p) => p.file);
-    if (photos.length === 0) return;
+    if (photos.length === 0 || qty <= 0) return;
+    const returned = unitsFor(item);
     setConfirmRelease(null);
     setReleasingItemId(item.id);
     try {
       const fd = new FormData();
       fd.append("quantity", String(qty));
+      Object.entries(returned).forEach(([label, n]) => fd.append(`conditions[${label}]`, String(n)));
       photos.forEach((p) => fd.append("photos[]", p.file as File));
       await api.post(`/events/${eventId}/borrowed-items/${item.id}/release`, fd);
       removeReleasePhoto(item.id);
@@ -437,14 +482,18 @@ export default function ReturnsView() {
               ? {
                   ...ev,
                   items: ev.items
-                    .map((it) => (it.id === item.id ? { ...it, quantity: it.quantity - qty } : it))
+                    .map((it) =>
+                      it.id === item.id
+                        ? { ...it, quantity: it.quantity - qty, units: remainingAfterReturn(defaultUnits(it), returned) }
+                        : it
+                    )
                     .filter((it) => it.quantity > 0),
                 }
               : ev
           )
           .filter((ev) => ev.items.length > 0)
       );
-      setReleaseQty((prev) => {
+      setReleaseUnits((prev) => {
         const next = { ...prev };
         delete next[item.id];
         return next;
@@ -475,15 +524,16 @@ export default function ReturnsView() {
     // item lacks one, so this is just a safety net).
     const jobs = event.items
       .filter(isItemSelected)
-      .map((item) => ({ item, qty: qtyFor(item), photos: (releasePhotos[item.id] ?? []).filter((p) => p.file) }))
-      .filter((job) => job.photos.length > 0);
+      .map((item) => ({ item, qty: qtyFor(item), returned: unitsFor(item), photos: (releasePhotos[item.id] ?? []).filter((p) => p.file) }))
+      .filter((job) => job.photos.length > 0 && job.qty > 0);
     if (jobs.length === 0) return;
     setBulkReleasing(true);
     try {
       const results = await Promise.allSettled(
-        jobs.map(({ item, qty, photos }) => {
+        jobs.map(({ item, qty, returned, photos }) => {
           const fd = new FormData();
           fd.append("quantity", String(qty));
+          Object.entries(returned).forEach(([label, n]) => fd.append(`conditions[${label}]`, String(n)));
           photos.forEach((p) => fd.append("photos[]", p.file as File));
           return api.post(`/events/${event.id}/borrowed-items/${item.id}/release`, fd);
         })
@@ -501,7 +551,9 @@ export default function ReturnsView() {
                   items: ev.items
                     .map((it) => {
                       const job = jobs.find((j) => j.item.id === it.id);
-                      return job && succeededIds.has(it.id) ? { ...it, quantity: it.quantity - job.qty } : it;
+                      return job && succeededIds.has(it.id)
+                        ? { ...it, quantity: it.quantity - job.qty, units: remainingAfterReturn(defaultUnits(it), job.returned) }
+                        : it;
                     })
                     .filter((it) => it.quantity > 0),
                 }
@@ -509,7 +561,7 @@ export default function ReturnsView() {
           )
           .filter((ev) => ev.items.length > 0)
       );
-      setReleaseQty((prev) => {
+      setReleaseUnits((prev) => {
         const next = { ...prev };
         succeededIds.forEach((id) => delete next[id]);
         return next;
@@ -542,7 +594,7 @@ export default function ReturnsView() {
 
   const openEdit = (release: RecentRelease) => {
     setError(null);
-    setEditQty(release.quantity);
+    setEditUnits(unitsOfRelease(release));
     setEditPhotos(photoItemsFromUrls(release.evidence_photo_urls?.length ? release.evidence_photo_urls : release.evidence_photo_url ? [release.evidence_photo_url] : []));
     setEditTarget(release);
   };
@@ -558,14 +610,30 @@ export default function ReturnsView() {
   const requestCloseEdit = () => {
     if (savingEdit || !editTarget) return;
     const hasChanges =
-      clampEditQty(editTarget, editQty) !== editTarget.quantity ||
+      unitsChanged(editTarget, editUnits) ||
       photoItemsChanged(editPhotos, editTarget.evidence_photo_urls?.length ?? (editTarget.evidence_photo_url ? 1 : 0));
     if (hasChanges) setConfirmDiscardEdit(true);
     else closeEdit();
   };
 
-  const clampEditQty = (release: RecentRelease, value: number) =>
-    Math.max(1, Math.min(release.max_quantity, Math.floor(value) || 1));
+  const unitsOfRelease = (release: RecentRelease): Record<string, number> =>
+    release.units && sumUnits(release.units) === release.quantity
+      ? { New: 0, Good: 0, Fair: 0, Poor: 0, ...release.units }
+      : { New: 0, Good: release.quantity, Fair: 0, Poor: 0 };
+
+  const unitsChanged = (release: RecentRelease, units: Record<string, number>) => {
+    const base = unitsOfRelease(release);
+    return RETURN_CONDITIONS.some((c) => (units[c.label] ?? 0) !== (base[c.label] ?? 0));
+  };
+
+  // Each condition is capped by what that condition can hold, and the total
+  // never goes past what the event actually borrowed.
+  const setEditUnit = (release: RecentRelease, label: string, value: number) => {
+    const others = sumUnits(editUnits) - (editUnits[label] ?? 0);
+    const cap = Math.min(release.max_units?.[label] ?? release.max_quantity, release.max_quantity - others);
+    const clamped = Math.max(0, Math.min(cap, Math.floor(value) || 0));
+    setEditUnits((prev) => ({ ...prev, [label]: clamped }));
+  };
 
   // Where the change lands, so the hand-off is honest: lowering the quantity
   // sends items back to Pending Returns; anything else stays in the log.
@@ -573,12 +641,14 @@ export default function ReturnsView() {
     setConfirmEditSave(false);
     if (!editTarget) return;
     const release = editTarget;
-    const qty = clampEditQty(release, editQty);
+    const qty = sumUnits(editUnits);
+    if (qty < 1) return;
     setSavingEdit(true);
     setError(null);
     try {
       const fd = new FormData();
       fd.append("quantity", String(qty));
+      RETURN_CONDITIONS.forEach((c) => fd.append(`conditions[${c.label}]`, String(editUnits[c.label] ?? 0)));
       appendPhotoFields(fd, editPhotos);
       await api.post(`/events/borrowed-items/releases/${release.id}/update`, fd);
       const movedBack = qty < release.quantity ? release.quantity - qty : 0;
@@ -1045,6 +1115,11 @@ export default function ReturnsView() {
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           {t("returnedChipLabel")}
                         </span>
+                        {RETURN_CONDITIONS.filter((c) => (r.units?.[c.label] ?? 0) > 0).map((c) => (
+                          <span key={c.label} className={`rounded-full px-2 py-0.5 text-[11px] font-semibold [font-variant-numeric:tabular-nums] ${c.chip}`}>
+                            {r.units?.[c.label]} {t(c.key)}
+                          </span>
+                        ))}
                         <span>
                           {relativeTimeLabel(r.released_at)}
                           {r.released_by && <> &bull; {t("releasedByPrefixLabel")} {r.released_by}</>}
@@ -1163,23 +1238,12 @@ export default function ReturnsView() {
                     <span className="text-base font-semibold text-white truncate">{it.quantity}&times; {tc(it.name, language as any)}</span>
                   </label>
                   <div className="flex items-center gap-2 ml-auto">
-                    <label className="text-sm text-white/60">{t("qtyLabel")}</label>
-                    {/* Numeric up/down bounded to 1..borrowed-quantity --
-                        setQtyFor() clamps every change, so typing or
-                        stepping past either end just snaps back instead of
-                        accepting a bad number. Our own stepper buttons
-                        rather than the browser's native spinner -- see
-                        NumberStepper.tsx for why. */}
-                    <NumberStepper
-                      min={1}
-                      max={it.quantity}
-                      value={String(qtyFor(it))}
-                      onChange={(v) => setQtyFor(it, Number(v))}
-                      className="w-20 rounded-xl border border-white/10 bg-white/[0.03] pl-3 pr-6 py-2.5 text-base text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
-                    />
+                    <span className="text-sm text-white/60 [font-variant-numeric:tabular-nums]">
+                      {t("borrowTotalLabel")}: <span className="font-bold text-white">{qtyFor(it)}</span> / {it.quantity}
+                    </span>
                     <button
                       onClick={() => setConfirmRelease({ eventId: modalEvent.id, item: it, qty: qtyFor(it) })}
-                      disabled={releasingItemId === it.id || !(releasePhotos[it.id]?.length)}
+                      disabled={releasingItemId === it.id || !(releasePhotos[it.id]?.length) || qtyFor(it) <= 0}
                       title={!(releasePhotos[it.id]?.length) ? t("attachEvidenceLabel") : undefined}
                       className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-sage-700 hover:bg-sage-800 disabled:opacity-60 text-white text-sm font-bold px-5 py-2.5 transition"
                     >
@@ -1187,6 +1251,24 @@ export default function ReturnsView() {
                       {releasingItemId === it.id ? t("releasingLabel") : t("releaseLabel")}
                     </button>
                   </div>
+                </div>
+                {/* Which condition each returned unit comes back in -- starts
+                    from what was borrowed; change it if something came back
+                    worn or damaged. Goes back into Inventory exactly like this. */}
+                <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <span className="text-sm font-semibold text-white/70">{t("returnConditionLabel")}</span>
+                  {RETURN_CONDITIONS.map((c) => (
+                    <div key={c.label} className="flex items-center gap-1.5">
+                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
+                      <NumberStepper
+                        min={0}
+                        max={it.quantity}
+                        value={String(unitsFor(it)[c.label] ?? 0)}
+                        onChange={(v) => setUnitFor(it, c.label, Number(v))}
+                        className="w-20 rounded-xl border border-white/10 bg-white/[0.03] pl-3 pr-6 py-2 text-base text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
+                      />
+                    </div>
+                  ))}
                 </div>
                 {/* Evidence photos for THIS item -- up to 5, shown as a tidy
                     strip under the row instead of squeezed beside the buttons. */}
@@ -1281,8 +1363,8 @@ export default function ReturnsView() {
           undone and no second photo is required; lowering the quantity just
           sends the difference back to Pending Returns. */}
       {editTarget && (() => {
-        const qty = clampEditQty(editTarget, editQty);
-        const changed = qty !== editTarget.quantity || photoItemsChanged(editPhotos, editTarget.evidence_photo_urls?.length ?? (editTarget.evidence_photo_url ? 1 : 0));
+        const qty = sumUnits(editUnits);
+        const changed = unitsChanged(editTarget, editUnits) || photoItemsChanged(editPhotos, editTarget.evidence_photo_urls?.length ?? (editTarget.evidence_photo_url ? 1 : 0));
         const delta = qty - editTarget.quantity;
         // Same sizing and card style as the Release Items modal, so both
         // return dialogs feel like one family.
@@ -1310,16 +1392,31 @@ export default function ReturnsView() {
                 <div className="rounded-2xl bg-white/[0.03] border border-white/10 px-5 py-4">
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div>
-                      <p className="text-base font-semibold text-white">{t("returnedQtyLabel")}</p>
-                      <p className="text-xs text-white/45 mt-0.5">{t("returnedQtyRangeHint").replace("{max}", String(editTarget.max_quantity))}</p>
+                      <p className="text-base font-semibold text-white">{t("returnConditionLabel")}</p>
+                      <p className="text-xs text-white/45 mt-0.5">
+                        {t("borrowTotalLabel")}: <span className="font-bold text-white">{qty}</span> / {editTarget.max_quantity}
+                      </p>
                     </div>
-                    <NumberStepper
-                      min={1}
-                      max={editTarget.max_quantity}
-                      value={String(qty)}
-                      onChange={(v) => setEditQty(clampEditQty(editTarget, Number(v)))}
-                      className="w-20 rounded-xl border border-white/10 bg-white/[0.03] pl-3 pr-6 py-2.5 text-base text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
-                    />
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {RETURN_CONDITIONS.map((c) => {
+                      const cap = Math.min(editTarget.max_units?.[c.label] ?? editTarget.max_quantity, editTarget.max_quantity);
+                      return (
+                        <div key={c.label} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-2.5">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
+                            <span className="text-xs text-white/45">/ {cap}</span>
+                          </div>
+                          <NumberStepper
+                            min={0}
+                            max={cap}
+                            value={String(editUnits[c.label] ?? 0)}
+                            onChange={(v) => setEditUnit(editTarget, c.label, Number(v))}
+                            className="w-20 rounded-xl border border-white/10 bg-white/[0.03] pl-3 pr-6 py-2 text-base text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                   {delta !== 0 && (
                     <p className={`mt-3 flex items-center gap-2 text-sm font-semibold ${delta < 0 ? "text-[#E2A088]" : "text-[#7DD8CB]"}`}>
@@ -1364,7 +1461,7 @@ export default function ReturnsView() {
                 <div className="flex items-center gap-3 ml-auto">
                   <button
                     onClick={() => setConfirmEditSave(true)}
-                    disabled={savingEdit || !changed || editPhotos.length === 0}
+                    disabled={savingEdit || !changed || editPhotos.length === 0 || qty < 1}
                     className="inline-flex items-center gap-1.5 rounded-full bg-sage-700 hover:bg-sage-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold px-5 py-2.5 transition"
                   >
                     {savingEdit ? t("savingLabel") : t("saveChangesLabel")}

@@ -124,6 +124,9 @@ export default function App() {
   // since the splash first appeared, however quickly `loading` itself
   // settles. The auth check can still take *longer* than that with no
   // issue -- the splash simply keeps showing until it's done either way.
+  // No saved session at load time = the login page is what will show, so use
+  // the logo-less PIAOCONNECT wordmark splash there.
+  const loginLoadRef = useRef(!(sessionStorage.getItem("user") || localStorage.getItem("user")));
   const MIN_SPLASH_MS = 1800;
   const [splashVisible, setSplashVisible] = useState(true);
   const [splashMounted, setSplashMounted] = useState(true);
@@ -131,7 +134,10 @@ export default function App() {
 
   useEffect(() => {
     if (loading) return;
-    const remaining = Math.max(0, MIN_SPLASH_MS - (Date.now() - splashStartRef.current));
+    // The login wordmark splash is slower: give the mirror shine time for one
+    // full, unhurried pass across the letters before fading out.
+    const minMs = loginLoadRef.current ? 7200 : MIN_SPLASH_MS;
+    const remaining = Math.max(0, minMs - (Date.now() - splashStartRef.current));
     const startFade = setTimeout(() => setSplashVisible(false), remaining);
     const unmount = setTimeout(() => setSplashMounted(false), remaining + 700);
     return () => {
@@ -269,7 +275,7 @@ export default function App() {
   return (
     <>
       {content}
-      {splashMounted && <SplashScreen visible={splashVisible} />}
+      {splashMounted && <SplashScreen visible={splashVisible} variant={loginLoadRef.current ? "wordmark" : "brand"} />}
     </>
   );
 }

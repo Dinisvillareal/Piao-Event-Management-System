@@ -418,9 +418,10 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   };
 
   const filteredAttendance = useMemo(() => {
-    let result = attendanceRecords;
-    if (attendanceFilter === "upcoming") result = result.filter((rec) => ["upcoming", "ongoing"].includes(attendanceStatus(rec)));
-    else if (attendanceFilter !== "all") result = result.filter((rec) => attendanceStatus(rec) === attendanceFilter);
+    // Only finished outcomes belong here: Complete, Incomplete, or Missed.
+    // Events that haven't ended yet (upcoming / ongoing) are not shown.
+    let result = attendanceRecords.filter((rec) => ["complete", "incomplete", "missed"].includes(attendanceStatus(rec)));
+    if (attendanceFilter !== "all") result = result.filter((rec) => attendanceStatus(rec) === attendanceFilter);
     if (showMembershipFilter && membershipFilter !== "all") {
       const selectedId = Number(membershipFilter);
       result = result.filter((rec) => {
@@ -473,7 +474,6 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                   { value: "complete", label: t("completeInOut") },
                   { value: "incomplete", label: t("incompleteInOut") },
                   { value: "missed", label: t("missedNoRecord") },
-                  { value: "upcoming", label: t("upcomingOption") },
                 ]}
                 className="h-11 pl-10 pr-8 shrink-0"
                 icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}

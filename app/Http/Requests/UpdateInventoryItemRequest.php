@@ -21,6 +21,12 @@ class UpdateInventoryItemRequest extends FormRequest
             'lost_quantity'    => 'sometimes|integer|min:0',
             'disposed_quantity' => 'sometimes|integer|min:0',
             'condition'        => 'sometimes|in:New,Good,Fair,Poor',
+            // Units in stock per condition (e.g. 45 Good + 15 New). When sent,
+            // their sum is the item's in-stock quantity.
+            'new_quantity'     => 'sometimes|integer|min:0',
+            'good_quantity'    => 'sometimes|integer|min:0',
+            'fair_quantity'    => 'sometimes|integer|min:0',
+            'poor_quantity'    => 'sometimes|integer|min:0',
             'storage_location' => 'nullable|string|max:150',
             'notes'            => 'nullable|string|max:255',
             // Optional photo -- a new file replaces whatever was there

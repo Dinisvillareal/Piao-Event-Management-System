@@ -385,6 +385,10 @@ class UserController extends Controller
             return response()->json(['message' => 'Invalid credentials'], 401);
         }
 
+        // "Keep me signed in on this device" -- the remember cookie lasts 30 days.
+        if ($request->boolean('remember_me')) {
+            Auth::guard('web')->setRememberDuration(60 * 24 * 30);
+        }
         Auth::login($user, $request->boolean('remember_me'));
         $request->session()->regenerate();
 

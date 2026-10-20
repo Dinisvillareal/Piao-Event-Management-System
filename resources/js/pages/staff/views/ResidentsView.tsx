@@ -2326,7 +2326,7 @@ const handleDeleteResident = async () => {
           sage caption pills, per the "register resident" layout redesign. Same
           fields, same handlers -- styling only. */}
       {showAddForm && (
-        <div style={{ top: panelTop }} className="fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
+        <div style={{ top: panelTop }} className="resident-form-panel fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
@@ -2610,7 +2610,7 @@ const handleDeleteResident = async () => {
           headers -- for a consistent Add/Edit experience. Same fields, same
           handlers -- styling only. */}
       {editRecord && editingResident && (
-        <div style={{ top: panelTop }} className="fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
+        <div style={{ top: panelTop }} className="resident-form-panel fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""

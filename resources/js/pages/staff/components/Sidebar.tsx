@@ -332,7 +332,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                       <group.icon className="h-5 w-5 shrink-0" />
                       <span className="truncate flex-1 min-w-0 text-left">{t(group.labelKey)}</span>
                       {group.key === "membershipGroup" && householdAlerts > 0 && !openGroups[group.key] && (
-                        <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white ring-2 ring-[#0A0E1A]" title={t("hhAlertBannerTitle").replace("{count}", String(householdAlerts))}>{householdAlerts > 99 ? "99+" : householdAlerts}</span>
+                        <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white" title={t("hhAlertBannerTitle").replace("{count}", String(householdAlerts))}>{householdAlerts > 99 ? "99+" : householdAlerts}</span>
                       )}
                       {openGroups[group.key] ? <ChevronUp size={16} className="text-white/35" /> : <ChevronDown size={16} className="text-white/35" />}
                     </button>
@@ -348,7 +348,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                             <item.icon className="h-5 w-5 shrink-0" />
                             <span className="truncate flex-1 min-w-0 text-left">{t(item.key)}</span>
                             {item.key === "households" && householdAlerts > 0 && (
-                              <span className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white ring-2 ring-[#0A0E1A]" title={t("hhAlertBannerTitle").replace("{count}", String(householdAlerts))}>{householdAlerts > 99 ? "99+" : householdAlerts}</span>
+                              <span className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white" title={t("hhAlertBannerTitle").replace("{count}", String(householdAlerts))}>{householdAlerts > 99 ? "99+" : householdAlerts}</span>
                             )}
                           </button>
                         ))}

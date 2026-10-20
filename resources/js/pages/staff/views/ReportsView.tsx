@@ -1499,9 +1499,11 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                   <p className="text-xs text-white/40 mt-0.5 print:text-gray-500">{item.storage_location || "—"}</p>
                   <div className="mt-2 flex items-center justify-between">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${conditionColor[item.condition] ?? "bg-white/10 text-white/60 print:bg-gray-100 print:text-gray-600"}`}>
-                        {conditionLabel(item.condition)}
-                      </span>
+                      {(item.condition_units ?? [{ condition: item.condition, units: 0 }]).map((cu: any) => (
+                        <span key={cu.condition} className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${conditionColor[cu.condition] ?? "bg-white/10 text-white/60 print:bg-gray-100 print:text-gray-600"}`}>
+                          {conditionLabel(cu.condition)} ×{cu.units}
+                        </span>
+                      ))}
                       {Number(item.lost_quantity) > 0 && (
                         <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${conditionColor.Lost}`}>
                           {conditionLabel("Lost")} ×{item.lost_quantity}

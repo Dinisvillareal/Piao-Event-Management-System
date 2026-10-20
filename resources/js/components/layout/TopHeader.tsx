@@ -1,5 +1,6 @@
 import { SquareMenu, Menu } from "lucide-react";
 import LanguageSwitcher from "../ui/LanguageSwitcher";
+import ThemeToggle from "../ui/ThemeToggle";
 import DefaultAvatar from "../ui/DefaultAvatar";
 import { useLanguage } from "../../i18n/LanguageContext";
 
@@ -28,6 +29,7 @@ export default function TopHeader({ memberName, onMenuClick, userId }: TopHeader
         </p>
       </div>
       <div className="flex items-center gap-1.5 sm:gap-4 shrink-0">
+        <ThemeToggle />
         <LanguageSwitcher userId={userId} />
         <div className="hidden sm:flex items-center gap-2.5">
           <DefaultAvatar className="h-8 w-8" title={memberName} />

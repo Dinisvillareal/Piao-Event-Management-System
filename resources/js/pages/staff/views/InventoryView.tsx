@@ -33,7 +33,14 @@ interface InventoryItem {
   lost_pending: number;
   // Worn-out / used-up units taken out of service (same idea as lost).
   disposed_quantity: number;
+  // Main condition (the one with the most units) -- kept for filters/reports.
   condition: Condition;
+  // In-stock units per condition (they add up to `quantity`), so one item can
+  // hold e.g. 45 Good + 15 New instead of needing a duplicate row.
+  new_quantity: number;
+  good_quantity: number;
+  fair_quantity: number;
+  poor_quantity: number;
   storage_location: string | null;
   notes: string | null;
   photo_url: string | null;
@@ -60,7 +67,39 @@ const CONDITION_STYLES: Record<Condition, string> = {
   Poor: "bg-[#8A3D2C]/25 text-[#E2A088]",
 };
 
-const emptyForm = { name: "", quantity: 1, lost_quantity: 0, disposed_quantity: 0, condition: "Good" as Condition, storage_location: "", notes: "" };
+const CONDITIONS: Condition[] = ["New", "Good", "Fair", "Poor"];
+const COUNT_KEY = { New: "new_quantity", Good: "good_quantity", Fair: "fair_quantity", Poor: "poor_quantity" } as const;
+
+// In-stock units of one item per condition, non-empty ones only. An item with
+// nothing in stock still shows its main condition (with 0 units).
+const conditionUnits = (item: InventoryItem): { condition: Condition; units: number }[] => {
+  const rows = CONDITIONS.map((c) => ({ condition: c, units: Number(item[COUNT_KEY[c]]) || 0 })).filter((r) => r.units > 0);
+  return rows.length ? rows : [{ condition: item.condition, units: 0 }];
+};
+
+const emptyForm = {
+  name: "",
+  new_quantity: 0,
+  good_quantity: 1,
+  fair_quantity: 0,
+  poor_quantity: 0,
+  lost_quantity: 0,
+  disposed_quantity: 0,
+  storage_location: "",
+  notes: "",
+};
+
+const formFromItem = (item: InventoryItem) => ({
+  name: item.name,
+  new_quantity: Number(item.new_quantity) || 0,
+  good_quantity: Number(item.good_quantity) || 0,
+  fair_quantity: Number(item.fair_quantity) || 0,
+  poor_quantity: Number(item.poor_quantity) || 0,
+  lost_quantity: item.lost_quantity ?? 0,
+  disposed_quantity: item.disposed_quantity ?? 0,
+  storage_location: item.storage_location ?? "",
+  notes: item.notes ?? "",
+});
 
 const CONDITION_LABEL_KEYS: Record<ConditionFilter, string> = {
   New: "conditionNew",
@@ -194,7 +233,7 @@ export default function InventoryView() {
     const totalUnits = allItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
     const onLoanCount = allItems.filter((i) => i.borrowed_quantity > 0).length;
     const needsAttentionCount = allItems.filter(
-      (i) => !!i.overdue_borrow_event || i.condition === "Poor" || (i.lost_quantity ?? 0) > 0
+      (i) => !!i.overdue_borrow_event || Number(i.poor_quantity) > 0 || (Number(i.quantity) === 0 && i.condition === "Poor") || (i.lost_quantity ?? 0) > 0
     ).length;
     return { totalItems, totalUnits, onLoanCount, needsAttentionCount };
   }, [allItems]);
@@ -230,10 +269,12 @@ export default function InventoryView() {
   // or removed photo counts as a change too.
   const isFormUnchanged = !!editing && (
     form.name === editing.name &&
-    Number(form.quantity) === editing.quantity &&
+    Number(form.new_quantity) === (Number(editing.new_quantity) || 0) &&
+    Number(form.good_quantity) === (Number(editing.good_quantity) || 0) &&
+    Number(form.fair_quantity) === (Number(editing.fair_quantity) || 0) &&
+    Number(form.poor_quantity) === (Number(editing.poor_quantity) || 0) &&
     Number(form.lost_quantity) === (editing.lost_quantity ?? 0) &&
     Number(form.disposed_quantity) === (editing.disposed_quantity ?? 0) &&
-    form.condition === editing.condition &&
     form.storage_location === (editing.storage_location ?? "") &&
     form.notes === (editing.notes ?? "") &&
     !photoItemsChanged(photoItems, editing.photo_urls?.length ?? (editing.photo_url ? 1 : 0))
@@ -251,7 +292,7 @@ export default function InventoryView() {
   // Lost / Disposed move units out of (or back into) the in-stock Quantity
   // live, mirroring what the server does on save: stepping Lost or Disposed
   // up takes units out of Quantity, stepping down puts them back. When
-  // editing, form.quantity is the BASE stock sent to the server; the number
+  // editing, the sum of the per-condition counts is the BASE stock sent to the server; the number
   // shown in the Quantity box is what's left after the Lost/Disposed changes.
   // Units found again that were out on loan when reported (lost_pending)
   // settle with that loan instead of returning to stock.
@@ -267,7 +308,11 @@ export default function InventoryView() {
     }
     return s - (disposed - (editing.disposed_quantity ?? 0));
   };
-  const baseQuantity = Number(form.quantity) || 0;
+  const baseQuantity = CONDITIONS.reduce((sum, c) => sum + (Number(form[COUNT_KEY[c]]) || 0), 0);
+  // Main condition = the one holding the most units (ties go to the worse one).
+  const mainCondition: Condition = baseQuantity > 0
+    ? ([...CONDITIONS].reverse().reduce((best, c) => (Number(form[COUNT_KEY[c]]) > Number(form[COUNT_KEY[best]]) ? c : best), "Poor" as Condition))
+    : (editing?.condition ?? "Good");
   const shownQuantity = editing ? projectStock(baseQuantity, form.lost_quantity, form.disposed_quantity) : baseQuantity;
   // Upper limits so the numbers stay within what actually exists: disposed
   // can only come from stock, lost can also come from units out on loan.
@@ -313,15 +358,7 @@ export default function InventoryView() {
 
   const openEdit = (item: InventoryItem) => {
     setEditing(item);
-    setForm({
-      name: item.name,
-      quantity: item.quantity,
-      lost_quantity: item.lost_quantity ?? 0,
-      disposed_quantity: item.disposed_quantity ?? 0,
-      condition: item.condition,
-      storage_location: item.storage_location ?? "",
-      notes: item.notes ?? "",
-    });
+    setForm(formFromItem(item));
     setPhotoItems(photoItemsFromUrls(item.photo_url ? [item.photo_url] : []));
     setError(null);
     setShowForm(true);
@@ -348,7 +385,7 @@ export default function InventoryView() {
       setError(t("itemNameRequiredError"));
       return;
     }
-    if (!Number.isInteger(form.quantity) || form.quantity < 0) {
+    if (CONDITIONS.some((c) => !Number.isInteger(form[COUNT_KEY[c]]) || form[COUNT_KEY[c]] < 0)) {
       setError(t("invalidQuantityError"));
       return;
     }
@@ -364,8 +401,11 @@ export default function InventoryView() {
     try {
       const fd = new FormData();
       fd.append("name", form.name);
-      fd.append("quantity", String(form.quantity));
-      fd.append("condition", form.condition);
+      // Units per condition; the server adds them up into the in-stock
+      // quantity and keeps the item's main condition in step.
+      CONDITIONS.forEach((c) => fd.append(COUNT_KEY[c], String(form[COUNT_KEY[c]])));
+      fd.append("quantity", String(baseQuantity));
+      fd.append("condition", mainCondition);
       if (editing) {
         fd.append("lost_quantity", String(form.lost_quantity));
         fd.append("disposed_quantity", String(form.disposed_quantity));
@@ -387,7 +427,7 @@ export default function InventoryView() {
       closeForm();
       setSuccessMessage(
         archived
-          ? t("itemArchivedSuccess").replace("{condition}", form.condition)
+          ? t("itemArchivedSuccess").replace("{condition}", mainCondition)
           : wasEditing
           ? t("itemUpdatedSuccess")
           : t("itemAddedSuccess")
@@ -399,15 +439,7 @@ export default function InventoryView() {
       // Revert to the item's real values instead of leaving the
       // rejected edit sitting in the form.
       if (editing) {
-        setForm({
-          name: editing.name,
-          quantity: editing.quantity,
-          lost_quantity: editing.lost_quantity ?? 0,
-          disposed_quantity: editing.disposed_quantity ?? 0,
-          condition: editing.condition,
-          storage_location: editing.storage_location ?? "",
-          notes: editing.notes ?? "",
-        });
+        setForm(formFromItem(editing));
       }
     }
   };
@@ -601,7 +633,13 @@ export default function InventoryView() {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${CONDITION_STYLES[item.condition]}`}>{t(CONDITION_LABEL_KEYS[item.condition])}</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {conditionUnits(item).map((r) => (
+                          <span key={r.condition} className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap [font-variant-numeric:tabular-nums] ${CONDITION_STYLES[r.condition]}`}>
+                            {r.units} {t(CONDITION_LABEL_KEYS[r.condition])}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-[15px] font-semibold text-white [font-variant-numeric:tabular-nums]">
                       {item.quantity} <span className="font-normal text-[13px] text-white/45">{t("inStock")}</span>
@@ -731,29 +769,24 @@ export default function InventoryView() {
                 <label className="block text-base font-semibold text-white mb-2">{t("itemNameRequired")}</label>
                 <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("opsPlaceholderPlasticChairs")} />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-base font-semibold text-white mb-2">{t("quantityRequired")}</label>
-                  <NumberStepper
-                    min={0}
-                    required
-                    fullWidth
-                    value={String(shownQuantity)}
-                    onChange={(v) => {
-                      const typed = Math.max(0, Number(v) || 0);
-                      // Keep the Lost/Disposed adjustment, change only the base.
-                      setForm((p) => ({ ...p, quantity: Math.max(0, typed - (shownQuantity - baseQuantity)) }));
-                    }}
-                    className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+              <div>
+                <label className="block text-base font-semibold text-white mb-2">{t("conditionUnitsLabel")}</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {CONDITIONS.map((c) => (
+                    <div key={c}>
+                      <span className={`mb-1.5 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${CONDITION_STYLES[c]}`}>{t(CONDITION_LABEL_KEYS[c])}</span>
+                      <NumberStepper
+                        min={0}
+                        fullWidth
+                        value={String(form[COUNT_KEY[c]])}
+                        onChange={(v) => setForm((p) => ({ ...p, [COUNT_KEY[c]]: Math.max(0, Math.floor(Number(v) || 0)) }))}
+                        className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-4 pr-8 py-3 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <label className="block text-base font-semibold text-white mb-2">{t("conditionRequired")}</label>
-                  <FormSelect value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value as Condition }))} className="w-full appearance-none rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50">
-                    {(["New", "Good", "Fair", "Poor"] as Condition[]).map((c) => (
-                      <option key={c} value={c} className="bg-[#0A0E1A] text-white">{t(CONDITION_LABEL_KEYS[c])}</option>
-                    ))}
-                  </FormSelect>
-                </div>
+                <p className="mt-2 text-sm text-white/60 [font-variant-numeric:tabular-nums]">
+                  {t("totalInStockLabel")}: <span className="font-semibold text-white">{shownQuantity}</span>
+                </p>
               </div>
               {editing && (
                 <div>

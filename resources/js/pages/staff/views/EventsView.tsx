@@ -53,7 +53,7 @@ interface MyEvent {
   membershipIds?: (string | number)[];
   membershipNames?: string[];
   approvedBudget?: number | string | null;
-  borrowedItems?: { inventoryItemId: string; name: string; quantity: number }[];
+  borrowedItems?: { inventoryItemId: string; name: string; quantity: number; units: Record<string, number> }[];
 }
 
 interface BorrowableInventoryItem {
@@ -61,8 +61,25 @@ interface BorrowableInventoryItem {
   name: string;
   quantity: number;
   condition: string;
+  // In-stock units per condition (they add up to `quantity`).
+  new_quantity?: number;
+  good_quantity?: number;
+  fair_quantity?: number;
+  poor_quantity?: number;
   storage_location?: string | null;
 }
+
+// One borrowed item in the Create/Edit Event form. `units` is how many of each
+// condition staff picked (kept as strings, like the other form fields);
+// `quantity` is always their sum.
+type BorrowRow = { inventoryItemId: string; quantity: string; units: Record<string, string> };
+
+const BORROW_CONDITIONS = [
+  { key: "new_quantity", label: "conditionNew", chip: "bg-[#4FBEB0]/20 text-[#7DD8CB]" },
+  { key: "good_quantity", label: "conditionGood", chip: "bg-[#4FBEB0]/10 text-[#7DD8CB]" },
+  { key: "fair_quantity", label: "conditionFair", chip: "bg-gold-400/15 text-gold-300" },
+  { key: "poor_quantity", label: "conditionPoor", chip: "bg-[#8A3D2C]/25 text-[#E2A088]" },
+] as const;
 
 interface EventsViewProps {
   allEvents: MyEvent[];
@@ -307,11 +324,23 @@ export function EventsView({
       membershipNames: [],
       approvedBudget: dbEvent.approved_budget ?? null,
       borrowedItems: Array.isArray(dbEvent.borrowed_items)
-        ? dbEvent.borrowed_items.map((bi: any) => ({
-            inventoryItemId: String(bi.inventory_item_id),
-            name: bi.inventory_item?.name ?? "",
-            quantity: Number(bi.quantity) || 0,
-          }))
+        ? dbEvent.borrowed_items.map((bi: any) => {
+            const units: Record<string, number> = {
+              New: Number(bi.new_quantity) || 0,
+              Good: Number(bi.good_quantity) || 0,
+              Fair: Number(bi.fair_quantity) || 0,
+              Poor: Number(bi.poor_quantity) || 0,
+            };
+            // Borrows made before units were split count toward the item's main condition.
+            const rest = (Number(bi.quantity) || 0) - Object.values(units).reduce((a, b) => a + b, 0);
+            if (rest > 0) units[units[bi.inventory_item?.condition] !== undefined ? bi.inventory_item.condition : "Good"] += rest;
+            return {
+              inventoryItemId: String(bi.inventory_item_id),
+              name: bi.inventory_item?.name ?? "",
+              quantity: Number(bi.quantity) || 0,
+              units,
+            };
+          })
         : [],
     };
   };
@@ -453,12 +482,12 @@ export function EventsView({
     targetMembership: "all",
     approvedBudget: "",
     postToFacebook: false,
-    borrowedItems: [] as { inventoryItemId: string; quantity: string }[],
+    borrowedItems: [] as BorrowRow[],
   });
 
   const blankEventForm = {
     title: "", date: "", time: "", endTime: "", callTimeStart: "", callTimeEnd: "", location: "", description: "",
-    notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [] as { inventoryItemId: string; quantity: string }[],
+    notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [] as BorrowRow[],
   };
 
   // Whether the currently-selected event date is today -- used below to
@@ -521,6 +550,15 @@ export function EventsView({
     return map;
   }, [editingEvent]);
 
+  // Same idea per condition: units of this item this event already holds.
+  const availableUnitsFor = (itemId: string, label: string): number => {
+    const item = borrowableItems.find((it) => String(it.id) === String(itemId));
+    const key = BORROW_CONDITIONS.find((c) => c.label === `condition${label}`)?.key;
+    const inStock = key && item ? Number(item[key] ?? 0) : 0;
+    const own = (editingEvent?.borrowedItems ?? []).find((bi) => String(bi.inventoryItemId) === String(itemId))?.units?.[label] ?? 0;
+    return inStock + own;
+  };
+
   const availableStockFor = (itemId: string): number => {
     const base = borrowableItems.find((it) => String(it.id) === String(itemId))?.quantity ?? 0;
     return base + (originalBorrowedMap.get(String(itemId)) ?? 0);
@@ -529,14 +567,29 @@ export function EventsView({
   const addBorrowRow = (itemId: string) => {
     if (!itemId) return;
     if (newEvent.borrowedItems.some((r) => r.inventoryItemId === itemId)) return;
-    setNewEvent((prev) => ({ ...prev, borrowedItems: [...prev.borrowedItems, { inventoryItemId: itemId, quantity: "1" }] }));
+    // Start with one unit from the condition that has the most stock; staff
+    // then choose how many of each condition they want.
+    const best = BORROW_CONDITIONS.map((c) => c.label.replace("condition", "")).reduce(
+      (top, label) => (availableUnitsFor(itemId, label) > availableUnitsFor(itemId, top) ? label : top),
+      "Good"
+    );
+    const units: Record<string, string> = { New: "0", Good: "0", Fair: "0", Poor: "0" };
+    units[best] = "1";
+    setNewEvent((prev) => ({ ...prev, borrowedItems: [...prev.borrowedItems, { inventoryItemId: itemId, quantity: "1", units }] }));
     setBorrowItemToAdd("");
   };
 
-  const updateBorrowQuantity = (itemId: string, quantity: string) => {
+  const updateBorrowUnits = (itemId: string, label: string, raw: string) => {
+    const max = availableUnitsFor(itemId, label);
+    const value = raw === "" ? 0 : Math.max(0, Math.min(max, Math.round(Number(raw)) || 0));
     setNewEvent((prev) => ({
       ...prev,
-      borrowedItems: prev.borrowedItems.map((r) => (r.inventoryItemId === itemId ? { ...r, quantity } : r)),
+      borrowedItems: prev.borrowedItems.map((r) => {
+        if (r.inventoryItemId !== itemId) return r;
+        const units = { ...r.units, [label]: String(value) };
+        const total = Object.values(units).reduce((a, b) => a + (Number(b) || 0), 0);
+        return { ...r, units, quantity: String(total) };
+      }),
     }));
   };
 
@@ -858,7 +911,12 @@ export function EventsView({
       approved_budget: newEvent.approvedBudget !== "" ? newEvent.approvedBudget : null,
       borrowed_items: newEvent.borrowedItems
         .filter((r) => r.inventoryItemId && Number(r.quantity) > 0)
-        .map((r) => ({ inventory_item_id: Number(r.inventoryItemId), quantity: Number(r.quantity) })),
+        .map((r) => ({
+          inventory_item_id: Number(r.inventoryItemId),
+          quantity: Number(r.quantity),
+          // Exactly the units staff picked, per condition.
+          conditions: Object.fromEntries(Object.entries(r.units).map(([k, v]) => [k, Number(v) || 0])),
+        })),
     };
     // Adviser recommendation: "2 in 1 — Facebook Page" (only relevant on create)
     if (!editingEvent && newEvent.postToFacebook) {
@@ -970,7 +1028,11 @@ export function EventsView({
       targetMembership: currentMembershipId,
       approvedBudget: event.approvedBudget !== null && event.approvedBudget !== undefined ? String(event.approvedBudget) : "",
       postToFacebook: false,
-      borrowedItems: (event.borrowedItems ?? []).map((bi) => ({ inventoryItemId: bi.inventoryItemId, quantity: String(bi.quantity) })),
+      borrowedItems: (event.borrowedItems ?? []).map((bi) => ({
+        inventoryItemId: bi.inventoryItemId,
+        quantity: String(bi.quantity),
+        units: Object.fromEntries(Object.entries(bi.units ?? {}).map(([k, v]) => [k, String(v)])) as Record<string, string>,
+      })),
     };
     setNewEvent(initialForm);
     setOriginalEventForm(JSON.stringify(initialForm));
@@ -1989,7 +2051,7 @@ export function EventsView({
             .event-form-slide-in { animation: eventFormSlideIn 280ms ease-out; }
           `}</style>
           <div className="fixed inset-0 bg-black/80 z-40" onClick={closeEventModal} />
-          <div className="event-form-slide-in fixed inset-y-0 right-0 z-50 w-full sm:w-1/2 bg-[#0A0E1A] border-l border-white/10 shadow-2xl overflow-y-auto">
+          <div className="resident-form-panel event-form-slide-in fixed inset-y-0 right-0 z-50 w-full sm:w-1/2 bg-[#0A0E1A] border-l border-white/10 shadow-2xl overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
@@ -2136,29 +2198,45 @@ export function EventsView({
                     {newEvent.borrowedItems.length > 0 && (
                       <div className="space-y-2">
                         {newEvent.borrowedItems.map((row) => {
-                          const max = Math.max(0, availableStockFor(row.inventoryItemId));
+                          const total = Object.values(row.units).reduce((sum, v) => sum + (Number(v) || 0), 0);
                           return (
-                            <div key={row.inventoryItemId} className="flex items-center gap-2 rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2">
-                              <span className="flex-1 text-sm text-white truncate">{getBorrowItemName(row.inventoryItemId)}</span>
-                              <NumberStepper
-                                min={1}
-                                max={max}
-                                value={row.quantity}
-                                onChange={(raw) => {
-                                  const clamped = raw === "" ? "" : String(Math.max(1, Math.min(max || 1, Math.round(Number(raw)) || 1)));
-                                  updateBorrowQuantity(row.inventoryItemId, clamped);
-                                }}
-                                className="w-16 rounded-full border border-white/20 bg-white/10 pl-2 pr-5 py-1 text-sm text-center text-white font-sans"
-                              />
-                              <span className="text-xs text-white/50 shrink-0">/ {max} {t("availableStockShortLabel")}</span>
-                              <button
-                                type="button"
-                                onClick={() => removeBorrowRow(row.inventoryItemId)}
-                                className="text-white/50 hover:text-red-400 transition shrink-0"
-                                title={t("removeLabel")}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                            <div key={row.inventoryItemId} className="rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="flex-1 min-w-0 truncate text-sm font-semibold text-white">{getBorrowItemName(row.inventoryItemId)}</span>
+                                <span className="shrink-0 text-xs text-white/60 [font-variant-numeric:tabular-nums]">
+                                  {t("borrowTotalLabel")}: <span className="font-bold text-white">{total}</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeBorrowRow(row.inventoryItemId)}
+                                  className="text-white/50 hover:text-red-400 transition shrink-0"
+                                  title={t("removeLabel")}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {BORROW_CONDITIONS.map((c) => {
+                                  const label = c.label.replace("condition", "");
+                                  const max = availableUnitsFor(row.inventoryItemId, label);
+                                  if (max <= 0) return null;
+                                  return (
+                                    <div key={c.key}>
+                                      <span className={`mb-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${c.chip}`}>{t(c.label)}</span>
+                                      <div className="flex items-center gap-1.5">
+                                        <NumberStepper
+                                          min={0}
+                                          max={max}
+                                          value={row.units[label] ?? "0"}
+                                          onChange={(raw) => updateBorrowUnits(row.inventoryItemId, label, raw)}
+                                          className="w-16 rounded-full border border-white/20 bg-white/10 pl-2 pr-5 py-1 text-sm text-center text-white font-sans"
+                                        />
+                                        <span className="text-xs text-white/50 shrink-0">/ {max}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           );
                         })}
@@ -2179,7 +2257,10 @@ export function EventsView({
                           .map((it) => ({
                             value: String(it.id),
                             label: it.name,
-                            hint: `(${it.quantity} ${t("availableStockShortLabel")})`,
+                            hint: (() => {
+                              const parts = BORROW_CONDITIONS.filter((c) => Number(it[c.key] ?? 0) > 0).map((c) => `${it[c.key]} ${t(c.label)}`);
+                              return parts.length > 1 ? `(${it.quantity} ${t("availableStockShortLabel")}: ${parts.join(" · ")})` : `(${it.quantity} ${t("availableStockShortLabel")}${parts.length ? ` · ${t(BORROW_CONDITIONS.find((c) => Number(it[c.key] ?? 0) > 0)!.label)}` : ""})`;
+                            })(),
                           }))}
                         dark
                       />

@@ -694,13 +694,15 @@
       @foreach($rowGroup as $pair)
         <table class="mini-grid"><tr>
           @foreach($pair as $item)
-            @php $cc = $chipColor($item['condition']); @endphp
             <td class="mini-cell">
               <div class="mini-title">{{ $cut($item['name'], 38) }}</div>
               <div class="mini-sub">{{ $cut($item['storage_location'] ?? '—', 60) }}</div>
               <table class="progress-row"><tr>
                 <td>
-                  <span class="chip" style="background:{{ $cc['bg'] }}; color:{{ $cc['text'] }};">{{ $item['condition'] }}</span>
+                  @foreach($item['condition_units'] as $cu)
+                    @php $cc = $chipColor($cu['condition']); @endphp
+                    <span class="chip" style="background:{{ $cc['bg'] }}; color:{{ $cc['text'] }};">{{ $cu['condition'] }} ×{{ $cu['units'] }}</span>
+                  @endforeach
                   @foreach(['Lost' => $item['lost_quantity'] ?? 0, 'Disposed' => $item['disposed_quantity'] ?? 0] as $wl => $wu)
                     @if($wu > 0)
                       @php $wc = $chipColor($wl); @endphp

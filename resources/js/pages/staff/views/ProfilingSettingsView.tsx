@@ -479,7 +479,7 @@ export default function ProfilingSettingsView() {
             {t("ageBracketsTitle")}
             <span
               className={`inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full px-1.5 text-xs font-bold ${
-                activeTab === "brackets" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
+                activeTab === "brackets" ? "bg-black/25 text-white" : "bg-white/20 text-white/90"
               }`}
             >
               {ageBrackets.length}
@@ -498,7 +498,7 @@ export default function ProfilingSettingsView() {
             {t("civilStatusesTitle")}
             <span
               className={`inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full px-1.5 text-xs font-bold ${
-                activeTab === "civil" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
+                activeTab === "civil" ? "bg-black/25 text-white" : "bg-white/20 text-white/90"
               }`}
             >
               {civilStatuses.length}
@@ -517,7 +517,7 @@ export default function ProfilingSettingsView() {
             {t("currentStatusesTitle")}
             <span
               className={`inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full px-1.5 text-xs font-bold ${
-                activeTab === "current" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
+                activeTab === "current" ? "bg-black/25 text-white" : "bg-white/20 text-white/90"
               }`}
             >
               {currentStatuses.length}

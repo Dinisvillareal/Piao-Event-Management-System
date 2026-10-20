@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { UserPlus, CalendarPlus, ScanLine, Bell, BarChart3, Users, Award, CalendarDays, Undo2, LayoutDashboard, Download, Activity, Clock } from "lucide-react";
 import api from "../../../lib/api";
@@ -32,6 +32,9 @@ export default function DashboardView({
   });
   const [memberName, setMemberName] = useState("");
   const [loading, setLoading] = useState(true);
+  // The skeleton shows for the first load only; later re-fetches (e.g. when
+  // the events count arrives or changes) refresh the numbers silently.
+  const loadedOnceRef = useRef(false);
   const [appUrl, setAppUrl] = useState("");
   const [recentActivities, setRecentActivities] = useState<any[]>([]);
   // Events that already ended but still hold borrowed inventory --
@@ -194,7 +197,7 @@ export default function DashboardView({
 
   useEffect(() => {
     const loadDashboard = async () => {
-      setLoading(true);
+      if (!loadedOnceRef.current) setLoading(true);
       try {
         await Promise.all([
           fetchCurrentUser(),
@@ -207,6 +210,7 @@ export default function DashboardView({
       } catch (error) {
         console.error('Error loading dashboard:', error);
       } finally {
+        loadedOnceRef.current = true;
         setLoading(false);
       }
     };

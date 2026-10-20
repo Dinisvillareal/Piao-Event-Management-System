@@ -433,6 +433,18 @@ class ReportController extends Controller
         return response()->json($this->buildInventoryData($request));
     }
 
+    private function conditionUnits(\App\Models\InventoryItem $item): array
+    {
+        $rows = [];
+        foreach ($item->conditionCounts() as $label => $units) {
+            if ($units > 0) {
+                $rows[] = ['condition' => $label, 'units' => $units];
+            }
+        }
+
+        return $rows ?: [['condition' => $item->condition, 'units' => 0]];
+    }
+
     private function buildInventoryData(Request $request): array
     {
         $condition = $request->filled('condition') ? $request->condition : null;
@@ -442,8 +454,18 @@ class ReportController extends Controller
 
         $items = $query->orderBy('name')->get();
 
-        $byCondition = $items->groupBy('condition')
-            ->map(fn ($group, $label) => ['condition' => $label, 'count' => $group->count(), 'quantity' => $group->sum('quantity')])
+        // An item can hold units in several conditions at once (e.g. 45 Good
+        // + 15 New), so each condition counts the items that have units in it
+        // and sums those units. An item with nothing in stock is counted
+        // under its main condition.
+        $byCondition = collect(\App\Models\InventoryItem::CONDITION_COLUMNS)
+            ->map(function ($column, $label) use ($items) {
+                $has = $items->filter(fn ($i) => (int) $i->{$column} > 0
+                    || ((int) $i->quantity === 0 && $i->condition === $label));
+
+                return ['condition' => $label, 'count' => $has->count(), 'quantity' => (int) $items->sum($column)];
+            })
+            ->filter(fn ($row) => $row['count'] > 0)
             ->values();
 
         return [
@@ -457,6 +479,10 @@ class ReportController extends Controller
                 'name' => $i->name,
                 'quantity' => $i->quantity,
                 'condition' => $i->condition,
+                // In-stock units per condition, non-empty ones only, e.g.
+                // [['condition' => 'Good', 'units' => 45], ['condition' => 'New', 'units' => 15]].
+                // An empty item shows its main condition with 0 units.
+                'condition_units' => $this->conditionUnits($i),
                 'storage_location' => $i->storage_location,
                 // Units written off: lost (confirmed + still pending) and disposed.
                 'lost_quantity' => (int) $i->lost_quantity + (int) $i->lost_pending,
@@ -1069,11 +1095,14 @@ class ReportController extends Controller
 
                 if ($show('items')) {
                     $this->addPagedCardGrid($section, 'Inventory Items', null, $data['items'], function ($c, $item, $in) {
-                        [$bg, $fg] = $this->conditionColors($item['condition']);
                         $c->addText($item['name'], ['bold' => true, 'size' => 9.5, 'color' => '005F63'], ['spaceAfter' => 0]);
                         $c->addText($item['storage_location'] ?? '—', ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 40]);
                         $run = $c->addTextRun(['spaceAfter' => 0, 'tabs' => [new \PhpOffice\PhpWord\Style\Tab('right', $in)]]);
-                        $run->addText(' ' . $item['condition'] . ' ', ['size' => 8, 'bold' => true, 'color' => $fg, 'bgColor' => $bg]);
+                        foreach ($item['condition_units'] as $cu) {
+                            [$bg, $fg] = $this->conditionColors($cu['condition']);
+                            $run->addText(' ' . $cu['condition'] . ' ×' . $cu['units'] . ' ', ['size' => 8, 'bold' => true, 'color' => $fg, 'bgColor' => $bg]);
+                            $run->addText(' ');
+                        }
                         // Lost / disposed units get their own chips next to the condition.
                         foreach (['Lost' => $item['lost_quantity'] ?? 0, 'Disposed' => $item['disposed_quantity'] ?? 0] as $label => $units) {
                             if ($units > 0) {
