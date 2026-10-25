@@ -15,6 +15,13 @@ use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Models\AgeBracket;
 use App\Models\Membership;
+use App\Services\SecurityService;
+use App\Support\Totp;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 
 class UserController extends Controller
 {
@@ -26,6 +33,15 @@ class UserController extends Controller
     {
         return auth()->id() == $id;
     }
+
+    /** Internal error text is logged, never sent to the browser in production. */
+    private function safeError(\Throwable $e): string
+    {
+        Log::error($e->getMessage(), ['exception' => $e]);
+        return config('app.debug') ? $e->getMessage() : 'Something went wrong. Please try again.';
+    }
+
+    private static ?string $dummyHash = null;
 
     /**
      * True when $e is the DB rejecting a second is_household_head = true
@@ -218,6 +234,15 @@ class UserController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        // New records are always residents. Making someone Staff is a separate,
+        // password-confirmed action that only the Head Staff has (Staff Accounts).
+        if ($request->role === 'Staff') {
+            return response()->json([
+                'message' => 'Staff access is granted by the Head Staff from the Staff Accounts page.',
+                'errors' => ['role' => ['Staff access is granted by the Head Staff from the Staff Accounts page.']],
+            ], 403);
+        }
+
         // ✅ DUPLICATE NAME CHECK (STORE)
         $exists = User::whereRaw('LOWER(TRIM(first_name)) = ?', [mb_strtolower(trim($request->first_name))])
             ->whereRaw('LOWER(TRIM(last_name)) = ?', [mb_strtolower(trim($request->last_name))])
@@ -276,9 +301,10 @@ class UserController extends Controller
                 'suffix'         => trim((string) $request->suffix) !== '' ? trim($request->suffix) : null,
                 'contact_number' => $request->contact_number,
                 'validation_id'  => $path,
-                'role'           => $request->role,
+                'role'           => 'Resident',
                 'has_account'    => $hasAccount ? 1 : 0,
                 'password'       => $hasAccount ? Hash::make($request->password) : null,
+                'must_change_password' => $hasAccount ? 1 : 0,
                 'birth_date'                => $request->birth_date,
                 'address'                   => $request->address,
                 'civil_status_id'           => $request->civil_status_id ?: null,
@@ -359,7 +385,7 @@ class UserController extends Controller
 
             return response()->json([
                 'message' => 'Transaction failed',
-                'error' => $e->getMessage(),
+                'error' => $this->safeError($e),
             ], 500);
         }
     }
@@ -371,28 +397,98 @@ class UserController extends Controller
     public function login(Request $request)
     {
         $request->validate([
-            'username' => 'required',
-            'password' => 'required',
+            'username' => 'required|string|max:50',
+            'password' => 'required|string|max:200',
+            'otp'      => 'nullable|string|max:12',
         ]);
 
-        $user = User::where('user_code', $request->username)->first();
+        $security = app(SecurityService::class);
+        $username = trim((string) $request->username);
+        $ip = $request->ip();
+        $limiterKey = 'login:' . strtolower($username) . '|' . $ip;
 
-        if (!$user || !$user->has_account) {
-            return response()->json(['message' => 'Account not activated'], 401);
+        $tooMany = fn () => response()->json([
+            'message' => 'Too many wrong tries. Please wait 1 minute and try again.',
+            'code' => 'too_many_attempts',
+        ], 429);
+
+        // Same answer whether or not the account exists, so the lock can't be
+        // used to discover which user codes are real.
+        if (RateLimiter::tooManyAttempts($limiterKey, 5)) {
+            return $tooMany();
         }
 
-        if (!Hash::check($request->password, $user->password)) {
-            return response()->json(['message' => 'Invalid credentials'], 401);
+        $user = User::where('user_code', $username)->first();
+
+        if ($user && $user->locked_until && $user->locked_until->isFuture()) {
+            return $tooMany();
         }
 
-        // "Keep me signed in on this device" -- the remember cookie lasts 30 days.
-        if ($request->boolean('remember_me')) {
+        // Always do exactly one hash check -- even for an unknown user code --
+        // so response time doesn't reveal whether the account exists.
+        self::$dummyHash ??= Hash::make(Str::random(32));
+        $hash = ($user && $user->password) ? $user->password : self::$dummyHash;
+        $passwordOk = Hash::check($request->password, $hash);
+        $usable = $user && $user->has_account && $user->password && !$user->suspended_at;
+
+        if (!$passwordOk || !$usable) {
+            $this->recordFailedLogin($user, $limiterKey);
+
+            // Separate, specific messages so people know which part to fix.
+            // `code` lets the screen show it in the visitor's language.
+            if (!$user) {
+                return response()->json(['message' => 'Username not found.', 'code' => 'username_not_found', 'field' => 'username'], 401);
+            }
+            if (!$user->has_account || !$user->password) {
+                return response()->json(['message' => 'This username has no portal account yet. Please contact the Records Office.', 'code' => 'no_portal_account', 'field' => 'username'], 401);
+            }
+            if (!$passwordOk) {
+                return response()->json(['message' => 'Incorrect password.', 'code' => 'wrong_password', 'field' => 'password'], 401);
+            }
+            // Right password, but the account is suspended.
+            return response()->json(['message' => 'This account is suspended. Please contact the Head Staff.', 'code' => 'account_suspended', 'field' => 'username'], 401);
+        }
+
+        // Optional two-step login (authenticator app).
+        if ($user->two_factor_confirmed_at && $user->two_factor_secret) {
+            if (!$request->filled('otp')) {
+                return response()->json([
+                    'message' => 'Enter the 6-digit code from your authenticator app.',
+                    'two_factor_required' => true,
+                ], 401);
+            }
+            $step = Totp::verify(Crypt::decryptString($user->two_factor_secret), (string) $request->otp);
+            $replayKey = 'totp-used:' . $user->id . ':' . $step;
+            if ($step === null || Cache::has($replayKey)) {
+                $this->recordFailedLogin($user, $limiterKey);
+                return response()->json([
+                    'message' => 'That code is not valid. Please try again.',
+                    'two_factor_required' => true,
+                ], 401);
+            }
+            Cache::put($replayKey, true, 180);
+        }
+
+        RateLimiter::clear($limiterKey);
+
+        $previousIp = $user->last_login_ip;
+        $user->forceFill([
+            'failed_login_attempts' => 0,
+            'locked_until' => null,
+            'last_login_at' => now(),
+            'last_login_ip' => $ip,
+        ])->save();
+
+        // "Keep me signed in" is for residents only -- staff sessions are
+        // short-lived by design (see SessionGuard).
+        $remember = $request->boolean('remember_me') && $user->role !== 'Staff';
+        if ($remember) {
             Auth::guard('web')->setRememberDuration(60 * 24 * 30);
         }
-        Auth::login($user, $request->boolean('remember_me'));
+        Auth::login($user, $remember);
         $request->session()->regenerate();
+        $request->session()->put('last_activity_at', time());
 
-        // Log only Staff login
         if ($user->role === 'Staff') {
             ActivityLog::create([
                 'user_code'   => $user->user_code,
@@ -400,12 +496,48 @@ class UserController extends Controller
                 'module'      => 'Authentication',
                 'description' => 'Staff logged in',
             ]);
+
+            if ($previousIp && $previousIp !== $ip) {
+                $security->alert($user, 'new_login', 'Sign-in from a new network',
+                    "Your account was just signed in from a different network ({$ip}). If this wasn't you, change your password now and tell the Head Staff.");
+            }
         }
 
         return response()->json([
             'message' => 'Login successful',
-            'user' => $user
+            'user' => $user->fresh()
         ]);
+    }
+
+    /** Counts a failed sign-in; locks the account after repeated failures. */
+    private function recordFailedLogin(?User $user, string $limiterKey): void
+    {
+        RateLimiter::hit($limiterKey, 60);
+
+        if (!$user) {
+            return;
+        }
+
+        $security = app(SecurityService::class);
+        $user->increment('failed_login_attempts');
+        $user->refresh();
+
+        // Short, per-network lock reached (5 wrong tries in a minute) -> warn staff.
+        if ($user->role === 'Staff' && RateLimiter::attempts($limiterKey) === 5) {
+            $msg = "There were 5 failed sign-in attempts on {$user->user_code}. Sign-ins from that network are paused for 1 minute.";
+            $security->alert($user, 'failed_logins', 'Repeated failed sign-ins', $msg);
+            $security->alertHead('failed_logins', 'Repeated failed sign-ins', $msg, $user->id);
+        }
+
+        // Long, per-account lock for slow guessing spread over many networks.
+        if ($user->failed_login_attempts >= 10) {
+            $user->forceFill(['locked_until' => now()->addMinute(), 'failed_login_attempts' => 0])->save();
+            if ($user->role === 'Staff') {
+                $msg = "{$user->user_code} was locked for 1 minute after 10 failed sign-in attempts.";
+                $security->alert($user, 'account_locked', 'Account locked', $msg);
+                $security->alertHead('account_locked', 'Account locked', $msg, $user->id);
+            }
+        }
     }
 
     // =========================
@@ -602,17 +734,30 @@ class UserController extends Controller
                 $user->is_household_head = $wantsHead;
             }
 
-        if ($this->isStaff() && $request->filled('role')) {
-            if ($user->role !== $request->role) {
-                $oldRole = $user->role;
-                $user->role = $request->role;
-                $this->createLog(
-                    'Role Change',
-                    'User',
-                    "Changed role of {$user->user_code} from {$oldRole} to {$request->role}"
-                );
-            } else {
-                $user->role = $request->role;
+        // The role can't be changed from this form. Promoting or demoting a staff
+        // member is a password-confirmed Head Staff action (Staff Accounts).
+        if ($request->filled('role') && $request->role !== $user->role) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Staff access is changed by the Head Staff from the Staff Accounts page.',
+                'errors' => ['role' => ['Staff access is changed by the Head Staff from the Staff Accounts page.']],
+            ], 403);
+        }
+
+        // Passwords: your own is changed in My Account (asks for the current
+        // password); a staff member's can only be reset by the Head Staff.
+        if ($request->filled('password')) {
+            if ($this->isOwnProfile($id)) {
+                DB::rollBack();
+                return response()->json([
+                    'errors' => ['password' => ['Change your own password from My Account, where the current password is required.']],
+                ], 422);
+            }
+            if ($user->role === 'Staff') {
+                DB::rollBack();
+                return response()->json([
+                    'errors' => ['password' => ['A staff password can only be reset by the Head Staff from the Staff Accounts page.']],
+                ], 403);
             }
         }
 
@@ -644,13 +789,14 @@ class UserController extends Controller
                     }
                     $user->has_account = 1;
                     $user->password = Hash::make($request->password);
+                    $user->must_change_password = true;
                     $this->createLog('Account Created', 'User', "Created a portal account for {$user->user_code}");
                 } elseif ($user->has_account && $request->filled('password')) {
                     $user->password = Hash::make($request->password);
+                    $user->must_change_password = true;
+                    $user->password_changed_at = null;
                     $this->createLog('Password Reset', 'User', "Reset the password of {$user->user_code}");
                 }
-            } elseif ($user->has_account && $request->filled('password')) {
-                $user->password = Hash::make($request->password);
             }
 
             if ($request->hasFile('validation_id')) {
@@ -718,7 +864,7 @@ class UserController extends Controller
 
             return response()->json([
                 'message' => 'Update failed',
-                'error' => $e->getMessage(),
+                'error' => $this->safeError($e),
             ], 500);
         }
     }
@@ -738,6 +884,19 @@ class UserController extends Controller
         try {
 
             $user = User::findOrFail($id);
+
+            if ((int) $user->id === (int) auth()->id()) {
+                DB::rollBack();
+                return response()->json(['message' => "You can't archive your own account."], 422);
+            }
+            if ($user->is_head_staff) {
+                DB::rollBack();
+                return response()->json(['message' => "The Head Staff can't be archived. Transfer the Head Staff role first."], 422);
+            }
+            if ($user->role === 'Staff' && !auth()->user()->is_head_staff) {
+                DB::rollBack();
+                return response()->json(['message' => 'Only the Head Staff can archive a staff account.'], 403);
+            }
 
             // A soft-deleted resident can't stay "head of household" -- it
             // blocks the household from ever getting a new head (only one
@@ -765,6 +924,10 @@ class UserController extends Controller
             // ✅ STORE WHO DELETED IT
             $user->deleted_by = auth()->user()->user_code;
             $user->save();
+
+            if ($user->role === 'Staff') {
+                app(SecurityService::class)->revokeSessions($user);
+            }
 
             // ✅ SOFT DELETE
             $user->delete();
@@ -801,7 +964,7 @@ class UserController extends Controller
 
             return response()->json([
                 'message' => 'Delete failed',
-                'error' => $e->getMessage()
+                'error' => $this->safeError($e)
             ], 500);
         }
     }
@@ -833,43 +996,9 @@ class UserController extends Controller
 
     public function forceDelete($id)
     {
-        if (!$this->isStaff()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        DB::beginTransaction();
-
-        try {
-
-            $user = User::onlyTrashed()->findOrFail($id);
-
-            if ($user->validation_id) {
-                $this->localDelete($user->validation_id);
-            }
-
-            $user->memberships()->detach();
-
-            $this->createLog(
-                'Force Delete User',
-                'User',
-                "Permanently deleted user {$user->user_code}"
-            );
-
-            $user->forceDelete();
-
-            DB::commit();
-
-            return response()->json(['message' => 'Permanently deleted']);
-
-        } catch (\Exception $e) {
-
-            DB::rollBack();
-
-            return response()->json([
-                'message' => 'Force delete failed',
-                'error' => $e->getMessage(),
-            ], 500);
-        }
+        // Permanent deletion is switched off for everyone, Head Staff included.
+        // Records are archived and kept for transparency.
+        return response()->json(['message' => 'Permanent deletion is disabled. Records are archived and kept.'], 403);
     }
 
     // =========================
@@ -878,13 +1007,31 @@ class UserController extends Controller
 
     public function changePassword(Request $request, $id)
     {
-        if (!$this->isOwnProfile($id) && !$this->isStaff()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        // Everyone changes their OWN password here. Resetting someone else's
+        // is a separate, logged action (Head Staff for staff accounts; the
+        // resident edit form for residents).
+        if (!$this->isOwnProfile($id)) {
+            return response()->json(['message' => 'You can only change your own password here.'], 403);
         }
 
+        $me = auth()->user();
+        $security = app(SecurityService::class);
+
         $request->validate([
-            'new_password' => ['required', 'string', 'confirmed', new \App\Rules\StrongPassword()],
+            'current_password' => ['required', 'string'],
+            'new_password' => [
+                'required', 'string', 'confirmed',
+                new \App\Rules\StrongPassword($me->is_head_staff ? 12 : \App\Rules\StrongPassword::MIN),
+            ],
         ]);
+
+        $security->requirePassword($me, $request->current_password, 'current_password');
+
+        if (Hash::check($request->new_password, $me->password)) {
+            return response()->json([
+                'errors' => ['new_password' => ['Your new password must be different from the current one.']],
+            ], 422);
+        }
 
         DB::beginTransaction();
 
@@ -893,13 +1040,23 @@ class UserController extends Controller
             $user = User::findOrFail($id);
             $user->password = Hash::make($request->new_password);
             $user->has_account = 1;
+            $user->must_change_password = false;
+            $user->password_changed_at = now();
             $user->save();
+
+            // Sign out every OTHER device -- an old or stolen session dies here.
+            $security->revokeSessions($user, $request->session()->getId());
 
             $this->createLog(
                 'Change Password',
                 'User',
                 "Changed password for user {$user->user_code}"
             );
+
+            if ($user->role === 'Staff') {
+                $security->alert($user, 'password_changed', 'Password changed',
+                    'Your password was changed and all other devices were signed out. If this was not you, contact the Head Staff immediately.');
+            }
 
             DB::commit();
 
@@ -911,7 +1068,7 @@ class UserController extends Controller
 
             return response()->json([
                 'message' => 'Password update failed',
-                'error' => $e->getMessage(),
+                'error' => $this->safeError($e),
             ], 500);
         }
     }
@@ -1053,7 +1210,7 @@ public function getAllForMemberships()
         \Log::error('getAllForMemberships error: ' . $e->getMessage());
         return response()->json([
             'message' => 'Failed to fetch users for memberships',
-            'error' => $e->getMessage()
+            'error' => $this->safeError($e)
         ], 500);
     }
 }

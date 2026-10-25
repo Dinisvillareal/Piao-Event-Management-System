@@ -42,6 +42,7 @@ class ActivityLogController extends Controller
                 'household'    => 'Households',
                 'profiling'    => 'Profiling Settings',
                 'archive'      => 'Archive',
+                'report'       => 'Reports',
             ];
 
             if (isset($moduleMap[$request->type])) {

@@ -40,6 +40,7 @@ import { staffUrlFor } from "./lib/staffRoutes";
 import StaffDashboard from "./pages/staff/Staff";
 import LoginPage from "./pages/login/Login";
 import SplashScreen from "./components/ui/SplashScreen";
+import ForcedPasswordChange from "./components/auth/ForcedPasswordChange";
 import { LanguageProvider } from "./i18n/LanguageContext";
 import { loadContentTranslations } from "./lib/contentTranslations";
 
@@ -126,18 +127,28 @@ export default function App() {
   // issue -- the splash simply keeps showing until it's done either way.
   // No saved session at load time = the login page is what will show, so use
   // the logo-less PIAOCONNECT wordmark splash there.
-  const loginLoadRef = useRef(!(sessionStorage.getItem("user") || localStorage.getItem("user")));
-  const MIN_SPLASH_MS = 1800;
+  const MIN_SPLASH_MS = 6000; // the shine is done by ~6.5s; start fading just before it ends so there is no empty dark gap
+  // An account holding a staff-issued temporary password must choose its own first.
+  const [forcedPwUser, setForcedPwUser] = useState<{ id: number; head: boolean } | null>(null);
+  useEffect(() => {
+    const onForced = () => {
+      try {
+        const u = JSON.parse(sessionStorage.getItem("user") || localStorage.getItem("user") || "null");
+        if (u?.id) setForcedPwUser({ id: u.id, head: !!u.is_head_staff });
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("auth:password-change-required", onForced);
+    return () => window.removeEventListener("auth:password-change-required", onForced);
+  }, []);
   const [splashVisible, setSplashVisible] = useState(true);
   const [splashMounted, setSplashMounted] = useState(true);
   const splashStartRef = useRef(Date.now());
 
   useEffect(() => {
     if (loading) return;
-    // The login wordmark splash is slower: give the mirror shine time for one
-    // full, unhurried pass across the letters before fading out.
-    const minMs = loginLoadRef.current ? 7200 : MIN_SPLASH_MS;
-    const remaining = Math.max(0, minMs - (Date.now() - splashStartRef.current));
+    // The wordmark splash needs time for one full, unhurried pass of the
+    // mirror shine across the logo and letters before it fades out.
+    const remaining = Math.max(0, MIN_SPLASH_MS - (Date.now() - splashStartRef.current));
     const startFade = setTimeout(() => setSplashVisible(false), remaining);
     const unmount = setTimeout(() => setSplashMounted(false), remaining + 700);
     return () => {
@@ -175,6 +186,9 @@ export default function App() {
       if (response.ok) {
         const user = await response.json();
         setUserRole(user.role);
+        if (user.must_change_password) {
+          setForcedPwUser({ id: user.id, head: !!user.is_head_staff });
+        }
 
         // If this is a Staff user and no portalMode is saved yet, default to
         // "staff" so a fresh login lands on the Staff dashboard.
@@ -254,7 +268,10 @@ export default function App() {
   // time the splash finishes fading out.
   let content: React.ReactNode = null;
   if (!loading) {
-    if (!userRole) {
+    if (userRole && forcedPwUser) {
+      // ── Must choose a new password before anything else ───────────────
+      content = <ForcedPasswordChange userId={forcedPwUser.id} minLength={forcedPwUser.head ? 12 : 8} />;
+    } else if (!userRole) {
       // ── Not authenticated → Login ──────────────────────────────────────
       content = <LoginPage />;
     } else if (userRole !== "Staff") {
@@ -275,7 +292,7 @@ export default function App() {
   return (
     <>
       {content}
-      {splashMounted && <SplashScreen visible={splashVisible} variant={loginLoadRef.current ? "wordmark" : "brand"} />}
+      {splashMounted && <SplashScreen visible={splashVisible} />}
     </>
   );
 }

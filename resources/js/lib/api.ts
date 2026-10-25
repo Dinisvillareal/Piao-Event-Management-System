@@ -27,6 +27,11 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
+    const code = error?.response?.data?.code;
+    // The account must choose a new password first -- tell the app to show that screen.
+    if (status === 403 && code === "password_change_required" && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("auth:password-change-required"));
+    }
     // Background, best-effort requests (e.g. the content-translations preload) opt out so a 401
     // can never wipe the session or redirect the page.
     if ((status === 401 || status === 419) && !(error?.config as any)?.skipAuthRedirect) {
@@ -35,6 +40,10 @@ api.interceptors.response.use(
         localStorage.removeItem("isAuthenticated");
         sessionStorage.removeItem("user");
         sessionStorage.removeItem("isAuthenticated");
+        // Say WHY the person was signed out (inactivity / suspension) on the login page.
+        if (code === "session_expired" || code === "suspended") {
+          sessionStorage.setItem("login_notice", error?.response?.data?.message || "");
+        }
       } catch {
         // ignore storage errors (e.g. private mode)
       }

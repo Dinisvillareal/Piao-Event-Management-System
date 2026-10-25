@@ -1,3 +1,4 @@
+import { useClockFormat } from "../../../lib/clockFormat";
 import SummaryCard from "../../../components/ui/SummaryCard";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useEffect, useMemo, useState } from "react";
@@ -175,6 +176,7 @@ export default function DashboardView({
   // attendance, upcoming events), this just proves the panel is genuinely
   // live rather than a static snapshot.
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [clockHour12, toggleClockHour12] = useClockFormat();
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
@@ -328,12 +330,19 @@ export default function DashboardView({
                 {currentTime.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' })}
               </p>
             </div>
-            <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2">
+            <button
+              type="button"
+              onClick={toggleClockHour12}
+              title={clockHour12 ? "24-hour" : "12-hour"}
+              aria-label={clockHour12 ? "Switch to 24-hour clock" : "Switch to 12-hour clock"}
+              className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2 cursor-pointer select-none transition hover:bg-white/[0.08] hover:border-[#4FBEB0]/40 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4FBEB0]/50"
+
+            >
               <Clock className="h-4 w-4 text-[#4FBEB0]" />
               <span className="font-display text-lg font-bold tabular-nums text-white">
-                {currentTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                {currentTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: clockHour12 })}
               </span>
-            </div>
+            </button>
           </div>
 
           <div className="mt-6 grid grid-cols-2 gap-3.5">

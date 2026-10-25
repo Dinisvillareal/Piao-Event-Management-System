@@ -1,18 +1,25 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
-import { Filter, Printer, Download, TrendingUp, Users, CalendarDays, CalendarCheck, Star, Award, Wallet, Package, ChevronDown, MapPin, Clock, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Filter, FileText, Download, TrendingUp, Users, CalendarDays, CalendarCheck, Star, Award, Wallet, Package, ChevronDown, MapPin, Clock, AlertTriangle, CheckCircle2, History as HistoryIcon } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
-import { BarChart, DonutChart } from "../../../components/ui/Charts";
 import DateRangePicker from "../../../components/ui/DateRangePicker";
-import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar, { type FilterDef } from "../../../components/ui/FilterBar";
+import QuickTabs from "../../../components/ui/QuickTabs";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { translate } from "../../../i18n/translations";
 import { buildReportMessage, dateRangeScope } from "../../../lib/reportMessage";
 import { useBarangayOfficials } from "../../../lib/barangayOfficials";
-import ReportOptionsModal, { type AttendeeFilter, type SectionDef } from "./ReportOptionsModal";
+import { type AttendeeFilter, type SectionDef } from "./ReportOptionsModal";
+import ReportGenerateDrawer, { type ReportFormat } from "./reports/ReportGenerateDrawer";
+import ReportHistoryPanel, { type HistoryItem } from "./reports/ReportHistoryPanel";
+import LiveStatus from "./reports/LiveStatus";
+import KpiDelta from "./reports/KpiDelta";
+import EventBreakdownTable from "./reports/EventBreakdownTable";
+import { AttendanceCharts, BudgetCharts, MembershipCharts, InventoryCharts } from "./reports/ReportCharts";
+import AnimatedNumber from "../../../components/ui/AnimatedNumber";
 
 interface Membership {
   id: string | number;
@@ -62,6 +69,33 @@ function getThisMonthRange(): { from: string; to: string } {
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   return { from: toISO(start), to: toISO(end) };
 }
+
+// Quick period choices above the filters. "all" is the open-ended range.
+function getPresetRanges() {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  const diff = now.getDay() === 0 ? 6 : now.getDay() - 1; // weeks run Monday to Sunday
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - diff);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  const q = Math.floor(m / 3) * 3;
+  return {
+    week: { from: iso(weekStart), to: iso(weekEnd) },
+    month: { from: iso(new Date(y, m, 1)), to: iso(new Date(y, m + 1, 0)) },
+    lastMonth: { from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) },
+    quarter: { from: iso(new Date(y, q, 1)), to: iso(new Date(y, q + 3, 0)) },
+    year: { from: iso(new Date(y, 0, 1)), to: iso(new Date(y, 11, 31)) },
+    all: { from: "", to: "" },
+  } as Record<string, { from: string; to: string }>;
+}
+
+// Open an event on the Events page (the same hook the notification bell uses).
+const openEvent = (id: string | number, tab: string) =>
+  window.dispatchEvent(new CustomEvent("staff:open-event", { detail: { eventId: Number(id), tab } }));
 
 type ReportType = "attendance" | "membership" | "budget" | "inventory";
 
@@ -221,7 +255,11 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
   // on-screen page always shows everything; unselected sections are only
   // hidden when printing (print:hidden), so staff never lose sight of data
   // just because they left it out of a printout.
-  const [optionsMode, setOptionsMode] = useState<"print" | "download" | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerFormat, setDrawerFormat] = useState<ReportFormat>("pdf");
+  // "report" = the live report; "history" = every report generated before.
+  const [view, setView] = useState<"report" | "history">("report");
+  const [historyKey, setHistoryKey] = useState(0);
   const [selectedSections, setSelectedSections] = useState<Record<ReportType, string[]>>(ALL_SECTIONS);
   // null = every event in the current list gets an attendee list
   const [recordEventIds, setRecordEventIds] = useState<string[] | null>(null);
@@ -299,60 +337,98 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
     inventory: "/reports/inventory-summary",
   };
 
-  const fetchReport = async () => {
-    setLoading(true);
-    setError(null);
+  // Live data: every load gets an id so a slower, older response can never
+  // overwrite a newer one, and "silent" loads (the background refresh) swap
+  // the numbers in place without flashing the skeleton.
+  const reqIdRef = useRef(0);
+  const [lastSync, setLastSync] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [syncFailed, setSyncFailed] = useState(false);
+  const expandedRef = useRef<string[]>([]);
+
+  const fetchReport = async (silent = false) => {
+    const id = ++reqIdRef.current;
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setError(null);
+    }
     try {
-      const res = await api.get(REPORT_ENDPOINTS[reportType], { params: buildFilterParams() });
+      const params: Record<string, string | number> = { ...buildFilterParams() };
+      // The KPI cards compare with the period before (Attendance + Budget).
+      if (reportType === "attendance" || reportType === "budget") params.compare = 1;
+      const res = await api.get(REPORT_ENDPOINTS[reportType], { params });
+      if (id !== reqIdRef.current) return;
       setData(res.data);
-      // New filters = new event list: forget cached attendee lists and
-      // go back to "every event" for the attendee-list selection.
-      setAttendeeCache({});
-      inflightRef.current.clear();
-      setExpandedEvents([]);
-      setRecordEventIds(null);
+      setLastSync(Date.now());
+      setSyncFailed(false);
+      if (!silent) {
+        // New filters = new event list: forget cached attendee lists and
+        // go back to "every event" for the attendee-list selection.
+        setAttendeeCache({});
+        inflightRef.current.clear();
+        setExpandedEvents([]);
+        setRecordEventIds(null);
+      } else {
+        // Something changed: reload the lists the staff member has open.
+        attendeeCacheRef.current = {};
+        setAttendeeCache({});
+        inflightRef.current.clear();
+        if (reportType === "attendance" && expandedRef.current.length > 0) fetchAttendees(expandedRef.current);
+      }
     } catch (e) {
-      setError(apiErrorMessage(e, tUI("loadReportFailed")));
+      if (id !== reqIdRef.current) return;
+      if (silent) setSyncFailed(true);
+      else setError(apiErrorMessage(e, tUI("loadReportFailed")));
     } finally {
-      setLoading(false);
+      if (id === reqIdRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
+  // Always the latest closure, for timers and listeners that outlive a render.
+  const fetchRef = useRef(fetchReport);
+  fetchRef.current = fetchReport;
 
   // ── Word / PDF download (chosen from the Print & Export Options dialog) ──
   const [downloading, setDownloading] = useState(false);
   // "Are you sure?" step in front of every Word / PDF download.
-  const [confirmDownload, setConfirmDownload] = useState<"pdf" | "word" | null>(null);
+  const [confirmDownload, setConfirmDownload] = useState<"pdf" | "word" | "csv" | null>(null);
   // Success confirmation shown after the file actually reaches the browser's
   // download handling -- mirrors Budget's success StatusModal for
   // Add/Update/Delete Expense.
-  const [downloadSuccessFormat, setDownloadSuccessFormat] = useState<"pdf" | "word" | null>(null);
+  const [downloadSuccessFormat, setDownloadSuccessFormat] = useState<"pdf" | "word" | "csv" | null>(null);
 
   // The server-built file (PDF / Word) for the current report + options.
-  const fetchReportBlob = async (format: "pdf" | "word") => {
+  const fetchReportBlob = async (format: "pdf" | "word" | "csv") => {
     const params: Record<string, string> = {
       ...buildFilterParams(),
       type: reportType,
       sections: selectedSections[reportType].join(","),
     };
-    if (reportType === "attendance" && hasSection("records")) {
+    if (format !== "csv" && reportType === "attendance" && hasSection("records")) {
       params.event_ids = effectiveRecordIds.join(",");
       params.attendee_filter = attendeeFilter;
     }
     const response = await api.get(`/reports/export/${format}`, { params, responseType: "blob" });
     const mime = format === "pdf"
       ? "application/pdf"
+      : format === "csv"
+      ? "text/csv"
       : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     return new Blob([response.data], { type: mime });
   };
 
-  const handleDownload = async (format: "pdf" | "word") => {
+  const handleDownload = async (format: "pdf" | "word" | "csv") => {
     setDownloading(true);
     try {
       const blob = await fetchReportBlob(format);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${reportType}-report.${format === "pdf" ? "pdf" : "docx"}`;
+      link.download = `${reportType}-report.${format === "pdf" ? "pdf" : format === "csv" ? "csv" : "docx"}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -363,8 +439,9 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
       // saving to disk" event to the page) -- reaching this line without the
       // catch below firing means it went through, so surface that the same
       // way Budget confirms a successful Add/Update/Delete Expense.
-      setOptionsMode(null);
+      setDrawerOpen(false);
       setDownloadSuccessFormat(format);
+      setHistoryKey((k) => k + 1);
     } catch {
       setError(tUI("downloadFailedMessage"));
     } finally {
@@ -377,12 +454,85 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reportType, dateFrom, dateTo, membershipId, ageGroup, eventId, conditionFilter]);
 
+  // ── Live updates ───────────────────────────────────────────────────────────
+  // A tiny "has anything changed?" check every few seconds; the report itself
+  // reloads (quietly) only when the data underneath it really changed, and
+  // right away when the staff member comes back to this tab.
+  const busyRef = useRef(false);
+  busyRef.current = isPrinting || downloading || preparing;
+  expandedRef.current = expandedEvents;
+  useEffect(() => {
+    if (view !== "report") return;
+    let token: string | null = null;
+    let cancelled = false;
+    const check = async () => {
+      if (cancelled || document.visibilityState !== "visible" || busyRef.current) return;
+      try {
+        const res = await api.get("/reports/pulse", { params: { type: reportType } });
+        if (cancelled) return;
+        const next = String(res.data?.token ?? "");
+        if (token === null) token = next;
+        else if (next !== token) {
+          token = next;
+          fetchRef.current(true);
+        }
+        setSyncFailed(false);
+      } catch {
+        if (!cancelled) setSyncFailed(true);
+      }
+    };
+    check();
+    const id = window.setInterval(check, 8000);
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [view, reportType]);
+
+  // Coming back from Report History: refresh in case anything changed meanwhile.
+  const seenView = useRef(false);
+  useEffect(() => {
+    if (!seenView.current) { seenView.current = true; return; }
+    if (view === "report") fetchRef.current(true);
+  }, [view]);
+
   // Switching report type: previous type's data shouldn't flash while the
   // new type loads, and a stale membership filter from the Attendance tab
   // shouldn't silently narrow the Membership tab.
   const handleReportTypeChange = (next: ReportType) => {
+    setView("report");
+    if (next === reportType) return;
     setData(null);
     setReportType(next);
+  };
+
+  // ── Report History: open (restore filters) / generate again ───────────────
+  const applyHistoryItem = (it: HistoryItem, generate: boolean) => {
+    const f = (it.filters ?? {}) as Record<string, string | number>;
+    const str = (k: string) => (f[k] !== undefined && f[k] !== null ? String(f[k]) : "");
+    setView("report");
+    if (it.type !== reportType) setData(null);
+    setReportType(it.type);
+    if (it.type === "attendance" || it.type === "budget") {
+      setDateFrom(str("date_from"));
+      setDateTo(str("date_to"));
+    }
+    setMembershipId(it.type === "attendance" || it.type === "membership" ? str("membership_id") : "");
+    setAgeGroup(it.type === "attendance" ? str("age_group") : "");
+    setEventId(it.type === "budget" ? str("event_id") : "");
+    setConditionFilter(it.type === "inventory" ? str("condition") : "");
+    if (it.sections && it.sections.length > 0) {
+      const valid = SECTION_DEFS[it.type].map((x) => x.key);
+      const picked = it.sections.filter((k) => valid.includes(k));
+      if (picked.length > 0) setSelectedSections((prev) => ({ ...prev, [it.type]: picked }));
+    }
+    if (generate) {
+      setDrawerFormat(it.format);
+      setDrawerOpen(true);
+    }
   };
 
   // ── Attendance ────────────────────────────────────────────────────────────
@@ -393,16 +543,6 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
     attendance_percentage: 0,
     average_feedback_rating: null,
   };
-
-  const perMonthChartData = useMemo(
-    () => (reportType === "attendance" ? (data?.per_month ?? []).map((m: any) => ({ label: m.month, value: m.events })) : []),
-    [data, reportType]
-  );
-
-  const ageChartData = useMemo(
-    () => (reportType === "attendance" ? (data?.age_breakdown ?? []).map((a: any) => ({ label: a.group, value: a.attended })) : []),
-    [data, reportType]
-  );
 
   const perEvent = reportType === "attendance" ? (data?.per_event ?? []) : [];
 
@@ -494,7 +634,6 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
   // ── Inventory ───────────────────────────────────────────────────────────────
   const inventorySummary = data?.summary ?? { total_items: 0, total_quantity: 0 };
-  const byCondition = reportType === "inventory" ? (data?.by_condition ?? []) : [];
   const inventoryItems = reportType === "inventory" ? (data?.items ?? []) : [];
 
   // Same mapping as InventoryView's CONDITION_STYLES -- reused as-is so the
@@ -635,7 +774,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         link.remove();
       }
       window.setTimeout(() => URL.revokeObjectURL(url), 120000);
-      setOptionsMode(null);
+      setDrawerOpen(false);
     } catch {
       win?.close();
       setError(tUI("downloadFailedMessage"));
@@ -655,8 +794,18 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
       setPreparing(false);
       if (!ok) return;
     }
-    setOptionsMode(null);
+    setDrawerOpen(false);
+    // The browser's Print never reaches the server, so tell it for the Report History.
+    api.post("/reports/history", { ...buildFilterParams(), type: reportType, sections: selectedSections[reportType].join(",") })
+      .then(() => setHistoryKey((k) => k + 1))
+      .catch(() => {});
     window.setTimeout(handlePrint, 250);
+  };
+
+  // The Generate Report drawer: Print goes to the browser, the files ask first.
+  const handleGenerate = (format: ReportFormat) => {
+    if (format === "print") handlePrintConfirmed();
+    else setConfirmDownload(format);
   };
 
   const attendeeFilterLabel =
@@ -760,6 +909,90 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
     (ev: any) => effectiveRecordIds.includes(String(ev.id)) && attendeeCache[cacheKey(String(ev.id))] !== undefined
   );
 
+  // ── Filters, period presets and comparison (screen only) ──────────────────
+  const usesDates = reportType === "attendance" || reportType === "budget";
+  const presetRanges = getPresetRanges();
+  const matchedPreset = Object.keys(presetRanges).find((k) => presetRanges[k].from === dateFrom && presetRanges[k].to === dateTo);
+  const activePreset = matchedPreset ?? "custom";
+  const presetTabs = [
+    { key: "week", label: tUI("dateRangeThisWeek") },
+    { key: "month", label: tUI("thisMonthLabel") },
+    { key: "lastMonth", label: tUI("rpPresetLastMonth") },
+    { key: "quarter", label: tUI("rpPresetQuarter") },
+    { key: "year", label: tUI("thisYearLabel") },
+    { key: "all", label: tUI("allDatesLabel") },
+    ...(matchedPreset ? [] : [{ key: "custom", label: tUI("rpPresetCustom") }]),
+  ];
+  const applyPreset = (key: string) => {
+    const r = presetRanges[key];
+    if (!r) return;
+    setDateFrom(r.from);
+    setDateTo(r.to);
+  };
+
+  const filterIcon = (Icon: any) => <Icon className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />;
+  const membershipOptions = [
+    { value: "", label: tUI("allMembershipsOption") },
+    ...memberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
+  ];
+  const filterDefs: FilterDef[] =
+    reportType === "attendance"
+      ? [
+          { key: "membership", label: tUI("reportTypeMembership"), value: membershipId, defaultValue: "", onChange: setMembershipId, options: membershipOptions, searchable: true, icon: filterIcon(Users) },
+          { key: "age", label: tUI("fltAge"), value: ageGroup, defaultValue: "", onChange: setAgeGroup, options: AGE_GROUPS.map((g) => ({ value: g.key, label: tUI(g.labelKey) })), icon: filterIcon(Filter) },
+        ]
+      : reportType === "membership"
+      ? [{ key: "membership", label: tUI("reportTypeMembership"), value: membershipId, defaultValue: "", onChange: setMembershipId, options: membershipOptions, searchable: true, icon: filterIcon(Award) }]
+      : reportType === "budget"
+      ? [
+          {
+            key: "event",
+            label: tUI("events"),
+            value: eventId,
+            defaultValue: "",
+            onChange: setEventId,
+            searchable: true,
+            icon: filterIcon(CalendarCheck),
+            options: [
+              { value: "", label: tUI("allEvents") },
+              ...eventsInRange
+                .slice()
+                .sort((a, b) => (a.title || a.name || "").localeCompare(b.title || b.name || ""))
+                .map((ev) => ({ value: String(ev.id), label: ev.title || ev.name || "" })),
+            ],
+          },
+        ]
+      : [
+          {
+            key: "condition",
+            label: tUI("conditionColumn"),
+            value: conditionFilter,
+            defaultValue: "",
+            onChange: setConditionFilter,
+            icon: filterIcon(Package),
+            options: [{ value: "", label: tUI("allConditionsOption") }, ...CONDITIONS.map((c) => ({ value: c, label: conditionLabel(c) }))],
+          },
+        ];
+  const rowCount =
+    reportType === "attendance" ? perEvent.length
+    : reportType === "membership" ? perMembership.length
+    : reportType === "budget" ? budgetPerEvent.length + unbudgeted.length
+    : inventoryItems.length;
+
+  // Change versus the period before (Attendance + Budget, when a full date range is chosen).
+  const previous = (reportType === "attendance" || reportType === "budget") ? data?.previous : null;
+  const prevSummary = previous?.summary ?? null;
+  const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" });
+  const prevRangeLabel = previous ? `${shortDate(previous.date_from)} – ${shortDate(previous.date_to)}` : "";
+  const prevTip = (value: string | number) => tUI("rpPrevTip").replace("{value}", `${value}${prevRangeLabel ? ` (${prevRangeLabel})` : ""}`);
+
+  // What the Generate Report drawer previews: the same query the server export uses.
+  const previewParams: Record<string, string> = {
+    ...buildFilterParams(),
+    type: reportType,
+    sections: selectedSections[reportType].filter((k) => k !== "records").join(","),
+  };
+
   return (
     <>
       <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 print:!m-0 print:!p-0 print:bg-white print:!min-h-0">
@@ -825,32 +1058,22 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("reports")}</h1>
             <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("reportsSubtitle")}</p>
           </div>
-          <div className="print:hidden flex items-center gap-2 self-start sm:self-auto">
-            <button
-              type="button"
-              onClick={() => setOptionsMode("print")}
-              disabled={loading}
-              className="group inline-flex items-center gap-3.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-7 pr-2 py-2 text-[17px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
-            >
-              {tUI("printReport")}
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
-                <Printer className="h-5 w-5 text-white" />
-              </span>
-            </button>
-
-            {/* Download icon button -- opens the same Print & Export Options
-                dialog, with the Word / PDF choices in its footer. */}
-            <button
-              type="button"
-              onClick={() => setOptionsMode("download")}
-              disabled={loading || isEmpty}
-              title={tUI("downloadReportLabel")}
-              aria-label={tUI("downloadReportLabel")}
-              className="inline-flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white transition hover:bg-white/[0.12] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Download className="h-6 w-6" />
-            </button>
-          </div>
+          {view === "report" && (
+            <div className="print:hidden flex flex-wrap items-center gap-3 self-start sm:self-auto">
+              <LiveStatus lastSync={lastSync} refreshing={refreshing} failed={syncFailed} onRefresh={() => { setLoading(true); fetchRef.current(true); }} />
+              <button
+                type="button"
+                onClick={() => { setDrawerFormat("pdf"); setDrawerOpen(true); }}
+                disabled={loading || isEmpty}
+                className="group inline-flex items-center gap-3.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-7 pr-2 py-2 text-[17px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+              >
+                {tUI("rpGenerate")}
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
+                  <FileText className="h-5 w-5 text-white" />
+                </span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Step 1 per UC-10: choose a report type */}
@@ -860,7 +1083,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
               key={rt.key}
               onClick={() => handleReportTypeChange(rt.key)}
               className={`inline-flex items-center gap-2.5 rounded-full px-5 py-3.5 text-[14px] font-semibold transition-colors ${
-                reportType === rt.key
+                view === "report" && reportType === rt.key
                   ? "bg-sage-700 text-white shadow-sm hover:bg-sage-800"
                   : "border border-white/10 bg-white/[0.04] text-white/65 hover:border-white/30 hover:bg-white/10 hover:text-white"
               }`}
@@ -868,133 +1091,65 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
               <rt.icon className="h-[18px] w-[18px]" /> {t(rt.labelKey)}
             </button>
           ))}
+          <button
+            onClick={() => setView("history")}
+            className={`inline-flex items-center gap-2.5 rounded-full px-5 py-3.5 text-[14px] font-semibold transition-colors ${
+              view === "history"
+                ? "bg-sage-700 text-white shadow-sm hover:bg-sage-800"
+                : "border border-white/10 bg-white/[0.04] text-white/65 hover:border-white/30 hover:bg-white/10 hover:text-white"
+            }`}
+          >
+            <HistoryIcon className="h-[18px] w-[18px]" /> {tUI("rpHistoryTab")}
+          </button>
         </div>
-        <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-white/40 print:hidden">
-          {REPORT_TYPES.find((r) => r.key === reportType) && t(REPORT_TYPES.find((r) => r.key === reportType)!.labelKey)} {t("reportForLabel")}
-        </p>
-
-        {/* Step 2 per UC-10: date range / event / other filters, contextual to the report type */}
-        <div className="mt-3 flex flex-col sm:flex-row sm:flex-wrap gap-3 print:hidden">
-          {reportType === "attendance" && (
-            <>
-              <DateRangePicker
-                from={dateFrom}
-                to={dateTo}
-                onChange={(f, t) => { setDateFrom(f); setDateTo(t); }}
-                fromLabel={t("fromLabel")}
-                toLabel={t("toLabel")}
-                allDatesLabel={t("allDatesLabel")}
-                todayLabel={t("todayLabel")}
-                thisWeekLabel={t("dateRangeThisWeek")}
-                thisMonthLabel={t("thisMonthLabel")}
-                thisYearLabel={t("thisYearLabel")}
-                clearLabel={t("clearLabel")}
-                applyLabel={t("applyLabel")}
-                dark
-              />
-              <FilterDropdown
-                value={membershipId}
-                onChange={setMembershipId}
-                options={[
-                  { value: "", label: t("allMembershipsOption") },
-                  ...memberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
-                ]}
-                className="h-11 min-w-[220px] pl-9 pr-6"
-                panelWidthPx={280}
-                icon={<Users className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                dark
-                searchable
-                searchPlaceholder={t("search")}
-                noResultsLabel={t("noMatchesFoundLabel")}
-              />
-              <FilterDropdown
-                value={ageGroup}
-                onChange={setAgeGroup}
-                options={AGE_GROUPS.map((g) => ({ value: g.key, label: t(g.labelKey) }))}
-                className="h-11 pl-9 pr-6"
-                icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                dark
-              />
-            </>
-          )}
-
-          {reportType === "membership" && (
-            <FilterDropdown
-              value={membershipId}
-              onChange={setMembershipId}
-              options={[
-                { value: "", label: t("allMembershipsOption") },
-                ...memberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
-              ]}
-              className="h-11 min-w-[220px] pl-9 pr-6"
-              panelWidthPx={280}
-              icon={<Award className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-              dark
-              searchable
-              searchPlaceholder={t("search")}
-              noResultsLabel={t("noMatchesFoundLabel")}
-            />
-          )}
-
-          {reportType === "budget" && (
-            <>
-              <DateRangePicker
-                from={dateFrom}
-                to={dateTo}
-                onChange={(f, t) => { setDateFrom(f); setDateTo(t); }}
-                fromLabel={t("fromLabel")}
-                toLabel={t("toLabel")}
-                allDatesLabel={t("allDatesLabel")}
-                todayLabel={t("todayLabel")}
-                thisWeekLabel={t("dateRangeThisWeek")}
-                thisMonthLabel={t("thisMonthLabel")}
-                thisYearLabel={t("thisYearLabel")}
-                clearLabel={t("clearLabel")}
-                applyLabel={t("applyLabel")}
-                dark
-              />
-              {/* Picking one event answers a different question than a date
-                  range, so this takes priority over it (see fetchReport) --
-                  left both controls visible rather than hiding the date
-                  range, so switching back to "All Events" is a one-click undo. */}
-              <FilterDropdown
-                value={eventId}
-                onChange={setEventId}
-                options={[
-                  { value: "", label: t("allEvents") },
-                  ...eventsInRange
-                    .slice()
-                    .sort((a, b) => (a.title || a.name || "").localeCompare(b.title || b.name || ""))
-                    .map((ev) => ({ value: String(ev.id), label: ev.title || ev.name || "" })),
-                ]}
-                className="h-11 min-w-[220px] pl-9 pr-6"
-                panelWidthPx={280}
-                icon={<CalendarCheck className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                dark
-                searchable
-                searchPlaceholder={t("search")}
-                noResultsLabel={t("noMatchesFoundLabel")}
-              />
-            </>
-          )}
-
-          {reportType === "inventory" && (
-            <FilterDropdown
-              value={conditionFilter}
-              onChange={setConditionFilter}
-              options={[
-                { value: "", label: t("allConditionsOption") },
-                ...CONDITIONS.map((c) => ({ value: c, label: conditionLabel(c) })),
-              ]}
-              className="h-11 pl-9 pr-6"
-              icon={<Package className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-              dark
-            />
-          )}
-        </div>
+        {/* Step 2 per UC-10: one tidy toolbar -- period on top (quick choices on
+            the left, exact dates on the right), the report's own filters below. */}
+        {view === "report" && (
+          <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 print:hidden">
+            {usesDates && (
+              <>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-white/40">{tUI("rpPeriodLabel")}</span>
+                    <QuickTabs value={activePreset} onChange={applyPreset} tabs={presetTabs} className="flex-wrap overflow-visible pb-0" />
+                  </div>
+                  <div className="shrink-0 sm:ml-auto">
+                    <DateRangePicker
+                      from={dateFrom}
+                      to={dateTo}
+                      onChange={(f, to) => { setDateFrom(f); setDateTo(to); }}
+                      fromLabel={tUI("fromLabel")}
+                      toLabel={tUI("toLabel")}
+                      allDatesLabel={tUI("allDatesLabel")}
+                      todayLabel={tUI("todayLabel")}
+                      thisWeekLabel={tUI("dateRangeThisWeek")}
+                      thisMonthLabel={tUI("thisMonthLabel")}
+                      thisYearLabel={tUI("thisYearLabel")}
+                      clearLabel={tUI("clearLabel")}
+                      applyLabel={tUI("applyLabel")}
+                      dark
+                    />
+                  </div>
+                </div>
+                <div className="my-4 h-px bg-white/10" />
+              </>
+            )}
+            <FilterBar filters={filterDefs} count={loading ? undefined : { shown: rowCount }} />
+            {previous && !loading && (
+              <p className="mt-3 text-xs text-white/40">{tUI("rpComparedWith").replace("{range}", prevRangeLabel)}</p>
+            )}
+          </div>
+        )}
       </div>
 
-      {loading ? (
+      {view === "history" ? (
+        <ReportHistoryPanel
+          refreshKey={historyKey}
+          onOpen={(it) => applyHistoryItem(it, false)}
+          onGenerateAgain={(it) => applyHistoryItem(it, true)}
+          onError={setError}
+        />
+      ) : loading ? (
         <div className="space-y-4">
           <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -1005,82 +1160,59 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         </div>
       ) : isEmpty ? (
         // UC-10 extension 4a: no records exist for the selected type/range
-        <div className="print:break-inside-avoid rounded-[30px] border border-dashed border-white/15 bg-white/[0.02] p-10 text-center text-sm text-white/40 italic print:border-gray-200 print:bg-white print:text-gray-400">
-          {t("noDataAvailableForReport")}
+        <div className="print:break-inside-avoid rounded-[30px] border border-dashed border-white/15 bg-white/[0.02] p-10 text-center print:border-gray-200 print:bg-white">
+          <p className="text-base font-semibold text-white/70 print:text-gray-500">{tUI("rpNoDataTitle")}</p>
+          <p className="mt-1 text-sm italic text-white/40 print:text-gray-400">{t("noDataAvailableForReport")}</p>
+          {usesDates && (dateFrom || dateTo) && (
+            <button
+              type="button"
+              onClick={() => { setDateFrom(""); setDateTo(""); }}
+              className="mt-5 rounded-full border border-white/20 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/10 print:hidden"
+            >
+              {tUI("rpShowAllDates")}
+            </button>
+          )}
         </div>
       ) : reportType === "attendance" ? (
         <>
-          <div className={`grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3 ${ph("summary")}`}>
+          <div className={`report-stagger grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3 ${ph("summary")}`}>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
               <CalendarDays className="h-5 w-5 opacity-80" />
-              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.total_events)}`}>{summary.total_events}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.total_events)}`}><AnimatedNumber value={summary.total_events} delay={0} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("eventsInRange")}</p>
+              <KpiDelta t={tUI} cur={summary.total_events} prev={prevSummary?.total_events} mode="percent" tip={prevTip(prevSummary?.total_events ?? 0)} />
             </div>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
               <Users className="h-5 w-5 opacity-80" />
-              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.total_attended)}`}>{summary.total_attended}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.total_attended)}`}><AnimatedNumber value={summary.total_attended} delay={70} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("attendanceRecordsLabel")}</p>
+              <KpiDelta t={tUI} cur={summary.total_attended} prev={prevSummary?.total_attended} mode="percent" tip={prevTip(prevSummary?.total_attended ?? 0)} />
             </div>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-800 to-[#1C2E2B] p-5 text-white shadow-sm">
               <TrendingUp className="h-5 w-5 opacity-80" />
-              <h2 className="mt-2 text-3xl font-black">{summary.attendance_percentage}%</h2>
+              <h2 className="mt-2 text-3xl font-black"><AnimatedNumber value={summary.attendance_percentage} delay={140} decimals={1} />%</h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("attendanceRateLabel")}</p>
+              <KpiDelta t={tUI} cur={summary.attendance_percentage} prev={prevSummary?.attendance_percentage} mode="points" tip={prevTip(`${prevSummary?.attendance_percentage ?? 0}%`)} />
             </div>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-[#8A3D2C] to-[#5C2A1E] p-5 text-white shadow-sm">
               <Star className="h-5 w-5 opacity-80" />
-              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.average_feedback_rating ?? "—")}`}>{summary.average_feedback_rating ?? "—"}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.average_feedback_rating ?? "—")}`}><AnimatedNumber value={summary.average_feedback_rating} delay={210} decimals={1} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("avgFeedbackRating")}</p>
+              <KpiDelta t={tUI} cur={summary.average_feedback_rating} prev={prevSummary?.average_feedback_rating} mode="count" decimals={1} tip={prevTip(prevSummary?.average_feedback_rating ?? "—")} />
             </div>
           </div>
 
-          <div className={`grid gap-4 grid-cols-1 lg:grid-cols-3 print:grid-cols-3 print:gap-3 ${ph("charts")}`}>
-            <div className="print:break-inside-avoid lg:col-span-2 print:col-span-2 rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white">
-              <h3 className="text-lg font-bold text-white print:text-[#005f63]">{t("eventsPerMonth")}</h3>
-              <p className="text-xs text-white/40 mt-0.5 mb-3 print:text-gray-500">{t("eventsPerMonthDesc")}</p>
-              <BarChart data={perMonthChartData} color="#4FBEB0" dark />
-            </div>
-            <div className="print:break-inside-avoid rounded-[30px] border border-white/10 bg-white/[0.03] p-5 flex flex-col items-center justify-center print:border-[#ddd5ca] print:bg-white">
-              <h3 className="text-lg font-bold text-white self-start mb-2 print:text-[#005f63]">{t("overallAttendance")}</h3>
-              <DonutChart percentage={summary.attendance_percentage} color="#4FBEB0" label={`${summary.total_attended} ${t("ofLabel")} ${summary.total_eligible} ${t("ofEligibleResidents")}`} dark />
-            </div>
-          </div>
-
-          <div className={`print:break-inside-avoid rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("age")}`}>
-            <h3 className="text-lg font-bold text-white print:text-[#005f63]">{t("attendanceByAgeGroup")}</h3>
-            <p className="text-xs text-white/40 mt-0.5 mb-3 print:text-gray-500">{t("adviserProfilingNote")}</p>
-            <BarChart data={ageChartData} color="#E8B84A" dark />
-          </div>
+          <AttendanceCharts t={t} data={data} previous={previous} chartsClass={ph("charts")} ageClass={ph("age")} ageGroup={ageGroup} onAgeSelect={setAgeGroup} onOpenEvent={openEvent} />
 
           <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("events")}`}>
             <h3 className="text-lg font-bold text-white mb-4 print:break-after-avoid print:text-[#005f63]">{t("perEventBreakdown")}</h3>
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {perEvent.map((ev: any) => (
-                <div key={ev.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-5 print:border-gray-100 print:bg-gray-50 min-w-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-bold text-white text-base truncate print:text-[#005f63]">{ev.name}</p>
-                    {ev.status && (
-                      <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${EVENT_STATUS_PILL[ev.status] ?? EVENT_STATUS_PILL.Past}`}>{t(`rptStatus${ev.status}`)}</span>
-                    )}
-                  </div>
-                  <p className="text-[13px] text-white/40 mt-1 print:text-gray-500">
-                    {ev.date}{ev.start_time ? ` · ${ev.start_time}${ev.end_time ? ` – ${ev.end_time}` : ""}` : ""}
-                  </p>
-                  {ev.location && <p className="text-xs text-white/40 mt-0.5 truncate print:text-gray-500">{ev.location}</p>}
-                  <div className="mt-4 flex items-center gap-3">
-                    <div className="flex-1 h-2.5 rounded-full bg-white/10 overflow-hidden print:bg-gray-200">
-                      <div className="h-full bg-[#4FBEB0]" style={{ width: `${ev.percentage}%` }} />
-                    </div>
-                    <span className="text-sm font-bold text-white shrink-0 print:text-[#005f63]">{ev.percentage}%</span>
-                  </div>
-                  <p className="text-xs text-white/40 mt-1.5 print:text-gray-500">{ev.attended} / {ev.eligible} {t("attendedOfEligible")}</p>
-                  {ev.approved_budget !== null && (
-                    <p className="text-xs text-white/40 mt-1.5 print:text-gray-500">
-                      {t("budgetColon")} ₱{Number(ev.approved_budget).toLocaleString()} · {t("spentColon")} ₱{Number(ev.total_expenses).toLocaleString()}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
+            <EventBreakdownTable
+              events={perEvent}
+              t={t}
+              onOpen={(id) => openEvent(id, "attendance")}
+              statusPill={(st) => EVENT_STATUS_PILL[st] ?? EVENT_STATUS_PILL.Past}
+              peso={peso}
+            />
           </div>
 
           {/* On-screen attendee lists: one expandable row per event. Lists
@@ -1188,18 +1320,20 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         </>
       ) : reportType === "membership" ? (
         <>
-          <div className={`grid gap-4 grid-cols-1 sm:grid-cols-2 print:grid-cols-2 print:gap-3 ${ph("summary")}`}>
+          <div className={`report-stagger grid gap-4 grid-cols-1 sm:grid-cols-2 print:grid-cols-2 print:gap-3 ${ph("summary")}`}>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
               <Award className="h-5 w-5 opacity-80" />
-              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(membershipSummary.total_memberships)}`}>{membershipSummary.total_memberships}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(membershipSummary.total_memberships)}`}><AnimatedNumber value={membershipSummary.total_memberships} delay={0} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalMembershipsLabel")}</p>
             </div>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
               <Users className="h-5 w-5 opacity-80" />
-              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(membershipSummary.total_assignments)}`}>{membershipSummary.total_assignments}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(membershipSummary.total_assignments)}`}><AnimatedNumber value={membershipSummary.total_assignments} delay={70} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalEnrolledResidentsLabel")}</p>
             </div>
           </div>
+
+          <MembershipCharts t={t} data={data} className={ph("summary")} />
 
           <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("memberships")}`}>
             <h3 className="text-lg font-bold text-white mb-3 print:break-after-avoid print:text-[#005f63]">{t("enrollmentByMembershipLabel")}</h3>
@@ -1222,53 +1356,61 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
       ) : reportType === "budget" ? (
         <>
           <div className={`space-y-4 print:space-y-3 ${ph("summary")}`}>
-            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3">
+            <div className="report-stagger grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3">
               <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
                 <Wallet className="h-5 w-5 opacity-80" />
-                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_approved_budget))}`}>{peso(budgetSummary.total_approved_budget)}</h2>
+                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_approved_budget))}`}><AnimatedNumber value={budgetSummary.total_approved_budget} format={peso} decimals={2} delay={0} /></h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalApprovedBudgetLabel")}</p>
+              <KpiDelta t={tUI} cur={budgetSummary.total_approved_budget} prev={prevSummary?.total_approved_budget} mode="percent" good="neutral" tip={prevTip(peso(prevSummary?.total_approved_budget))} />
               </div>
               <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
                 <TrendingUp className="h-5 w-5 opacity-80" />
-                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_expenses))}`}>{peso(budgetSummary.total_expenses)}</h2>
+                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_expenses))}`}><AnimatedNumber value={budgetSummary.total_expenses} format={peso} decimals={2} delay={70} /></h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalSpentLabel")}</p>
+              <KpiDelta t={tUI} cur={budgetSummary.total_expenses} prev={prevSummary?.total_expenses} mode="percent" good="neutral" tip={prevTip(peso(prevSummary?.total_expenses))} />
               </div>
               <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-800 to-[#1C2E2B] p-5 text-white shadow-sm">
                 <CalendarDays className="h-5 w-5 opacity-80" />
-                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_remaining))}`}>{peso(budgetSummary.total_remaining)}</h2>
+                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_remaining))}`}><AnimatedNumber value={budgetSummary.total_remaining} format={peso} decimals={2} delay={140} /></h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("remainingBudgetLabel")}</p>
+              <KpiDelta t={tUI} cur={budgetSummary.total_remaining} prev={prevSummary?.total_remaining} mode="percent" tip={prevTip(peso(prevSummary?.total_remaining))} />
               </div>
               <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-[#8A3D2C] to-[#5C2A1E] p-5 text-white shadow-sm">
                 <Star className="h-5 w-5 opacity-80" />
-                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(budgetSummary.events_over_budget)}`}>{budgetSummary.events_over_budget}</h2>
+                <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(budgetSummary.events_over_budget)}`}><AnimatedNumber value={budgetSummary.events_over_budget} delay={210} /></h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("eventsOverBudgetLabel")}</p>
+              <KpiDelta t={tUI} cur={budgetSummary.events_over_budget} prev={prevSummary?.events_over_budget} mode="count" good="down" tip={prevTip(prevSummary?.events_over_budget ?? 0)} />
               </div>
             </div>
 
-            <div className="grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3">
+            <div className="report-stagger grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3">
               <div className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-[#ddd5ca] print:bg-white">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45 print:text-gray-500">{t("rptBudgetUsed")}</p>
-                <p className="mt-1 text-2xl font-black text-white print:text-[#005f63]">{budgetSummary.utilization_percentage ?? 0}%</p>
+                <p className="mt-1 text-2xl font-black text-white print:text-[#005f63]"><AnimatedNumber value={budgetSummary.utilization_percentage ?? 0} decimals={1} delay={280} />%</p>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10 print:bg-gray-200">
-                  <div className={`h-full ${(budgetSummary.utilization_percentage ?? 0) > 100 ? "bg-red-400" : "bg-[#4FBEB0]"}`} style={{ width: `${Math.min(100, budgetSummary.utilization_percentage ?? 0)}%` }} />
+                  <div className={`report-grow h-full ${(budgetSummary.utilization_percentage ?? 0) > 100 ? "bg-red-400" : "bg-[#4FBEB0]"}`} style={{ width: `${Math.min(100, budgetSummary.utilization_percentage ?? 0)}%` }} />
                 </div>
               </div>
               <div className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-[#ddd5ca] print:bg-white">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45 print:text-gray-500">{t("rptTotalOver")}</p>
-                <p className={`mt-1 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_over_amount))} ${(budgetSummary.total_over_amount ?? 0) > 0 ? "text-red-400 print:text-red-600" : "text-white print:text-[#005f63]"}`}>{peso(budgetSummary.total_over_amount)}</p>
+                <p className={`mt-1 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_over_amount))} ${(budgetSummary.total_over_amount ?? 0) > 0 ? "text-red-400 print:text-red-600" : "text-white print:text-[#005f63]"}`}><AnimatedNumber value={budgetSummary.total_over_amount ?? 0} format={peso} decimals={2} delay={320} /></p>
               </div>
               <div className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-[#ddd5ca] print:bg-white">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45 print:text-gray-500">{t("rptNearLimit")}</p>
-                <p className={`mt-1 text-2xl font-black ${(budgetSummary.events_near_limit ?? 0) > 0 ? "text-amber-300 print:text-amber-700" : "text-white print:text-[#005f63]"}`}>{budgetSummary.events_near_limit ?? 0}</p>
+                <p className={`mt-1 text-2xl font-black ${(budgetSummary.events_near_limit ?? 0) > 0 ? "text-amber-300 print:text-amber-700" : "text-white print:text-[#005f63]"}`}><AnimatedNumber value={budgetSummary.events_near_limit ?? 0} delay={360} /></p>
               </div>
               <div className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-[#ddd5ca] print:bg-white">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45 print:text-gray-500">{t("rptExpenseEntries")}</p>
-                <p className="mt-1 text-2xl font-black text-white print:text-[#005f63]">{budgetSummary.total_expense_entries ?? 0}</p>
+                <p className="mt-1 text-2xl font-black text-white print:text-[#005f63]"><AnimatedNumber value={budgetSummary.total_expense_entries ?? 0} delay={400} /></p>
                 {(budgetSummary.events_without_budget ?? 0) > 0 && (
                   <p className="mt-1 text-[11px] text-white/40 print:text-gray-500">{budgetSummary.events_without_budget} · {t("rptSecNoBudget").toLowerCase()}</p>
                 )}
               </div>
             </div>
+          </div>
+
+          <div className={ph("summary")}>
+            <BudgetCharts t={t} data={data} previous={previous} money={peso} onOpenEvent={openEvent} />
           </div>
 
           <div className={`rounded-[30px] border p-5 ${overBudgetList.length > 0 ? "border-red-500/25 bg-red-500/[0.06] print:border-red-200 print:bg-white" : "border-white/10 bg-white/[0.03] print:border-[#ddd5ca] print:bg-white"} ${ph("overBudget")}`}>
@@ -1294,7 +1436,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                   <div key={ev.id} className="print:break-inside-avoid rounded-2xl border border-red-500/20 bg-white/[0.04] p-4 print:border-red-100 print:bg-red-50/60">
                     <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
                       <div className="min-w-0">
-                        <p className="truncate font-bold text-white print:text-[#005f63]">{ev.name}</p>
+                        <button type="button" onClick={() => openEvent(ev.id, "budget")} title={tUI("rpOpenBudget")} className="block max-w-full truncate text-left font-bold text-white transition hover:text-[#7DD8CB] hover:underline print:text-[#005f63] print:no-underline">{ev.name}</button>
                         <p className="mt-0.5 text-xs text-white/45 print:text-gray-500">{ev.date} · {t(`rptStatus${ev.event_status}`)}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
@@ -1319,21 +1461,21 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
               {budgetPerEvent.map((ev: any) => {
                 const st = BUDGET_STATUS_PILL[ev.budget_status] ?? BUDGET_STATUS_PILL["Within budget"];
                 return (
-                  <div key={ev.id} className={`print:break-inside-avoid rounded-2xl border p-4 ${ev.is_over_budget ? "border-red-500/25 bg-red-500/10 print:border-red-200 print:bg-red-50" : "border-white/10 bg-white/[0.04] print:border-gray-100 print:bg-gray-50"}`}>
+                  <div key={ev.id} className={`print:break-inside-avoid rounded-2xl border p-5 ${ev.is_over_budget ? "border-red-500/25 bg-red-500/10 print:border-red-200 print:bg-red-50" : "border-white/10 bg-white/[0.04] print:border-gray-100 print:bg-gray-50"}`}>
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-bold text-white text-sm truncate print:text-[#005f63]">{ev.name}</p>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${st.cls}`}>{t(st.key)}</span>
+                      <button type="button" onClick={() => openEvent(ev.id, "budget")} title={tUI("rpOpenBudget")} className="min-w-0 truncate text-left font-bold text-white text-base transition hover:text-[#7DD8CB] hover:underline print:text-[#005f63] print:no-underline">{ev.name}</button>
+                      <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.cls}`}>{t(st.key)}</span>
                     </div>
-                    <p className="text-xs text-white/40 mt-0.5 print:text-gray-500">{ev.date} · {t(`rptStatus${ev.event_status}`)}</p>
-                    <p className="text-[11px] text-white/50 mt-2 print:text-gray-600">{t("budgetColon")} {peso(ev.approved_budget)}</p>
-                    <p className="text-[11px] text-white/50 print:text-gray-600">{t("spentColon")} {peso(ev.total_expenses)} · {ev.expense_count} {ev.expense_count === 1 ? t("rptEntryWord") : t("rptEntriesWord")}</p>
-                    <div className="mt-2 flex items-center gap-2.5">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10 print:bg-gray-200">
+                    <p className="text-[13px] text-white/40 mt-1 print:text-gray-500">{ev.date} · {t(`rptStatus${ev.event_status}`)}</p>
+                    <p className="text-xs text-white/50 mt-3 print:text-gray-600">{t("budgetColon")} {peso(ev.approved_budget)}</p>
+                    <p className="text-xs text-white/50 mt-0.5 print:text-gray-600">{t("spentColon")} {peso(ev.total_expenses)} · {ev.expense_count} {ev.expense_count === 1 ? t("rptEntryWord") : t("rptEntriesWord")}</p>
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/10 print:bg-gray-200">
                         <div className={`h-full ${ev.is_over_budget ? "bg-red-400" : ev.budget_status === "Near limit" ? "bg-amber-400" : "bg-[#4FBEB0]"}`} style={{ width: `${Math.min(100, ev.utilization)}%` }} />
                       </div>
-                      <span className="shrink-0 text-[11px] font-bold text-white/70 print:text-gray-700">{ev.utilization}%</span>
+                      <span className="shrink-0 text-sm font-bold text-white/80 print:text-gray-700">{ev.utilization}%</span>
                     </div>
-                    <p className={`text-[11px] font-semibold mt-1.5 ${ev.is_over_budget ? "text-red-400 print:text-red-600" : "text-[#7DD8CB] print:text-teal-700"}`}>
+                    <p className={`text-xs font-semibold mt-2 ${ev.is_over_budget ? "text-red-400 print:text-red-600" : "text-[#7DD8CB] print:text-teal-700"}`}>
                       {ev.is_over_budget ? t("overBudgetByLabel") : t("remainingLabel")} {peso(Math.abs(ev.remaining))}
                     </p>
                   </div>
@@ -1466,56 +1608,57 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         </>
       ) : (
         <>
-          <div className={`grid gap-4 grid-cols-1 sm:grid-cols-2 print:grid-cols-2 print:gap-3 ${ph("summary")}`}>
+          <div className={`report-stagger grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3 ${ph("summary")}`}>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
               <Package className="h-5 w-5 opacity-80" />
-              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.total_items)}`}>{inventorySummary.total_items}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.total_items)}`}><AnimatedNumber value={inventorySummary.total_items} delay={0} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalInventoryItemsLabel")}</p>
             </div>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
               <TrendingUp className="h-5 w-5 opacity-80" />
-              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.total_quantity)}`}>{inventorySummary.total_quantity}</h2>
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.total_quantity)}`}><AnimatedNumber value={inventorySummary.total_quantity} delay={70} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalQuantityLabel")}</p>
+            </div>
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-[#8A3D2C] to-[#5C2A1E] p-5 text-white shadow-sm">
+              <AlertTriangle className="h-5 w-5 opacity-80" />
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.lost_units ?? 0)}`}><AnimatedNumber value={inventorySummary.lost_units ?? 0} delay={140} /></h2>
+              <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("lostUnitsLabel")}</p>
+            </div>
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-800 to-[#1C2E2B] p-5 text-white shadow-sm">
+              <Package className="h-5 w-5 opacity-80" />
+              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.disposed_units ?? 0)}`}><AnimatedNumber value={inventorySummary.disposed_units ?? 0} delay={210} /></h2>
+              <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("disposedUnitsLabel")}</p>
             </div>
           </div>
 
-          <div className={`print:break-inside-avoid rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("condition")}`}>
-            <h3 className="text-lg font-bold text-white mb-3 print:text-[#005f63]">{t("byConditionLabel")}</h3>
-            <div className="flex flex-wrap gap-2">
-              {byCondition.map((c: any) => (
-                <span key={c.condition} className={`rounded-full px-3 py-1.5 text-xs font-semibold ${conditionColor[c.condition] ?? "bg-white/10 text-white/60 print:bg-gray-100 print:text-gray-600"}`}>
-                  {conditionLabel(c.condition)}: {c.count} {t("itemsLabel")} ({c.quantity} {t("unitsLabel")})
-                </span>
-              ))}
-            </div>
-          </div>
+          <InventoryCharts t={t} data={data} conditionLabel={conditionLabel} className={ph("condition")} />
 
           <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("items")}`}>
             <h3 className="text-lg font-bold text-white mb-3 print:break-after-avoid print:text-[#005f63]">{t("inventoryItemsLabel")}</h3>
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {inventoryItems.map((item: any) => (
-                <div key={item.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-gray-100 print:bg-gray-50">
-                  <p className="font-bold text-white text-sm truncate print:text-[#005f63]">{item.name}</p>
-                  <p className="text-xs text-white/40 mt-0.5 print:text-gray-500">{item.storage_location || "—"}</p>
-                  <div className="mt-2 flex items-center justify-between">
+                <div key={item.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-5 print:border-gray-100 print:bg-gray-50">
+                  <p className="font-bold text-white text-base truncate print:text-[#005f63]">{item.name}</p>
+                  <p className="text-[13px] text-white/40 mt-1 print:text-gray-500">{item.storage_location || "—"}</p>
+                  <div className="mt-3 flex items-center justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-1.5">
                       {(item.condition_units ?? [{ condition: item.condition, units: 0 }]).map((cu: any) => (
-                        <span key={cu.condition} className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${conditionColor[cu.condition] ?? "bg-white/10 text-white/60 print:bg-gray-100 print:text-gray-600"}`}>
+                        <span key={cu.condition} className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${conditionColor[cu.condition] ?? "bg-white/10 text-white/60 print:bg-gray-100 print:text-gray-600"}`}>
                           {conditionLabel(cu.condition)} ×{cu.units}
                         </span>
                       ))}
                       {Number(item.lost_quantity) > 0 && (
-                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${conditionColor.Lost}`}>
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${conditionColor.Lost}`}>
                           {conditionLabel("Lost")} ×{item.lost_quantity}
                         </span>
                       )}
                       {Number(item.disposed_quantity) > 0 && (
-                        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${conditionColor.Disposed}`}>
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${conditionColor.Disposed}`}>
                           {conditionLabel("Disposed")} ×{item.disposed_quantity}
                         </span>
                       )}
                     </div>
-                    <span className="text-sm font-bold text-white print:text-gray-800">×{item.quantity}</span>
+                    <span className="shrink-0 text-base font-bold text-white print:text-gray-800">×{item.quantity}</span>
                   </div>
                 </div>
               ))}
@@ -1550,33 +1693,37 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           print-forced t, since this is on-screen UI chrome. */}
       <StatusModal open={!!error} type="error" title={tUI("errorTitle")} message={error || ""} okLabel={tUI("okLabel")} onClose={() => setError(null)} />
 
-      {/* Print & Export Options -- choose what to include (and, for the
-          attendance report, which events get a full attendee list) before
-          printing or downloading Word / PDF. */}
-      <ReportOptionsModal
-        open={optionsMode !== null}
-        mode={optionsMode ?? "print"}
-        reportLabel={tUI(REPORT_TYPES.find((r) => r.key === reportType)!.labelKey)}
-        sections={SECTION_DEFS[reportType]}
-        selected={selectedSections[reportType]}
-        onSelectedChange={setSectionsForType}
-        recordEvents={recordEventOptions}
-        recordIds={effectiveRecordIds}
-        onRecordIdsChange={setRecordEventIds}
-        attendeeFilter={attendeeFilter}
-        onAttendeeFilterChange={setAttendeeFilter}
-        busy={preparing || downloading}
-        onClose={() => setOptionsMode(null)}
-        onPrint={handlePrintConfirmed}
-        onDownload={(format) => setConfirmDownload(format)}
-        t={tUI}
-      />
+      {/* Generate Report -- slides in from the right: pick the format
+          (Print, PDF, Word, CSV), choose what to include (and, for the
+          attendance report, which events get a full attendee list), and see
+          the first page before generating. */}
+      {drawerOpen && (
+        <ReportGenerateDrawer
+          key={drawerFormat}
+          initialFormat={drawerFormat}
+          reportLabel={tUI(REPORT_TYPES.find((r) => r.key === reportType)!.labelKey)}
+          scopeText={printFilterSummary}
+          sections={SECTION_DEFS[reportType]}
+          selected={selectedSections[reportType]}
+          onSelectedChange={setSectionsForType}
+          recordEvents={recordEventOptions}
+          recordIds={effectiveRecordIds}
+          onRecordIdsChange={setRecordEventIds}
+          attendeeFilter={attendeeFilter}
+          onAttendeeFilterChange={setAttendeeFilter}
+          previewParams={previewParams}
+          busy={preparing || downloading || loading}
+          onClose={() => setDrawerOpen(false)}
+          onGenerate={handleGenerate}
+          t={tUI}
+        />
+      )}
 
       <ConfirmDialog
         open={confirmDownload !== null}
         icon={<Download className="h-9 w-9" />}
         title={tUI("confirmDownloadReportTitle")}
-        body={confirmDownload === "word" ? tUI("confirmDownloadReportBodyWord") : tUI("confirmDownloadReportBodyPdf")}
+        body={confirmDownload === "word" ? tUI("confirmDownloadReportBodyWord") : confirmDownload === "csv" ? tUI("confirmDownloadReportBodyCsv") : tUI("confirmDownloadReportBodyPdf")}
         cancelLabel={tUI("cancelLabel")}
         confirmLabel={tUI("downloadLabel")}
         z={9999}
@@ -1597,7 +1744,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         open={downloadSuccessFormat !== null}
         type="success"
         title={tUI("downloadSuccessTitle")}
-        message={downloadSuccessFormat === "word" ? tUI("downloadSuccessWordMessage") : tUI("downloadSuccessPdfMessage")}
+        message={downloadSuccessFormat === "word" ? tUI("downloadSuccessWordMessage") : downloadSuccessFormat === "csv" ? tUI("downloadSuccessCsvMessage") : tUI("downloadSuccessPdfMessage")}
         okLabel={tUI("okLabel")}
         onClose={() => setDownloadSuccessFormat(null)}
       />

@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import SaveButton from "../ui/SaveButton";
+import FormDrawer, { FormSection } from "../ui/FormDrawer";
 import { Wallet, Plus, X, AlertTriangle, CheckCircle, Lock, Trash2, Pencil, Paperclip, FileText, Download, FileSpreadsheet, Banknote, PiggyBank, Search, Eye, RefreshCw, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import StatusModal from "../ui/StatusModal";
 import api, { apiErrorMessage } from "../../lib/api";
@@ -859,17 +861,17 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                 <fieldset disabled={isExpenseLocked} className="space-y-4 min-w-0">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-[13px] font-semibold text-white mb-1.5">{t("itemExpenseDescPlaceholder")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("itemExpenseDescPlaceholder")}</label>
                       <input
                         required
                         value={form.item}
                         onChange={(e) => setForm((p) => ({ ...p, item: e.target.value }))}
                         placeholder={t("itemExpenseDescPlaceholder")}
-                        className="w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                        className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                       />
                     </div>
                     <div>
-                      <label className="block text-[13px] font-semibold text-white mb-1.5">{t("amountPlaceholder")}</label>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("amountPlaceholder")}</label>
                       <NumberStepper
                         required
                         fullWidth
@@ -884,16 +886,16 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                   </div>
                   {addDelta > 0 && renderImpact(addDelta)}
                   <div>
-                    <label className="block text-[13px] font-semibold text-white mb-1.5">{t("notesLabel")}</label>
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("notesLabel")}</label>
                     <textarea
                       value={form.notes}
                       onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-                      className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                      className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 resize-none focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                       rows={2}
                     />
                   </div>
                   <div>
-                    <label className="block text-[13px] font-semibold text-white mb-1.5">{t("receiptLabel")}</label>
+                    <label className="block text-base font-semibold text-white mb-1.5">{t("receiptLabel")}</label>
                     <ReceiptField
                       items={receiptItems}
                       onChange={setReceiptItems}
@@ -905,7 +907,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                     <p className="mt-1.5 text-[13px] text-white/50">{t("fileHintReceipts")}</p>
                   </div>
                   <div className="flex gap-3 pt-1">
-                    <button type="submit" className="flex-1 py-2.5 text-sm rounded-full font-bold bg-sage-700 hover:bg-sage-800 text-white transition disabled:opacity-50 disabled:cursor-not-allowed">{t("addLabel")}</button>
+                    <SaveButton size="sm" className="flex-1" active={form.item.trim() !== "" || form.amount.trim() !== "" || form.notes.trim() !== "" || receiptItems.length > 0}>{t("addLabel")}</SaveButton>
                     <button
                       type="button"
                       onClick={resetAddExpenseForm}
@@ -1028,53 +1030,50 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
           form, as opposed to the confirm/success/error/receipt modals
           further below which stay on their original light theme). */}
       {editingExpense && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={() => !savingEdit && handleCloseEditExpense()}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-3xl p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl sm:text-3xl font-black text-white">{t("editExpenseTitle")}</h2>
-              <button onClick={handleCloseEditExpense} className="text-white/50 hover:text-white"><X size={26} /></button>
-            </div>
-            <form onSubmit={handleUpdateExpense} noValidate className="space-y-5">
-              <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("itemExpenseDescPlaceholder")}</label>
-                <input required value={editForm.item} onChange={(e) => setEditForm((p) => ({ ...p, item: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
-              </div>
-              <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("amountPlaceholder")}</label>
-                {/* Our own up/down buttons instead of the browser's native
-                    spinner -- see NumberStepper.tsx for why. */}
-                <NumberStepper
-                  required
-                  fullWidth
-                  min={0}
-                  step={0.01}
-                  value={editForm.amount}
-                  onChange={(v) => setEditForm((p) => ({ ...p, amount: v }))}
-                  className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-                />
-              </div>
-              {Math.abs(editDelta) > 0.004 && renderImpact(editDelta)}
-              <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("notesLabel")}</label>
-                <textarea value={editForm.notes} onChange={(e) => setEditForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={3} />
-              </div>
-              <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("receiptLabel")}</label>
-                <ReceiptField
-                  items={editReceiptItems}
-                  onChange={setEditReceiptItems}
-                  onPreview={(item, all) => previewReceiptItem(item, all, editForm.item || t("receiptLabel"))}
-                  onError={setError}
-                />
-                <p className="mt-2 text-sm text-white/50">{t("fileHintReceipts")}</p>
-              </div>
-              <div className="flex gap-3 pt-3">
-                <button type="submit" disabled={savingEdit || isEditExpenseUnchanged} title={isEditExpenseUnchanged ? t("noChangesToSaveHint") : undefined} className="flex-1 py-3.5 text-base rounded-full font-bold bg-sage-700 hover:bg-sage-800 text-white disabled:opacity-60 disabled:cursor-not-allowed">{savingEdit ? t("savingLabel") : t("saveChanges")}</button>
-                <button type="button" onClick={handleCloseEditExpense} disabled={savingEdit} className="px-8 py-3.5 text-base rounded-full border border-white/15 text-white hover:bg-white/10 disabled:opacity-60">{t("cancelLabel")}</button>
-              </div>
-            </form>
+        <FormDrawer
+          title={t("editExpenseTitle")}
+          onClose={() => !savingEdit && handleCloseEditExpense()}
+          onSubmit={handleUpdateExpense}
+          footer={<SaveButton className="w-full" active={!(savingEdit || isEditExpenseUnchanged)} title={isEditExpenseUnchanged ? t("noChangesToSaveHint") : undefined}>{savingEdit ? t("savingLabel") : t("saveChanges")}</SaveButton>}
+        >
+          <FormSection title={t("secExpenseDetails")} className="space-y-5">
+          <div>
+            <label className="block text-base font-semibold text-white mb-1.5">{t("itemExpenseDescPlaceholder")}</label>
+            <input required value={editForm.item} onChange={(e) => setEditForm((p) => ({ ...p, item: e.target.value }))} className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
           </div>
-        </div>
+          <div>
+            <label className="block text-base font-semibold text-white mb-1.5">{t("amountPlaceholder")}</label>
+            {/* Our own up/down buttons instead of the browser's native
+                spinner -- see NumberStepper.tsx for why. */}
+            <NumberStepper
+              required
+              fullWidth
+              min={0}
+              step={0.01}
+              value={editForm.amount}
+              onChange={(v) => setEditForm((p) => ({ ...p, amount: v }))}
+              className="w-full rounded-full border border-white/25 bg-white/10 pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+            />
+          </div>
+          {Math.abs(editDelta) > 0.004 && renderImpact(editDelta)}
+          <div>
+            <label className="block text-base font-semibold text-white mb-1.5">{t("notesLabel")}</label>
+            <textarea value={editForm.notes} onChange={(e) => setEditForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={3} />
+          </div>
+          </FormSection>
+          <FormSection title={t("receiptLabel")} className="space-y-5">
+          <div>
+            <label className="block text-base font-semibold text-white mb-1.5">{t("receiptLabel")}</label>
+            <ReceiptField
+              items={editReceiptItems}
+              onChange={setEditReceiptItems}
+              onPreview={(item, all) => previewReceiptItem(item, all, editForm.item || t("receiptLabel"))}
+              onError={setError}
+            />
+            <p className="mt-2 text-sm text-white/50">{t("fileHintReceipts")}</p>
+          </div>
+          </FormSection>
+        </FormDrawer>
       )}
 
       {/* Unsaved-changes guard for the Edit Expense modal */}
@@ -1305,7 +1304,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
       />
 
       {deleteExpense && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={() => !deletingExpense && setDeleteExpense(null)}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4" onClick={() => !deletingExpense && setDeleteExpense(null)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
@@ -1328,45 +1327,40 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
 
       {/* Approved budget dialog */}
       {budgetEdit !== null && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={() => !savingBudget && setBudgetEdit(null)}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-xl p-6 sm:p-8 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-2xl font-black text-white">{t("budgetEditTitle")}</h2>
-              <button onClick={() => setBudgetEdit(null)} className="text-white/50 hover:text-white"><X size={24} /></button>
-            </div>
-            <p className="mb-6 text-sm text-white/50">{t("budgetEditHint")}</p>
-            <form onSubmit={handleBudgetSubmit} noValidate className="space-y-5">
-              <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("budgetEditFieldLabel")}</label>
-                <NumberStepper
-                  fullWidth
-                  min={0}
-                  step={0.01}
-                  value={budgetEdit}
-                  onChange={(v) => setBudgetEdit(v)}
-                  placeholder={t("amountPlaceholder")}
-                  className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-                />
-                <p className="mt-2 text-xs text-white/40">{t("budgetClearHint")}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="rounded-xl bg-white/[0.04] px-4 py-3">
-                  <p className="font-semibold uppercase tracking-wide text-white/45">{t("budgetSpentLabel")}</p>
-                  <p className="mt-1 text-base font-bold text-white">{money(spentNum)}</p>
-                </div>
-                <div className="rounded-xl bg-white/[0.04] px-4 py-3">
-                  <p className="font-semibold uppercase tracking-wide text-white/45">{t("budgetApprovedLabel")}</p>
-                  <p className="mt-1 text-base font-bold text-white">{approvedNum !== null ? money(approvedNum) : "—"}</p>
-                </div>
-              </div>
-              {budgetPreview}
-              <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={savingBudget || budgetEditUnchanged || budgetEditInvalid} title={budgetEditUnchanged ? t("noChangesToSaveHint") : undefined} className="flex-1 py-3.5 text-base rounded-full font-bold bg-sage-700 hover:bg-sage-800 text-white disabled:opacity-60 disabled:cursor-not-allowed">{savingBudget ? t("savingLabel") : t("saveChanges")}</button>
-                <button type="button" onClick={() => setBudgetEdit(null)} disabled={savingBudget} className="px-8 py-3.5 text-base rounded-full border border-white/15 text-white hover:bg-white/10 disabled:opacity-60">{t("cancelLabel")}</button>
-              </div>
-            </form>
+        <FormDrawer
+          title={t("budgetEditTitle")}
+          subtitle={t("budgetEditHint")}
+          onClose={() => !savingBudget && setBudgetEdit(null)}
+          onSubmit={handleBudgetSubmit}
+          footer={<SaveButton className="w-full" active={!(savingBudget || budgetEditUnchanged || budgetEditInvalid)} title={budgetEditUnchanged ? t("noChangesToSaveHint") : undefined}>{savingBudget ? t("savingLabel") : t("saveChanges")}</SaveButton>}
+        >
+          <FormSection title={t("secBudgetDetails")} className="space-y-5">
+          <div>
+            <label className="block text-base font-semibold text-white mb-1.5">{t("budgetEditFieldLabel")}</label>
+            <NumberStepper
+              fullWidth
+              min={0}
+              step={0.01}
+              value={budgetEdit}
+              onChange={(v) => setBudgetEdit(v)}
+              placeholder={t("amountPlaceholder")}
+              className="w-full rounded-full border border-white/25 bg-white/10 pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+            />
+            <p className="mt-2 text-xs text-white/40">{t("budgetClearHint")}</p>
           </div>
-        </div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div className="rounded-xl bg-white/[0.04] px-4 py-3">
+              <p className="font-semibold uppercase tracking-wide text-white/45">{t("budgetSpentLabel")}</p>
+              <p className="mt-1 text-base font-bold text-white">{money(spentNum)}</p>
+            </div>
+            <div className="rounded-xl bg-white/[0.04] px-4 py-3">
+              <p className="font-semibold uppercase tracking-wide text-white/45">{t("budgetApprovedLabel")}</p>
+              <p className="mt-1 text-base font-bold text-white">{approvedNum !== null ? money(approvedNum) : "—"}</p>
+            </div>
+          </div>
+          {budgetPreview}
+          </FormSection>
+        </FormDrawer>
       )}
 
       <ConfirmDialog

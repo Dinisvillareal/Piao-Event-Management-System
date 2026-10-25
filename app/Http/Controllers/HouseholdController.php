@@ -43,9 +43,23 @@ class HouseholdController extends Controller
             });
         }
 
-        return response()->json(
-            $query->orderByDesc('id')->paginate(20)
-        );
+        // Size filter: small = 1-2 people, medium = 3-5, large = 6 or more.
+        match ($request->input('size')) {
+            'small' => $query->has('members', '<=', 2),
+            'medium' => $query->has('members', '>=', 3)->has('members', '<=', 5),
+            'large' => $query->has('members', '>=', 6),
+            default => null,
+        };
+
+        match ($request->input('sort')) {
+            'oldest' => $query->orderBy('id'),
+            'code' => $query->orderBy('code'),
+            'members' => $query->orderByDesc('members_count')->orderByDesc('id'),
+            'members_asc' => $query->orderBy('members_count')->orderByDesc('id'),
+            default => $query->orderByDesc('id'),
+        };
+
+        return response()->json($query->paginate(20));
     }
 
     public function show($id)

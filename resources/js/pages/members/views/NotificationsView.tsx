@@ -5,7 +5,8 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
 import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
-import { Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, AlertTriangle, Filter } from "lucide-react";
+import FilterBar from "../../../components/ui/FilterBar";
+import { Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, AlertTriangle, Filter, Heart, MessageSquareReply } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
@@ -42,6 +43,8 @@ interface NotificationsViewProps {
 export default function NotificationsView({ highlightText }: NotificationsViewProps) {
    const { t, language, locale } = useLanguage();
    const [notifications, setNotifications] = useState<Notification[]>([]);
+   // Announcements about events, and staff hearts/replies on the member's own feedback, are kept apart.
+   const [tab, setTab] = useState<"notifications" | "feedback">("notifications");
    const [loading, setLoading] = useState(true);
    const [notificationSearch, setNotificationSearch] = useState("");
    const [dateFilter, setDateFilter] = useState("all"); // All / Upcoming / Past
@@ -55,7 +58,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    // on, but the flash keeps page switches feeling consistent app-wide.
    const [selectedDate, setSelectedDate] = useState(""); // YYYY-MM-DD, matches the date shown on the card
    const [pageSwitchingRaw, setPageSwitching] = useState(false);
-   const filterSwitching = useFilterSwitching([notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
+   const filterSwitching = useFilterSwitching([tab, notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
    const pageSwitching = pageSwitchingRaw || filterSwitching;
    const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
    const listTopRef = useRef<HTMLSpanElement | null>(null);
@@ -161,6 +164,12 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
            markAsRead(notification.id);
        }
 
+       // A heart or reply from staff opens the Events page, where it is shown.
+       if (notification.type === 'feedback_reply') {
+           window.dispatchEvent(new CustomEvent("member:open-page", { detail: { page: "events", eventId: notification.event?.id } }));
+           return;
+       }
+
        if (notification.type === 'event_deleted' || !notification.event || notification.event?.deleted_at) {
            setShowCancelledModal(true);
            return;
@@ -222,20 +231,25 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    };
 
 
+   const eventNotifications = useMemo(() => notifications.filter((n) => n.type !== 'feedback_reply'), [notifications]);
+   const feedbackNotifications = useMemo(() => notifications.filter((n) => n.type === 'feedback_reply'), [notifications]);
+   const feedbackUnread = feedbackNotifications.filter((n) => !n.read).length;
+   const currentList = tab === 'feedback' ? feedbackNotifications : eventNotifications;
+
    // One entry per event that has at least one notification, A-Z.
    const eventFilterOptions = useMemo(() => {
        const seen = new Map<string, string>();
-       notifications.forEach((n) => {
+       currentList.forEach((n) => {
            if (n.event?.id != null && n.event.name) seen.set(String(n.event.id), n.event.name);
        });
        const list = Array.from(seen, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
        return [{ value: "all", label: t("allEvents") }, ...list];
        // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [notifications, language]);
+   }, [currentList, language]);
 
 
    const filteredNotifications = useMemo(() => {
-       let filtered = [...notifications];
+       let filtered = [...currentList];
 
        // Search filter
        if (notificationSearch.trim()) {
@@ -284,7 +298,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
        }
 
        return filtered;
-   }, [notifications, notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
+   }, [currentList, notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
 
 
    // Pagination logic
@@ -295,10 +309,13 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    }, [filteredNotifications, currentPage, itemsPerPage]);
 
 
+   // The upcoming/past filter only applies to event announcements.
+   useEffect(() => { if (tab === 'feedback') setDateFilter('all'); }, [tab]);
+
    // Reset to first page when filters change
    useEffect(() => {
        setCurrentPage(1);
-   }, [notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
+   }, [tab, notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
 
 
    const closeModal = () => {
@@ -353,71 +370,70 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                </div>
 
 
-               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                   <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-                       <div className="flex-1 min-w-[220px]">
-                           <SearchBar
-                               value={notificationSearch}
-                               onChange={setNotificationSearch}
-                               placeholder={t("searchNotificationsPlaceholder")}
-                               dark
-                           />
-                       </div>
+               {/* Switcher -- same pill buttons as the staff Notifications page. */}
+               <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                   {([
+                       { key: "notifications", label: t("notify"), icon: <Bell className="h-5 w-5" />, count: eventNotifications.length, always: true },
+                       { key: "feedback", label: t("memFeedbackTab"), icon: <MessageSquare className="h-5 w-5" />, count: feedbackUnread, always: false },
+                   ] as const).map((p) => (
+                       <button
+                           key={p.key}
+                           type="button"
+                           onClick={() => setTab(p.key)}
+                           className={`inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-base font-bold transition ${
+                               tab === p.key
+                                   ? "bg-sage-700 text-white shadow-sm"
+                                   : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                           }`}
+                       >
+                           {p.icon}
+                           {p.label}
+                           {(p.always || p.count > 0) && (
+                               <span className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-2 text-xs font-bold ${tab === p.key ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
+                                   {loading ? 0 : p.count > 99 ? "99+" : p.count}
+                               </span>
+                           )}
+                       </button>
+                   ))}
+               </div>
 
-                       <div className="flex flex-wrap gap-3">
-                           {/* Event Filter -- searchable by event name */}
-                           <FilterDropdown
-                               value={eventFilter}
-                               onChange={setEventFilter}
-                               options={eventFilterOptions}
-                               align="right"
-                               panelWidthPx={288}
-                               className="h-11 pl-10 pr-8 shrink-0 max-w-[240px]"
-                               icon={<Calendar className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                               dark
-                               searchable
-                               searchPlaceholder={t("search")}
-                               noResultsLabel={t("noMatchesFoundLabel")}
-                           />
-
-                           {/* Date Filter */}
-                           <FilterDropdown
-                               value={dateFilter}
-                               onChange={setDateFilter}
-                               options={[
+               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+                   <FilterBar
+                       search={{ value: notificationSearch, onChange: setNotificationSearch, placeholder: t("searchNotificationsPlaceholder") }}
+                       filters={[
+                           {
+                               key: "event", label: t("fltEvent"), value: eventFilter, onChange: setEventFilter, options: eventFilterOptions, searchable: true, minWidthClass: "max-w-[240px]",
+                               icon: <Calendar className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />,
+                           },
+                           ...(tab !== "feedback" ? [{
+                               key: "when", label: t("fltWhen"), value: dateFilter, onChange: setDateFilter,
+                               options: [
                                    { value: "all", label: t("allNotifications") },
                                    { value: "ongoing", label: t("ongoingBadge") },
                                    { value: "upcoming", label: t("upcomingOption") },
                                    { value: "past", label: t("pastOption") },
-                               ]}
-                               className="h-11 pl-10 pr-8 shrink-0"
-                               icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                               dark
-                           />
-
-                           {/* Status Filter */}
-                           <FilterDropdown
-                               value={statusFilter}
-                               onChange={setStatusFilter}
-                               options={[
+                               ],
+                           }] : []),
+                           {
+                               key: "read", label: t("statusColumn"), value: statusFilter, onChange: setStatusFilter,
+                               options: [
                                    { value: "all", label: t("allStatus") },
                                    { value: "unread", label: t("unreadOption") },
                                    { value: "read", label: t("readOption") },
-                               ]}
-                               className="h-11 pl-10 pr-8 shrink-0"
-                               icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                               dark
-                           />
-                           <div className="h-11 shrink-0">
-                               <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
-                           </div>
+                               ],
+                           },
+                       ]}
+                       count={loading || pageSwitching ? undefined : { shown: filteredNotifications.length }}
+                       extraChips={selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []}
+                       onClearExtras={() => setSelectedDate("")}
+                   >
+                       <div className="h-11 shrink-0">
+                           <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
                        </div>
-                   </div>
+                   </FilterBar>
                </div>
 
-               <p className="mt-2 text-xs text-white/40">
-                   {loading || pageSwitching ? 0 : filteredNotifications.length} {t("notificationsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
-               </p>
+               <p className="mt-2 text-xs text-white/40">{t("showingLabel")} {itemsPerPage} {t("perPage")}</p>
 
 
                {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
@@ -466,6 +482,38 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                ) : (
                    <div className="space-y-3">
                        {paginatedNotifications.map((n) => {
+                           if (n.type === 'feedback_reply') {
+                               const isLike = /liked/i.test(n.title);
+                               const target = /response/i.test(n.title) ? "Response" : "Feedback";
+                               const lines = (n.message || "").split(/\r?\n/);
+                               const reply = !isLike ? lines.slice(1).join(" ").trim() : "";
+                               return (
+                                   <div
+                                       key={n.id}
+                                       role="button"
+                                       tabIndex={0}
+                                       onClick={() => handleNotificationClick(n)}
+                                       onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleNotificationClick(n); } }}
+                                       className={`cursor-pointer relative rounded-2xl sm:rounded-3xl px-5 sm:px-6 py-6 sm:py-7 border-l-4 border-y border-r border-white/10 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.35)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 ${
+                                           n.read ? 'border-l-white/15 bg-white/[0.04] hover:bg-white/[0.06]' : 'border-l-gold-400 bg-gold-400/10 hover:bg-gold-400/[0.15]'
+                                       }`}
+                                   >
+                                       <div className="flex items-start gap-4 w-full">
+                                           <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${isLike ? "bg-red-500/15 text-red-400" : "bg-[#4FBEB0]/15 text-[#7DD8CB]"}`}>
+                                               {isLike ? <Heart className="h-5 w-5 fill-red-400" /> : <MessageSquareReply className="h-5 w-5" />}
+                                           </span>
+                                           <div className="min-w-0 flex-1">
+                                               <p className={`text-sm ${n.read ? "font-semibold text-white/80" : "font-bold text-white"}`}>
+                                                   {t(`memToast${isLike ? "Like" : "Reply"}${target}`)}
+                                                   {n.event?.name && <span className="font-normal text-white/60"> {t("memToastOn")} <span className="font-semibold text-white/80">{n.event.name}</span></span>}
+                                               </p>
+                                               {reply && <p className="mt-1.5 text-sm italic text-white/70 break-words">&ldquo;{reply}&rdquo;</p>}
+                                           </div>
+                                           <span className={`shrink-0 text-xs whitespace-nowrap ${n.read ? 'text-white/40' : 'font-bold text-white/70'}`}>{formatDateCard(n.created_at)}</span>
+                                       </div>
+                                   </div>
+                               );
+                           }
                            const isRead = n.read;
                            const isDeleted = isEventDeleted(n);
                            const { staffName, title, actualMessage } = parseMessage(n.message);

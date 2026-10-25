@@ -312,6 +312,7 @@ import { Filter } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar from "../../../components/ui/FilterBar";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
@@ -461,50 +462,36 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("attendanceRecords")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("attendanceSubtitle")}</p>
 
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-              <div className="flex-1 min-w-[220px]">
-                <SearchBar value={attendanceSearch} onChange={setAttendanceSearch} placeholder={t("searchAttendancePlaceholder")} dark />
-              </div>
-              <FilterDropdown
-                value={attendanceFilter}
-                onChange={setAttendanceFilter}
-                options={[
-                  { value: "all", label: t("allRecords") },
-                  { value: "complete", label: t("completeInOut") },
-                  { value: "incomplete", label: t("incompleteInOut") },
-                  { value: "missed", label: t("missedNoRecord") },
-                ]}
-                className="h-11 pl-10 pr-8 shrink-0"
-                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                dark
-              />
-              {showMembershipFilter && (
-                <FilterDropdown
-                  value={membershipFilter}
-                  onChange={setMembershipFilter}
-                  options={[
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+            <FilterBar
+              search={{ value: attendanceSearch, onChange: setAttendanceSearch, placeholder: t("searchAttendancePlaceholder") }}
+              filters={[
+                {
+                  key: "status", label: t("statusColumn"), value: attendanceFilter, onChange: setAttendanceFilter,
+                  options: [
+                    { value: "all", label: t("allRecords") },
+                    { value: "complete", label: t("completeInOut") },
+                    { value: "incomplete", label: t("incompleteInOut") },
+                    { value: "missed", label: t("missedNoRecord") },
+                  ],
+                },
+                ...(showMembershipFilter ? [{
+                  key: "membership", label: t("fltMembership"), value: membershipFilter, onChange: setMembershipFilter, searchable: true, minWidthClass: "min-w-[220px]",
+                  options: [
                     { value: "all", label: t("allMembershipsOption") },
                     ...userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
-                  ]}
-                  className="h-11 min-w-[220px] pl-10 pr-8 shrink-0"
-                  panelWidthPx={280}
-                  icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                  dark
-                  searchable
-                  searchPlaceholder={t("search")}
-                  noResultsLabel={t("noMatchesFoundLabel")}
-                />
-              )}
+                  ],
+                }] : []),
+              ]}
+              count={loading || pageSwitching ? undefined : { shown: filteredAttendance.length, total: attendanceRecords.length }}
+              extraChips={selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []}
+              onClearExtras={() => setSelectedDate("")}
+            >
               <div className="h-11 shrink-0">
                 <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
               </div>
-            </div>
+            </FilterBar>
           </div>
-
-          <p className="mt-2 text-xs text-white/40">
-            {loading || pageSwitching ? 0 : filteredAttendance.length} of {loading || pageSwitching ? 0 : attendanceRecords.length} {t("recordsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
-          </p>
 
           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
           <div className="flex justify-end mt-4 max-lg:mt-0">

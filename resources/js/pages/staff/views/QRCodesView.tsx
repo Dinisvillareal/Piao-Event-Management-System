@@ -1,10 +1,12 @@
 import { scrollListIntoView } from "../../../lib/scrollToList";
+import SaveButton from "../../../components/ui/SaveButton";
+import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import FormSelect from "../../../components/ui/FormSelect";
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Users, Plus, Pencil, Trash2, Search, CheckCircle, AlertCircle, AlertTriangle, Layers, ChevronRight, ChevronDown, XCircle, Save } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, Search, CheckCircle, AlertCircle, AlertTriangle, Layers, ChevronRight, ChevronDown, X, Save } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -829,11 +831,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 <h2 className="text-lg sm:text-xl font-bold text-white">{tc(selectedMembership.name, language as any)}</h2>
                 <p className="text-xs sm:text-sm text-white/50 mt-0.5 line-clamp-2">{tc(selectedMembership.description || t("noDescriptionModal"), language as any)}</p>
               </div>
-              <button onClick={closeModal} className="text-white/50 hover:text-white p-1">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <button onClick={closeModal} className="shrink-0 text-white/50 hover:text-white"><X size={26} /></button>
             </div>
 
             <div className="p-4 sm:p-6 overflow-y-auto max-h-[60vh]">
@@ -952,256 +950,125 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           Record modal (Residents) exactly: same width class, card sections,
           title size, close icon, and button treatment. */}
       {showAddModal && createPortal(
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
-          onClick={handleAddBackdropClick}
+        <FormDrawer
+          z="z-[9999]"
+          title={t("newMembershipGroupTitle")}
+          subtitle={t("newMembershipGroupSubtitle")}
+          onClose={handleCancelAdd}
+          onSubmit={handleAddMembership}
+          footer={<SaveButton className="w-full" active={!isSubmitting && hasAddChanges}>{isSubmitting ? t("adding") : t("addMembership")}</SaveButton>}
         >
-          <div className="bg-[#0A0E1A] rounded-3xl w-full max-w-3xl p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-xl font-bold text-white">{t("newMembershipGroupTitle")}</h2>
-              <button onClick={handleCancelAdd} className="text-white/50 hover:text-white"><XCircle size={20} /></button>
+          <FormSection title={t("groupDetailsLabel")} className="space-y-4">
+            <div>
+              <label className="block text-base font-semibold text-white mb-1.5">
+                {t("groupNameLabel")} <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={newMembership.name}
+                onChange={(e) => setNewMembership(prev => ({ ...prev, name: e.target.value }))}
+                className={`w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 ${
+                  addFormErrors.name ? "border-red-400" : "border-white/25 focus:border-[#4FBEB0]/70"
+                }`}
+                placeholder={t("groupNamePlaceholder")}
+              />
+              {addFormErrors.name && (
+                <p className="text-red-400 text-xs mt-1">{addFormErrors.name}</p>
+              )}
             </div>
-            <p className="text-sm text-white/50 mb-5">{t("newMembershipGroupSubtitle")}</p>
 
-            <form onSubmit={handleAddMembership} noValidate className="space-y-5">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-gold-300">{t("groupDetailsLabel")}</p>
-                <div>
-                  <label className="block text-sm font-medium text-white mb-1">
-                    {t("groupNameLabel")} <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newMembership.name}
-                    onChange={(e) => setNewMembership(prev => ({ ...prev, name: e.target.value }))}
-                    className={`w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 ${
-                      addFormErrors.name ? "border-red-400" : "border-white/25 focus:border-[#4FBEB0]/70"
-                    }`}
-                    placeholder={t("groupNamePlaceholder")}
-                  />
-                  {addFormErrors.name && (
-                    <p className="text-red-400 text-xs mt-1">{addFormErrors.name}</p>
-                  )}
-                </div>
+            <div>
+              <label className="block text-base font-semibold text-white mb-1.5">{t("descriptionLabel")}</label>
+              <textarea
+                value={newMembership.description}
+                onChange={(e) => setNewMembership(prev => ({ ...prev, description: e.target.value }))}
+                rows={3}
+                className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 resize-none"
+                placeholder={t("descriptionPlaceholder")}
+              />
+            </div>
+          </FormSection>
 
-                <div>
-                  <label className="block text-sm font-medium text-white mb-1">{t("descriptionLabel")}</label>
-                  <textarea
-                    value={newMembership.description}
-                    onChange={(e) => setNewMembership(prev => ({ ...prev, description: e.target.value }))}
-                    rows={3}
-                    className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 resize-none"
-                    placeholder={t("descriptionPlaceholder")}
-                  />
+          <FormSection title={t("eligibilityRequirementsLabel")} className="space-y-3">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleAgeBracketLabel")}</label>
+                <div className="relative">
+                  <FormSelect
+                    value={newMembership.eligibleAgeBracketId ?? ""}
+                    onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleAgeBracketId: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                  >
+                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                    {ageBrackets.map((b) => (
+                      <option key={b.id} value={b.id} className="bg-[#0A0E1A] text-white">{b.label}</option>
+                    ))}
+                  </FormSelect>
                 </div>
               </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-gold-300">{t("eligibilityRequirementsLabel")}</p>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleAgeBracketLabel")}</label>
-                    <div className="relative">
-                      <FormSelect
-                        value={newMembership.eligibleAgeBracketId ?? ""}
-                        onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleAgeBracketId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                      >
-                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                        {ageBrackets.map((b) => (
-                          <option key={b.id} value={b.id} className="bg-[#0A0E1A] text-white">{b.label}</option>
-                        ))}
-                      </FormSelect>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleCivilStatusLabel")}</label>
-                    <div className="relative">
-                      <FormSelect
-                        value={newMembership.eligibleCivilStatusId ?? ""}
-                        onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCivilStatusId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                      >
-                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                        {civilStatuses.map((cs) => (
-                          <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
-                        ))}
-                      </FormSelect>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleCurrentStatusLabel")}</label>
-                    <div className="relative">
-                      <FormSelect
-                        value={newMembership.eligibleCurrentStatusId ?? ""}
-                        onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                      >
-                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                        {currentStatuses.map((cs) => (
-                          <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
-                        ))}
-                      </FormSelect>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleGenderLabel")}</label>
-                    <div className="relative">
-                      <FormSelect
-                        value={newMembership.eligibleGender}
-                        onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleGender: e.target.value }))}
-                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                      >
-                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                        <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
-                        <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
-                      </FormSelect>
-                    </div>
-                  </div>
+              <div>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleCivilStatusLabel")}</label>
+                <div className="relative">
+                  <FormSelect
+                    value={newMembership.eligibleCivilStatusId ?? ""}
+                    onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCivilStatusId: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                  >
+                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                    {civilStatuses.map((cs) => (
+                      <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
+                    ))}
+                  </FormSelect>
                 </div>
               </div>
-
-              <div className="flex justify-between gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={handleCancelAdd}
-                  className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition"
-                >
-                  {t("cancelLabel")}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide text-white shadow-sm transition-all duration-500 ease-out hover:border-[#122436] hover:bg-[#122436] hover:shadow-md disabled:opacity-50"
-                >
-                  {isSubmitting ? t("adding") : t("addMembership")}
-                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
-                    <Save className="h-5 w-5 text-white" />
-                  </span>
-                </button>
+              <div>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleCurrentStatusLabel")}</label>
+                <div className="relative">
+                  <FormSelect
+                    value={newMembership.eligibleCurrentStatusId ?? ""}
+                    onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                  >
+                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                    {currentStatuses.map((cs) => (
+                      <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
+                    ))}
+                  </FormSelect>
+                </div>
               </div>
-            </form>
-          </div>
-        </div>,
+              <div>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleGenderLabel")}</label>
+                <div className="relative">
+                  <FormSelect
+                    value={newMembership.eligibleGender}
+                    onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleGender: e.target.value }))}
+                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                  >
+                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                    <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
+                    <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
+                  </FormSelect>
+                </div>
+              </div>
+            </div>
+          </FormSection>
+        </FormDrawer>,
         document.body
       )}
 
       {/* Edit Membership Group Modal -- same treatment as the Add modal above. */}
       {showEditModal && editingMembership && createPortal(
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
-          onClick={handleEditBackdropClick}
-        >
-          <div className="bg-[#0A0E1A] rounded-3xl w-full max-w-3xl p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-1">
-              <h2 className="text-xl font-bold text-white">{t("editMembershipGroupTitle")}</h2>
-              <button onClick={handleCancelEdit} className="text-white/50 hover:text-white"><XCircle size={20} /></button>
-            </div>
-            <p className="text-sm text-white/50 mb-5">{t("editMembershipGroupSubtitle")}</p>
-
-            <form onSubmit={handleEditMembership} noValidate className="space-y-5">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4">
-                <p className="text-xs font-bold uppercase tracking-wide text-gold-300">{t("groupDetailsLabel")}</p>
-                <div>
-                  <label className="block text-sm font-medium text-white mb-1">
-                    {t("groupNameLabel")} <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={editingMembership.name}
-                    onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, name: e.target.value }))}
-                    className={`w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 ${
-                      editFormErrors.name ? "border-red-400" : "border-white/25 focus:border-[#4FBEB0]/70"
-                    }`}
-                    placeholder={t("groupNamePlaceholder")}
-                  />
-                  {editFormErrors.name && (
-                    <p className="text-red-400 text-xs mt-1">{editFormErrors.name}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-white mb-1">{t("descriptionLabel")}</label>
-                  <textarea
-                    value={editingMembership.description}
-                    onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, description: e.target.value }))}
-                    rows={3}
-                    className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 resize-none"
-                    placeholder={t("descriptionPlaceholder")}
-                  />
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-gold-300">{t("eligibilityRequirementsLabel")}</p>
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleAgeBracketLabel")}</label>
-                    <div className="relative">
-                      <FormSelect
-                        value={editingMembership.eligibleAgeBracketId ?? ""}
-                        onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleAgeBracketId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                      >
-                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                        {ageBrackets.map((b) => (
-                          <option key={b.id} value={b.id} className="bg-[#0A0E1A] text-white">{b.label}</option>
-                        ))}
-                      </FormSelect>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleCivilStatusLabel")}</label>
-                    <div className="relative">
-                      <FormSelect
-                        value={editingMembership.eligibleCivilStatusId ?? ""}
-                        onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCivilStatusId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                      >
-                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                        {civilStatuses.map((cs) => (
-                          <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
-                        ))}
-                      </FormSelect>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleCurrentStatusLabel")}</label>
-                    <div className="relative">
-                      <FormSelect
-                        value={editingMembership.eligibleCurrentStatusId ?? ""}
-                        onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
-                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                      >
-                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                        {currentStatuses.map((cs) => (
-                          <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
-                        ))}
-                      </FormSelect>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-1">{t("eligibleGenderLabel")}</label>
-                    <div className="relative">
-                      <FormSelect
-                        value={editingMembership.eligibleGender ?? ""}
-                        onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleGender: e.target.value }))}
-                        className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                      >
-                        <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                        <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
-                        <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
-                      </FormSelect>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 pt-2">
+        <FormDrawer
+          z="z-[9999]"
+          title={t("editMembershipGroupTitle")}
+          subtitle={t("editMembershipGroupSubtitle")}
+          onClose={handleCancelEdit}
+          onSubmit={handleEditMembership}
+          footer={
+            <div className="space-y-3">
+              <SaveButton className="w-full" active={!isSubmitting && !isEditMembershipUnchanged} title={isEditMembershipUnchanged ? t("noChangesToSaveHint") : undefined}>{isSubmitting ? t("savingLabel") : t("saveChanges")}</SaveButton>
+              <div className="flex justify-center">
                 <button
                   type="button"
                   onClick={handleDeleteFromEditModal}
@@ -1209,30 +1076,106 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 >
                   <Trash2 className="h-4 w-4" /> {t("deleteGroupLabel")}
                 </button>
-                <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition"
+              </div>
+            </div>
+          }
+        >
+          <FormSection title={t("groupDetailsLabel")} className="space-y-4">
+            <div>
+              <label className="block text-base font-semibold text-white mb-1.5">
+                {t("groupNameLabel")} <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={editingMembership.name}
+                onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, name: e.target.value }))}
+                className={`w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 ${
+                  editFormErrors.name ? "border-red-400" : "border-white/25 focus:border-[#4FBEB0]/70"
+                }`}
+                placeholder={t("groupNamePlaceholder")}
+              />
+              {editFormErrors.name && (
+                <p className="text-red-400 text-xs mt-1">{editFormErrors.name}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-base font-semibold text-white mb-1.5">{t("descriptionLabel")}</label>
+              <textarea
+                value={editingMembership.description}
+                onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, description: e.target.value }))}
+                rows={3}
+                className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 resize-none"
+                placeholder={t("descriptionPlaceholder")}
+              />
+            </div>
+          </FormSection>
+
+          <FormSection title={t("eligibilityRequirementsLabel")} className="space-y-3">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleAgeBracketLabel")}</label>
+                <div className="relative">
+                  <FormSelect
+                    value={editingMembership.eligibleAgeBracketId ?? ""}
+                    onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleAgeBracketId: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                   >
-                    {t("cancelLabel")}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || isEditMembershipUnchanged}
-                    title={isEditMembershipUnchanged ? t("noChangesToSaveHint") : undefined}
-                    className="group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide text-white shadow-sm transition-all duration-500 ease-out hover:border-[#122436] hover:bg-[#122436] hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSubmitting ? t("savingLabel") : t("saveChanges")}
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
-                      <Save className="h-5 w-5 text-white" />
-                    </span>
-                  </button>
+                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                    {ageBrackets.map((b) => (
+                      <option key={b.id} value={b.id} className="bg-[#0A0E1A] text-white">{b.label}</option>
+                    ))}
+                  </FormSelect>
                 </div>
               </div>
-            </form>
-          </div>
-        </div>,
+              <div>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleCivilStatusLabel")}</label>
+                <div className="relative">
+                  <FormSelect
+                    value={editingMembership.eligibleCivilStatusId ?? ""}
+                    onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCivilStatusId: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                  >
+                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                    {civilStatuses.map((cs) => (
+                      <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
+                    ))}
+                  </FormSelect>
+                </div>
+              </div>
+              <div>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleCurrentStatusLabel")}</label>
+                <div className="relative">
+                  <FormSelect
+                    value={editingMembership.eligibleCurrentStatusId ?? ""}
+                    onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
+                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                  >
+                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                    {currentStatuses.map((cs) => (
+                      <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
+                    ))}
+                  </FormSelect>
+                </div>
+              </div>
+              <div>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleGenderLabel")}</label>
+                <div className="relative">
+                  <FormSelect
+                    value={editingMembership.eligibleGender ?? ""}
+                    onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleGender: e.target.value }))}
+                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                  >
+                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+                    <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
+                    <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
+                  </FormSelect>
+                </div>
+              </div>
+            </div>
+          </FormSection>
+        </FormDrawer>,
         document.body
       )}
 
@@ -1271,7 +1214,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && membershipToDelete && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[9999] bg-black/80"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteBackdropClick}
         >
@@ -1303,7 +1246,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Add Success Modal */}
       {showAddSuccess && createPortal(
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleAddSuccessBackdropClick}
         >
@@ -1327,7 +1270,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Delete Success Modal */}
       {showDeleteSuccess && createPortal(
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteSuccessBackdropClick}
         >
@@ -1350,7 +1293,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       {showUpdateSuccess && createPortal(
         <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4"
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleUpdateSuccessBackdropClick}
         >
@@ -1374,7 +1317,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Deletion Failed Modal */}
       {showDeleteFailed && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[9999] bg-black/80"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteFailedBackdropClick}
         >
@@ -1398,7 +1341,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Generic Error Modal -- replaces native alert() for add/edit failures */}
       {genericError && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[9999] bg-black/80"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleGenericErrorBackdropClick}
         >
@@ -1422,7 +1365,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Cancel Unsaved Changes Confirm Modal -- same pattern as the Residents form */}
       {showCancelConfirm && createPortal(
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[9999] bg-black/80"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowCancelConfirm(null);

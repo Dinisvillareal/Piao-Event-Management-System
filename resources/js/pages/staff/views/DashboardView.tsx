@@ -1,6 +1,8 @@
+import { renderSystemQrPoster } from "../../../lib/systemQrPoster";
+import { useClockFormat } from "../../../lib/clockFormat";
 import React, { useState, useEffect, useRef } from "react";
-import { QRCodeSVG } from "qrcode.react";
-import { UserPlus, CalendarPlus, ScanLine, Bell, BarChart3, Users, Award, CalendarDays, Undo2, LayoutDashboard, Download, Activity, Clock } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
+import { UserPlus, CalendarPlus, ScanLine, Bell, BarChart3, Users, Award, CalendarDays, Undo2, Download, Activity, Clock } from "lucide-react";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
@@ -52,6 +54,7 @@ export default function DashboardView({
   // this just proves the panel is actually live rather than a static
   // screenshot of "recent activity".
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [clockHour12, toggleClockHour12] = useClockFormat();
   // Stamped every time the Dashboard's live data feeds are (re)fetched --
   // powers the "System Status" panel's "synced Xs ago" readout so it's a
   // real measurement, not a decorative timestamp.
@@ -250,31 +253,64 @@ export default function DashboardView({
   const [showQrDownloadConfirm, setShowQrDownloadConfirm] = useState(false);
   const [showQrDownloadSuccess, setShowQrDownloadSuccess] = useState(false);
 
-  const performQrDownload = () => {
-    const svgElement = document.getElementById('system-qr-code');
-    if (!svgElement) return;
+  // Builds the print-ready A4 poster (2480 x 3508 px) around the system QR.
+  // The QR is drawn once into a hidden 1200px canvas and used directly.
+  // The canvas is tracked in state (not looked up by id) because the card can
+  // mount after the page's first render -- the preview must start once it exists.
+  const [qrEl, setQrEl] = useState<HTMLCanvasElement | null>(null);
+  const buildQrPoster = async (): Promise<HTMLCanvasElement | null> => {
+    if (!qrEl || !appUrl) return null;
+    return renderSystemQrPoster({ qr: qrEl, url: appUrl });
+  };
 
-    // Get the SVG element and its parent
-    const svgData = new XMLSerializer().serializeToString(svgElement);
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
+  // The card shows the real poster (a lighter copy), not just the bare QR.
+  const [posterPreview, setPosterPreview] = useState<string | null>(null);
+  const [posterFailed, setPosterFailed] = useState(false);
+  const [showPosterPreview, setShowPosterPreview] = useState(false);
+  useEffect(() => {
+    if (!appUrl || !qrEl) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // Let the dashboard paint first; the poster drawing is a heavy, one-off job.
+        await new Promise((r) => window.setTimeout(r, 50));
+        if (cancelled) return;
+        const poster = await buildQrPoster();
+        if (!poster || cancelled) return;
+        const small = document.createElement('canvas');
+        small.width = 1240;
+        small.height = 1754;
+        const sctx = small.getContext('2d');
+        if (!sctx) return;
+        sctx.imageSmoothingQuality = 'high';
+        sctx.drawImage(poster, 0, 0, small.width, small.height);
+        if (!cancelled) setPosterPreview(small.toDataURL('image/jpeg', 0.88));
+      } catch (err) {
+        console.error('QR poster preview failed:', err);
+        if (!cancelled) setPosterFailed(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [appUrl, qrEl]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx?.drawImage(img, 0, 0);
-      const pngUrl = canvas.toDataURL('image/png');
+  const performQrDownload = async () => {
+    try {
+      const poster = await buildQrPoster();
+      if (!poster) return;
+      const blob: Blob | null = await new Promise((res) => poster.toBlob(res, 'image/png'));
+      if (!blob) return;
+      const href = URL.createObjectURL(blob);
       const downloadLink = document.createElement('a');
-      downloadLink.href = pngUrl;
-      downloadLink.download = 'barangay-system-qr.png';
+      downloadLink.href = href;
+      downloadLink.download = 'barangay-piao-qr-poster.png';
       document.body.appendChild(downloadLink);
       downloadLink.click();
       document.body.removeChild(downloadLink);
+      window.setTimeout(() => URL.revokeObjectURL(href), 2000);
       setShowQrDownloadSuccess(true);
-    };
-
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    } catch (err) {
+      console.error('QR poster download failed:', err);
+    }
   };
 
   const downloadQRCode = () => setShowQrDownloadConfirm(true);
@@ -366,57 +402,60 @@ export default function DashboardView({
     );
   }
 
+  // Sync state shown next to the clock in the header.
+  const secondsSinceSync = Math.max(0, Math.round((currentTime.getTime() - lastSyncedAt.getTime()) / 1000));
+  const syncText =
+    secondsSinceSync < 5 ? t("dashSyncedJustNow")
+    : secondsSinceSync < 60 ? t("dashSyncedSecondsAgo").replace("{n}", String(secondsSinceSync))
+    : t("dashSyncedMinutesAgo").replace("{n}", String(Math.floor(secondsSinceSync / 60)));
+
+  const liveBadge = (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">
+      <span className="relative flex h-1.5 w-1.5">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
+        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
+      </span>
+      {t("liveLabel")}
+    </span>
+  );
+
   return (
     // Full-bleed dark navy page -- cancels the shared content area's own
-    // padding so the Dashboard reads as its own immersive page (matching
-    // the reference), while every other staff view keeps its untouched
-    // light "paper" background.
+    // padding so the Dashboard reads as its own immersive page, while every
+    // other staff view keeps its untouched light "paper" background.
     <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A]">
-      <div className="w-full space-y-10 px-6 py-8 sm:px-10 sm:py-9">
-        {/* Hero -- icon badge + headline pinned left, a pair of real action
-            cards pinned right, so the row fills the full page width
-            instead of sitting as a narrow centered block. */}
-        <div className="relative flex flex-col gap-6 py-2 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-5">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-white/10 bg-gradient-to-br from-gold-400/20 to-[#4FBEB0]/20">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#123A38]">
-                <LayoutDashboard className="h-5 w-5 text-[#4FBEB0]" />
-              </span>
-            </div>
-            <div>
-              <h1 className="font-display text-3xl font-extrabold text-white sm:text-4xl">
-                {t("welcomeBack")}, {memberName}
-              </h1>
-              <p className="mt-2 max-w-md text-[15px] text-white/55">{t("staffDashboardSubtitle")}</p>
-            </div>
+      <div className="w-full space-y-6 px-6 py-8 sm:px-10 sm:py-9">
+        {/* Header: who / when on the left, the live clock + sync state on the right. */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl font-extrabold text-white sm:text-3xl">
+              {t("welcomeBack")}, {memberName}
+            </h1>
+            <p className="mt-1.5 text-sm text-white/55">
+              {currentTime.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+            </p>
           </div>
-
-          <div className="flex w-full flex-col gap-4 sm:flex-row lg:w-auto">
+          <div className="flex items-center gap-3">
+            <div className="hidden text-right sm:block">
+              <div className="flex items-center justify-end gap-2">{liveBadge}</div>
+              <p className="mt-1 text-xs text-white/40">{syncText}</p>
+            </div>
             <button
-              onClick={() => setActive("residents")}
-              className="group flex flex-1 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left transition hover:border-gold-400/40 hover:bg-white/[0.06] lg:w-72"
+              type="button"
+              onClick={toggleClockHour12}
+              title={clockHour12 ? "24-hour" : "12-hour"}
+              aria-label={clockHour12 ? "Switch to 24-hour clock" : "Switch to 12-hour clock"}
+              className="flex cursor-pointer select-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 transition hover:border-[#4FBEB0]/40 hover:bg-white/[0.08] active:scale-95"
             >
-              <div>
-                <p className="font-display text-[15px] font-bold text-gold-400">{t("dashAddResident")}</p>
-                <p className="mt-1 text-[12px] text-white/50">{t("dashRegisterResidentDesc")}</p>
-              </div>
-              <UserPlus className="h-8 w-8 shrink-0 text-white/20 transition group-hover:text-gold-400" />
-            </button>
-            <button
-              onClick={() => setActive("reports")}
-              className="group flex flex-1 items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-5 text-left transition hover:border-[#4FBEB0]/40 hover:bg-white/[0.06] lg:w-72"
-            >
-              <div>
-                <p className="font-display text-[15px] font-bold text-[#4FBEB0]">{t("dashViewReports")}</p>
-                <p className="mt-1 text-[12px] text-white/50">{t("dashReportsDesc")}</p>
-              </div>
-              <BarChart3 className="h-8 w-8 shrink-0 text-white/20 transition group-hover:text-[#4FBEB0]" />
+              <Clock className="h-4 w-4 text-[#4FBEB0]" />
+              <span className="font-display text-lg font-bold tabular-nums text-white">
+                {currentTime.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: clockHour12 })}
+              </span>
             </button>
           </div>
         </div>
 
-        {/* Stat strip -- gradient cards, matching the Budget page's
-            portfolio KPI strip exactly. */}
+        {/* Key numbers */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {statsCards.map((item, idx) => (
             <button
@@ -430,20 +469,6 @@ export default function DashboardView({
               </div>
               <p className="mt-3 text-[11px] font-bold uppercase tracking-wide">{item.label}</p>
               <p className="mt-1 text-xs text-white/75">{item.description}</p>
-            </button>
-          ))}
-        </div>
-
-        {/* Quick actions -- one tap to the page staff reach for most often,
-            all real navigation (no decorative buttons that do nothing). */}
-        <div className="flex flex-wrap gap-2.5">
-          {quickActions.map((action) => (
-            <button
-              key={action.label}
-              onClick={action.onClick}
-              className="inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.04] px-5 py-3.5 text-[14px] font-semibold text-white/65 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
-            >
-              <action.icon className="h-[18px] w-[18px]" /> {action.label}
             </button>
           ))}
         </div>
@@ -465,8 +490,24 @@ export default function DashboardView({
           </button>
         )}
 
+        {/* Shortcuts -- real navigation only. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {quickActions.map((action) => (
+            <button
+              key={action.label}
+              onClick={action.onClick}
+              className="dash-shortcut group flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] py-2.5 pl-2.5 pr-5 text-left transition hover:border-[#4FBEB0]/40 hover:bg-white/[0.07]"
+            >
+              <span className="dash-shortcut-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/10 text-[#4FBEB0] transition group-hover:bg-[#4FBEB0]/20">
+                <action.icon className="h-[18px] w-[18px]" />
+              </span>
+              <span className="dash-shortcut-label min-w-0 truncate text-sm font-semibold text-white/80 group-hover:text-white">{action.label}</span>
+            </button>
+          ))}
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
           {/* Today's Live Snapshot -- replaces the old static activity log
               with a genuinely real-time panel: a ticking clock plus counts
               derived from data the Dashboard already fetches (today's
@@ -488,12 +529,6 @@ export default function DashboardView({
                 <p className="mt-1 text-[15px] text-white/50">
                   {currentTime.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' })}
                 </p>
-              </div>
-              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 py-2">
-                <Clock className="h-4 w-4 text-[#4FBEB0]" />
-                <span className="font-display text-lg font-bold tabular-nums text-white">
-                  {currentTime.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-                </span>
               </div>
             </div>
 
@@ -539,50 +574,52 @@ export default function DashboardView({
             </div>
           </div>
 
-          {/* System Status -- fills the space left by the shorter Snapshot
-              panel with a genuine health readout instead of empty dark
-              space: which data feeds are live, and exactly how long ago
-              they last synced, computed from the same fetch cycle above
-              rather than a decorative label. */}
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06]">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="font-display text-xl font-bold text-white">{t("dashSystemStatus")}</h2>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
-                </span>
-                {t("dashAllSystemsOk")}
+          {/* Upcoming events -- an agenda: dark header, then one row per event
+              (date / name + venue / weekday + time). The rows share the card's
+              height equally, so it always ends level with the Budget Snapshot. */}
+          <div className="timeline-card flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+            <div className="flex items-center gap-3 bg-gradient-to-r from-[#0A0E1A] via-[#123A38] to-[#1C5850] px-5 py-4">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
+                <CalendarDays className="h-4 w-4 text-white" />
               </span>
+              <h2 className="min-w-0 flex-1 truncate font-display text-lg font-bold text-white">{t("dashUpcomingTitle")}</h2>
+              <button onClick={() => setActive("events")} className="shrink-0 text-xs font-bold text-white/70 transition hover:text-white hover:underline">
+                {t("dashViewAll")}
+              </button>
             </div>
-            <p className="mt-1 text-[15px] text-white/50">
-              {(() => {
-                const secondsAgo = Math.max(0, Math.round((currentTime.getTime() - lastSyncedAt.getTime()) / 1000));
-                if (secondsAgo < 5) return t("dashSyncedJustNow");
-                if (secondsAgo < 60) return t("dashSyncedSecondsAgo").replace("{n}", String(secondsAgo));
-                return t("dashSyncedMinutesAgo").replace("{n}", String(Math.floor(secondsAgo / 60)));
-              })()}
-            </p>
 
-            <div className="mt-5 space-y-2.5">
-              {[
-                { label: t("dashActivityLog"), icon: Activity },
-                { label: t("eventsAndAttendance"), icon: CalendarDays },
-                { label: t("dashOverdueReturns"), icon: Undo2 },
-                { label: t("dashBudgetReports"), icon: BarChart3 },
-              ].map((feed) => (
-                <div key={feed.label} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                  <div className="flex items-center gap-2.5">
-                    <feed.icon className="h-4 w-4 shrink-0 text-white/45" />
-                    <span className="text-[13px] font-semibold text-white/80">{feed.label}</span>
-                  </div>
-                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-[#4FBEB0]">
-                    <span className="h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
-                    {t("dashSynced")}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {upcomingEvents.length === 0 ? (
+              <p className="px-5 py-6 text-sm text-white/45">{t("dashNoUpcomingEvents")}</p>
+            ) : (
+              <ul className="flex flex-1 flex-col">
+                {upcomingEvents.slice(0, 5).map((ev, i) => {
+                  const d = new Date(ev.event_start ?? ev.date);
+                  const valid = !isNaN(d.getTime());
+                  return (
+                    <li key={ev.id ?? i} className="flex flex-1 border-t border-white/10 first:border-t-0">
+                      <button
+                        onClick={() => setActive("events")}
+                        className="timeline-cell flex w-full items-center gap-4 px-5 py-3 text-left transition hover:bg-white/[0.07]"
+                      >
+                        <span className="flex w-14 shrink-0 flex-col items-center leading-none">
+                          <span className="text-[11px] font-extrabold uppercase text-[#7DD8CB]">{valid ? d.toLocaleDateString(locale, { month: "short" }) : ""}</span>
+                          <span className="mt-1 font-display text-3xl font-extrabold tracking-tight text-white [font-variant-numeric:tabular-nums]">{valid ? String(d.getDate()).padStart(2, "0") : "--"}</span>
+                          <span className="mt-1 text-[10px] font-semibold text-white/45">{valid ? d.getFullYear() : ""}</span>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[15px] font-bold text-white">{tc(ev.name ?? ev.title, language as any)}</span>
+                          <span className="mt-0.5 block truncate text-xs text-white/50">{tc(ev.location, language as any)}</span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block text-xs font-bold text-white/85">{valid ? d.toLocaleDateString(locale, { weekday: "short" }) : ""}</span>
+                          <span className="block text-xs text-white/45">{valid ? d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" }) : ""}</span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
           </div>
 
@@ -602,18 +639,34 @@ export default function DashboardView({
                 {t("dashSystemQrDesc")}
               </p>
 
-              <div className="mt-5 flex flex-col items-start gap-4 sm:flex-row">
-                <div className="flex w-full shrink-0 justify-center rounded-xl border-2 border-dashed border-white/15 bg-white/[0.03] p-3 sm:w-auto">
-                  <QRCodeSVG
-                    id="system-qr-code"
-                    value={appUrl}
-                    size={140}
-                    bgColor="#ffffff"
-                    fgColor="#0A0E1A"
-                    level="H"
-                    includeMargin={true}
-                  />
-                </div>
+              <div className="mt-5 flex flex-col items-start gap-5 sm:flex-row">
+                {/* The QR itself stays in the page (hidden) -- the poster is built from it. */}
+                <QRCodeCanvas
+                  ref={setQrEl}
+                  id="system-qr-code"
+                  style={{ display: "none" }}
+                  value={appUrl || " "}
+                  size={1200}
+                  bgColor="#ffffff"
+                  fgColor="#0A0E1A"
+                  level="H"
+                  includeMargin={true}
+                />
+                <button
+                  type="button"
+                  onClick={() => posterPreview && setShowPosterPreview(true)}
+                  aria-label={t("dashViewPoster")}
+                  className="group relative w-full shrink-0 overflow-hidden rounded-xl border-2 border-dashed border-white/15 bg-white/[0.03] p-2.5 transition hover:border-[#4FBEB0]/60 sm:w-56"
+                >
+                  {posterPreview ? (
+                    <img src={posterPreview} alt={t("dashSystemQrCode")} className="mx-auto aspect-[1240/1754] w-full max-w-[16rem] rounded-md object-contain shadow-md" />
+                  ) : posterFailed ? (
+                    <div className="mx-auto flex aspect-[1240/1754] w-full max-w-[16rem] items-center justify-center rounded-md bg-white/[0.04] p-4 text-center text-sm text-white/50">{t("dashPosterPreviewUnavailable")}</div>
+                  ) : (
+                    <Skeleton className="mx-auto aspect-[1240/1754] w-full max-w-[16rem] rounded-md" />
+                  )}
+                  <span className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">{t("dashViewPoster")}</span>
+                </button>
                 <div className="flex-1">
                   <p className="font-medium text-white">Barangay e-Membership</p>
                   <p className="mt-1 text-sm text-white/50">
@@ -623,7 +676,7 @@ export default function DashboardView({
                     onClick={downloadQRCode}
                     className="group mt-3 inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-5 pr-1.5 py-1.5 text-[15px] font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md"
                   >
-                    {t("downloadQrCode")}
+                    {t("dashDownloadQrPoster")}
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
                       <Download className="h-4 w-4 text-white" />
                     </span>
@@ -640,11 +693,29 @@ export default function DashboardView({
               cancelLabel={t("cancelLabel")}
               confirmLabel={t("downloadLabel")}
               onCancel={() => setShowQrDownloadConfirm(false)}
+              z={10100}
               onConfirm={() => {
                 setShowQrDownloadConfirm(false);
+                setShowPosterPreview(false);
                 performQrDownload();
               }}
             />
+            {showPosterPreview && posterPreview && (
+              <div
+                className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+                onClick={() => setShowPosterPreview(false)}
+                role="dialog"
+                aria-modal="true"
+              >
+                <div className="max-h-full" onClick={(e) => e.stopPropagation()}>
+                  <img src={posterPreview} alt={t("dashSystemQrCode")} className="max-h-[88vh] w-auto rounded-xl shadow-2xl" />
+                  <div className="mt-3 flex justify-center gap-3">
+                    <button onClick={() => setShowQrDownloadConfirm(true)} className="rounded-full bg-sage-700 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-sage-800">{t("dashDownloadQrPoster")}</button>
+                    <button onClick={() => setShowPosterPreview(false)} className="rounded-full border border-white/20 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">{t("closeLabel")}</button>
+                  </div>
+                </div>
+              </div>
+            )}
             <StatusModal
               open={showQrDownloadSuccess}
               type="success"
@@ -699,57 +770,6 @@ export default function DashboardView({
               </div>
             </div>
 
-            {/* Timeline-style card -- dark navy-to-teal gradient header with
-                a calendar icon and a dotted progress line, then a white
-                body with big bold dates, echoing the reference dashboard's
-                date-timeline widget exactly (dark header / white body)
-                rather than staying dark like the rest of the page. */}
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#E3E6EA] shadow-sm">
-              <div className="flex items-center gap-4 bg-gradient-to-r from-[#0A0E1A] via-[#123A38] to-[#1C5850] px-5 py-4">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
-                  <CalendarDays className="h-4 w-4 text-white" />
-                </span>
-                <div className="relative h-px flex-1 bg-white/25">
-                  <span className="absolute left-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-[#4FBEB0]" />
-                  <span className="absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/70" />
-                  <span className="absolute right-0 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-[#4FBEB0]" />
-                </div>
-                <button onClick={() => setActive("events")} className="shrink-0 text-xs font-bold text-white/70 transition hover:text-white hover:underline">
-                  {t("dashViewAll")}
-                </button>
-              </div>
-
-              {upcomingEvents.length === 0 ? (
-                <p className="px-5 py-6 text-sm text-[#9B9484]">{t("dashNoUpcomingEvents")}</p>
-              ) : (
-                <div className="flex flex-wrap">
-                  {upcomingEvents.slice(0, 4).map((ev, i) => {
-                    const d = new Date(ev.event_start ?? ev.date);
-                    const validDate = !isNaN(d.getTime());
-                    const day = validDate ? String(d.getDate()).padStart(2, "0") : "--";
-                    const month = validDate ? d.toLocaleDateString(locale, { month: "short" }).toUpperCase() : "";
-                    const year = validDate ? d.getFullYear() : "";
-                    return (
-                      <button
-                        key={ev.id ?? i}
-                        onClick={() => setActive("events")}
-                        className="min-w-[140px] flex-1 border-l border-[#C9CFD6] px-5 py-5 text-left transition first:border-l-0 hover:bg-[#D6DBE1]"
-                      >
-                        <div className="flex items-baseline gap-1">
-                          <span className="font-display text-3xl font-extrabold tracking-tight text-[#0A0E1A] [font-variant-numeric:tabular-nums]">{day}</span>
-                          <span className="flex flex-col leading-none">
-                            <span className="text-[11px] font-extrabold uppercase text-[#0A0E1A]">{month}</span>
-                            <span className="text-[11px] font-semibold text-[#6B6558]">{year}</span>
-                          </span>
-                        </div>
-                        <p className="mt-2 truncate text-[13px] font-semibold text-[#1A1A1A]">{tc(ev.name ?? ev.title, language as any)}</p>
-                        <p className="mt-0.5 truncate text-[11px] text-[#9B9484]">{tc(ev.location, language as any)}</p>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
           </div>
         </div>
       </div>

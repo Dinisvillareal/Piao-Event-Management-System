@@ -1,15 +1,21 @@
 import { scrollListIntoView } from "../../../lib/scrollToList";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
+import { makeEventTiming, STATUS_META } from "../../../lib/eventTiming";
 import FormSelect from "../../../components/ui/FormSelect";
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
+import FeedbackComment from "../../../components/ui/FeedbackComment";
+import type { ResponseFields } from "../../../components/ui/FeedbackComment";
 import {
   Filter, X, LogIn, LogOut, ChevronLeft, Archive,
   Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown,
-  Megaphone, ClipboardList, Users, ArrowLeft, Save, Download, Printer,
+  Megaphone, ClipboardList, Users, ArrowLeft, Save, Download, Printer, CheckCircle2, ChevronRight, Eye,
 } from "lucide-react";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
+import QuickTabs from "../../../components/ui/QuickTabs";
 import DatePicker from "../../../components/ui/DatePicker";
 import TimePicker from "../../../components/ui/TimePicker";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
@@ -18,6 +24,7 @@ import NumberStepper from "../../../components/ui/NumberStepper";
 import EventBudgetWorkspace from "../../../components/budget/EventBudgetWorkspace";
 import Skeleton from "../../../components/ui/Skeleton";
 import { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
+import SlideOutGhost from "../../../components/ui/SlideOutGhost";
 import ReportOptionsModal, { type SectionDef, type AttendeeFilter } from "./ReportOptionsModal";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -53,6 +60,12 @@ interface MyEvent {
   membershipIds?: (string | number)[];
   membershipNames?: string[];
   approvedBudget?: number | string | null;
+  // How many different inventory items this event took (still out or already returned) -- known as soon as the events load.
+  inventoryCount?: number;
+  // Feedback + non-attendance reasons received for this event.
+  feedbackCount?: number;
+  // How many attendance rows the event has -- known as soon as the events load.
+  attendanceCount?: number;
   borrowedItems?: { inventoryItemId: string; name: string; quantity: number; units: Record<string, number> }[];
 }
 
@@ -90,6 +103,9 @@ interface EventsViewProps {
   memberships?: any[];
   attendanceRecords?: any[];
   loading?: boolean;
+  // Asks the page to open one event on a given tab (used by the bell notifications).
+  openRequest?: { eventId: number; tab: string; sub?: string; nonce: number } | null;
+  onOpenRequestHandled?: () => void;
 }
 
 export function EventsView({
@@ -101,6 +117,8 @@ export function EventsView({
   memberships = [],
   attendanceRecords = [],
   loading = false,
+  openRequest = null,
+  onOpenRequestHandled,
 }: EventsViewProps) {
   const { t, locale, language } = useLanguage();
   const eventStatusLabel = (label: string) => (label === "CheckIn" ? t("checkInOpenLabel") : label === "Upcoming" ? t("upcomingBadge") : label === "Ongoing" ? t("ongoingBadge") : t("pastBadge"));
@@ -124,7 +142,7 @@ export function EventsView({
       if (label === "CheckIn") return "bg-sky-400 animate-pulse";
       if (label === "Upcoming") return "bg-[#4FBEB0]";
       if (label === "Ongoing") return "bg-gold-400";
-      return "bg-white/40";
+      return "bg-[#8A8474]";
     }
     if (label === "Upcoming") return "bg-sage-600";
     if (label === "Ongoing") return "bg-gold-600";
@@ -133,31 +151,87 @@ export function EventsView({
   const attendanceStatusLabel = (label: string) => {
     if (label === "Complete") return t("statusComplete");
     if (label === "Incomplete") return t("statusIncomplete");
+    if (label === "Upcoming") return t("upcomingBadge");
+    if (label === "Ongoing") return t("ongoingBadge");
     return t("statusMissed");
   };
+  const { relativeLabel } = makeEventTiming(t);
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
   const [selectedDate, setSelectedDate] = useState<string>("");
+  // Quick tabs (Today / This week / Has feedback) and sort, on top of the status + membership + date filters.
+  const [eventTab, setEventTab] = useState<"all" | "today" | "week" | "feedback">("all");
+  const [eventSort, setEventSort] = useState("default");
   const [viewEv, setViewEv] = useState<MyEvent | null>(null);
+  // Tab to land on when the detail view opens (set by a bell notification).
+  const pendingSubRef = useRef<"ratings" | "reasons" | null>(null);
+  const pendingTabRef = useRef<"overview" | "attendance" | "inventory" | "budget" | "feedback" | null>(null);
   // Which of the 4 tabs (Overview / Attendance / Budget / Feedback) is
   // showing in the full-page event detail view.
-  const [detailTab, setDetailTab] = useState<"overview" | "attendance" | "budget" | "feedback">("overview");
+  const [detailTab, setDetailTab] = useState<"overview" | "attendance" | "inventory" | "budget" | "feedback">("overview");
   // UC-16 (staff side): the ratings/comments residents left for this
   // event -- fetched from /feedback/event/{id} (backend already existed,
   // it just wasn't wired into any staff screen yet).
-  const [eventFeedback, setEventFeedback] = useState<{ id: number; rating: number; comment: string | null; user?: { first_name: string; last_name: string } }[]>([]);
+  type FeedbackRow = ResponseFields & { rating: number; comment: string | null; user?: { first_name: string; last_name: string } };
+  type AbsenceRow = ResponseFields & { reason: string; comment: string | null; user?: { first_name: string; last_name: string } };
+  const [eventFeedback, setEventFeedback] = useState<FeedbackRow[]>([]);
+  const [eventAbsences, setEventAbsences] = useState<AbsenceRow[]>([]);
+  const [feedbackSubTab, setFeedbackSubTab] = useState<"ratings" | "reasons">("ratings");
   const [feedbackLoading, setFeedbackLoading] = useState(false);
+  // The event's Inventory tab: what it borrowed, what is still out, and what
+  // came back (and in which condition) -- from /events/{id}/inventory.
+  type EventInventoryRow = {
+    inventory_item_id: number; name: string; photo_url?: string | null; total: number; status: "borrowed" | "partial" | "returned";
+    out: number; out_units: Record<string, number>; returned: number; returned_units: Record<string, number>;
+  };
+  const [eventInventory, setEventInventory] = useState<{
+    items: EventInventoryRow[];
+    returns: { id: number; name: string; photo_url?: string | null; evidence_photo_urls?: string[]; quantity: number; units: Record<string, number>; released_by: string | null; released_at: string }[];
+  }>({ items: [], returns: [] });
+  const [eventInventoryLoading, setEventInventoryLoading] = useState(false);
+  // Full-size look at an item photo or a return's evidence photo (prev/next, Esc closes).
+  const [invPhoto, setInvPhoto] = useState<{ url: string; name: string; urls: string[] } | null>(null);
+  const stepInvPhoto = (dir: 1 | -1) => setInvPhoto((cur) => {
+    if (!cur || cur.urls.length < 2) return cur;
+    const i = Math.max(0, cur.urls.indexOf(cur.url));
+    return { ...cur, url: cur.urls[(i + dir + cur.urls.length) % cur.urls.length] };
+  });
+  useEffect(() => {
+    if (!invPhoto) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setInvPhoto(null);
+      else if (e.key === "ArrowRight") stepInvPhoto(1);
+      else if (e.key === "ArrowLeft") stepInvPhoto(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [invPhoto]); // eslint-disable-line react-hooks/exhaustive-deps
   const [feedbackCurrentPage, setFeedbackCurrentPage] = useState(1);
+
+  // A new feedback arrived for the event on screen: refresh its Feedback tab live.
+  useEffect(() => {
+    const onFeedback = (e: Event) => {
+      const id = (e as CustomEvent).detail?.eventId;
+      if (!viewEv || id == null || String(viewEv.id) !== String(id)) return;
+      api.get(`/feedback/event/${viewEv.id}`).then((res) => setEventFeedback(res.data ?? [])).catch(() => {});
+      api.get(`/feedback/absence/event/${viewEv.id}`).then((res) => setEventAbsences(res.data ?? [])).catch(() => {});
+    };
+    window.addEventListener("staff:feedback-received", onFeedback);
+    return () => window.removeEventListener("staff:feedback-received", onFeedback);
+  }, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const feedbackItemsPerPage = 5;
 
 
   useEffect(() => {
     if (!viewEv) {
       setEventFeedback([]);
+      setEventAbsences([]);
+      setEventInventory({ items: [], returns: [] });
       return;
     }
-    setDetailTab("overview");
+    setDetailTab(pendingTabRef.current ?? "overview");
+    pendingTabRef.current = null;
     setAttendanceCurrentPage(1);
     setAttendanceSearch("");
     setAttendanceStatusFilter("all");
@@ -165,10 +239,21 @@ export function EventsView({
     let cancelled = false;
     setFeedbackLoading(true);
     setFeedbackCurrentPage(1);
+    setFeedbackSubTab(pendingSubRef.current ?? "ratings");
+    pendingSubRef.current = null;
+    api.get(`/feedback/absence/event/${viewEv.id}`)
+      .then((res) => { if (!cancelled) setEventAbsences(res.data ?? []); })
+      .catch(() => { if (!cancelled) setEventAbsences([]); });
     api.get(`/feedback/event/${viewEv.id}`)
       .then((res) => { if (!cancelled) setEventFeedback(res.data ?? []); })
       .catch(() => { if (!cancelled) setEventFeedback([]); })
       .finally(() => { if (!cancelled) setFeedbackLoading(false); });
+
+    setEventInventoryLoading(true);
+    api.get(`/events/${viewEv.id}/inventory`)
+      .then((res) => { if (!cancelled) setEventInventory({ items: res.data?.items ?? [], returns: res.data?.returns ?? [] }); })
+      .catch(() => { if (!cancelled) setEventInventory({ items: [], returns: [] }); })
+      .finally(() => { if (!cancelled) setEventInventoryLoading(false); });
 
 
     return () => { cancelled = true; };
@@ -193,7 +278,7 @@ export function EventsView({
   // client-side over already-loaded data, so there's nothing to actually
   // wait on -- the flash is purely so switching pages always feels the same.
   const [pageSwitchingRaw, setPageSwitching] = useState(false);
-  const filterSwitching = useFilterSwitching([eventSearch, eventFilter, membershipFilter, selectedDate]);
+  const filterSwitching = useFilterSwitching([eventSearch, eventFilter, membershipFilter, selectedDate, eventTab, eventSort]);
   const pageSwitching = pageSwitchingRaw || filterSwitching;
   // Page-open skeleton -- `loading` is only true during Staff's very first
   // fetch, so without this, opening Events later showed the cards instantly.
@@ -233,6 +318,28 @@ export function EventsView({
 
   const initialLoadDone = useRef(false);
   const [localEvents, setLocalEvents] = useState<MyEvent[]>([]);
+
+  // Bell notification -> open that event on the requested tab. Waits for the
+  // events to be loaded, then clears the request so it only fires once.
+  useEffect(() => {
+    if (!openRequest) return;
+    const tabs = ["overview", "attendance", "inventory", "budget", "feedback"] as const;
+    const tab = (tabs as readonly string[]).includes(openRequest.tab) ? (openRequest.tab as (typeof tabs)[number]) : "overview";
+    const subTab = openRequest.sub === "reasons" ? "reasons" : "ratings";
+    if (viewEv && String(viewEv.id) === String(openRequest.eventId)) {
+      setDetailTab(tab);
+      if (tab === "feedback") setFeedbackSubTab(subTab);
+      onOpenRequestHandled?.();
+      return;
+    }
+    const target = localEvents.find((e) => String(e.id) === String(openRequest.eventId));
+    if (!target) return; // events still loading -- runs again when they arrive
+    pendingTabRef.current = tab;
+    pendingSubRef.current = tab === "feedback" ? subTab : null;
+    setViewEv(target);
+    onOpenRequestHandled?.();
+  }, [openRequest, localEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   const getStartOfWeek = (date: Date) => {
     const d = new Date(date);
@@ -305,6 +412,9 @@ export function EventsView({
 
     return {
       id: dbEvent.id,
+      attendanceCount: typeof dbEvent.attendances_count === "number" ? dbEvent.attendances_count : undefined,
+      inventoryCount: typeof dbEvent.inventory_items_count === "number" ? dbEvent.inventory_items_count : undefined,
+      feedbackCount: typeof dbEvent.feedback_count === "number" ? dbEvent.feedback_count : undefined,
       title: dbEvent.name,
       date: dbEvent.event_start,
       event_start: dbEvent.event_start,
@@ -703,10 +813,10 @@ export function EventsView({
     return true;
   };
 
-  const filteredEvents = useMemo(() => {
+  // Everything except the Ongoing/Upcoming/Past tab, so the tab counts stay
+  // truthful for the current search / membership / date.
+  const baseScopedEvents = useMemo(() => {
     let result = [...localEvents];
-
-    result = result.filter(event => getFilterStatus(event, eventFilter));
 
     if (membershipFilter !== "all") {
       result = result.filter((e) =>
@@ -741,37 +851,70 @@ export function EventsView({
     }
 
     return result;
-  }, [localEvents, eventFilter, membershipFilter, eventSearch, selectedDate]);
+  }, [localEvents, membershipFilter, eventSearch, selectedDate]);
 
-  const sortedFilteredEvents = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const weekStart = getStartOfWeek(today);
-    const weekEnd = getEndOfWeek(today);
+  // Quick-tab tests. "Today" = the event runs at any point today; "This week"
+  // = it starts Monday-Sunday of the current week; "Has feedback" = at least
+  // one rating or non-attendance reason came in.
+  const eventTabTest = (tab: typeof eventTab, e: MyEvent): boolean => {
+    if (tab === "all") return true;
+    if (tab === "feedback") return (e.feedbackCount ?? 0) > 0;
+    const start = parseEventDateTime(e.event_start) ?? parseEventDateTime(e.date) ?? parseEventDateTime(e.startDate);
+    if (!start) return false;
+    const end = parseEventDateTime(e.event_end) ?? start;
+    const now = new Date();
+    if (tab === "today") {
+      const d0 = new Date(now); d0.setHours(0, 0, 0, 0);
+      const d1 = new Date(d0); d1.setDate(d0.getDate() + 1);
+      return start < d1 && end >= d0;
+    }
+    const w0 = new Date(now); w0.setHours(0, 0, 0, 0); w0.setDate(w0.getDate() - ((w0.getDay() + 6) % 7));
+    const w1 = new Date(w0); w1.setDate(w0.getDate() + 7);
+    return start >= w0 && start < w1;
+  };
+  const eventTabCounts = useMemo(() => ({
+    all: baseScopedEvents.length,
+    today: baseScopedEvents.filter((e) => eventTabTest("today", e)).length,
+    week: baseScopedEvents.filter((e) => eventTabTest("week", e)).length,
+    feedback: baseScopedEvents.filter((e) => eventTabTest("feedback", e)).length,
+  }), [baseScopedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scopedEvents = useMemo(
+    () => baseScopedEvents.filter((e) => eventTabTest(eventTab, e)),
+    [baseScopedEvents, eventTab] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-    return [...filteredEvents].sort((a, b) => {
-      let dateA = a.date || a.event_start || a.startDate || "";
-      let dateB = b.date || b.event_start || b.startDate || "";
+  const filteredEvents = useMemo(
+    () => scopedEvents.filter((event) => getFilterStatus(event, eventFilter)),
+    [scopedEvents, eventFilter] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-      if (dateA.includes(" ")) dateA = dateA.split(" ")[0];
-      if (dateA.includes("T")) dateA = dateA.split("T")[0];
-      if (dateB.includes(" ")) dateB = dateB.split(" ")[0];
-      if (dateB.includes("T")) dateB = dateB.split("T")[0];
-
-      const eventDateA = new Date(dateA);
-      const eventDateB = new Date(dateB);
-      eventDateA.setHours(0, 0, 0, 0);
-      eventDateB.setHours(0, 0, 0, 0);
-
-      const isThisWeekA = !isNaN(eventDateA.getTime()) && eventDateA >= weekStart && eventDateA <= weekEnd;
-      const isThisWeekB = !isNaN(eventDateB.getTime()) && eventDateB >= weekStart && eventDateB <= weekEnd;
-
-      if (isThisWeekA && !isThisWeekB) return -1;
-      if (!isThisWeekA && isThisWeekB) return 1;
-
-      return eventDateB.getTime() - eventDateA.getTime();
+  const statusCounts = useMemo(() => {
+    const c = { all: scopedEvents.length, ongoing: 0, upcoming: 0, past: 0 };
+    scopedEvents.forEach((e) => {
+      const l = getEventStatus(e).label;
+      if (l === "Ongoing") c.ongoing++;
+      else if (l === "Upcoming") c.upcoming++;
+      else c.past++;
     });
-  }, [filteredEvents]);
+    return c;
+  }, [scopedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ongoing first, then Upcoming (soonest first), then Past (most recent first).
+  const sortedFilteredEvents = useMemo(() => {
+    const order = { Ongoing: 0, Upcoming: 1, Past: 2 } as const;
+    const startOf = (e: MyEvent) => (parseEventDateTime(e.event_start) ?? parseEventDateTime(e.date) ?? parseEventDateTime(e.startDate))?.getTime() ?? 0;
+    return [...filteredEvents]
+      .map((e) => ({ e, label: getEventStatus(e).label, start: startOf(e) }))
+      .sort((x, y) => {
+        if (order[x.label] !== order[y.label]) return order[x.label] - order[y.label];
+        // Sections stay grouped by status; the sort picks the order inside each one.
+        if (eventSort === "soonest") return x.start - y.start;
+        if (eventSort === "latest") return y.start - x.start;
+        if (eventSort === "name-az") return String(x.e.title).localeCompare(String(y.e.title));
+        return x.label === "Past" ? y.start - x.start : x.start - y.start;
+      })
+      .map((x) => x.e);
+  }, [filteredEvents, eventSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalPages = Math.ceil(sortedFilteredEvents.length / itemsPerPage);
   const paginatedEvents = useMemo(() => {
@@ -811,7 +954,7 @@ export function EventsView({
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
-  }, [eventSearch, eventFilter, membershipFilter, selectedDate]);
+  }, [eventSearch, eventFilter, membershipFilter, selectedDate, eventTab, eventSort]);
 
   // Runs the field-level checks that used to live at the top of the old
   // handleSaveEvent, then -- if they pass -- opens the confirm step
@@ -1041,7 +1184,9 @@ export function EventsView({
 
   // Nothing to submit if editing an event and the form still matches what
   // was loaded (title, schedule, borrowed items, everything).
-  const isEventFormUnchanged = !!editingEvent && JSON.stringify(newEvent) === originalEventForm;
+  const isEventFormUnchanged = editingEvent
+    ? JSON.stringify(newEvent) === originalEventForm
+    : JSON.stringify(newEvent) === JSON.stringify(blankEventForm); // new event: nothing entered yet
 
   const closeEventModal = () => {
     if (isSubmitting) return;
@@ -1122,17 +1267,44 @@ export function EventsView({
 
     return combinedList;
   };
+  // "No scan" only means Missed once the event is over: before it starts the
+  // row reads Upcoming, and while it is running, Ongoing.
   const getAttendanceStatus = (record: any) => {
     if (record.timeIn && record.timeOut) return { label: "Complete" };
     if (record.timeIn || record.timeOut) return { label: "Incomplete" };
+    const ev = viewEv;
+    if (ev) {
+      const phase = getEventStatus(ev).label;
+      if (phase === "Upcoming") return { label: "Upcoming" };
+      if (phase === "Ongoing") return { label: "Ongoing" };
+    }
     return { label: "Missed" };
   };
+
+  // The status filter only offers what can exist for this event right now:
+  // an event that hasn't started offers Upcoming (never Missed), a running one
+  // offers Ongoing, and only a finished one offers Missed.
+  const attendanceFilterOptions = (() => {
+    const phase = viewEv ? getEventStatus(viewEv).label : "Past";
+    const pending = phase === "Upcoming"
+      ? [{ value: "upcoming", label: t("upcomingBadge") }]
+      : phase === "Ongoing"
+        ? [{ value: "ongoing", label: t("ongoingBadge") }]
+        : [{ value: "missed", label: t("statusMissed") }];
+    return [
+      { value: "all", label: t("allStatus") },
+      { value: "complete", label: t("statusComplete") },
+      { value: "incomplete", label: t("statusIncomplete") },
+      ...pending,
+    ];
+  })();
 
   const getFilteredAttendance = (fullList: any[]) => {
     return fullList.filter((record) => {
       const matchesName = matchesSearch(attendanceSearch, record.residentName, record.userCode);
       const status = getAttendanceStatus(record).label.toLowerCase();
-      const matchesStatus = attendanceStatusFilter === "all" || status === attendanceStatusFilter;
+      const offered = attendanceFilterOptions.some((o) => o.value === attendanceStatusFilter);
+      const matchesStatus = attendanceStatusFilter === "all" || !offered || status === attendanceStatusFilter;
       return matchesName && matchesStatus;
     });
   };
@@ -1160,7 +1332,10 @@ export function EventsView({
 
   const fullAttendanceCountForTab = useMemo(() => {
     if (!viewEv) return 0;
-    return getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).length;
+    // Residents and the attendance rows arrive a moment after the event opens;
+    // the server's own count is there from the start, so the tab never
+    // begins at 0 and climbs.
+    return Math.max(getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).length, viewEv.attendanceCount ?? 0);
   }, [viewEv, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Budget tab -------------------------------------------------------
@@ -1192,7 +1367,9 @@ export function EventsView({
 
   const openEventReport = (mode: "print" | "download") => {
     setReportSections(EVENT_REPORT_SECTIONS.map((x) => x.key));
-    setReportAttendeeFilter("all");
+    // Start from what the Attendance tab is showing: filtered to "Missed" -> the
+    // report starts on "Absent" (the other statuses have no exact match, so "All").
+    setReportAttendeeFilter(attendanceStatusFilter === "missed" ? "absent" : "all");
     setReportMode(mode);
   };
 
@@ -1322,6 +1499,7 @@ export function EventsView({
           const tabs: { key: typeof detailTab; label: string; count?: number }[] = [
             { key: "overview", label: t("overviewTabLabel") },
             { key: "attendance", label: t("attendanceTabLabel"), count: fullAttendanceCountForTab },
+            { key: "inventory", label: t("inventoryTabLabel"), count: eventInventoryLoading ? (viewEv.inventoryCount ?? 0) : (eventInventory.items.length || viewEv.inventoryCount || 0) },
             { key: "budget", label: t("budgetTabLabel") },
             { key: "feedback", label: t("feedbackTabLabel"), count: eventFeedback.length },
           ];
@@ -1436,22 +1614,22 @@ export function EventsView({
                       surrounding surfaces needed to change. */}
                   <div className={`grid grid-cols-1 sm:grid-cols-3 gap-4 ${detailSwitching ? "hidden" : ""}`}>
                     <div className="rounded-2xl bg-sage-700 p-4 text-center">
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/70">{t("coverageStatLabel")}</p>
+                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/90">{t("coverageStatLabel")}</p>
                       <p className="mt-1.5 text-base font-bold text-white break-words">{coverageDisplay}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setDetailTab("budget")}
                       title={t("budgetTabLabel")}
-                      className="rounded-2xl bg-gold-700 p-4 text-center transition hover:brightness-110 active:scale-[0.99]"
+                      className="rounded-2xl bg-gradient-to-br from-gold-500 to-gold-700 p-4 text-center transition hover:brightness-110 active:scale-[0.99]"
                     >
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/70">{t("approvedBudgetStatLabel")}</p>
+                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/90">{t("approvedBudgetStatLabel")}</p>
                       <p className="mt-1.5 text-base font-bold text-white">
                         {viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined ? `₱${Number(viewEv.approvedBudget).toLocaleString()}` : "—"}
                       </p>
                     </button>
                     <div className="rounded-2xl bg-[#5C2A1E] p-4 text-center">
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/70">{t("attendeesStatLabel")}</p>
+                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/90">{t("attendeesStatLabel")}</p>
                       <p className="mt-1.5 text-base font-bold text-white">{signedInCount}</p>
                     </div>
                   </div>
@@ -1574,12 +1752,7 @@ export function EventsView({
                         <FilterDropdown
                           value={attendanceStatusFilter}
                           onChange={setAttendanceStatusFilter}
-                          options={[
-                            { value: "all", label: t("allStatus") },
-                            { value: "complete", label: t("statusComplete") },
-                            { value: "incomplete", label: t("statusIncomplete") },
-                            { value: "missed", label: t("statusMissed") },
-                          ]}
+                          options={attendanceFilterOptions}
                           className="h-11 pl-9 pr-8"
                           icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
                           dark
@@ -1623,6 +1796,8 @@ export function EventsView({
                             if (recStatus.label === "Complete") statusColor = "text-[#7DD8CB] bg-[#4FBEB0]/15";
                             if (recStatus.label === "Incomplete") statusColor = "text-gold-300 bg-gold-400/15";
                             if (recStatus.label === "Missed") statusColor = "text-red-400 bg-red-500/15";
+                            if (recStatus.label === "Upcoming") statusColor = "text-[#9CC4FF] bg-[#6BA8FF]/15";
+                            if (recStatus.label === "Ongoing") statusColor = "text-[#7DD8CB] bg-[#4FBEB0]/15";
 
                             return (
                               <tr key={i} className="border-t border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors">
@@ -1688,6 +1863,177 @@ export function EventsView({
                 </div>
               )}
 
+              {detailTab === "inventory" && (
+                <div className="space-y-5">
+                  {eventInventoryLoading || detailSwitching ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
+                      {[0, 1, 2].map((k) => <Skeleton key={k} className="h-16 w-full rounded-xl" />)}
+                    </div>
+                  ) : eventInventory.items.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center text-white/55">
+                      {t("eventInventoryEmpty")}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {([
+                          { key: "borrowed", label: t("eventInventoryBorrowed"), value: eventInventory.items.reduce((a, r) => a + r.total, 0), bg: "bg-sage-700", Icon: Package },
+                          { key: "out", label: t("eventInventoryStillOut"), value: eventInventory.items.reduce((a, r) => a + r.out, 0), bg: "bg-gold-600", Icon: Clock },
+                          { key: "back", label: t("eventInventoryReturned"), value: eventInventory.items.reduce((a, r) => a + r.returned, 0), bg: "bg-sage-800", Icon: CheckCircle2 },
+                        ] as const).map(({ key, label, value, bg, Icon }) => (
+                          <div key={key} className={`rounded-2xl ${bg} px-5 py-5 flex items-center gap-4`}>
+                            <span className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-xl bg-white/20">
+                              <Icon className="h-6 w-6 text-white" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-bold uppercase tracking-wide text-white/85">{label}</p>
+                              <p className="text-3xl font-black text-white leading-none mt-1">{value}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-3">
+                        {eventInventory.items.map((row) => {
+                          const pct = row.total > 0 ? Math.round((row.returned / row.total) * 100) : 0;
+                          return (
+                            <div key={row.inventory_item_id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                              <div className="flex flex-wrap items-center gap-3">
+                                {row.photo_url ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setInvPhoto({ url: row.photo_url!, name: tc(row.name, language as any), urls: [row.photo_url!] })}
+                                    className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 hover:border-[#4FBEB0]/60 transition"
+                                  >
+                                    <img src={row.photo_url} alt={row.name} className="h-full w-full object-cover" />
+                                    <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur"><Eye className="h-3 w-3" /></span>
+                                  </button>
+                                ) : (
+                                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/15">
+                                    <Package className="h-6 w-6 text-[#7DD8CB]" />
+                                  </span>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-base font-bold text-white truncate">{tc(row.name, language as any)}</p>
+                                  <p className="text-xs text-white/50">
+                                    {t("eventInventoryReturned")}: <span className="font-bold text-white">{row.returned}</span> / {row.total}
+                                  </p>
+                                </div>
+                                <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+                                  row.status === "returned" ? "bg-[#4FBEB0]/15 text-[#7DD8CB]" : row.status === "partial" ? "bg-gold-400/15 text-gold-300" : "bg-[#8A3D2C]/25 text-[#E2A088]"
+                                }`}>
+                                  {row.status === "returned" ? t("eventInventoryStatusReturned") : row.status === "partial" ? t("eventInventoryStatusPartial") : t("eventInventoryStatusBorrowed")}
+                                </span>
+                              </div>
+
+                              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                                <div className="h-full rounded-full bg-[#4FBEB0] transition-all" style={{ width: `${pct}%` }} />
+                              </div>
+
+                              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {([["out", t("eventInventoryStillOut")], ["returned", t("eventInventoryReturned")]] as const).map(([k, title]) => {
+                                  const units = k === "out" ? row.out_units : row.returned_units;
+                                  const total = k === "out" ? row.out : row.returned;
+                                  return (
+                                    <div key={k} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                                      <div className="flex items-center justify-between">
+                                        <p className="text-xs font-bold uppercase tracking-wide text-white/55">{title}</p>
+                                        <p className="text-sm font-bold text-white">{total}</p>
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap gap-1.5 min-h-[26px]">
+                                        {total === 0 ? (
+                                          <span className="text-sm text-white/40">{k === "out" ? t("eventInventoryNoneOut") : t("eventInventoryNoneBack")}</span>
+                                        ) : (
+                                          BORROW_CONDITIONS.filter((c) => (units[c.label.replace("condition", "")] ?? 0) > 0).map((c) => (
+                                            <span key={c.key} className={`rounded-full px-3 py-1 text-xs font-semibold ${c.chip}`}>
+                                              {units[c.label.replace("condition", "")]} {t(c.label)}
+                                            </span>
+                                          ))
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {eventInventory.returns.length > 0 && (
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                          <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-3">{t("eventInventoryReturnLog")}</h3>
+                          <div className="space-y-3">
+                            {eventInventory.returns.map((r) => {
+                              const photos = r.evidence_photo_urls ?? [];
+                              const itemName = tc(r.name, language as any);
+                              return (
+                                <div key={r.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4 flex items-start gap-4">
+                                  {r.photo_url ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setInvPhoto({ url: r.photo_url!, name: itemName, urls: [r.photo_url!] })}
+                                      className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 hover:border-[#4FBEB0]/60 transition"
+                                    >
+                                      <img src={r.photo_url} alt={r.name} className="h-full w-full object-cover" />
+                                    <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur"><Eye className="h-3 w-3" /></span>
+                                    </button>
+                                  ) : (
+                                    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/15">
+                                      <Package className="h-6 w-6 text-[#7DD8CB]" />
+                                    </span>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                                      <p className="text-base font-bold text-white truncate">{r.quantity}&times; {itemName}</p>
+                                      <span className="text-xs text-white/45">
+                                        {r.released_by ? `${r.released_by} \u00b7 ` : ""}{new Date(r.released_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                                      </span>
+                                    </div>
+                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                      {BORROW_CONDITIONS.filter((c) => (r.units[c.label.replace("condition", "")] ?? 0) > 0).map((c) => (
+                                        <span key={c.key} className={`rounded-full px-3 py-1 text-xs font-semibold ${c.chip}`}>
+                                          {r.units[c.label.replace("condition", "")]} {t(c.label)}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="mt-3">
+                                      <p className="text-xs font-bold uppercase tracking-wide text-white/45 mb-1.5">{t("evidencePhotoLabel")}</p>
+                                      {photos.length === 0 ? (
+                                        <span className="text-sm text-white/40">{t("eventInventoryNoPhoto")}</span>
+                                      ) : (
+                                        <div className="relative inline-block shrink-0">
+                                          <div className="h-11 w-11 rounded-full overflow-hidden border border-white/15">
+                                            <img src={photos[0]} alt="" className="h-full w-full object-cover" />
+                                          </div>
+                                          {photos.length > 1 && (
+                                            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#4FBEB0] text-[#0A0E1A] text-[10px] font-bold flex items-center justify-center">
+                                              {photos.length}
+                                            </span>
+                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={() => setInvPhoto({ url: photos[0], name: `${itemName} \u00b7 ${t("evidencePhotoLabel")}`, urls: photos })}
+                                            title={t("viewPhotoLabel")}
+                                            className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-[#0A0E1A] border border-white/20 text-white/60 hover:text-[#7DD8CB] hover:border-[#4FBEB0]/50 flex items-center justify-center transition"
+                                          >
+                                            <Eye className="h-2.5 w-2.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
               {detailTab === "budget" && (
                 <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-8">
                   <EventBudgetWorkspace
@@ -1701,6 +2047,25 @@ export function EventsView({
 
               {detailTab === "feedback" && (
                 <div className="space-y-5">
+                  <div className="flex flex-wrap gap-2.5">
+                    {([
+                      { key: "ratings", label: t("absTabRatings"), count: eventFeedback.length },
+                      { key: "reasons", label: t("absTabReasons"), count: eventAbsences.length },
+                    ] as const).map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setFeedbackSubTab(tab.key)}
+                        className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition ${
+                          feedbackSubTab === tab.key ? "bg-sage-700 text-white shadow-sm" : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                        }`}
+                      >
+                        {tab.label}
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] ${feedbackSubTab === tab.key ? "bg-white/20" : "bg-white/10"}`}>{tab.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className={feedbackSubTab === "ratings" ? "space-y-5" : "hidden"}>
                   {feedbackLoading || detailSwitching ? (
                     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 flex flex-col items-center">
                       <Skeleton className="h-10 w-16" />
@@ -1756,21 +2121,22 @@ export function EventsView({
                         const name = f.user ? `${f.user.first_name} ${f.user.last_name}` : t("unknownItemLabel");
                         const initials = f.user ? `${f.user.first_name?.charAt(0) ?? ""}${f.user.last_name?.charAt(0) ?? ""}` : "?";
                         return (
-                          <div key={f.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-full bg-[#123A38] border border-white/10 flex items-center justify-center text-[#7DD8CB] font-bold text-sm shrink-0">
-                              {initials}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <span className="text-sm font-semibold text-white truncate">{name}</span>
-                                <span className="flex items-center gap-0.5 shrink-0">
+                          <div key={f.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                            <FeedbackComment
+                              role="staff"
+                              kind="rating"
+                              item={f}
+                              author={f.user ?? null}
+                              comment={f.comment}
+                              header={
+                                <span className="flex items-center gap-0.5">
                                   {[1, 2, 3, 4, 5].map((n) => (
                                     <Star key={n} className={`h-3.5 w-3.5 ${n <= f.rating ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
                                   ))}
                                 </span>
-                              </div>
-                              {f.comment && <p className="mt-1 text-sm text-white/50">{f.comment}</p>}
-                            </div>
+                              }
+                              onChange={(patch) => setEventFeedback((prev) => prev.map((x) => (x.id === f.id ? { ...x, ...patch } : x)))}
+                            />
                           </div>
                         );
                       })}
@@ -1805,6 +2171,50 @@ export function EventsView({
                       </div>
                     </div>
                   )}
+                  </div>
+
+                  {feedbackSubTab === "reasons" && (
+                    <div className="space-y-4">
+                      {eventAbsences.length > 0 && (
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-white/45">{t("absSummary")}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {Object.entries(eventAbsences.reduce<Record<string, number>>((acc, r) => { acc[r.reason] = (acc[r.reason] ?? 0) + 1; return acc; }, {}))
+                              .sort((a, b) => b[1] - a[1])
+                              .map(([reason, n]) => (
+                                <span key={reason} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.05] px-3.5 py-1.5 text-sm text-white">
+                                  {t(`absReason_${reason}`)}
+                                  <span className="rounded-full bg-[#4FBEB0]/20 px-2 py-0.5 text-xs font-bold text-[#7DD8CB]">{n}</span>
+                                </span>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                      {eventAbsences.length === 0 ? (
+                        <p className="text-sm text-white/40 italic bg-white/[0.03] rounded-2xl p-6 text-center">{t("absNoneYet")}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {eventAbsences.map((r) => {
+                            const name = r.user ? `${r.user.first_name} ${r.user.last_name}` : t("unknownItemLabel");
+                            const initials = r.user ? `${r.user.first_name?.charAt(0) ?? ""}${r.user.last_name?.charAt(0) ?? ""}` : "?";
+                            return (
+                              <div key={r.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                                <FeedbackComment
+                                  role="staff"
+                                  kind="absence"
+                                  item={r}
+                                  author={r.user ?? null}
+                                  comment={r.comment}
+                                  header={<span className="inline-block rounded-full border border-gold-400/30 bg-gold-400/10 px-3 py-0.5 text-xs font-semibold text-gold-300">{t(`absReason_${r.reason}`)}</span>}
+                                  onChange={(patch) => setEventAbsences((prev) => prev.map((x) => (x.id === r.id ? { ...x, ...patch } : x)))}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1837,76 +2247,64 @@ export function EventsView({
             </button>
           </div>
 
-          {/* Search bar matches the Residents/Households/Memberships pattern
-              exactly (same card, icon, input sizing/colors) -- the event
-              status filter and date filter sit alongside it in the same
-              card, resized to match, instead of being removed. */}
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-              <div className="relative flex-1 min-w-[220px]">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                <input
-                  type="text"
-                  value={eventSearch}
-                  onChange={(e) => setEventSearch(e.target.value)}
-                  placeholder={t("searchEventsPlaceholder")}
-                  className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-                />
-                {eventSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setEventSearch("")}
-                    aria-label="Clear search"
-                    title="Clear"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
-                  >
-                    {t("clearLabel")}
-                  </button>
-                )}
-              </div>
-              <FilterDropdown
-                value={eventFilter}
-                onChange={setEventFilter}
-                options={[
-                  { value: "all", label: t("allEvents") },
-                  { value: "upcoming", label: t("upcomingEvents") },
-                  { value: "ongoing", label: t("ongoingEvents") },
-                  { value: "past", label: t("pastEvents") },
-                ]}
-                className="h-11 pl-10 pr-8 shrink-0"
-                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                dark
-              />
-              <FilterDropdown
-                value={membershipFilter}
-                onChange={setMembershipFilter}
-                options={[
-                  { value: "all", label: t("allMembershipsOption") },
-                  ...memberships
-                    .slice()
-                    .sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)))
-                    .map((m: any) => ({ value: String(m.id), label: m.name })),
-                ]}
-                className="h-11 min-w-[220px] pl-10 pr-8 shrink-0"
-                panelWidthPx={280}
-                icon={<Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                dark
-                searchable
-                searchPlaceholder={t("search")}
-                noResultsLabel={t("noMatchesFoundLabel")}
-              />
+          <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+            <QuickTabs
+              value={eventTab}
+              onChange={(k) => setEventTab(k as typeof eventTab)}
+              tabs={[
+                { key: "all", label: t("tabAll"), count: eventTabCounts.all },
+                { key: "today", label: t("tabToday"), count: eventTabCounts.today },
+                { key: "week", label: t("tabThisWeek"), count: eventTabCounts.week },
+                { key: "feedback", label: t("tabNeedsFeedback"), count: eventTabCounts.feedback },
+              ]}
+            />
+            <FilterBar
+              search={{ value: eventSearch, onChange: setEventSearch, placeholder: t("searchEventsPlaceholder") }}
+              filters={[
+                {
+                  key: "status", label: t("statusColumn"), value: eventFilter, onChange: setEventFilter,
+                  options: [
+                    { value: "all", label: `${t("allEvents")} (${statusCounts.all})` },
+                    { value: "ongoing", label: `${t("ongoingEvents")} (${statusCounts.ongoing})` },
+                    { value: "upcoming", label: `${t("upcomingEvents")} (${statusCounts.upcoming})` },
+                    { value: "past", label: `${t("pastEvents")} (${statusCounts.past})` },
+                  ],
+                },
+                {
+                  key: "membership", label: t("fltMembership"), value: membershipFilter, onChange: setMembershipFilter, searchable: true, minWidthClass: "min-w-[220px]",
+                  icon: <Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />,
+                  options: [
+                    { value: "all", label: t("allMembershipsOption") },
+                    ...memberships.slice().sort((a: any, b: any) => String(a.name).localeCompare(String(b.name))).map((m: any) => ({ value: String(m.id), label: m.name })),
+                  ],
+                },
+              ]}
+              sort={{
+                value: eventSort, onChange: setEventSort,
+                options: [
+                  { value: "default", label: t("sortEventDefault") },
+                  { value: "soonest", label: t("sortEventSoonest") },
+                  { value: "latest", label: t("sortEventLatest") },
+                  { value: "name-az", label: t("sortNameAZ") },
+                ],
+              }}
+              count={{ shown: filteredEvents.length, total: localEvents.length }}
+              extraChips={[
+                ...(eventTab !== "all" ? [{ key: "tab", label: eventTab === "today" ? t("tabToday") : eventTab === "week" ? t("tabThisWeek") : t("tabNeedsFeedback"), onRemove: () => setEventTab("all") }] : []),
+                ...(selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString(language === "tl" ? "fil-PH" : language === "ceb" ? "fil-PH" : "en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []),
+              ] as ExtraChip[]}
+              onClearExtras={() => { setSelectedDate(""); setEventTab("all"); }}
+            >
               <div className="h-11 shrink-0">
                 <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
               </div>
-            </div>
+            </FilterBar>
           </div>
 
-          <p className="mt-2 text-xs text-white/40">
-            {openSkeleton || loading || filterSwitching ? 0 : filteredEvents.length} {t("eventsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
-          </p>
-
-          {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-          <div className="flex justify-end">
+          <div className="flex min-h-8 flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-white/40">
+              {t("showingLabel")} {itemsPerPage} {t("perPage")}
+            </p>
             {totalPages > 1 && ((openSkeleton || filterSwitching || loading) ? null : (
               <div className="flex items-center gap-2">
                 <button
@@ -1916,7 +2314,7 @@ export function EventsView({
                 >
                   ←
                 </button>
-                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sage-700 text-sm font-bold text-white shadow-sm">
                   {currentPage}
                 </span>
                 <button
@@ -1932,101 +2330,120 @@ export function EventsView({
 
           <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
           {loading || pageSwitching || openSkeleton ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-                  <div className="flex items-start justify-between gap-2">
-                    <Skeleton className="h-11 w-11 rounded-full shrink-0" />
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Skeleton className="h-6 w-6 rounded-full" />
-                      <Skeleton className="h-6 w-6 rounded-full" />
-                      <Skeleton className="h-6 w-20 rounded-full" />
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-40" />
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex gap-5 rounded-2xl border border-white/10 bg-white/[0.04] py-5 pl-7 pr-5">
+                    <Skeleton className="h-20 w-20 shrink-0 rounded-2xl" />
+                    <div className="min-w-0 flex-1">
+                      <Skeleton className="h-4 w-2/3" />
+                      <Skeleton className="mt-2 h-3 w-1/3" />
+                      <Skeleton className="mt-3 h-3 w-1/2" />
+                      <Skeleton className="mt-2 h-3 w-3/5" />
+                      <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+                        <Skeleton className="h-3 w-20" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
                     </div>
                   </div>
-                  <Skeleton className="mt-4 h-4 w-2/3" />
-                  <Skeleton className="mt-3 h-3 w-1/2" />
-                  <Skeleton className="mt-2 h-3 w-2/5" />
-                  <Skeleton className="mt-3 h-3 w-full" />
-                  <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-2">
-                    <Skeleton className="h-3 w-20" />
-                    <Skeleton className="h-3 w-24" />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           ) : paginatedEvents.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
               {t("noEventsMatchStaff")}
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-                {paginatedEvents.map((e) => {
-                  const status = getEventStatus(e);
-                  const locked = isEventLocked(status.label);
-                  const eligibleMembers = getMembersForEvent(e);
-                  const attendanceList = getFullAttendanceList(e.id, eligibleMembers);
-                  const signedIn = attendanceList.filter((a: any) => a.timeIn || a.timeOut).length;
-
-                  return (
-                    <div
-                      key={e.id}
-                      onClick={() => setViewEv(e)}
-                      className="cursor-pointer rounded-2xl border border-white/10 bg-white/[0.04] p-5 hover:border-white/20 hover:shadow-md transition-all duration-300 flex flex-col"
-                    >
-                      <div className="flex items-start justify-between gap-2 flex-wrap">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#4FBEB0]/10 text-[#4FBEB0] shrink-0">
-                          <Calendar className="h-5 w-5" />
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            onClick={(ev) => { ev.stopPropagation(); startEditEvent(e); }}
-                            disabled={isSubmitting || locked}
-                            title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
-                            className="p-1.5 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={(ev) => { ev.stopPropagation(); setEventToDelete(e.id); }}
-                            disabled={locked}
-                            title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
-                            className="p-1.5 rounded-full text-white/50 hover:bg-red-500/10 hover:text-red-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Archive className="h-3.5 w-3.5" />
-                          </button>
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${statusPillClasses(chipKey(e, status.label), true)}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(chipKey(e, status.label), true)}`} />
-                            {eventStatusChipLabel(chipKey(e, status.label))}
-                          </span>
-                        </div>
-                      </div>
-
-                      <h2 className="mt-4 text-base font-bold text-white break-words">
-                        {highlightText(tc(e.title, language as any), eventSearch)}
-                      </h2>
-                      <p className="mt-1.5 text-sm text-white/50 flex items-center gap-1.5">
-                        <MapPin className="h-3.5 w-3.5 text-gold-300 shrink-0" />
-                        <span className="truncate">{highlightText(tc(e.location, language as any), eventSearch)}</span>
-                      </p>
-                      <p className="mt-1 text-sm text-white/50 flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-gold-300 shrink-0" />
-                        <span className="truncate">
-                          {(e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || "")} · {formatTime12Hour(e.startTime)}{e.endTime ? ` – ${formatTime12Hour(e.endTime)}` : ""}
-                        </span>
-                      </p>
-                      <p className="mt-2 text-sm text-white/50 break-words line-clamp-2">
-                        {highlightText(tc(e.description || t("noDescription"), language as any), eventSearch)}
-                      </p>
-
-                      <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-2 text-xs text-white/50">
-                        <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {signedIn} {t("attendeesCountLabel")}</span>
-                        <span className="font-medium truncate" title={getCoverageLabel(e)}>{getCoverageLabel(e)}</span>
-                      </div>
+            <div className="space-y-8">
+              {(["Ongoing", "Upcoming", "Past"] as const).map((sectionKey) => {
+                const items = paginatedEvents.filter((ev) => getEventStatus(ev).label === sectionKey);
+                if (items.length === 0) return null;
+                const meta = STATUS_META[sectionKey];
+                return (
+                  <section key={sectionKey}>
+                    <div className="mb-3 flex items-center gap-2.5">
+                      <span className={`h-2 w-2 rounded-full ${meta.dot} ${sectionKey === "Ongoing" ? "animate-pulse" : ""}`} />
+                      <h3 className={`text-xs font-bold uppercase tracking-wider ${meta.text}`}>{eventStatusLabel(sectionKey)}</h3>
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/70">{statusCounts[sectionKey.toLowerCase() as "ongoing" | "upcoming" | "past"]}</span>
+                      <span className="h-px flex-1 bg-white/10" />
+                      <span className="text-[11px] text-white/35">{t(meta.hint)}</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                      {items.map((e) => {
+                        const status = getEventStatus(e);
+                        const locked = isEventLocked(status.label);
+                        const eligibleMembers = getMembersForEvent(e);
+                        const attendanceList = getFullAttendanceList(e.id, eligibleMembers);
+                        const signedIn = attendanceList.filter((a: any) => a.timeIn || a.timeOut).length;
+                        const startDt = parseEventDateTime(e.event_start) ?? parseEventDateTime(e.date) ?? parseEventDateTime(e.startDate);
+                        const rel = relativeLabel(e, status.label);
+
+                        return (
+                          <div
+                            key={e.id}
+                            onClick={() => setViewEv(e)}
+                            className="group relative flex cursor-pointer gap-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] py-4 pl-6 pr-4 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.06]"
+                          >
+                            <span className={`absolute inset-y-0 left-0 w-1.5 ${meta.accent}`} />
+
+                            <div className="flex h-[72px] w-[72px] shrink-0 flex-col items-center justify-center rounded-2xl bg-white/10">
+                              <span className="text-xs font-bold uppercase tracking-wider text-[#7DD8CB]">
+                                {startDt ? startDt.toLocaleDateString(locale, { month: "short" }) : "—"}
+                              </span>
+                              <span className="mt-0.5 text-2xl font-bold leading-none text-white">{startDt ? startDt.getDate() : "—"}</span>
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <h2 className="min-w-0 break-words text-base font-bold leading-snug text-white">
+                                  {highlightText(tc(e.title, language as any), eventSearch)}
+                                </h2>
+                                <div className="flex shrink-0 items-center gap-0.5">
+                                  <button
+                                    onClick={(ev) => { ev.stopPropagation(); startEditEvent(e); }}
+                                    disabled={isSubmitting || locked}
+                                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
+                                    className="rounded-full p-1.5 text-white/50 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={(ev) => { ev.stopPropagation(); setEventToDelete(e.id); }}
+                                    disabled={locked}
+                                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
+                                    className="rounded-full p-1.5 text-white/50 transition hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+                                  >
+                                    <Archive className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {rel && <p className={`mt-0.5 text-xs font-semibold ${meta.text}`}>{rel}</p>}
+
+                              <p className="mt-2.5 flex items-center gap-2 text-sm text-white/55">
+                                <MapPin className="h-3.5 w-3.5 shrink-0 text-gold-300" />
+                                <span className="truncate">{highlightText(tc(e.location, language as any), eventSearch)}</span>
+                              </p>
+                              <p className="mt-1 flex items-center gap-2 text-sm text-white/55">
+                                <Clock className="h-3.5 w-3.5 shrink-0 text-gold-300" />
+                                <span className="truncate">
+                                  {(e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || "")} · {formatTime12Hour(e.startTime)}{e.endTime ? ` – ${formatTime12Hour(e.endTime)}` : ""}
+                                </span>
+                              </p>
+
+                              <div className="mt-3.5 flex items-center justify-between gap-2 border-t border-white/10 pt-3.5 text-[13px] text-white/50">
+                                <span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4" /> {signedIn} {t("attendeesCountLabel")}</span>
+                                <span className="truncate font-medium" title={getCoverageLabel(e)}>{getCoverageLabel(e)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           )}
           </div>
@@ -2041,7 +2458,7 @@ export function EventsView({
           watermark, same title/back link treatment, same section header
           and input styling, same full-width Save button inside -- only the
           outer positioning/animation changed. Same fields, same handlers. */}
-      {formOpen && (
+      {formOpen && createPortal(
         <>
           <style>{`
             @keyframes eventFormSlideIn {
@@ -2050,16 +2467,17 @@ export function EventsView({
             }
             .event-form-slide-in { animation: eventFormSlideIn 280ms ease-out; }
           `}</style>
-          <div className="fixed inset-0 bg-black/80 z-40" onClick={closeEventModal} />
+          <SlideOutGhost />
+          <div className="fixed inset-0 bg-black/80 z-50" onClick={closeEventModal} />
           <div className="resident-form-panel event-form-slide-in fixed inset-y-0 right-0 z-50 w-full sm:w-1/2 bg-[#0A0E1A] border-l border-white/10 shadow-2xl overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
             aria-hidden="true"
-            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-20"
+            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-[0.06]"
           />
 
-          <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
+          <div className="relative z-10 mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 pb-0 pt-10 sm:px-12 sm:pt-14">
             <button
               type="button"
               onClick={closeEventModal}
@@ -2076,7 +2494,7 @@ export function EventsView({
               {editingEvent ? t("editEventModalSubtitle") : t("newEventModalSubtitle")}
             </p>
 
-            <form onSubmit={handleSaveEvent} noValidate className="mt-10 space-y-10">
+            <form onSubmit={handleSaveEvent} noValidate className="mt-10 flex flex-1 flex-col space-y-10">
               <section>
                 <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
                   {t("eventDetailsLabel")}
@@ -2283,7 +2701,8 @@ export function EventsView({
                 </div>
               </section>
 
-              <div className="pt-2 pb-4">
+              <div className="!mt-auto" />
+              <div className="sticky bottom-0 z-10 -mx-6 border-t border-white/10 bg-[#0A0E1A] px-6 py-4 sm:-mx-12 sm:px-12">
                 <button
                   type="submit"
                   disabled={isSubmitting || isEventFormUnchanged}
@@ -2307,8 +2726,8 @@ export function EventsView({
             </form>
           </div>
           </div>
-        </>
-      )}
+        </>,
+      document.body)}
 
       <ConfirmDialog
         open={showSaveConfirm}
@@ -2364,6 +2783,81 @@ export function EventsView({
         onClose={() => setDeleteErrorMessage(null)}
         z={9999}
       />
+      {invPhoto && createPortal(
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10001] px-4"
+          onClick={() => setInvPhoto(null)}
+        >
+          <div
+            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] text-[11px] font-bold uppercase tracking-wide px-3 py-1 shrink-0">
+                  <Eye className="h-3 w-3" />
+                  {t("viewPhotoLabel")}
+                </span>
+                <span className="text-sm font-medium text-white truncate">{invPhoto.name}</span>
+              </div>
+              <button onClick={() => setInvPhoto(null)} className="text-white/50 hover:text-white p-1 shrink-0">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="relative flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
+              <img src={invPhoto.url} alt={invPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-2xl" />
+              {invPhoto.urls.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => stepInvPhoto(-1)}
+                    aria-label="Previous photo"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => stepInvPhoto(1)}
+                    aria-label="Next photo"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/80">
+                    {Math.max(0, invPhoto.urls.indexOf(invPhoto.url)) + 1} / {invPhoto.urls.length}
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
+              {invPhoto.urls.length > 1 ? (
+                <div className="flex items-center gap-2">
+                  {invPhoto.urls.map((u, i) => (
+                    <button
+                      key={u + i}
+                      type="button"
+                      onClick={() => setInvPhoto({ ...invPhoto, url: u })}
+                      className={`h-10 w-10 overflow-hidden rounded-lg border transition ${u === invPhoto.url ? "border-[#7DD8CB]" : "border-white/20 opacity-60 hover:opacity-100"}`}
+                    >
+                      <img src={u} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <span />
+              )}
+              <button
+                onClick={() => setInvPhoto(null)}
+                className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold transition"
+              >
+                {t("closeLabel")}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

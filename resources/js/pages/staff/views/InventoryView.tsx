@@ -1,10 +1,13 @@
 import { scrollListIntoView } from "../../../lib/scrollToList";
+import SaveButton from "../../../components/ui/SaveButton";
+import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FormSelect from "../../../components/ui/FormSelect";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter, ChevronLeft, ChevronRight } from "lucide-react";
-import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
+import QuickTabs from "../../../components/ui/QuickTabs";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import NumberStepper from "../../../components/ui/NumberStepper";
@@ -140,7 +143,10 @@ export default function InventoryView() {
   // this list paginates client-side so there's nothing to actually wait
   // on, but the flash keeps page switches feeling consistent app-wide.
   const [pageSwitchingRaw, setPageSwitching] = useState(false);
-  const filterSwitching = useFilterSwitching([search, conditionFilter]);
+  type InvTab = "all" | "on-loan" | "low" | "lost-pending" | "attention";
+  const [invTab, setInvTab] = useState<InvTab>("all");
+  const [sortKey, setSortKey] = useState("name-az");
+  const filterSwitching = useFilterSwitching([search, conditionFilter, invTab, sortKey]);
   const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listTopRef = useRef<HTMLSpanElement | null>(null);
@@ -258,10 +264,40 @@ export default function InventoryView() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, conditionFilter, items.length]);
+  }, [search, conditionFilter, invTab, sortKey, items.length]);
 
-  const totalPages = Math.max(1, Math.ceil(items.length / itemsPerPage));
-  const paginatedItems = items.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  // Quick tabs + sort run on top of the server's search/condition result.
+  // "Low stock" = 3 or fewer units still in stock (there is no reorder level
+  // on an item, so this is the one place the threshold lives).
+  const LOW_STOCK_AT = 3;
+  const isAttention = (i: InventoryItem) =>
+    !!i.overdue_borrow_event || Number(i.poor_quantity) > 0 || (Number(i.quantity) === 0 && i.condition === "Poor") || (i.lost_quantity ?? 0) > 0;
+  const tabTests: Record<InvTab, (i: InventoryItem) => boolean> = {
+    all: () => true,
+    "on-loan": (i) => i.borrowed_quantity > 0,
+    low: (i) => Number(i.quantity) <= LOW_STOCK_AT,
+    "lost-pending": (i) => (i.lost_pending ?? 0) > 0,
+    attention: isAttention,
+  };
+  const tabCount = (k: InvTab) => items.filter(tabTests[k]).length;
+  const viewItems = useMemo(() => {
+    const r = items.filter(tabTests[invTab]);
+    switch (sortKey) {
+      case "name-za": return [...r].sort((a, b) => b.name.localeCompare(a.name));
+      case "qty-high": return [...r].sort((a, b) => Number(b.quantity) - Number(a.quantity) || a.name.localeCompare(b.name));
+      case "qty-low": return [...r].sort((a, b) => Number(a.quantity) - Number(b.quantity) || a.name.localeCompare(b.name));
+      case "recent": return [...r].sort((a, b) => b.id - a.id);
+      default: return [...r].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, invTab, sortKey]);
+  const tabLabels: Record<InvTab, string> = {
+    all: t("tabAll"), "on-loan": t("tabOnLoan"), low: t("tabLowStock"), "lost-pending": t("tabLostPending"), attention: t("tabNeedsAttention"),
+  };
+  const invTabChips: ExtraChip[] = invTab === "all" ? [] : [{ key: "tab", label: tabLabels[invTab], onRemove: () => setInvTab("all") }];
+
+  const totalPages = Math.max(1, Math.ceil(viewItems.length / itemsPerPage));
+  const paginatedItems = viewItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Nothing to submit if editing an item and the form still matches its
   // original values -- keeps a no-op "Update Item" click (and its own
@@ -521,44 +557,37 @@ export default function InventoryView() {
         ))}
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("searchInventoryPlaceholder")}
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                aria-label="Clear search"
-                title="Clear"
-                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
-              >
-                {t("clearLabel")}
-              </button>
-            )}
-          </div>
-          <FilterDropdown
-            value={conditionFilter}
-            onChange={setConditionFilter}
-            options={[
+      <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+        <QuickTabs
+          value={invTab}
+          onChange={(k) => setInvTab(k as InvTab)}
+          tabs={([
+            ["all", false], ["on-loan", false], ["low", true], ["lost-pending", true], ["attention", true],
+          ] as [InvTab, boolean][]).map(([k, alert]) => ({ key: k, label: tabLabels[k], count: tabCount(k), alert }))}
+        />
+        <FilterBar
+          search={{ value: search, onChange: setSearch, placeholder: t("searchInventoryPlaceholder") }}
+          filters={[{
+            key: "condition", label: t("conditionColumn"), value: conditionFilter, defaultValue: "", onChange: setConditionFilter,
+            options: [
               { value: "", label: t("allConditions") },
-              ...(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as ConditionFilter[]).map((c) => ({
-                value: c,
-                label: t(CONDITION_LABEL_KEYS[c]),
-              })),
-            ]}
-            className="h-11 pl-10 pr-8 shrink-0"
-            icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-            dark
-          />
-        </div>
+              ...(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as ConditionFilter[]).map((c) => ({ value: c, label: t(CONDITION_LABEL_KEYS[c]) })),
+            ],
+          }]}
+          sort={{
+            value: sortKey, onChange: setSortKey,
+            options: [
+              { value: "name-az", label: t("sortNameAZ") },
+              { value: "name-za", label: t("sortNameZA") },
+              { value: "qty-high", label: t("sortQtyHigh") },
+              { value: "qty-low", label: t("sortQtyLow") },
+              { value: "recent", label: t("sortRecentlyAdded") },
+            ],
+          }}
+          count={{ shown: viewItems.length, total: allItems.length || items.length }}
+          extraChips={invTabChips}
+          onClearExtras={() => setInvTab("all")}
+        />
       </div>
 
       <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
@@ -580,10 +609,10 @@ export default function InventoryView() {
             ))}
           </div>
         </div>
-      ) : items.length === 0 ? (
+      ) : viewItems.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
           <Package size={40} className="mx-auto mb-3 text-white/20" />
-          <p>{t("noInventoryItems")}</p>
+          <p>{items.length === 0 && !search && !conditionFilter ? t("noInventoryItems") : t("fltNoMatches")}</p>
         </div>
       ) : (
         <>
@@ -713,7 +742,7 @@ export default function InventoryView() {
           {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton withLabel className="px-4 py-3 border-t border-white/10" /> : (
             <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 py-3 border-t border-white/10">
               <p className="text-sm text-white/45 text-center sm:text-left">
-                {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages} • {loading || pageSwitching ? 0 : items.length} {t("recordsShownLabel")}
+                {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages} • {loading || pageSwitching ? 0 : viewItems.length} {t("recordsShownLabel")}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -746,15 +775,15 @@ export default function InventoryView() {
           Households Edit modal (centered card rather than a full-page
           takeover, since this form is small). */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={handleCloseForm}>
-          <div className="bg-[#0A0E1A] rounded-3xl w-full max-w-3xl p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl sm:text-3xl font-bold text-white">{editing ? t("editItem") : t("addInventoryItem")}</h2>
-              <button onClick={handleCloseForm} className="text-white/50 hover:text-white"><X size={26} /></button>
-            </div>
-            <form onSubmit={handleFormSubmit} noValidate className="space-y-5">
+        <FormDrawer
+          title={editing ? t("editItem") : t("addInventoryItem")}
+          onClose={handleCloseForm}
+          onSubmit={handleFormSubmit}
+          footer={<SaveButton className="w-full" active={hasFormChanges} title={!hasFormChanges ? t("noChangesToSaveHint") : undefined}>{editing ? t("updateItem") : t("addItem")}</SaveButton>}
+        >
+          <FormSection title={t("secItemDetails")} className="space-y-5">
               <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("photoRequiredLabel")}</label>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("photoRequiredLabel")}</label>
                 <PhotoAttachment
                   file={photoItems[0]?.file ?? null}
                   url={photoItems[0]?.url ?? null}
@@ -766,11 +795,13 @@ export default function InventoryView() {
               </div>
 
               <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("itemNameRequired")}</label>
-                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("opsPlaceholderPlasticChairs")} />
+                <label className="block text-base font-semibold text-white mb-1.5">{t("itemNameRequired")}</label>
+                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("opsPlaceholderPlasticChairs")} />
               </div>
+          </FormSection>
+          <FormSection title={t("secStock")} className="space-y-5">
               <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("conditionUnitsLabel")}</label>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("conditionUnitsLabel")}</label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   {CONDITIONS.map((c) => (
                     <div key={c}>
@@ -780,7 +811,7 @@ export default function InventoryView() {
                         fullWidth
                         value={String(form[COUNT_KEY[c]])}
                         onChange={(v) => setForm((p) => ({ ...p, [COUNT_KEY[c]]: Math.max(0, Math.floor(Number(v) || 0)) }))}
-                        className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-4 pr-8 py-3 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                        className="w-full rounded-full border border-white/25 bg-white/10 pl-4 pr-8 py-3 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
                     </div>
                   ))}
                 </div>
@@ -792,39 +823,29 @@ export default function InventoryView() {
                 <div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div>
-                      <label className="block text-base font-semibold text-white mb-2">{t("lostUnitsLabel")}</label>
-                      <NumberStepper min={0} max={maxLost} fullWidth value={String(form.lost_quantity)} onChange={(v) => setForm((p) => ({ ...p, lost_quantity: Math.min(maxLost, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("lostUnitsLabel")}</label>
+                      <NumberStepper min={0} max={maxLost} fullWidth value={String(form.lost_quantity)} onChange={(v) => setForm((p) => ({ ...p, lost_quantity: Math.min(maxLost, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/25 bg-white/10 pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
                     </div>
                     <div>
-                      <label className="block text-base font-semibold text-white mb-2">{t("disposedUnitsLabel")}</label>
-                      <NumberStepper min={0} max={maxDisposed} fullWidth value={String(form.disposed_quantity)} onChange={(v) => setForm((p) => ({ ...p, disposed_quantity: Math.min(maxDisposed, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("disposedUnitsLabel")}</label>
+                      <NumberStepper min={0} max={maxDisposed} fullWidth value={String(form.disposed_quantity)} onChange={(v) => setForm((p) => ({ ...p, disposed_quantity: Math.min(maxDisposed, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/25 bg-white/10 pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
                     </div>
                   </div>
                   <p className="mt-2 text-sm text-white/45">{t("lostUnitsHint")}</p>
                 </div>
               )}
+          </FormSection>
+          <FormSection title={t("secAdditionalInfo")} className="space-y-5">
               <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("storageLocationLabel")}</label>
-                <input value={form.storage_location} onChange={(e) => setForm((p) => ({ ...p, storage_location: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("storageLocationPlaceholder")} />
+                <label className="block text-base font-semibold text-white mb-1.5">{t("storageLocationLabel")}</label>
+                <input value={form.storage_location} onChange={(e) => setForm((p) => ({ ...p, storage_location: e.target.value }))} className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("storageLocationPlaceholder")} />
               </div>
               <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("notesLabel")}</label>
-                <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={3} />
+                <label className="block text-base font-semibold text-white mb-1.5">{t("notesLabel")}</label>
+                <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={3} />
               </div>
-              <div className="flex gap-3 pt-3">
-                <button
-                  type="submit"
-                  disabled={isFormUnchanged}
-                  title={isFormUnchanged ? t("noChangesToSaveHint") : undefined}
-                  className="flex-1 py-3.5 text-base rounded-full font-bold bg-sage-700 hover:bg-sage-800 text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-700 transition"
-                >
-                  {editing ? t("updateItem") : t("addItem")}
-                </button>
-                <button type="button" onClick={handleCloseForm} className="px-8 py-3.5 text-base rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("cancelLabel")}</button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </FormSection>
+        </FormDrawer>
       )}
 
       {/* Unsaved-changes guard for the Add/Edit Item modal */}

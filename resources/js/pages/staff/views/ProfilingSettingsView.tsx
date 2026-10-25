@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import SaveButton from "../../../components/ui/SaveButton";
 import { Users2, Heart, Tag, Plus, Pencil, Trash2 } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
@@ -604,7 +605,7 @@ export default function ProfilingSettingsView() {
                     value={bracketForm.label}
                     onChange={(e) => setBracketForm((p) => ({ ...p, label: e.target.value }))}
                     placeholder={t("bracketLabelPlaceholder")}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                    className="rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                     required
                   />
                   {/* Our own stepper instead of the browser's native
@@ -635,9 +636,7 @@ export default function ProfilingSettingsView() {
                       {t("cancelLabel")}
                     </button>
                   )}
-                  <button type="submit" disabled={savingBracket || isBracketFormUnchanged} title={isBracketFormUnchanged ? t("noChangesToSaveHint") : undefined} className="inline-flex items-center gap-2 bg-sage-700 hover:bg-sage-800 text-white px-5 py-2.5 rounded-full text-[15px] font-bold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-700 transition">
-                    <Plus className="h-4 w-4" /> {bracketForm.id ? t("saveChanges") : t("addAgeBracketLabel")}
-                  </button>
+                  <SaveButton size="sm" className="whitespace-nowrap" active={!(savingBracket || isBracketFormUnchanged)} title={isBracketFormUnchanged ? t("noChangesToSaveHint") : undefined}>{bracketForm.id ? t("saveChanges") : t("addAgeBracketLabel")}</SaveButton>
                 </div>
               </form>
             </>
@@ -717,7 +716,7 @@ export default function ProfilingSettingsView() {
                     value={statusForm.label}
                     onChange={(e) => setStatusForm((p) => ({ ...p, label: e.target.value }))}
                     placeholder={t("statusLabelPlaceholder")}
-                    className="flex-1 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-gold-400/20 focus:border-gold-400/50"
+                    className="flex-1 rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-gold-400/20 focus:border-gold-400/50"
                     required
                   />
                   <div className="flex gap-2 justify-end">
@@ -726,9 +725,7 @@ export default function ProfilingSettingsView() {
                         {t("cancelLabel")}
                       </button>
                     )}
-                    <button type="submit" disabled={savingStatus || isStatusFormUnchanged} title={isStatusFormUnchanged ? t("noChangesToSaveHint") : undefined} className="inline-flex items-center gap-2 bg-sage-700 hover:bg-sage-800 text-white px-5 py-2.5 rounded-full text-[15px] font-bold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-700 transition whitespace-nowrap">
-                      <Plus className="h-4 w-4" /> {statusForm.id ? t("saveChanges") : t("addCivilStatusLabel")}
-                    </button>
+                    <SaveButton size="sm" className="whitespace-nowrap" active={!(savingStatus || isStatusFormUnchanged)} title={isStatusFormUnchanged ? t("noChangesToSaveHint") : undefined}>{statusForm.id ? t("saveChanges") : t("addCivilStatusLabel")}</SaveButton>
                   </div>
                 </div>
               </form>
@@ -809,7 +806,7 @@ export default function ProfilingSettingsView() {
                     value={currentStatusForm.label}
                     onChange={(e) => setCurrentStatusForm((p) => ({ ...p, label: e.target.value }))}
                     placeholder={t("currentStatusLabelPlaceholder")}
-                    className="flex-1 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-400/20 focus:border-sage-400/50"
+                    className="flex-1 rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-400/20 focus:border-sage-400/50"
                     required
                   />
                   <div className="flex gap-2 justify-end">
@@ -818,9 +815,7 @@ export default function ProfilingSettingsView() {
                         {t("cancelLabel")}
                       </button>
                     )}
-                    <button type="submit" disabled={savingCurrentStatus || isCurrentStatusFormUnchanged} title={isCurrentStatusFormUnchanged ? t("noChangesToSaveHint") : undefined} className="inline-flex items-center gap-2 bg-sage-700 hover:bg-sage-800 text-white px-5 py-2.5 rounded-full text-[15px] font-bold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-700 transition whitespace-nowrap">
-                      <Plus className="h-4 w-4" /> {currentStatusForm.id ? t("saveChanges") : t("addCurrentStatusLabel")}
-                    </button>
+                    <SaveButton size="sm" className="whitespace-nowrap" active={!(savingCurrentStatus || isCurrentStatusFormUnchanged)} title={isCurrentStatusFormUnchanged ? t("noChangesToSaveHint") : undefined}>{currentStatusForm.id ? t("saveChanges") : t("addCurrentStatusLabel")}</SaveButton>
                   </div>
                 </div>
               </form>
@@ -866,7 +861,7 @@ export default function ProfilingSettingsView() {
         />
 
         {pendingDelete && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
             <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
               <div className="mb-4 text-red-400 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
               <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>

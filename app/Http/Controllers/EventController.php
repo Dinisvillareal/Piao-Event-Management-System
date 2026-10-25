@@ -204,6 +204,7 @@ class EventController extends Controller
         if ($effectiveRole === 'Staff') {
             // Staff portal: show all active events (exclude soft-deleted)
             $events = Event::withoutTrashed()->with('borrowedItems.inventoryItem')->orderByDesc('event_start')->get();
+            $this->attachInventoryCounts($events);
         } else {
             // Resident mode: filter by user's memberships (exclude soft-deleted)
             $residentMembershipIds = DB::table('membership_residents')
@@ -226,6 +227,46 @@ class EventController extends Controller
         }
 
         return response()->json(['data' => $events]);
+    }
+
+    /**
+     * Gives each event `inventory_items_count` -- how many different items it
+     * took from Inventory (still out or already returned) -- in one query, so
+     * the event page's Inventory tab can show its count right away.
+     */
+    private function attachInventoryCounts($events): void
+    {
+        $ids = $events->pluck('id')->all();
+        if (!$ids) {
+            return;
+        }
+
+        $borrowed = DB::table('event_inventory_items')->whereIn('event_id', $ids)->select('event_id', 'inventory_item_id');
+        $returned = DB::table('event_inventory_releases')->whereIn('event_id', $ids)->whereNull('undone_at')->select('event_id', 'inventory_item_id');
+
+        $counts = DB::query()->fromSub($borrowed->union($returned), 'u')
+            ->select('event_id', DB::raw('COUNT(DISTINCT inventory_item_id) as c'))
+            ->groupBy('event_id')
+            ->pluck('c', 'event_id');
+
+        $attendances = DB::table('attendances')->whereIn('event_id', $ids)
+            ->select('event_id', DB::raw('COUNT(*) as c'))
+            ->groupBy('event_id')
+            ->pluck('c', 'event_id');
+
+        // Feedback + non-attendance reasons per event, so the staff Events list
+        // can offer a "Has feedback" quick tab without loading every event.
+        $feedbackCounts = DB::table('feedback')->whereIn('event_id', $ids)
+            ->select('event_id', DB::raw('COUNT(*) as c'))->groupBy('event_id')->pluck('c', 'event_id');
+        $absenceCounts = DB::table('absence_reasons')->whereIn('event_id', $ids)
+            ->select('event_id', DB::raw('COUNT(*) as c'))->groupBy('event_id')->pluck('c', 'event_id');
+
+        foreach ($events as $event) {
+            $event->setAttribute('feedback_count', (int) ($feedbackCounts[$event->id] ?? 0) + (int) ($absenceCounts[$event->id] ?? 0));
+            $event->setAttribute('inventory_items_count', (int) ($counts[$event->id] ?? 0));
+            // Known up front so the Attendance tab's count doesn't start at 0.
+            $event->setAttribute('attendances_count', (int) ($attendances[$event->id] ?? 0));
+        }
     }
 
     public function list()
@@ -598,14 +639,19 @@ class EventController extends Controller
             $event->delete();
 
             // ✅ Step 2: Update notifications to show event was cancelled
-            Notification::where('event_id', $id)->update([
-                'type' => 'event_deleted',
-                'title' => '❌ Event Cancelled: ' . $eventName,
-                'message' => 'We apologize for the inconvenience. This event has been cancelled.',
-                'is_updated' => true,
-                'read' => false,
-                'updated_at' => now(),
-            ]);
+            // Only the members' announcements -- staff alerts and staff replies
+            // keep their own type.
+            Notification::where('event_id', $id)
+                ->whereIn('type', ['event_announcement', 'event_updated'])
+                ->update([
+                    'type' => 'event_deleted',
+                    'title' => '❌ Event Cancelled: ' . $eventName,
+                    'message' => 'We apologize for the inconvenience. This event has been cancelled.',
+                    'is_updated' => true,
+                    'read' => false,
+                    'updated_at_notification' => now(),
+                    'updated_at' => now(),
+                ]);
 
             // ✅ Step 3: Log the archive action
             $this->createLog('Archive Event', 'Events', "Archived event: {$eventName}");
@@ -659,6 +705,10 @@ class EventController extends Controller
     // ✅ NEW: Force delete (permanent) - for admin only
     public function forceDelete($id)
     {
+        // Permanent deletion is switched off for everyone, Head Staff included.
+        return response()->json(['message' => 'Permanent deletion is disabled. Events are archived and kept.'], 403);
+
+        // --- previous implementation, intentionally unreachable ---
         // Only Staff permanently delete events -- same reasoning as store()
         // above, but higher stakes: this wipes the event and its
         // notifications/attendance/inventory records with no recovery.
@@ -750,8 +800,11 @@ class EventController extends Controller
 
         foreach ($userIds as $userId) {
             if ($isUpdate) {
+                // Only the event's own announcement is re-used -- never a staff
+                // reply / heart the member received about their feedback.
                 $notification = Notification::where('user_id', $userId)
                     ->where('event_id', $event->id)
+                    ->whereIn('type', ['event_announcement', 'event_updated'])
                     ->first();
 
                 if ($notification) {
@@ -932,6 +985,82 @@ class EventController extends Controller
             ->values();
 
         return response()->json($events);
+    }
+
+    /**
+     * Everything this event took from Inventory, for the event's Inventory
+     * tab: per item, how many units (by condition) are still out, how many
+     * came back (and in what condition), plus each return on record.
+     */
+    public function eventInventory($id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $event = Event::withoutTrashed()->findOrFail($id);
+
+        $labels = array_keys(InventoryItem::CONDITION_COLUMNS);
+        $zero = array_fill_keys($labels, 0);
+
+        $out = $event->borrowedItems()->with('inventoryItem')->get();
+        $releases = EventInventoryRelease::where('event_id', $event->id)
+            ->whereNull('undone_at')
+            ->with('inventoryItem')
+            ->orderBy('created_at')
+            ->get();
+
+        $items = [];
+        $touch = function ($itemId, $name, $photo = null) use (&$items, $zero) {
+            return $items[$itemId] ??= [
+                'inventory_item_id' => $itemId,
+                'name' => $name ?? 'Unknown item',
+                'photo_url' => $photo,
+                'out' => 0, 'out_units' => $zero,
+                'returned' => 0, 'returned_units' => $zero,
+            ];
+        };
+
+        foreach ($out as $b) {
+            $row = $touch($b->inventory_item_id, $b->inventoryItem->name ?? null, $b->inventoryItem->photo_url ?? null);
+            $units = $b->resolvedUnits($b->inventoryItem->condition ?? 'Good');
+            $row['out'] += $b->quantity;
+            foreach ($units as $label => $n) {
+                $row['out_units'][$label] += $n;
+            }
+            $items[$b->inventory_item_id] = $row;
+        }
+
+        foreach ($releases as $r) {
+            $row = $touch($r->inventory_item_id, $r->inventoryItem->name ?? null, $r->inventoryItem->photo_url ?? null);
+            $units = $r->resolvedUnits($r->inventoryItem->condition ?? 'Good');
+            $row['returned'] += $r->quantity;
+            foreach ($units as $label => $n) {
+                $row['returned_units'][$label] += $n;
+            }
+            $items[$r->inventory_item_id] = $row;
+        }
+
+        $items = collect($items)->map(function ($row) {
+            $row['total'] = $row['out'] + $row['returned'];
+            $row['status'] = $row['out'] === 0 ? 'returned' : ($row['returned'] > 0 ? 'partial' : 'borrowed');
+
+            return $row;
+        })->sortBy('name')->values();
+
+        return response()->json([
+            'items' => $items,
+            'returns' => $releases->map(fn ($r) => [
+                'id' => $r->id,
+                'name' => $r->inventoryItem->name ?? 'Unknown item',
+                'quantity' => $r->quantity,
+                'units' => $r->resolvedUnits($r->inventoryItem->condition ?? 'Good'),
+                'released_by' => $r->released_by,
+                'released_at' => $r->created_at,
+                'photo_url' => $r->inventoryItem->photo_url ?? null,
+                'evidence_photo_urls' => $r->evidence_photo_urls,
+            ])->reverse()->values(),
+        ]);
     }
 
     /**

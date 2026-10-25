@@ -65,4 +65,6 @@ export const residentsTranslations: Dict = {
   resNoPhotoYet: { en: "No photo attached yet", tl: "Wala pang nakalakip na larawan", ceb: "Wala pay gilakip nga hulagway" },
   resChooseFile: { en: "Choose File", tl: "Pumili ng File", ceb: "Pagpili og File" },
   resPhotoHint: { en: "A clear, recent photo used for the resident's ID.", tl: "Malinaw at bagong larawan na gagamitin sa ID ng residente.", ceb: "Klaro ug bag-ong hulagway nga gamiton sa ID sa residente." },
+  resInfoIdentity: { en: "Identity & Contact", tl: "Pagkakakilanlan at Contact", ceb: "Identidad ug Contact" },
+  resInfoHome: { en: "Home & Account", tl: "Tahanan at Account", ceb: "Panimalay ug Account" },
 };

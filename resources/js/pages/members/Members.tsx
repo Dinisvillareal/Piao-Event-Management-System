@@ -39,7 +39,7 @@ const PAGE_HEADINGS: Record<string, [string, string]> = {
 //   const [userMemberships, setUserMemberships] = useState<any[]>([]);
 //   const [userMembershipsCount, setUserMembershipsCount] = useState(0);
 //   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
-//   const [myFeedback, setMyFeedback] = useState<{ id: number; event_id: number; rating: number; comment: string | null }[]>([]);
+//   const [myFeedback, setMyFeedback] = useState<{ id: number; event_id: number; rating: number; comment: string | null; staff_liked_at?: string | null; staff_reply?: string | null; staff_replied_at?: string | null }[]>([]);
 //   const [attended, setAttended] = useState(0);
 //   const [missed, setMissed] = useState(0);
 //   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
@@ -471,6 +471,8 @@ import QRCodesView from "./views/QRCodesView";
 import AttendanceView, { AttendanceRecord } from "./views/AttendanceView";
 import NotificationsView from "./views/NotificationsView";
 import EventsView from "./views/EventsView";
+import MemberReplyAlerts from "../../components/ui/MemberReplyAlerts";
+import type { AbsenceEntry } from "./views/EventsView";
 import OfflineBanner from "../../components/ui/OfflineBanner";
 import FeedbackPrompt from "../../components/ui/FeedbackPrompt";
 import Skeleton from "../../components/ui/Skeleton";
@@ -497,7 +499,11 @@ export default function MemberDashboard() {
   const [userMemberships, setUserMemberships] = useState<any[]>([]);
   const [userMembershipsCount, setUserMembershipsCount] = useState(0);
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
-  const [myFeedback, setMyFeedback] = useState<{ id: number; event_id: number; rating: number; comment: string | null }[]>([]);
+  const [myFeedback, setMyFeedback] = useState<{ id: number; event_id: number; rating: number; comment: string | null; staff_liked_at?: string | null; staff_reply?: string | null; staff_replied_at?: string | null; edit_until?: number }[]>([]);
+  const [myAbsences, setMyAbsences] = useState<AbsenceEntry[]>([]);
+  const [focusEventId, setFocusEventId] = useState<number | null>(null);
+  const [feedbackRules, setFeedbackRules] = useState({ close_after_hours: 12, edit_window_minutes: 30 });
+  const [replyUnread, setReplyUnread] = useState(0);
   const [attended, setAttended] = useState(0);
   const [missed, setMissed] = useState(0);
   // Missed = no sign-in for an event that has already ENDED (upcoming / ongoing events don't count).
@@ -726,10 +732,34 @@ export default function MemberDashboard() {
 
   useEffect(() => {
     if (!member.id) return;
-    api.get('/feedback/mine')
-      .then((res) => setMyFeedback(Array.isArray(res.data) ? res.data : []))
-      .catch((err) => console.error('Failed to fetch my feedback:', err));
-  }, [member.id]);
+    // Re-read whenever the Events page is opened or staff respond, so a heart or reply shows up.
+    const load = () => {
+      api.get('/feedback/mine')
+        .then((res) => setMyFeedback(Array.isArray(res.data) ? res.data.map((f: any) => ({ ...f, edit_until: Date.now() + (Number(f.edit_seconds_left) || 0) * 1000 })) : []))
+        .catch((err) => console.error('Failed to fetch my feedback:', err));
+      api.get('/feedback/absence/mine')
+        .then((res) => setMyAbsences(Array.isArray(res.data) ? res.data.map((r: any) => ({ ...r, edit_until: Date.now() + (Number(r.edit_seconds_left) || 0) * 1000 })) : []))
+        .catch((err) => console.error('Failed to fetch my absence reasons:', err));
+      api.get('/settings/feedback-rules')
+        .then((res) => { if (res.data?.close_after_hours) setFeedbackRules(res.data); })
+        .catch(() => {});
+    };
+    load();
+    window.addEventListener("member:feedback-responded", load);
+    return () => window.removeEventListener("member:feedback-responded", load);
+  }, [member.id, active === "events"]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Other parts of the portal (e.g. a notification card) ask to jump to a page.
+  useEffect(() => {
+    const go = (e: Event) => {
+      const page = (e as CustomEvent).detail?.page;
+      const eventId = (e as CustomEvent).detail?.eventId;
+      if (page === "events" && typeof eventId === "number") setFocusEventId(eventId);
+      if (typeof page === "string") setActiveRef.current(page);
+    };
+    window.addEventListener("member:open-page", go);
+    return () => window.removeEventListener("member:open-page", go);
+  }, []);
 
   // Data pages (Dashboard / Attendance / Events) read from state that is kept
   // in this component, so re-opening them would otherwise appear instantly with
@@ -749,6 +779,9 @@ export default function MemberDashboard() {
     }
     setActiveState(page);
   };
+  // Listeners registered once always call the latest version.
+  const setActiveRef = useRef(setActive);
+  setActiveRef.current = setActive;
 
   const highlightText = (text: string, query: string) => {
     if (!query.trim()) return text;
@@ -771,13 +804,14 @@ export default function MemberDashboard() {
           onCloseMobile={() => setMobileSidebarOpen(false)}
           userName={member.name}
           userRole="Member"
-          badges={{ notify: unreadNotificationCount }}
+          badges={{ notify: unreadNotificationCount, events: replyUnread }}
         />
 
         <main className="flex-1 min-w-0 flex flex-col">
-          <TopHeader memberName={member.name} onMenuClick={() => setMobileSidebarOpen(true)} userId={member.id} />
+          <TopHeader memberName={member.name} onMenuClick={() => setMobileSidebarOpen(true)} userId={member.id} onNavigate={setActive} />
           <OfflineBanner />
           <FeedbackPrompt />
+          <MemberReplyAlerts active={active} onOpenEvents={(eventId) => { if (typeof eventId === "number") setFocusEventId(eventId); setActive("events"); }} onOpenNotifications={() => setActive("notify")} onUnreadChange={setReplyUnread} />
 
           {/* ================================================================
               THE ACTUAL FIX:
@@ -851,6 +885,14 @@ export default function MemberDashboard() {
                   userMemberships={userMemberships}
                   attendanceRecords={attendanceRecords}
                   myFeedback={myFeedback}
+                  myAbsences={myAbsences}
+                  focusEventId={focusEventId}
+                  member={member}
+                  onFocusHandled={() => setFocusEventId(null)}
+                  feedbackRules={feedbackRules}
+                  onAbsenceSubmitted={(entry) =>
+                    setMyAbsences((prev) => [...prev.filter((r) => r.event_id !== entry.event_id), entry])
+                  }
                   onFeedbackSubmitted={(entry) =>
                     setMyFeedback((prev) => {
                       const rest = prev.filter((f) => f.event_id !== entry.event_id);

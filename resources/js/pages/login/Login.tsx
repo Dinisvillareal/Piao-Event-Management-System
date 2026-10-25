@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { ArrowRight, Copy, LayoutDashboard, Users, CheckCircle, LogOut } from "lucide-react";
+import ForgotPasswordModal from "../../components/auth/ForgotPasswordModal";
+import { ArrowRight, Copy, LayoutDashboard, Users, CheckCircle, LogOut, AlertCircle, Info } from "lucide-react";
 import StatusModal from "../../components/ui/StatusModal";
 import SplashScreen from "../../components/ui/SplashScreen";
 import { useLanguage } from "../../i18n/LanguageContext";
@@ -236,9 +237,28 @@ export default function LoginPage() {
   useThemeScope();
   const [showContact, setShowContact] = useState(false);
   const [error, setError] = useState("");
+  // What kind of message the banner shows: a sign-in failure (red) or a plain
+  // notice such as "you were signed out" (neutral). `credsWrong` also flags the
+  // username/password inputs; `fieldErr` is for left-empty fields.
+  const [errorKind, setErrorKind] = useState<"error" | "notice">("error");
+  const [errorTitle, setErrorTitle] = useState("");
+  const [credsWrong, setCredsWrong] = useState<"username" | "password" | null>(null);
+  const [fieldErr, setFieldErr] = useState<{ username?: string; password?: string }>({});
+  const clearErrors = () => { setError(""); setErrorTitle(""); setCredsWrong(null); setFieldErr({}); };
   const [isLoading, setIsLoading] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Two-step login: asked for only after the password was right and the account has an authenticator.
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+
+  // A notice left by the app when it signed the person out (inactivity, suspension...).
+  useEffect(() => {
+    try {
+      const notice = sessionStorage.getItem("login_notice");
+      if (notice) { sessionStorage.removeItem("login_notice"); setErrorKind("notice"); setErrorTitle(t("loginNoticeTitle")); setError(notice); }
+    } catch { /* ignore */ }
+  }, []);
 
   const [showPortalModal, setShowPortalModal] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState<any>(null);
@@ -263,14 +283,18 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError("");
+    clearErrors();
+    setErrorKind("error");
 
     const form = e.currentTarget;
     const username = (form.elements.namedItem("username") as HTMLInputElement).value;
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
     if (!username.trim() || !password.trim()) {
-      setError(t("loginErrEnterBoth"));
+      setFieldErr({
+        username: username.trim() ? undefined : t("loginErrEnterUsername"),
+        password: password.trim() ? undefined : t("loginErrEnterPassword"),
+      });
       return;
     }
 
@@ -294,6 +318,7 @@ export default function LoginPage() {
           username,
           password,
           remember_me: keepSignedIn,
+          ...(otpRequired && { otp: ((form.elements.namedItem("otp") as HTMLInputElement | null)?.value ?? "").trim() }),
         }),
       });
 
@@ -325,14 +350,43 @@ export default function LoginPage() {
         }
         window.location.href = "/member/dashboard";
       } else {
-        if (response.status === 401) {
+        if (response.status === 401 && data.two_factor_required) {
+          // Password was right -- now ask for the authenticator code.
+          // (Only a wrong code is an error; the first ask is just the next step.)
+          if (otpRequired) { setErrorTitle(t("loginErrCodeTitle")); setError(data.message || ""); }
+          setOtpRequired(true);
+          const otpInput = form.elements.namedItem("otp") as HTMLInputElement | null;
+          if (otpInput) otpInput.value = "";
+          return;
+        } else if (response.status === 401) {
           if (data.message && data.message.includes("deleted")) {
             setShowAccountDeletedModal(true);
             return;
           }
-          setError(data.message || t("loginErrInvalid"));
+          const codeKey: Record<string, string> = {
+            username_not_found: "loginErrUserNotFound",
+            no_portal_account: "loginErrNoPortalAccount",
+            account_suspended: "loginErrSuspended",
+            wrong_password: "loginErrWrongPassword",
+          };
+          if (data.field === "username" || data.field === "password") {
+            // Specific message right under the field that needs fixing.
+            setCredsWrong(data.field);
+            const msg = codeKey[data.code] ? t(codeKey[data.code]) : (data.message || t("loginErrInvalidClear"));
+            setFieldErr({ [data.field]: msg });
+          } else if (!data.message || data.message === "Invalid credentials") {
+            setCredsWrong("username");
+            setErrorTitle(t("loginErrInvalidTitle"));
+            setError(t("loginErrInvalidClear"));
+          } else {
+            setErrorTitle(t("loginSignInFailed"));
+            setError(data.message);
+          }
         } else if (response.status === 419) {
           setError(t("loginErrSessionExpired"));
+        } else if (response.status === 429 && data.code === "too_many_attempts") {
+          setErrorTitle(t("loginErrLockedTitle"));
+          setError(t("loginErrLockedBody"));
         } else if (response.status === 429) {
           const retryAfter = parseInt(response.headers.get("Retry-After") || "", 10);
           setError(
@@ -368,10 +422,8 @@ export default function LoginPage() {
     } else {
       sessionStorage.setItem("portalMode", "staff");
     }
-    setPortalTransitionVisible(true);
-    setTimeout(() => {
-      window.location.href = "/";
-    }, PORTAL_TRANSITION_MS);
+    // No second splash here: the app's own splash plays once after this reload.
+    window.location.href = "/";
   };
 
   const handleGoToMember = () => {
@@ -381,10 +433,8 @@ export default function LoginPage() {
     } else {
       sessionStorage.setItem("portalMode", "member");
     }
-    setPortalTransitionVisible(true);
-    setTimeout(() => {
-      window.location.href = "/member/dashboard";
-    }, PORTAL_TRANSITION_MS);
+    // No second splash here: the app's own splash plays once after this reload.
+    window.location.href = "/member/dashboard";
   };
 
   const handleLogoutFromPortalSelect = () => {
@@ -438,20 +488,6 @@ export default function LoginPage() {
         message={t("loginAccountDeletedMsg")}
         okLabel={t("okLabel")}
         onClose={() => { setShowAccountDeletedModal(false); window.location.href = "/login"; }}
-      />
-
-      {/* Sign-in error -- was an inline banner above the form fields, now a
-          popup like every other error in the app (invalid credentials,
-          account not activated, session expired, network error, etc), using
-          the same shared dark StatusModal every other screen's errors use
-          (red icon/title, red button) instead of its own bespoke light card. */}
-      <StatusModal
-        open={!!error}
-        type="error"
-        title={t("loginSignInFailed")}
-        message={error}
-        okLabel={t("okLabel")}
-        onClose={() => setError("")}
       />
 
       {showCopiedToast && (
@@ -541,25 +577,35 @@ export default function LoginPage() {
                 <input
                   type="text"
                   name="username"
-                  className="w-full mt-1.5 rounded-xl border border-white/15 bg-white/5 px-4 py-3.5 text-[15px] text-white placeholder-white/30 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-4 focus:ring-[#4FBEB0]/15"
+                  className={`w-full mt-1.5 rounded-xl border bg-white/5 px-4 py-3.5 text-[15px] text-white placeholder-white/30 transition focus:outline-none focus:ring-4 ${
+                    fieldErr.username || credsWrong === "username" ? "border-red-400 focus:border-red-400 focus:ring-red-400/15" : "border-white/15 focus:border-[#4FBEB0] focus:ring-[#4FBEB0]/15"
+                  }`}
                   placeholder="PR-0001"
                   required
                   disabled={isLoading}
+                  aria-invalid={!!(fieldErr.username || credsWrong === "username")}
+                  onInput={() => { if (error || fieldErr.username || credsWrong) clearErrors(); }}
                 />
+                {fieldErr.username && <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium text-red-400"><AlertCircle className="h-4 w-4 shrink-0" />{fieldErr.username}</p>}
               </div>
 
               <div>
                 <div className="flex justify-between items-baseline text-sm">
                   <label className="text-[15px] font-semibold text-white/80">{t("passwordLabel")}</label>
+                  <button type="button" onClick={() => setShowForgot(true)} className="text-[13px] font-semibold text-[#7DD8CB] hover:underline">{t("secForgotLink")}</button>
                 </div>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     name="password"
-                    className="password-field w-full mt-1.5 rounded-xl border border-white/15 bg-white/5 px-4 py-3.5 pr-11 text-[15px] text-white placeholder-white/30 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-4 focus:ring-[#4FBEB0]/15"
+                    className={`password-field w-full mt-1.5 rounded-xl border bg-white/5 px-4 py-3.5 pr-11 text-[15px] text-white placeholder-white/30 transition focus:outline-none focus:ring-4 ${
+                      fieldErr.password || credsWrong === "password" ? "border-red-400 focus:border-red-400 focus:ring-red-400/15" : "border-white/15 focus:border-[#4FBEB0] focus:ring-[#4FBEB0]/15"
+                    }`}
                     placeholder="••••••••"
                     required
                     disabled={isLoading}
+                    aria-invalid={!!(fieldErr.password || credsWrong === "password")}
+                    onInput={() => { if (error || fieldErr.password || credsWrong) clearErrors(); }}
                   />
                   <button
                     type="button"
@@ -582,6 +628,26 @@ export default function LoginPage() {
                 </div>
               </div>
 
+              {fieldErr.password && <p className="-mt-3 flex items-center gap-1.5 text-[13px] font-medium text-red-400"><AlertCircle className="h-4 w-4 shrink-0" />{fieldErr.password}</p>}
+
+              {otpRequired && (
+                <div>
+                  <label className="text-[15px] font-semibold text-white/80">{t("secAuthCodeLabel")}</label>
+                  <input
+                    type="text"
+                    name="otp"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={8}
+                    autoFocus
+                    className="w-full mt-1.5 rounded-xl border border-white/15 bg-white/5 px-4 py-3.5 text-center text-[20px] tracking-[0.4em] text-white placeholder-white/30 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-4 focus:ring-[#4FBEB0]/15"
+                    placeholder="000000"
+                    disabled={isLoading}
+                  />
+                  <p className="mt-1.5 text-[13px] text-white/45">{t("secAuthCodeHint")}</p>
+                </div>
+              )}
+
               <div className="flex items-center gap-2.5 text-sm">
                 <input
                   type="checkbox"
@@ -595,6 +661,24 @@ export default function LoginPage() {
                   {t("loginKeepSignedIn")}
                 </label>
               </div>
+
+              {error && (
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  className={`flex items-start gap-3 rounded-xl border px-4 py-3.5 ${
+                    errorKind === "error" ? "border-red-400/40 bg-red-500/10" : "border-[#4FBEB0]/35 bg-[#4FBEB0]/10"
+                  }`}
+                >
+                  {errorKind === "error"
+                    ? <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
+                    : <Info className="mt-0.5 h-5 w-5 shrink-0 text-[#7DD8CB]" />}
+                  <div className="min-w-0">
+                    <p className={`text-[15px] font-bold ${errorKind === "error" ? "text-red-300" : "text-[#7DD8CB]"}`}>{errorTitle || t("loginSignInFailed")}</p>
+                    <p className="mt-0.5 text-[14px] leading-snug text-white/75">{error}</p>
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit"
@@ -641,6 +725,8 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      {showForgot && <ForgotPasswordModal onClose={() => setShowForgot(false)} />}
 
       {/* Giant watermark band -- a huge faint "PC" (PiaoConnect) outline
           behind a two-line statement, echoing the reference's oversized

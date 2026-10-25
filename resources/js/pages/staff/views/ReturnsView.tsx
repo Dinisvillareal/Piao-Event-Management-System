@@ -1,4 +1,6 @@
 import { scrollListIntoView } from "../../../lib/scrollToList";
+import SaveButton from "../../../components/ui/SaveButton";
+import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
@@ -7,6 +9,7 @@ import { AlertTriangle, Undo2, CheckCircle2, PackageX, X, RotateCcw, Pencil, Sea
 import { createPortal } from "react-dom";
 import api, { apiErrorMessage } from "../../../lib/api";
 import DatePicker from "../../../components/ui/DatePicker";
+import FilterBar from "../../../components/ui/FilterBar";
 import NumberStepper from "../../../components/ui/NumberStepper";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import PhotoGallery, { PhotoItem, photoItemsFromUrls, appendPhotoFields, photoItemsChanged } from "../../../components/ui/PhotoGallery";
@@ -422,7 +425,8 @@ export default function ReturnsView() {
 
   // Nothing is ticked when the dialog opens -- staff choose what to release
   // (or press Select All) so a bulk release is always deliberate.
-  const isItemSelected = (item: OverdueEventItem) => selectedItemIds[item.id] ?? false;
+  // A single-item event is ticked automatically -- there is nothing to choose.
+  const isItemSelected = (item: OverdueEventItem) => selectedItemIds[item.id] ?? (modalEvent?.items.length === 1);
   // Fresh, unticked list every time a release dialog opens or closes.
   useEffect(() => { setSelectedItemIds({}); }, [selectedEventId]);
 
@@ -815,36 +819,19 @@ export default function ReturnsView() {
         })}
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("searchReturnsPlaceholder")}
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                aria-label="Clear search"
-                title="Clear"
-                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
-              >
-                {t("clearLabel")}
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs font-semibold text-white/50 whitespace-nowrap">{t("filterEndedDateLabel")}</span>
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+        <FilterBar
+          search={{ value: search, onChange: setSearch, placeholder: t("searchReturnsPlaceholder") }}
+          extraChips={endedDate ? [{ key: "ended", label: `${t("filterEndedDateLabel").replace(/:\s*$/, "")}: ${new Date(endedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => { setEndedDate(""); goToPage(1); } }] : []}
+          onClearExtras={() => { setEndedDate(""); goToPage(1); }}
+        >
+          <div className="flex shrink-0 items-center gap-2">
+            <span className="whitespace-nowrap text-xs font-semibold text-white/50">{t("filterEndedDateLabel")}</span>
             <div className="h-11">
               <DatePicker value={endedDate} onChange={(v: string) => { setEndedDate(v); goToPage(1); }} className="h-11 px-4" dark />
             </div>
           </div>
-        </div>
+        </FilterBar>
       </div>
 
       {error && (
@@ -859,36 +846,36 @@ export default function ReturnsView() {
         <button
           type="button"
           onClick={() => switchTab("pending")}
-          className={`inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-base font-bold transition ${
+          className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
             activeTab === "pending"
               ? "bg-sage-700 text-white shadow-sm"
               : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
           }`}
         >
-          <PackageX className="h-5 w-5" />
+          <PackageX className="h-[18px] w-[18px]" />
           {t("pendingReturnsTitle")}
           <span
-            className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-2 text-xs font-bold ${
+            className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${
               activeTab === "pending" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
             }`}
           >
             {filteredEvents.length}
           </span>
         </button>
-        <ArrowRight className="h-5 w-5 text-white/25 hidden sm:block" />
+        <ArrowRight className="h-[18px] w-[18px] text-white/25 hidden sm:block" />
         <button
           type="button"
           onClick={() => switchTab("released")}
-          className={`inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-base font-bold transition ${
+          className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
             activeTab === "released"
               ? "bg-sage-700 text-white shadow-sm"
               : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
           }`}
         >
-          <History className="h-5 w-5" />
+          <History className="h-[18px] w-[18px]" />
           {t("recentlyReleasedTitle")}
           <span
-            className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-2 text-xs font-bold ${
+            className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${
               activeTab === "released" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
             }`}
           >
@@ -985,7 +972,7 @@ export default function ReturnsView() {
                         <td className="py-4 px-5 text-right">
                           <button
                             onClick={() => setSelectedEventId(ev.id)}
-                            className="inline-flex items-center gap-2 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-[13px] font-bold uppercase tracking-wide px-5 py-2.5 transition"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.03] px-4 py-2 text-sm font-semibold text-white/70 hover:bg-white/10 hover:text-white transition-colors"
                           >
                             <Undo2 className="h-4 w-4" />
                             {t("reviewLabel")}
@@ -1186,44 +1173,49 @@ export default function ReturnsView() {
           items is this page's main action rather than a peripheral
           confirm/success alert. */}
       {modalEvent && createPortal(
-        <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
-          onClick={() => setSelectedEventId(null)}
+        <FormDrawer
+          z="z-[9999]"
+          title={tc(modalEvent.name, language as any)}
+          subtitle={<span className="text-[#E2A088]">{t("endedOnLabel")} {formatEndedAt(modalEvent.ended_at)}</span>}
+          onClose={() => setSelectedEventId(null)}
+          footer={
+            <div className="space-y-2">
+              <SaveButton
+                type="button"
+                icon={Undo2}
+                className="w-full"
+                onClick={() => setConfirmReleaseAll(true)}
+                active={!(selectedCount === 0 || bulkReleasing || selectedMissingPhoto)}
+              >
+                {bulkReleasing ? t("releasingSelectedLabel") : `${t("releaseSelectedLabel")} (${selectedCount})`}
+              </SaveButton>
+              {selectedCount > 0 && selectedMissingPhoto && (
+                <p className="text-center text-xs text-gold-300/80">{t("releaseEvidenceHint")}</p>
+              )}
+            </div>
+          }
         >
-          <div
-            className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-6 sm:px-8 py-5 border-b border-white/10 flex items-start justify-between gap-3">
+          <FormSection title={t("secItemsToRelease")} className="space-y-4">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">{tc(modalEvent.name, language as any)}</h2>
-                <p className="text-sm text-[#E2A088] mt-1">{t("endedOnLabel")} {formatEndedAt(modalEvent.ended_at)}</p>
+                <p className="text-sm text-white/60">{t("releaseEachItemHint")}</p>
+                <p className="text-sm text-gold-300/80 mt-1">{t("releaseEvidenceHint")}</p>
               </div>
-              <button onClick={() => setSelectedEventId(null)} className="text-white/50 hover:text-white p-1">
-                <X className="h-6 w-6" />
-              </button>
+              {modalEvent.items.length > 1 && (
+                <label className="shrink-0 flex items-center gap-2 text-sm font-semibold text-white/70 hover:text-white cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={allItemsSelected}
+                    onChange={toggleSelectAll}
+                    className="h-5 w-5 rounded border-white/25 bg-white/[0.03] accent-[#4FBEB0]"
+                  />
+                  {t("selectAllLabel")}
+                </label>
+              )}
             </div>
 
-            <div className="p-6 sm:p-8 overflow-y-auto space-y-3">
-              <div className="flex items-center justify-between gap-3 mb-1">
-                <div>
-                  <p className="text-sm text-white/60">{t("releaseEachItemHint")}</p>
-                  <p className="text-sm text-gold-300/80 mt-1">{t("releaseEvidenceHint")}</p>
-                </div>
-                {modalEvent.items.length > 1 && (
-                  <label className="shrink-0 flex items-center gap-2 text-sm text-white/60 hover:text-white/90 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={allItemsSelected}
-                      onChange={toggleSelectAll}
-                      className="h-5 w-5 rounded border-white/25 bg-white/[0.03] accent-[#4FBEB0]"
-                    />
-                    {t("selectAllLabel")}
-                  </label>
-                )}
-              </div>
-              {modalEvent.items.map((it) => (
-                <div key={it.id} className="rounded-2xl bg-white/[0.03] border border-white/10 px-5 py-4">
+            {modalEvent.items.map((it) => (
+              <div key={it.id} className="rounded-2xl border border-white/25 bg-white/10 p-5 space-y-5">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <label className="flex items-center gap-3 min-w-0 cursor-pointer select-none">
                     {/* Unchecked items are simply left out of "Release
@@ -1235,45 +1227,40 @@ export default function ReturnsView() {
                       onChange={() => toggleItemSelected(it)}
                       className="h-5 w-5 shrink-0 rounded border-white/25 bg-white/[0.03] accent-[#4FBEB0]"
                     />
-                    <span className="text-base font-semibold text-white truncate">{it.quantity}&times; {tc(it.name, language as any)}</span>
+                    <span className="text-lg font-bold text-white truncate">{it.quantity}&times; {tc(it.name, language as any)}</span>
                   </label>
-                  <div className="flex items-center gap-2 ml-auto">
+                  <div className="flex items-center gap-3 ml-auto">
                     <span className="text-sm text-white/60 [font-variant-numeric:tabular-nums]">
                       {t("borrowTotalLabel")}: <span className="font-bold text-white">{qtyFor(it)}</span> / {it.quantity}
                     </span>
-                    <button
-                      onClick={() => setConfirmRelease({ eventId: modalEvent.id, item: it, qty: qtyFor(it) })}
-                      disabled={releasingItemId === it.id || !(releasePhotos[it.id]?.length) || qtyFor(it) <= 0}
-                      title={!(releasePhotos[it.id]?.length) ? t("attachEvidenceLabel") : undefined}
-                      className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-sage-700 hover:bg-sage-800 disabled:opacity-60 text-white text-sm font-bold px-5 py-2.5 transition"
-                    >
-                      <Undo2 className="h-3.5 w-3.5" />
-                      {releasingItemId === it.id ? t("releasingLabel") : t("releaseLabel")}
-                    </button>
                   </div>
                 </div>
+
                 {/* Which condition each returned unit comes back in -- starts
                     from what was borrowed; change it if something came back
                     worn or damaged. Goes back into Inventory exactly like this. */}
-                <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <span className="text-sm font-semibold text-white/70">{t("returnConditionLabel")}</span>
-                  {RETURN_CONDITIONS.map((c) => (
-                    <div key={c.label} className="flex items-center gap-1.5">
-                      <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
-                      <NumberStepper
-                        min={0}
-                        max={it.quantity}
-                        value={String(unitsFor(it)[c.label] ?? 0)}
-                        onChange={(v) => setUnitFor(it, c.label, Number(v))}
-                        className="w-20 rounded-xl border border-white/10 bg-white/[0.03] pl-3 pr-6 py-2 text-base text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
-                      />
-                    </div>
-                  ))}
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-white/80">{t("returnConditionLabel")}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {RETURN_CONDITIONS.map((c) => (
+                      <div key={c.label}>
+                        <span className={`mb-1.5 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
+                        <NumberStepper
+                          min={0}
+                          max={it.quantity}
+                          fullWidth
+                          value={String(unitsFor(it)[c.label] ?? 0)}
+                          onChange={(v) => setUnitFor(it, c.label, Number(v))}
+                          className="w-full rounded-full border border-white/25 bg-white/10 pl-4 pr-8 py-3 text-base font-sans text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20"
+                        />
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                {/* Evidence photos for THIS item -- up to 5, shown as a tidy
-                    strip under the row instead of squeezed beside the buttons. */}
-                <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <span className="text-sm font-semibold text-white/70">{t("evidencePhotoLabel")} *</span>
+
+                {/* Evidence photos for THIS item -- up to 5. */}
+                <div>
+                  <p className="mb-2 text-sm font-semibold text-white/80">{t("evidencePhotoLabel")} *</p>
                   <PhotoGallery
                     compact
                     items={releasePhotos[it.id] ?? []}
@@ -1283,32 +1270,12 @@ export default function ReturnsView() {
                     emptyLabel={t("attachEvidenceLabel")}
                   />
                 </div>
-                </div>
-              ))}
-            </div>
+              </div>
+            ))}
 
-            <p className="px-6 sm:px-8 pb-3 text-sm text-white/50">{t("evidencePhotoLabel")}: {t("fileHintPhotos")}</p>
-
-            <div className="px-6 sm:px-8 py-5 border-t border-white/10 flex items-center justify-between gap-3">
-              {modalEvent.items.length > 1 ? (
-                <button
-                  onClick={() => setConfirmReleaseAll(true)}
-                  disabled={selectedCount === 0 || bulkReleasing || selectedMissingPhoto}
-                  title={selectedMissingPhoto ? t("releaseEvidenceHint") : undefined}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-sage-700 hover:bg-sage-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold px-5 py-2.5 transition"
-                >
-                  <Undo2 className="h-3.5 w-3.5" />
-                  {bulkReleasing ? t("releasingSelectedLabel") : `${t("releaseSelectedLabel")} (${selectedCount})`}
-                </button>
-              ) : (
-                <span />
-              )}
-              <button onClick={() => setSelectedEventId(null)} className="px-7 py-3 rounded-full border border-white/15 text-white text-base hover:bg-white/10 transition">
-                {t("closeLabel")}
-              </button>
-            </div>
-          </div>
-        </div>,
+            <p className="text-sm text-white/50">{t("evidencePhotoLabel")}: {t("fileHintPhotos")}</p>
+          </FormSection>
+        </FormDrawer>,
         document.body
       )}
 
@@ -1369,114 +1336,82 @@ export default function ReturnsView() {
         // Same sizing and card style as the Release Items modal, so both
         // return dialogs feel like one family.
         return createPortal(
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={requestCloseEdit}>
-            <div
-              className="bg-[#0A0E1A] border border-white/10 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="px-6 sm:px-8 py-5 border-b border-white/10 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("editReturnTitle")}</h2>
-                  <p className="text-sm text-[#7DD8CB] mt-1 truncate">
-                    {editTarget.item_name} &bull; {editTarget.event_name}
-                  </p>
-                </div>
-                <button onClick={requestCloseEdit} disabled={savingEdit} className="text-white/50 hover:text-white p-1">
-                  <X className="h-6 w-6" />
-                </button>
-              </div>
-
-              <div className="p-6 sm:p-8 overflow-y-auto space-y-3">
-                <p className="text-sm text-white/60 mb-1">{t("editReturnHint")}</p>
-
-                <div className="rounded-2xl bg-white/[0.03] border border-white/10 px-5 py-4">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div>
-                      <p className="text-base font-semibold text-white">{t("returnConditionLabel")}</p>
-                      <p className="text-xs text-white/45 mt-0.5">
-                        {t("borrowTotalLabel")}: <span className="font-bold text-white">{qty}</span> / {editTarget.max_quantity}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {RETURN_CONDITIONS.map((c) => {
-                      const cap = Math.min(editTarget.max_units?.[c.label] ?? editTarget.max_quantity, editTarget.max_quantity);
-                      return (
-                        <div key={c.label} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.02] px-3.5 py-2.5">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
-                            <span className="text-xs text-white/45">/ {cap}</span>
-                          </div>
-                          <NumberStepper
-                            min={0}
-                            max={cap}
-                            value={String(editUnits[c.label] ?? 0)}
-                            onChange={(v) => setEditUnit(editTarget, c.label, Number(v))}
-                            className="w-20 rounded-xl border border-white/10 bg-white/[0.03] pl-3 pr-6 py-2 text-base text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                  {delta !== 0 && (
-                    <p className={`mt-3 flex items-center gap-2 text-sm font-semibold ${delta < 0 ? "text-[#E2A088]" : "text-[#7DD8CB]"}`}>
-                      <ArrowRight className="h-4 w-4 shrink-0" />
-                      {delta < 0
-                        ? t("editMovesBackHint").replace("{n}", String(-delta))
-                        : t("editReleasesMoreHint").replace("{n}", String(delta))}
-                    </p>
-                  )}
-                </div>
-
-                <div className="rounded-2xl bg-white/[0.03] border border-white/10 px-5 py-4">
-                  <p className="text-base font-semibold text-white mb-3">{t("evidencePhotoLabel")}</p>
-                  <PhotoGallery
-                    items={editPhotos}
-                    onChange={setEditPhotos}
-                    onPreview={(photo) => setViewingPhoto({ url: photo.url, name: editTarget.item_name, urls: editPhotos.map((x) => x.url) })}
-                    onError={setError}
-                  />
-                  {editPhotos.length === 0 && (
-                    <p className="mt-2.5 text-sm text-[#E2A088]">{t("returnNeedsPhotoHint")}</p>
-                  )}
-                  <p className="mt-2.5 text-sm text-white/50">{t("keepPhotoHint")}</p>
-                  <p className="mt-1.5 text-sm text-white/50">{t("fileHintPhotos")}</p>
-                </div>
-
-                {error && (
-                  <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2.5 text-sm text-red-400">{error}</div>
-                )}
-              </div>
-
-              <div className="px-6 sm:px-8 py-5 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
-                <button
-                  type="button"
-                  onClick={() => setConfirmMoveBack(editTarget)}
-                  disabled={savingEdit}
-                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#E2A088] hover:text-white disabled:opacity-50 transition"
-                >
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  {t("moveBackToPendingLabel")}
-                </button>
-                <div className="flex items-center gap-3 ml-auto">
+          <FormDrawer
+            z="z-[9999]"
+            title={t("editReturnTitle")}
+            subtitle={<span className="text-[#7DD8CB]">{editTarget.item_name} &bull; {editTarget.event_name}</span>}
+            onClose={() => !savingEdit && requestCloseEdit()}
+            footer={
+              <div className="space-y-3">
+                <SaveButton type="button" className="w-full" onClick={() => setConfirmEditSave(true)} active={!(savingEdit || !changed || editPhotos.length === 0 || qty < 1)}>
+                  {savingEdit ? t("savingLabel") : t("saveChangesLabel")}
+                </SaveButton>
+                <div className="flex justify-center">
                   <button
-                    onClick={() => setConfirmEditSave(true)}
-                    disabled={savingEdit || !changed || editPhotos.length === 0 || qty < 1}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-sage-700 hover:bg-sage-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold px-5 py-2.5 transition"
-                  >
-                    {savingEdit ? t("savingLabel") : t("saveChangesLabel")}
-                  </button>
-                  <button
-                    onClick={requestCloseEdit}
+                    type="button"
+                    onClick={() => setConfirmMoveBack(editTarget)}
                     disabled={savingEdit}
-                    className="px-7 py-3 rounded-full border border-white/15 text-white text-base hover:bg-white/10 transition disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#E2A088] hover:text-white disabled:opacity-50 transition"
                   >
-                    {t("cancelLabel")}
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    {t("moveBackToPendingLabel")}
                   </button>
                 </div>
               </div>
-            </div>
-          </div>,
+            }
+          >
+            <FormSection title={t("returnConditionLabel")} className="space-y-4">
+              <p className="text-sm text-white/60">{t("editReturnHint")}</p>
+              <p className="text-sm text-white/60">
+                {t("borrowTotalLabel")}: <span className="font-bold text-white">{qty}</span> / {editTarget.max_quantity}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {RETURN_CONDITIONS.map((c) => {
+                  const cap = Math.min(editTarget.max_units?.[c.label] ?? editTarget.max_quantity, editTarget.max_quantity);
+                  return (
+                    <div key={c.label} className="flex items-center justify-between gap-3 rounded-2xl border border-white/25 bg-white/10 px-3.5 py-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
+                        <span className="text-xs text-white/45">/ {cap}</span>
+                      </div>
+                      <NumberStepper
+                        min={0}
+                        max={cap}
+                        value={String(editUnits[c.label] ?? 0)}
+                        onChange={(v) => setEditUnit(editTarget, c.label, Number(v))}
+                        className="w-20 rounded-xl border border-white/25 bg-white/10 pl-3 pr-6 py-2 text-base text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+              {delta !== 0 && (
+                <p className={`flex items-center gap-2 text-sm font-semibold ${delta < 0 ? "text-[#E2A088]" : "text-[#7DD8CB]"}`}>
+                  <ArrowRight className="h-4 w-4 shrink-0" />
+                  {delta < 0
+                    ? t("editMovesBackHint").replace("{n}", String(-delta))
+                    : t("editReleasesMoreHint").replace("{n}", String(delta))}
+                </p>
+              )}
+            </FormSection>
+
+            <FormSection title={t("evidencePhotoLabel")} className="space-y-3">
+              <PhotoGallery
+                items={editPhotos}
+                onChange={setEditPhotos}
+                onPreview={(photo) => setViewingPhoto({ url: photo.url, name: editTarget.item_name, urls: editPhotos.map((x) => x.url) })}
+                onError={setError}
+              />
+              {editPhotos.length === 0 && (
+                <p className="text-sm text-[#E2A088]">{t("returnNeedsPhotoHint")}</p>
+              )}
+              <p className="text-sm text-white/50">{t("keepPhotoHint")}</p>
+              <p className="text-sm text-white/50">{t("fileHintPhotos")}</p>
+              {error && (
+                <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2.5 text-sm text-red-400">{error}</div>
+              )}
+            </FormSection>
+          </FormDrawer>,
           document.body
         );
       })()}

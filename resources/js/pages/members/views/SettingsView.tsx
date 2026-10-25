@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { KeyRound, Globe, Home, User, Phone, Pencil } from "lucide-react";
-import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
+import ChangePasswordForm from "../../../components/auth/ChangePasswordForm";
+import SectionCard from "../../../components/ui/SectionCard";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
-import { isStrongPassword, PASSWORD_MAX } from "../../../lib/passwordPolicy";
 import { LANGUAGES } from "../../../i18n/translations";
 import StatusModal from "../../../components/ui/StatusModal";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
@@ -109,70 +109,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
     }
   };
 
-  const [newPassword, setNewPassword]       = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [pwError, setPwError]               = useState("");
-  const [pwSuccess, setPwSuccess]           = useState("");
-  const [pwLoading, setPwLoading]           = useState(false);
-  const [confirmPwOpen, setConfirmPwOpen]   = useState(false);
-  const [showNewPw, setShowNewPw]           = useState(false);
-  const [showConfirmPw, setShowConfirmPw]   = useState(false);
-
-  const passwordsMatch = confirmPassword.length > 0 && newPassword === confirmPassword;
-  const passwordsMismatch = confirmPassword.length > 0 && newPassword !== confirmPassword;
-
-  const requestChangePassword = () => {
-    setPwError("");
-    setPwSuccess("");
-
-    if (!isStrongPassword(newPassword)) {
-      setPwError(t("passwordPolicyError"));
-      return;
-    }
-    if (!passwordsMatch) {
-      setPwError(t("passwordsMismatchError"));
-      return;
-    }
-
-    setConfirmPwOpen(true);
-  };
-
-  const handleChangePassword = async () => {
-    setConfirmPwOpen(false);
-    setPwLoading(true);
-    try {
-      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content");
-
-      const res = await fetch(`/users/${member.id}/change-password`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          ...(csrfToken && { "X-CSRF-TOKEN": csrfToken }),
-        },
-        body: JSON.stringify({
-          new_password:              newPassword,
-          new_password_confirmation: confirmPassword,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        setPwSuccess(t("passwordUpdatedSuccess"));
-        setNewPassword("");
-        setConfirmPassword("");
-      } else {
-        setPwError(data.message || t("updateFailed"));
-      }
-    } catch {
-      setPwError(t("networkError"));
-    } finally {
-      setPwLoading(false);
-    }
-  };
+  const [pwSuccess, setPwSuccess] = useState("");
 
   return (
     <div className="h-[calc(100dvh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8">
@@ -379,106 +316,19 @@ export default function SettingsView({ member }: SettingsViewProps) {
       </div>
       )}
 
-      {/* CHANGE PASSWORD */}
+      {/* CHANGE PASSWORD -- same shared form and card as the staff My Account page. */}
       {activeTab === "password" && (
-      <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
-        <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-        <div className="p-5 sm:p-6">
-          <div className="flex items-center gap-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/15">
-              <KeyRound className="h-5 w-5 text-[#4FBEB0]" />
-            </div>
-            <div className="min-w-0">
-              <h2 className="text-lg font-black text-white">{t("changePassword")}</h2>
-              <p className="mt-0.5 text-sm text-white/50">{t("memPasswordDesc")}</p>
-            </div>
-          </div>
-
-          {tabSwitching && (
-            <div className="mt-6 space-y-3">
+        <SectionCard icon={<KeyRound className="h-5 w-5" />} title={t("changePassword")} desc={t("memPasswordDesc")}>
+          {tabSwitching ? (
+            <div className="space-y-3">
               {Array.from({ length: 3 }).map((_, i) => (
                 <Skeleton key={i} className="h-11 w-full rounded-full" />
               ))}
             </div>
+          ) : (
+            <ChangePasswordForm userId={member.id} onDone={() => setPwSuccess(t("passwordUpdatedSuccess"))} />
           )}
-          <div className={tabSwitching ? "hidden" : "mt-6 space-y-4"}>
-
-            <div>
-              <div className="relative">
-              <input
-                type={showNewPw ? "text" : "password"}
-                placeholder={t("newPasswordPlaceholder")}
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                disabled={pwLoading}
-                maxLength={PASSWORD_MAX}
-                autoComplete="new-password"
-                className="w-full rounded-full border border-white/15 bg-white/10 pl-4 pr-14 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 disabled:opacity-50"
-              />
-              <button
-                type="button"
-                onClick={() => setShowNewPw((v) => !v)}
-                aria-label={showNewPw ? t("memHidePassword") : t("memShowPassword")}
-                aria-pressed={showNewPw}
-                title={showNewPw ? t("memHidePassword") : t("memShowPassword")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 transition"
-              >
-                <EyeToggleIcon visible={showNewPw} />
-              </button>
-              </div>
-              <p className="mt-1.5 px-2 text-xs text-white/50">{t("passwordPolicyError")}</p>
-            </div>
-
-            <div>
-              <div className="relative">
-              <input
-                type={showConfirmPw ? "text" : "password"}
-                placeholder={t("confirmPasswordPlaceholder")}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                disabled={pwLoading}
-                maxLength={PASSWORD_MAX}
-                className={`w-full rounded-full border pl-4 pr-14 py-3 text-white placeholder-white/40 focus:outline-none focus:ring-2 disabled:opacity-50 transition-colors ${
-                  passwordsMismatch
-                    ? "border-red-500/40 focus:ring-red-400/30 bg-red-500/10"
-                    : passwordsMatch
-                    ? "border-[#4FBEB0]/50 focus:ring-[#4FBEB0]/30 bg-[#4FBEB0]/10"
-                    : "border-white/15 bg-white/10 focus:ring-[#4FBEB0]/40"
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPw((v) => !v)}
-                aria-label={showConfirmPw ? t("memHidePassword") : t("memShowPassword")}
-                aria-pressed={showConfirmPw}
-                title={showConfirmPw ? t("memHidePassword") : t("memShowPassword")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 transition"
-              >
-                <EyeToggleIcon visible={showConfirmPw} />
-              </button>
-              </div>
-              {passwordsMismatch && (
-                <p className="mt-1.5 text-xs text-red-400 font-medium px-2">
-                  ✗ {t("passwordsDoNotMatch")}
-                </p>
-              )}
-              {passwordsMatch && (
-                <p className="mt-1.5 text-xs text-[#7DD8CB] font-medium px-2">
-                  ✓ {t("passwordsMatchNote")}
-                </p>
-              )}
-            </div>
-
-            <button
-              onClick={requestChangePassword}
-              disabled={pwLoading || !passwordsMatch}
-              className="w-full rounded-full bg-sage-700 py-3 font-bold text-white hover:bg-sage-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {pwLoading ? t("updating") : t("updatePassword")}
-            </button>
-          </div>
-        </div>
-      </div>
+        </SectionCard>
       )}
 
       {/* Peripheral alert modals -- the shared StatusModal, same as every
@@ -489,7 +339,6 @@ export default function SettingsView({ member }: SettingsViewProps) {
           error on this page already uses, for consistency and so a long
           backend message doesn't run into the buttons above it. */}
       <StatusModal open={!!contactError} type="error" title={t("errorLabel")} message={contactError} okLabel={t("okLabel")} onClose={() => setContactError("")} />
-      <StatusModal open={!!pwError} type="error" title={t("errorLabel")} message={pwError} okLabel={t("okLabel")} onClose={() => setPwError("")} />
       <StatusModal open={!!pwSuccess} type="success" title={t("successTitle")} message={pwSuccess} okLabel={t("okLabel")} onClose={() => setPwSuccess("")} />
 
       <ConfirmDialog
@@ -503,16 +352,6 @@ export default function SettingsView({ member }: SettingsViewProps) {
         onConfirm={handleSaveContact}
       />
 
-      <ConfirmDialog
-        open={confirmPwOpen}
-        icon={<KeyRound size={32} />}
-        title={t("confirmUpdatePasswordTitle")}
-        body={t("confirmUpdatePasswordBody")}
-        cancelLabel={t("cancelLabel")}
-        confirmLabel={t("yesUpdate")}
-        onCancel={() => setConfirmPwOpen(false)}
-        onConfirm={handleChangePassword}
-      />
     </div>
     </div>
   );
