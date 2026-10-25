@@ -3,6 +3,7 @@ import { ShieldCheck } from "lucide-react";
 import PasswordField from "./PasswordField";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { apiErrorMessage } from "../../lib/api";
+import Portal from "../ui/Portal";
 
 // "Type your password to continue" -- the gate in front of every sensitive
 // Head Staff action. The caller's onConfirm runs the request; a wrong
@@ -56,6 +57,7 @@ export default function PasswordConfirmDialog({
   const btn = tone === "danger" ? "bg-red-500 hover:bg-red-600" : "bg-sage-700 hover:bg-sage-800";
 
   return (
+    <Portal>
     <div className="fixed inset-0 flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" style={{ zIndex: z }} onClick={() => !busy && onClose()}>
       <form onSubmit={submit} onClick={(e) => e.stopPropagation()} className="w-full max-w-lg rounded-[30px] border border-white/10 bg-[#0A0E1A] p-8 text-center shadow-2xl">
         <div className={`mb-3 flex justify-center ${tone === "danger" ? "text-red-400" : "text-[#4FBEB0]"}`}><ShieldCheck size={44} /></div>
@@ -74,5 +76,6 @@ export default function PasswordConfirmDialog({
         </div>
       </form>
     </div>
+    </Portal>
   );
 }

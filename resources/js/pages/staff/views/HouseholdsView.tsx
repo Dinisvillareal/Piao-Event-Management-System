@@ -10,6 +10,7 @@ import { highlightMatches } from "../../../lib/highlight";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import FilterBar from "../../../components/ui/FilterBar";
+import Portal from "../../../components/ui/Portal";
 
 /**
  * Real Household module -- staff pick an existing household (or create one)
@@ -781,7 +782,7 @@ export default function HouseholdsView() {
 
       {/* Unsaved-changes guard for the Edit Household modal */}
       {showEditCancelConfirm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
@@ -800,7 +801,7 @@ export default function HouseholdsView() {
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       <ConfirmDialog
@@ -842,7 +843,7 @@ export default function HouseholdsView() {
 
       {/* Delete confirm modal */}
       {deleteRecord && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
@@ -852,7 +853,7 @@ export default function HouseholdsView() {
               <button onClick={confirmDelete} disabled={saving} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       <StatusModal open={!!successMessage} type="success" title={t("successTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} />

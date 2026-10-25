@@ -1,3 +1,4 @@
+import KpiCard from "../../../components/ui/KpiCard";
 import { renderSystemQrPoster } from "../../../lib/systemQrPoster";
 import { useClockFormat } from "../../../lib/clockFormat";
 import React, { useState, useEffect, useRef } from "react";
@@ -10,6 +11,7 @@ import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 
 import { tc } from "../../../lib/contentTranslations";
+import Portal from "../../../components/ui/Portal";
 interface DashboardViewProps {
   setActive: (route: string) => void;
   membershipsCount: number;
@@ -456,20 +458,9 @@ export default function DashboardView({
         </div>
 
         {/* Key numbers */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="report-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {statsCards.map((item, idx) => (
-            <button
-              key={idx}
-              onClick={() => setActive(item.route)}
-              className={`group relative overflow-hidden rounded-2xl bg-gradient-to-br ${item.gradient} p-5 text-left text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <h2 className="font-display text-3xl font-extrabold tracking-tight [font-variant-numeric:tabular-nums] sm:text-4xl">{item.value}</h2>
-                <item.icon className="h-5 w-5 shrink-0 text-white/80" />
-              </div>
-              <p className="mt-3 text-[11px] font-bold uppercase tracking-wide">{item.label}</p>
-              <p className="mt-1 text-xs text-white/75">{item.description}</p>
-            </button>
+            <KpiCard key={idx} value={item.value} label={item.label} description={item.description} icon={item.icon} gradient={item.gradient} delay={idx * 70} onClick={() => setActive(item.route)} />
           ))}
         </div>
 
@@ -701,7 +692,7 @@ export default function DashboardView({
               }}
             />
             {showPosterPreview && posterPreview && (
-              <div
+              <Portal><div
                 className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
                 onClick={() => setShowPosterPreview(false)}
                 role="dialog"
@@ -714,7 +705,7 @@ export default function DashboardView({
                     <button onClick={() => setShowPosterPreview(false)} className="rounded-full border border-white/20 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">{t("closeLabel")}</button>
                   </div>
                 </div>
-              </div>
+              </div></Portal>
             )}
             <StatusModal
               open={showQrDownloadSuccess}

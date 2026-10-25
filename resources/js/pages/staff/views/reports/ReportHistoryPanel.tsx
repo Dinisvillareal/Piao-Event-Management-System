@@ -72,6 +72,15 @@ export default function ReportHistoryPanel({
   const [scope, setScope] = useState<"all" | "mine">("all");
   const [, setTick] = useState(0);
   const reqId = useRef(0);
+  const topRef = useRef<HTMLSpanElement | null>(null);
+  const scrollPending = useRef(false);
+  // Back to the top of the list: now (so it feels instant) and again once the
+  // new page has loaded (the list swaps to a skeleton and back, which can
+  // shift the scroll position).
+  const toTop = () => {
+    scrollPending.current = true;
+    topRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
+  };
 
   useEffect(() => {
     const id = window.setTimeout(() => setDebounced(search.trim()), 300);
@@ -96,6 +105,10 @@ export default function ReportHistoryPanel({
       if (id === reqId.current && !silent) onError(apiErrorMessage(e, t("rpHistLoadFailed")));
     } finally {
       if (id === reqId.current && !silent) setFetching(false);
+      if (id === reqId.current && scrollPending.current) {
+        scrollPending.current = false;
+        window.requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "auto", block: "start" }));
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, debounced, type, format, scope]);
@@ -129,8 +142,14 @@ export default function ReportHistoryPanel({
 
   const outlineBtn = "inline-flex items-center gap-2 rounded-full border border-white/20 bg-transparent px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 active:scale-95";
 
+  const goToPage = (next: number) => {
+    setPage(next);
+    toTop();
+  };
+
   return (
     <div className="space-y-5">
+      <span ref={topRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
       <div>
         <h2 className="flex items-center gap-2.5 text-xl font-bold text-white"><History className="h-5 w-5 text-[#4FBEB0]" />{t("rpHistTitle")}</h2>
         <p className="mt-1 max-w-3xl text-sm text-white/50">{t("rpHistSub")}</p>
@@ -194,7 +213,7 @@ export default function ReportHistoryPanel({
         )}
       </div>
 
-      <SimplePager page={page} totalPages={lastPage} onChange={setPage} loading={fetching && items.length > 0} />
+      <SimplePager page={page} totalPages={lastPage} onChange={goToPage} loading={fetching && items.length > 0} />
     </div>
   );
 }

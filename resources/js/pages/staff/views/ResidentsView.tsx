@@ -1,3 +1,4 @@
+import Portal from "../../../components/ui/Portal";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import SaveButton from "../../../components/ui/SaveButton";
 import { matchesSearch } from "../../../lib/search";
@@ -2359,7 +2360,7 @@ const handleDeleteResident = async () => {
             </div>
 
             {showQrPanel && (
-              <div
+              <Portal><div
                 className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex flex-col items-center justify-center px-4 py-6"
                 onClick={() => setShowQrPanel(false)}
               >
@@ -2404,7 +2405,7 @@ const handleDeleteResident = async () => {
                     </button>
                   </div>
                 </div>
-              </div>
+              </div></Portal>
             )}
 
             <ConfirmDialog
@@ -3029,7 +3030,7 @@ const handleDeleteResident = async () => {
 
       {/* ─── ID Photo preview popup ───────────────────────────────────────────── */}
       {photoPreviewModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setPhotoPreviewModal(null)}>
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setPhotoPreviewModal(null)}>
           <div className="bg-white rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-[#E6E0D3] flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
@@ -3049,7 +3050,7 @@ const handleDeleteResident = async () => {
               <img src={photoPreviewModal.url} alt={photoPreviewModal.name} className="max-w-full max-h-[65vh] rounded-xl shadow-sm" />
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* ─── Validation / save-error popup (replaces the old inline red banner) ── */}
@@ -3094,7 +3095,7 @@ const handleDeleteResident = async () => {
         // every other popup in this view -- this one was still the old
         // light "paper" card (bg-white, sage button) left over from before
         // the page moved to the dark theme.
-        <div
+        <Portal><div
           className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4"
           onClick={() => !addHouseholdSaving && setShowAddHousehold(false)}
         >
@@ -3156,11 +3157,11 @@ const handleDeleteResident = async () => {
               <SaveButton size="sm" type="button" onClick={submitNewHousehold} active={!(addHouseholdSaving || (!newHouseholdAddress.trim() && !newHouseholdContact.trim()))}>{addHouseholdSaving ? t("resCreating") : t("resCreateHousehold")}</SaveButton>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {deleteRecord && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
              <div className="mb-4 text-red-400 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
@@ -3170,11 +3171,11 @@ const handleDeleteResident = async () => {
               <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition">{t("yesDeleteButton")}</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {exportDialog && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" onClick={() => !exporting && setExportDialog(null)}>
+        <Portal><div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" onClick={() => !exporting && setExportDialog(null)}>
           <div
             className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[30px] border border-white/10 bg-[#0A0E1A] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -3309,7 +3310,7 @@ const handleDeleteResident = async () => {
               </div>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
       <ConfirmDialog
         open={confirmExport && exportDialog !== null}
@@ -3345,7 +3346,7 @@ const handleDeleteResident = async () => {
 
       {/* ─── Cancel Unsaved Changes Confirm Modal ─────────────────────────────── */}
       {showCancelConfirm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
@@ -3364,7 +3365,7 @@ const handleDeleteResident = async () => {
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
     </div>
   );

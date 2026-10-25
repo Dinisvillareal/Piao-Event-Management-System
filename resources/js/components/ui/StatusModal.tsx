@@ -1,6 +1,7 @@
 import React from "react";
 import { CheckCircle, AlertTriangle, XCircle } from "lucide-react";
 import { useLanguage } from "../../i18n/LanguageContext";
+import Portal from "./Portal";
 
 type StatusType = "success" | "warning" | "error";
 
@@ -41,6 +42,7 @@ export default function StatusModal({ open, type, title, message, okLabel, onClo
   if (!open) return null;
   const { Icon, accent, button } = TYPE_STYLES[type];
   return (
+    <Portal>
     <div
       className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center px-4"
       style={{ zIndex: z }}
@@ -71,5 +73,6 @@ export default function StatusModal({ open, type, title, message, okLabel, onClo
         </div>
       </div>
     </div>
+    </Portal>
   );
 }

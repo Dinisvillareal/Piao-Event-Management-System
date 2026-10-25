@@ -281,7 +281,7 @@ export default function DashboardView({
         <div className="space-y-5">
       <MemberDashboardHeader memberName={memberName} />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="report-stagger grid gap-4 md:grid-cols-3">
         <SummaryCard
           value={membershipsCount}
           title={t("verifiedMemberships")}

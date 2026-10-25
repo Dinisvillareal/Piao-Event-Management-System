@@ -13,6 +13,7 @@ import { useLanguage } from "../../i18n/LanguageContext";
 import { makeEventTiming, STATUS_META, type EventTimingInput } from "../../lib/eventTiming";
 
 import { tc } from "../../lib/contentTranslations";
+import Portal from "../ui/Portal";
 export type EventOption = EventTimingInput;
 
 export interface ExpenseSummary {
@@ -1078,7 +1079,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
 
       {/* Unsaved-changes guard for the Edit Expense modal */}
       {showEditCancelConfirm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
@@ -1096,7 +1097,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Confirm steps spell out the budget consequence: what remains, or
@@ -1142,7 +1143,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
       <StatusModal open={!!expenseSuccessMessage} type="success" title={t("expenseSuccessTitle")} message={expenseSuccessMessage || ""} okLabel={t("okLabel")} onClose={() => setExpenseSuccessMessage(null)} />
 
       {viewingReceipt && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4" onClick={closeReceiptViewer}>
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4" onClick={closeReceiptViewer}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -1233,7 +1234,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* "Are you sure you want to download?" -- then "Downloaded
@@ -1304,7 +1305,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
       />
 
       {deleteExpense && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4" onClick={() => !deletingExpense && setDeleteExpense(null)}>
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4" onClick={() => !deletingExpense && setDeleteExpense(null)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
@@ -1322,7 +1323,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
               <button onClick={confirmDeleteExpense} disabled={deletingExpense} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Approved budget dialog */}

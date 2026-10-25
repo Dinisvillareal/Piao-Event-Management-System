@@ -1,3 +1,4 @@
+import KpiCard from "../../../components/ui/KpiCard";
 import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -208,30 +209,20 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       {/* Portfolio KPI strip -- same gradient-card language as the
           Dashboard's stat strip, computed across every event (see
           fetchPortfolio above), not just the one currently selected. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="report-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         {[
-          { value: `₱${Number(portfolioSummary.total_approved_budget || 0).toLocaleString()}`, label: t("totalApprovedBudgetStatLabel"), description: t("totalApprovedBudgetStatDesc"), icon: Wallet, gradient: "from-sage-400 to-sage-700" },
-          { value: `₱${Number(portfolioSummary.total_expenses || 0).toLocaleString()}`, label: t("totalSpentStatLabel"), description: t("totalSpentStatDesc"), icon: Banknote, gradient: "from-gold-400 to-gold-700" },
-          { value: money(Number(portfolioSummary.total_remaining || 0)), label: t("remainingBudgetStatLabel"), description: t("remainingBudgetStatDesc"), icon: PiggyBank, gradient: "from-sage-800 to-[#1C2E2B]" },
+          { value: Number(portfolioSummary.total_approved_budget || 0), label: t("totalApprovedBudgetStatLabel"), description: t("totalApprovedBudgetStatDesc"), icon: Wallet, gradient: "from-sage-400 to-sage-700" },
+          { value: Number(portfolioSummary.total_expenses || 0), label: t("totalSpentStatLabel"), description: t("totalSpentStatDesc"), icon: Banknote, gradient: "from-gold-400 to-gold-700" },
+          { value: Number(portfolioSummary.total_remaining || 0), label: t("remainingBudgetStatLabel"), description: t("remainingBudgetStatDesc"), icon: PiggyBank, gradient: "from-sage-800 to-[#1C2E2B]" },
           { value: portfolioSummary.events_over_budget || 0, label: t("eventsOverBudgetStatLabel"), description: Number(portfolioSummary.total_over_amount) > 0 ? t("totalOverAmountDesc").replace("{over}", money(Number(portfolioSummary.total_over_amount))) : t("eventsOverBudgetStatDesc"), icon: AlertTriangle, gradient: "from-[#8A3D2C] to-[#5C2A1E]" },
         ].map((card, idx) => initialLoading ? (
-          <div key={idx} className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 space-y-3">
+          <div key={idx} className="rounded-[30px] border border-white/10 bg-white/[0.04] p-6 space-y-3">
             <Skeleton className="h-8 w-2/3" />
             <Skeleton className="h-3 w-1/2" />
             <Skeleton className="h-3 w-3/4" />
           </div>
         ) : (
-          <div
-            key={idx}
-            className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${card.gradient} p-6 text-white shadow-sm transition-shadow duration-300 hover:shadow-md`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="font-display text-2xl lg:text-3xl font-extrabold tracking-tight [font-variant-numeric:tabular-nums] break-all">{card.value}</h2>
-              <card.icon className="h-5 w-5 text-white/40 shrink-0" />
-            </div>
-            <p className="mt-2.5 text-[12px] font-bold uppercase tracking-wide">{card.label}</p>
-            <p className="mt-0.5 text-xs text-white/75">{card.description}</p>
-          </div>
+          <KpiCard key={idx} value={card.value} label={card.label} description={card.description} icon={card.icon} gradient={card.gradient} delay={idx * 70} format={idx < 3 ? money : undefined} />
         ))}
       </div>
 

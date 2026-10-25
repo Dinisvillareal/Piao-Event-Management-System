@@ -1,3 +1,4 @@
+import KpiCard from "../../../components/ui/KpiCard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Crown, UserPlus, KeyRound, LogOut, Ban, RotateCcw, UserMinus, ArrowRightLeft, Printer, Copy, Check, FileKey2, Users, X, MoreVertical, ShieldCheck, type LucideIcon } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
@@ -13,6 +14,7 @@ import usePager from "../../../hooks/usePager";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
+import Portal from "../../../components/ui/Portal";
 
 type Staff = {
   id: number;
@@ -76,20 +78,6 @@ function RowMenu({ label, children }: { label: string; children: (close: () => v
 
 const menuItem = "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-white/85 transition hover:bg-white/10";
 const menuDanger = "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-300 transition hover:bg-red-500/10";
-
-// Same gradient KPI tile as the Inventory / Dashboard stat strips.
-function Stat({ value, label, description, icon: Icon, gradient }: { value: string | number; label: string; description: string; icon: LucideIcon; gradient: string }) {
-  return (
-    <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${gradient} p-5 text-white shadow-sm transition-shadow duration-300 hover:shadow-md`}>
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="font-display text-3xl lg:text-4xl font-extrabold tracking-tight [font-variant-numeric:tabular-nums]">{value}</h2>
-        <Icon className="h-5 w-5 text-white/40 shrink-0" />
-      </div>
-      <p className="mt-2.5 text-[12px] font-bold uppercase tracking-wide">{label}</p>
-      <p className="mt-0.5 text-xs text-white/75">{description}</p>
-    </div>
-  );
-}
 
 export default function StaffAccountsView() {
   const { t } = useLanguage();
@@ -268,13 +256,13 @@ export default function StaffAccountsView() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="report-stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
         {loading ? [0, 1, 2, 3].map((i) => <StatCardSkeleton key={i} />) : (
           <>
-            <Stat value={data?.staff.length ?? 0} label={t("secStatStaff")} description={t("secStatStaffDesc")} icon={Users} gradient="from-sage-400 to-sage-700" />
-            <Stat value={data?.staff.filter((s) => s.two_factor_enabled).length ?? 0} label={t("secStatTwoStep")} description={t("secStatTwoStepDesc").replace("{n}", String(data?.staff.length ?? 0))} icon={ShieldCheck} gradient="from-sage-800 to-[#1C2E2B]" />
-            <Stat value={data?.staff.filter((s) => s.suspended_at).length ?? 0} label={t("secStatSuspended")} description={t("secStatSuspendedDesc")} icon={Ban} gradient="from-[#8A3D2C] to-[#5C2A1E]" />
-            <Stat value={data?.recovery_codes_remaining ?? 0} label={t("secStatCodes")} description={t("secStatCodesDesc")} icon={FileKey2} gradient="from-gold-400 to-gold-700" />
+            <KpiCard value={data?.staff.length ?? 0} label={t("secStatStaff")} description={t("secStatStaffDesc")} icon={Users} gradient="from-sage-400 to-sage-700" delay={0} />
+            <KpiCard value={data?.staff.filter((s) => s.two_factor_enabled).length ?? 0} label={t("secStatTwoStep")} description={t("secStatTwoStepDesc").replace("{n}", String(data?.staff.length ?? 0))} icon={ShieldCheck} gradient="from-sage-800 to-[#1C2E2B]" delay={70} />
+            <KpiCard value={data?.staff.filter((s) => s.suspended_at).length ?? 0} label={t("secStatSuspended")} description={t("secStatSuspendedDesc")} icon={Ban} gradient="from-[#8A3D2C] to-[#5C2A1E]" delay={140} />
+            <KpiCard value={data?.recovery_codes_remaining ?? 0} label={t("secStatCodes")} description={t("secStatCodesDesc")} icon={FileKey2} gradient="from-gold-400 to-gold-700" delay={210} />
           </>
         )}
       </div>
@@ -423,7 +411,7 @@ export default function StaffAccountsView() {
       )}
 
       {tempPw && (
-        <div className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
+        <Portal><div className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-7 text-center shadow-2xl">
             <h3 className="text-lg font-bold text-white">{t("secTempPwTitle")}</h3>
             <p className="mt-2 text-sm text-white/55">{t("secTempPwBody").replace("{name}", tempPw.name)}</p>
@@ -434,11 +422,11 @@ export default function StaffAccountsView() {
             </div>
             <p className="mt-4 text-xs text-white/40">{t("secShownOnce")}</p>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {codes && (
-        <div className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
+        <Portal><div className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
           <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[30px] border border-white/10 bg-[#0A0E1A] p-7 text-center shadow-2xl">
             <h3 className="text-lg font-bold text-white">{t("secRecoveryCodesTitle")}</h3>
             <p className="mt-2 text-sm text-white/55">{t("secRecoveryShowNote")}</p>
@@ -454,7 +442,7 @@ export default function StaffAccountsView() {
             </div>
             <p className="mt-4 text-xs text-white/40">{t("secShownOnce")}</p>
           </div>
-        </div>
+        </div></Portal>
       )}
     </div>
     </div>

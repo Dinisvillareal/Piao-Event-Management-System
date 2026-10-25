@@ -9,6 +9,7 @@ import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import FeedbackAlertsPanel from "../components/FeedbackAlertsPanel";
 import { useStaffAlertsUnread } from "../../../lib/staffAlertsStore";
+import Portal from "../../../components/ui/Portal";
 
 
 interface Membership {
@@ -563,7 +564,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                the app's popups (StatusModal / ConfirmDialog) instead of the
                white card this used to be. */}
            {selectedNotification && (
-               <div className="notif-overlay fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+               <Portal><div className="notif-overlay fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                    <style>{`
                        @keyframes notif-overlay-in { from { opacity: 0 } to { opacity: 1 } }
                        @keyframes notif-pop-in { from { opacity: 0; transform: translateY(18px) scale(0.94) } to { opacity: 1; transform: translateY(0) scale(1) } }
@@ -653,7 +654,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                            </div>
                        </div>
                    </div>
-               </div>
+               </div></Portal>
            )}
        </div>
    );

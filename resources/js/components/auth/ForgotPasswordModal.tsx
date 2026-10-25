@@ -5,6 +5,7 @@ import { useLanguage } from "../../i18n/LanguageContext";
 import { checkPassword } from "../../lib/passwordPolicy";
 import PasswordField from "./PasswordField";
 import SaveButton from "../ui/SaveButton";
+import Portal from "../ui/Portal";
 
 // Login-page help for a forgotten password. Passwords are never reset by
 // email or SMS (that would be the easiest way into a staff account):
@@ -48,7 +49,7 @@ export default function ForgotPasswordModal({ onClose }: { onClose: () => void }
   const field = "w-full rounded-full border border-white/25 bg-white/10 px-5 py-3.5 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50";
 
   return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" onClick={onClose}>
+    <Portal><div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" onClick={onClose}>
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[30px] border border-white/10 bg-[#0A0E1A] p-7 shadow-2xl sm:p-9" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4">
           <h2 className="font-display text-2xl font-extrabold tracking-tight text-white">{t("secForgotTitle")}</h2>
@@ -89,6 +90,6 @@ export default function ForgotPasswordModal({ onClose }: { onClose: () => void }
           </>
         )}
       </div>
-    </div>
+    </div></Portal>
   );
 }

@@ -1,3 +1,4 @@
+import KpiCard from "../../../components/ui/KpiCard";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
@@ -8,6 +9,7 @@ import StatusModal from '../../../components/ui/StatusModal';
 import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import Portal from "../../../components/ui/Portal";
 
 interface TrashedItem {
   id: string | number;
@@ -363,27 +365,14 @@ export default function ArchiveView() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {statCards.map((card) => {
-          if (statsLoading) return <StatCardSkeleton key={card.key} />;
-          const Icon = card.icon;
-          return (
-            <div key={card.key} className={`rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white`}>
-              <div className="flex items-start justify-between">
-                <span className="text-[12px] font-bold uppercase tracking-wide">{card.label}</span>
-                <Icon className="h-5 w-5 text-white/40" />
-              </div>
-              <p
-                className={`mt-2 font-display font-extrabold tracking-tight [font-variant-numeric:tabular-nums] ${
-                  card.isText ? "text-xl lg:text-2xl" : "text-2xl lg:text-3xl"
-                }`}
-              >
-                {card.value}
-              </p>
-              <p className="mt-1 text-xs text-white/75">{card.desc}</p>
-            </div>
-          );
-        })}
+      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {statCards.map((card, idx) =>
+          statsLoading ? (
+            <StatCardSkeleton key={card.key} />
+          ) : (
+            <KpiCard key={card.key} value={card.value} label={card.label} description={card.desc} icon={card.icon} gradient={card.gradient} delay={idx * 70} />
+          )
+        )}
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
@@ -490,7 +479,7 @@ export default function ArchiveView() {
           step, and the success modal below) since restoring is the
           positive/undo action here, not the app's usual save/delete. */}
       {restoreItem && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="flex justify-center text-sage-400 mb-3"><RefreshCw size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("restoreItemModalTitle")}</h3>
@@ -512,7 +501,7 @@ export default function ArchiveView() {
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       <StatusModal open={showSuccessModal} type="success" title={t("successTitle")} message={t("itemRestoredSuccess")} okLabel={t("okLabel")} onClose={() => setShowSuccessModal(false)} />

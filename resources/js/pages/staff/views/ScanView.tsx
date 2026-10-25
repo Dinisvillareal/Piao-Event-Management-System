@@ -11,6 +11,7 @@ import { useOnlineStatus } from "../../../hooks/useOnlineStatus";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import Skeleton from "../../../components/ui/Skeleton";
 import { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
+import Portal from "../../../components/ui/Portal";
 
 type ScanResult = {
   ok: boolean;
@@ -1279,7 +1280,7 @@ export default function ScanView({ events, residents, memberships }: any) {
         const buttonColor = variant === 'error' ? 'bg-red-500 hover:bg-red-600' : variant === 'warning' ? 'bg-amber-500 hover:bg-amber-600' : 'bg-sage-700 hover:bg-sage-800';
         const Icon = variant === 'error' ? XCircle : variant === 'warning' ? AlertTriangle : CheckCircle;
         return (
-          <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <Portal><div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-[340px] p-6 py-8 flex flex-col items-center text-center shadow-2xl animate-in zoom-in-95 duration-200">
               <Icon className={`${accent} mb-4`} size={56} strokeWidth={2} />
               <h3 className={`text-xl font-bold mb-2 ${titleColor}`}>{modalConfig.title}</h3>
@@ -1291,7 +1292,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                 {t("okLabel")}
               </button>
             </div>
-          </div>
+          </div></Portal>
         );
       })()}
     </div>

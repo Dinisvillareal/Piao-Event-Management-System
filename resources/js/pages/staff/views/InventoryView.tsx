@@ -1,3 +1,4 @@
+import KpiCard from "../../../components/ui/KpiCard";
 import { scrollListIntoView } from "../../../lib/scrollToList";
 import SaveButton from "../../../components/ui/SaveButton";
 import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
@@ -20,6 +21,7 @@ import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/St
 
 import { tc } from "../../../lib/contentTranslations";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import Portal from "../../../components/ui/Portal";
 // An item's condition covers the units still in use. Lost and disposed units
 // are separate counters on the item, so they are only *filters*, not conditions.
 type Condition = "New" | "Good" | "Fair" | "Poor";
@@ -534,7 +536,7 @@ export default function InventoryView() {
 
       {/* KPI strip -- same gradient-card language as the Dashboard's stat
           strip, so "at a glance" reads the same way on both pages. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="report-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { value: stats.totalItems, label: t("totalItemsStatLabel"), description: t("totalItemsStatDesc"), icon: Package, gradient: "from-sage-400 to-sage-700" },
           { value: stats.totalUnits, label: t("unitsInStockStatLabel"), description: t("unitsInStockStatDesc"), icon: Layers, gradient: "from-sage-800 to-[#1C2E2B]" },
@@ -543,17 +545,7 @@ export default function InventoryView() {
         ].map((card, idx) => statsLoading ? (
           <StatCardSkeleton key={idx} />
         ) : (
-          <div
-            key={idx}
-            className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white shadow-sm transition-shadow duration-300 hover:shadow-md`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="font-display text-3xl lg:text-4xl font-extrabold tracking-tight [font-variant-numeric:tabular-nums]">{card.value}</h2>
-              <card.icon className="h-5 w-5 text-white/40 shrink-0" />
-            </div>
-            <p className="mt-2.5 text-[12px] font-bold uppercase tracking-wide">{card.label}</p>
-            <p className="mt-0.5 text-xs text-white/75">{card.description}</p>
-          </div>
+          <KpiCard key={idx} value={card.value} label={card.label} description={card.description} icon={card.icon} gradient={card.gradient} delay={idx * 70} />
         ))}
       </div>
 
@@ -850,7 +842,7 @@ export default function InventoryView() {
 
       {/* Unsaved-changes guard for the Add/Edit Item modal */}
       {showFormCancelConfirm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
@@ -868,7 +860,7 @@ export default function InventoryView() {
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       <StatusModal open={!!error} type="error" title={t("errorTitle")} message={error || ""} okLabel={t("okLabel")} onClose={() => setError(null)} z={65} />
@@ -878,7 +870,7 @@ export default function InventoryView() {
       <StatusModal open={!!successMessage} type="success" title={t("successTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} z={65} />
 
       {deleteId !== null && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-3 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-lg font-bold text-red-400 mb-2">{t("removeItemConfirmTitle")}</h3>
@@ -888,7 +880,7 @@ export default function InventoryView() {
               <button onClick={handleDelete} className="px-5 py-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition">{t("yesRemove")}</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Confirm-before-save step: shown on top of the open form when
@@ -909,7 +901,7 @@ export default function InventoryView() {
           app (same treatment as the Delete-confirm and Unsaved-changes
           modals: bg-[#0A0E1A] card, white/10 border, teal accents). */}
       {viewingPhoto && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setViewingPhoto(null)}>
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setViewingPhoto(null)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -974,7 +966,7 @@ export default function InventoryView() {
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
     </>
   );

@@ -860,6 +860,7 @@
 //   );
 // }
 
+import Portal from "../../../components/ui/Portal";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
@@ -1103,7 +1104,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
               `qrCodeRef` wraps ONLY the QR tile so the download has a
               clean <canvas> to pull from. */}
           {showCardViewer && cardSides && (
-            <div
+            <Portal><div
               className="fixed inset-0 z-[80] flex flex-col items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
               onClick={() => setShowCardViewer(false)}
             >
@@ -1136,7 +1137,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   {t("closeLabel")}
                 </button>
               </div>
-            </div>
+            </div></Portal>
           )}
 
           <div className="w-full lg:w-[460px] lg:shrink-0 lg:sticky lg:top-4">

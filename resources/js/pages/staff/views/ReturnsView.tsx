@@ -1,3 +1,4 @@
+import KpiCard from "../../../components/ui/KpiCard";
 import { scrollListIntoView } from "../../../lib/scrollToList";
 import SaveButton from "../../../components/ui/SaveButton";
 import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
@@ -800,23 +801,14 @@ export default function ReturnsView() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {statCards.map((card) => {
-          if (statsLoading) return <StatCardSkeleton key={card.key} />;
-          const Icon = card.icon;
-          return (
-            <div key={card.key} className={`rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white`}>
-              <div className="flex items-start justify-between">
-                <span className="text-[12px] font-bold uppercase tracking-wide">{card.label}</span>
-                <Icon className="h-5 w-5 text-white/40" />
-              </div>
-              <p className="mt-2 font-display text-2xl lg:text-3xl font-extrabold tracking-tight [font-variant-numeric:tabular-nums]">
-                {card.value}
-              </p>
-              <p className="mt-1 text-xs text-white/75">{card.desc}</p>
-            </div>
-          );
-        })}
+      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {statCards.map((card, idx) =>
+          statsLoading ? (
+            <StatCardSkeleton key={card.key} />
+          ) : (
+            <KpiCard key={card.key} value={card.value} label={card.label} description={card.desc} icon={card.icon} gradient={card.gradient} delay={idx * 70} />
+          )
+        )}
       </div>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">

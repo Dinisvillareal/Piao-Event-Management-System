@@ -1,3 +1,4 @@
+import Portal from "../../../components/ui/Portal";
 import { scrollListIntoView } from "../../../lib/scrollToList";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
@@ -283,6 +284,9 @@ export function EventsView({
   // Page-open skeleton -- `loading` is only true during Staff's very first
   // fetch, so without this, opening Events later showed the cards instantly.
   const openSkeleton = usePageOpenSkeleton(loading);
+  // While the page is still showing its skeleton the counters read 0, not the
+  // numbers of a list that has not loaded yet.
+  const countsLoading = openSkeleton || loading;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (page: number) => {
@@ -2252,10 +2256,10 @@ export function EventsView({
               value={eventTab}
               onChange={(k) => setEventTab(k as typeof eventTab)}
               tabs={[
-                { key: "all", label: t("tabAll"), count: eventTabCounts.all },
-                { key: "today", label: t("tabToday"), count: eventTabCounts.today },
-                { key: "week", label: t("tabThisWeek"), count: eventTabCounts.week },
-                { key: "feedback", label: t("tabNeedsFeedback"), count: eventTabCounts.feedback },
+                { key: "all", label: t("tabAll"), count: countsLoading ? 0 : eventTabCounts.all },
+                { key: "today", label: t("tabToday"), count: countsLoading ? 0 : eventTabCounts.today },
+                { key: "week", label: t("tabThisWeek"), count: countsLoading ? 0 : eventTabCounts.week },
+                { key: "feedback", label: t("tabNeedsFeedback"), count: countsLoading ? 0 : eventTabCounts.feedback },
               ]}
             />
             <FilterBar
@@ -2264,10 +2268,10 @@ export function EventsView({
                 {
                   key: "status", label: t("statusColumn"), value: eventFilter, onChange: setEventFilter,
                   options: [
-                    { value: "all", label: `${t("allEvents")} (${statusCounts.all})` },
-                    { value: "ongoing", label: `${t("ongoingEvents")} (${statusCounts.ongoing})` },
-                    { value: "upcoming", label: `${t("upcomingEvents")} (${statusCounts.upcoming})` },
-                    { value: "past", label: `${t("pastEvents")} (${statusCounts.past})` },
+                    { value: "all", label: `${t("allEvents")} (${countsLoading ? 0 : statusCounts.all})` },
+                    { value: "ongoing", label: `${t("ongoingEvents")} (${countsLoading ? 0 : statusCounts.ongoing})` },
+                    { value: "upcoming", label: `${t("upcomingEvents")} (${countsLoading ? 0 : statusCounts.upcoming})` },
+                    { value: "past", label: `${t("pastEvents")} (${countsLoading ? 0 : statusCounts.past})` },
                   ],
                 },
                 {
@@ -2288,7 +2292,7 @@ export function EventsView({
                   { value: "name-az", label: t("sortNameAZ") },
                 ],
               }}
-              count={{ shown: filteredEvents.length, total: localEvents.length }}
+              count={{ shown: countsLoading ? 0 : filteredEvents.length, total: countsLoading ? 0 : localEvents.length }}
               extraChips={[
                 ...(eventTab !== "all" ? [{ key: "tab", label: eventTab === "today" ? t("tabToday") : eventTab === "week" ? t("tabThisWeek") : t("tabNeedsFeedback"), onRemove: () => setEventTab("all") }] : []),
                 ...(selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString(language === "tl" ? "fil-PH" : language === "ceb" ? "fil-PH" : "en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []),
@@ -2742,7 +2746,7 @@ export function EventsView({
 
       {/* Delete Event Confirm Modal */}
       {eventToDelete !== null && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-lg font-bold text-red-400 mb-2">{t("confirmDeletionTitle")}</h3>
@@ -2752,7 +2756,7 @@ export function EventsView({
               <button onClick={confirmDelete} className="px-5 py-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition">{t("yesDelete")}</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Result popups -- every Add / Update / Delete lands on one of these. */}
