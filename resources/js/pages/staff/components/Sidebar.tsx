@@ -1,3 +1,4 @@
+import { useStaffAlertsUnread, useSecurityUnread } from "../../../lib/staffAlertsStore";
 import { matchesSearch } from "../../../lib/search";
 import React, { useState, useEffect, useMemo } from "react";
 import {
@@ -26,9 +27,13 @@ import {
   Undo2,
   Search,
   SearchX,
+  UserCog,
+  ShieldCheck,
+  MessageSquareText,
 } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { staffPathFor } from "../../../lib/staffRoutes";
+import api from "../../../lib/api";
 
 // --- NAVIGATION CONFIG ---
 export const NAV = [
@@ -46,10 +51,24 @@ export const NAV = [
 ];
 
 export const SETTINGS_NAV = [
-  { key: "activitylogs", path: staffPathFor("activitylogs"), label: "Activity Logs", icon: FileText },
-  { key: "archive", path: staffPathFor("archive"), label: "Trash / Archive", icon: Archive },
-  { key: "profiling", path: staffPathFor("profiling"), label: "Age & Status Categories", icon: Tags },
-  { key: "integrations", path: staffPathFor("integrations"), label: "Integrations", icon: Link2 },
+  // Account
+  { key: "myaccount", section: "account", path: staffPathFor("myaccount"), label: "My Account", icon: UserCog },
+  // Head Staff only (hidden for everyone else in the Sidebar below).
+  { key: "staffaccounts", section: "account", path: staffPathFor("staffaccounts"), label: "Staff Accounts", icon: ShieldCheck },
+  // Records & audit
+  { key: "activitylogs", section: "records", path: staffPathFor("activitylogs"), label: "Activity Logs", icon: FileText },
+  { key: "archive", section: "records", path: staffPathFor("archive"), label: "Trash / Archive", icon: Archive },
+  // Configuration
+  { key: "profiling", section: "config", path: staffPathFor("profiling"), label: "Age & Status Categories", icon: Tags },
+  { key: "integrations", section: "config", path: staffPathFor("integrations"), label: "Integrations", icon: Link2 },
+  { key: "feedbackrules", section: "config", path: staffPathFor("feedbackrules"), label: "Feedback Rules", icon: MessageSquareText },
+];
+
+// Settings is split into labelled sections so related pages sit together.
+export const SETTINGS_SECTIONS = [
+  { id: "account", labelKey: "secSectionAccount" },
+  { id: "records", labelKey: "secSectionRecords" },
+  { id: "config", labelKey: "secSectionConfig" },
 ];
 
 // --- MODULE GROUPING ---
@@ -86,13 +105,35 @@ interface SidebarProps {
   /** Signed-in staff member, shown in the account card above "Sign out". */
   userName?: string;
   userRole?: string;
+  /** Only the Head Staff sees the Staff Accounts page. */
+  isHeadStaff?: boolean;
 }
 
-export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile, userName, userRole }: SidebarProps) {
+export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile, userName, userRole, isHeadStaff = false }: SidebarProps) {
   const { t } = useLanguage();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [navQuery, setNavQuery] = useState("");
+  // Count of households with no head of household -- red badge on
+  // Households (and its group) so staff notice a head must be added.
+  const [householdAlerts, setHouseholdAlerts] = useState(0);
+  // Unread feedback alerts (shared with the top-bar bell).
+  const feedbackUnread = useStaffAlertsUnread();
+  // Unread security alerts -- badge on My Account.
+  const securityUnread = useSecurityUnread();
+  const settingsNav = useMemo(() => SETTINGS_NAV.filter((i) => i.key !== "staffaccounts" || isHeadStaff), [isHeadStaff]);
+  useEffect(() => {
+    let cancelled = false;
+    api.get("/households/alerts")
+      .then((r) => { if (!cancelled) setHouseholdAlerts(Array.isArray(r.data) ? r.data.length : 0); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [active]);
+  useEffect(() => {
+    const onChange = (e: Event) => setHouseholdAlerts(Number((e as CustomEvent).detail) || 0);
+    window.addEventListener("household-alerts", onChange);
+    return () => window.removeEventListener("household-alerts", onChange);
+  }, []);
   const accountName = (userName ?? "").trim();
   const accountInitials = accountName
     .split(/\s+/)
@@ -106,8 +147,8 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   // and Settings' submenu all at the same time -- a real quick-jump, not
   // a decorative input that does nothing.
   const allNavItems = useMemo(
-    () => [...STANDALONE_NAV, ...NAV_GROUPS.flatMap((g) => g.items), ...SETTINGS_NAV],
-    []
+    () => [...STANDALONE_NAV, ...NAV_GROUPS.flatMap((g) => g.items), ...settingsNav],
+    [settingsNav]
   );
   const trimmedQuery = navQuery.trim().toLowerCase();
   const searchResults = trimmedQuery
@@ -166,6 +207,13 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
     onCloseMobile?.();
   };
 
+  // The profile menu in the top bar asks for the same confirm dialog.
+  useEffect(() => {
+    const open = () => setShowLogoutConfirm(true);
+    window.addEventListener("staff:request-logout", open);
+    return () => window.removeEventListener("staff:request-logout", open);
+  }, []);
+
   const doLogout = async () => {
     setLoggingOut(true);
     console.log('Logging out...');
@@ -206,11 +254,11 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   return (
     <>
       {mobileOpen && (
-        <div className="print:hidden fixed inset-0 bg-black/40 z-30 xl:hidden" onClick={onCloseMobile} />
+        <div className="print:hidden fixed inset-0 bg-black/55 z-30 xl:hidden" onClick={onCloseMobile} />
       )}
 
       <aside
-        className={`print:hidden w-[340px] max-w-[85vw] flex-col bg-[#0A0E1A] h-[100dvh] fixed xl:sticky top-0 z-40 flex overflow-hidden ${
+        className={`print:hidden w-[300px] sm:w-[320px] xl:w-[300px] 2xl:w-[340px] max-w-[88vw] flex-col transition-transform duration-300 ease-out overscroll-contain bg-[#0A0E1A] h-[100dvh] fixed xl:sticky top-0 z-40 flex overflow-hidden ${
           mobileOpen ? "translate-x-0" : "-translate-x-full xl:translate-x-0"
         }`}
       >
@@ -281,6 +329,12 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                     >
                       <item.icon className="h-5 w-5 shrink-0" />
                       <span className="truncate flex-1 min-w-0 text-left">{highlightMatch(t(item.key), trimmedQuery)}</span>
+                      {item.key === "notify" && feedbackUnread > 0 && (
+                        <span className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white" aria-label={`${feedbackUnread} unread`}>{feedbackUnread > 99 ? "99+" : feedbackUnread}</span>
+                      )}
+                      {item.key === "myaccount" && securityUnread > 0 && (
+                        <span className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white" aria-label={`${securityUnread} unread`}>{securityUnread > 99 ? "99+" : securityUnread}</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -315,6 +369,12 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                     >
                       <group.icon className="h-5 w-5 shrink-0" />
                       <span className="truncate flex-1 min-w-0 text-left">{t(group.labelKey)}</span>
+                      {group.key === "membershipGroup" && householdAlerts > 0 && !openGroups[group.key] && (
+                        <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white" title={t("hhAlertBannerTitle").replace("{count}", String(householdAlerts))}>{householdAlerts > 99 ? "99+" : householdAlerts}</span>
+                      )}
+                      {group.key === "eventsGroup" && feedbackUnread > 0 && !openGroups[group.key] && (
+                        <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white" aria-label={`${feedbackUnread} unread`}>{feedbackUnread > 99 ? "99+" : feedbackUnread}</span>
+                      )}
                       {openGroups[group.key] ? <ChevronUp size={16} className="text-white/35" /> : <ChevronDown size={16} className="text-white/35" />}
                     </button>
 
@@ -328,6 +388,12 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                           >
                             <item.icon className="h-5 w-5 shrink-0" />
                             <span className="truncate flex-1 min-w-0 text-left">{t(item.key)}</span>
+                            {item.key === "notify" && feedbackUnread > 0 && (
+                              <span className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white" aria-label={`${feedbackUnread} unread`}>{feedbackUnread > 99 ? "99+" : feedbackUnread}</span>
+                            )}
+                            {item.key === "households" && householdAlerts > 0 && (
+                              <span className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white" title={t("hhAlertBannerTitle").replace("{count}", String(householdAlerts))}>{householdAlerts > 99 ? "99+" : householdAlerts}</span>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -343,21 +409,34 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                   >
                     <Settings className="h-5 w-5 shrink-0" />
                     <span className="truncate flex-1 min-w-0 text-left">{t("settings")}</span>
+                    {securityUnread > 0 && !openGroups["settings"] && (
+                      <span className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white" aria-label={`${securityUnread} unread`}>{securityUnread > 99 ? "99+" : securityUnread}</span>
+                    )}
                     {openGroups["settings"] ? <ChevronUp size={16} className="text-white/35" /> : <ChevronDown size={16} className="text-white/35" />}
                   </button>
 
                   {/* SUB NAVIGATION */}
                   {openGroups["settings"] && (
                     <div className="pl-6 space-y-1 mt-1">
-                      {SETTINGS_NAV.map((item) => (
-                        <button
-                          key={item.key}
-                          onClick={() => handleNavClick(item.key, item.path)}
-                          className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${active === item.key ? activeNav : inactiveNav}`}
-                        >
-                          <item.icon className="h-5 w-5 shrink-0" />
-                          <span className="truncate flex-1 min-w-0 text-left">{t(item.key)}</span>
-                        </button>
+                      {SETTINGS_SECTIONS.filter((sec) => settingsNav.some((i) => i.section === sec.id)).map((sec, idx) => (
+                        <div key={sec.id} className={idx === 0 ? "" : "mt-3"}>
+                          <p className="px-4 pb-1.5 pt-1 text-[11px] font-bold uppercase tracking-[0.14em] text-white/35">{t(sec.labelKey)}</p>
+                          <div className="space-y-1">
+                          {settingsNav.filter((i) => i.section === sec.id).map((item) => (
+                            <button
+                              key={item.key}
+                              onClick={() => handleNavClick(item.key, item.path)}
+                              className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${active === item.key ? activeNav : inactiveNav}`}
+                            >
+                              <item.icon className="h-5 w-5 shrink-0" />
+                              <span className="truncate flex-1 min-w-0 text-left">{t(item.key)}</span>
+                              {item.key === "myaccount" && securityUnread > 0 && (
+                                <span className="ml-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold leading-none text-white" aria-label={`${securityUnread} unread`}>{securityUnread > 99 ? "99+" : securityUnread}</span>
+                              )}
+                            </button>
+                          ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -366,31 +445,13 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
             </>
           )}
         </div>
-        <div className="border-t border-white/10 p-3 shrink-0 flex items-center gap-2.5">
-          {/* Signed-in staff avatar, beside Sign out. Name and role are in the tooltip
-              (and in the top header), so the sidebar footer stays a single clean row. */}
-          <div
-            title={`${accountName || t("staffPortal")}${userRole ? ` · ${userRole}` : ""}`}
-            aria-label={accountName}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-400 text-[12px] font-bold text-[#08130F]"
-          >
-            {accountInitials}
-          </div>
-          <button
-            className="flex min-w-0 flex-1 items-center justify-start gap-3 rounded-xl border border-white/10 px-3 py-2.5 text-[13.5px] font-semibold text-white/70 transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
-            onClick={() => setShowLogoutConfirm(true)}
-          >
-            <LogOut className="h-5 w-5 shrink-0" />
-            <span className="truncate">{t("signOut")}</span>
-          </button>
-        </div>
       </aside>
 
       {/* Templated confirm modal, same pattern used for every delete action
           in the app -- logout is destructive to the current session so it
           gets the same "are you sure" treatment instead of firing instantly. */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
           <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-6 text-center shadow-2xl">
             <div className="mb-4 flex justify-center text-[#4FBEB0]"><LogOut size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("confirmLogoutTitle")}</h3>

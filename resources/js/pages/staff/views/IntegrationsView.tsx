@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink } from "lucide-react";
 import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
 import api, { apiErrorMessage } from "../../../lib/api";
+import SectionCard from "../../../components/ui/SectionCard";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
@@ -108,7 +109,6 @@ export default function IntegrationsView() {
 
   const inputCls =
     "w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50";
-  const cardCls = "overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04]";
   const tabCls = (on: boolean) =>
     `inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
       on
@@ -141,27 +141,15 @@ export default function IntegrationsView() {
         </div>
 
         {activeTab === "facebook" && (
-          <div className={cardCls}>
-            <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-            <div className="p-5 sm:p-6">
-              <div className="flex items-center gap-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#1877F2]/15">
-                  <MessageCircle className="h-5 w-5 text-[#6AA9FF]" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-lg font-black text-white">{t("facebookPageTitle")}</h2>
-                  <p className="mt-0.5 text-sm text-white/50">{t("facebookPageDesc")}</p>
-                </div>
-              </div>
-
+          <SectionCard icon={<MessageCircle className="h-5 w-5" />} title={t("facebookPageTitle")} desc={t("facebookPageDesc")}>
               {loading || tabSwitching ? (
-                <div className="mt-5 space-y-3">
+                <div className="space-y-3">
                   <Skeleton className="h-10 w-full rounded-full" />
                   <Skeleton className="h-10 w-full rounded-full" />
                   <Skeleton className="h-11 w-40 rounded-full" />
                 </div>
               ) : (
-                <div className="mt-5">
+                <div>
                   {status?.connected ? (
                     <div className="rounded-2xl border border-[#4FBEB0]/30 bg-[#4FBEB0]/[0.08] px-5 py-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 text-[#7DD8CB] text-sm font-semibold">
@@ -218,37 +206,24 @@ export default function IntegrationsView() {
                   )}
                 </div>
               )}
-            </div>
-          </div>
+          </SectionCard>
         )}
 
         {activeTab === "qr" && (
-          <div className={cardCls}>
-            <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-            <div className="p-5 sm:p-6">
-              <div className="flex items-center gap-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-400/15">
-                  <QrCode className="h-5 w-5 text-gold-300" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-lg font-black text-white">{t("physicalQrIdTitle")}</h2>
-                  <p className="mt-0.5 text-sm text-white/50">{t("physicalQrIdDesc")}</p>
-                </div>
-              </div>
+          <SectionCard icon={<QrCode className="h-5 w-5" />} title={t("physicalQrIdTitle")} desc={t("physicalQrIdDesc")}>
               {tabSwitching ? (
-                <div className="mt-4 space-y-2.5">
+                <div className="space-y-2.5">
                   <Skeleton className="h-4 w-full" />
                   <Skeleton className="h-4 w-11/12" />
                   <Skeleton className="h-4 w-2/3" />
                 </div>
               ) : (
-              <p className="mt-4 text-sm leading-relaxed text-white/70">
+              <p className="text-base leading-relaxed text-white/70">
                 {t("physicalQrIdBody1")} <strong className="text-white">{t("physicalQrIdToggleLabel")}</strong> {t("physicalQrIdBody2")}
                 <strong className="text-white"> {t("scan")}</strong> {t("physicalQrIdBody3")}
               </p>
               )}
-            </div>
-          </div>
+          </SectionCard>
         )}
       </div>
 

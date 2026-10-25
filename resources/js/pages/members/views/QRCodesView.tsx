@@ -860,6 +860,8 @@
 //   );
 // }
 
+import Portal from "../../../components/ui/Portal";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
@@ -881,7 +883,9 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   const captainName = useBarangayOfficials().captain?.name ?? "";
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const filterSwitching = useFilterSwitching([searchQuery]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
@@ -1009,7 +1013,8 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
   const qrData = useMemo(() => {
     if (!userId || !userCode || !fullName) return null;
-    return JSON.stringify({ user_id: userId, user_code: userCode, name: fullName });
+    // user_id is deliberately NOT in the QR; the scanner resolves by user_code.
+    return JSON.stringify({ user_code: userCode, name: fullName });
   }, [userId, userCode, fullName]);
 
   if (loading) {
@@ -1099,7 +1104,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
               `qrCodeRef` wraps ONLY the QR tile so the download has a
               clean <canvas> to pull from. */}
           {showCardViewer && cardSides && (
-            <div
+            <Portal><div
               className="fixed inset-0 z-[80] flex flex-col items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm"
               onClick={() => setShowCardViewer(false)}
             >
@@ -1132,7 +1137,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   {t("closeLabel")}
                 </button>
               </div>
-            </div>
+            </div></Portal>
           )}
 
           <div className="w-full lg:w-[460px] lg:shrink-0 lg:sticky lg:top-4">
@@ -1249,7 +1254,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   <p className="text-white/30 text-sm mt-1">{t("tryDifferentSearch")}</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[repeat(auto-fill,minmax(280px,360px))]">
                   {displayMemberships.map((m: any) => (
                     <div
                       key={m.id}
@@ -1261,7 +1266,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                           {highlightText(tc(m.name, language as any), searchQuery)}
                         </h2>
                         {m.description && (
-                          <p className="text-sm text-white/50 mt-2 break-words line-clamp-2">
+                          <p className="text-sm text-white/50 mt-2 break-words">
                             {highlightText(tc(m.description, language as any), searchQuery)}
                           </p>
                         )}

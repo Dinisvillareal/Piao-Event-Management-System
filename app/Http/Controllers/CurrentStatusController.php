@@ -10,7 +10,7 @@ class CurrentStatusController extends Controller
 {
     public function index()
     {
-        return response()->json(CurrentStatus::orderBy('sort_order')->get());
+        return response()->json(CurrentStatus::orderBy('label')->get());
     }
 
     public function store(Request $request)

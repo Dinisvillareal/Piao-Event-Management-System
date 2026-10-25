@@ -63,9 +63,42 @@ class InventoryController extends Controller
             });
         } elseif ($condition === 'Disposed') {
             $query->where('disposed_quantity', '>', 0);
+        } elseif (isset(InventoryItem::CONDITION_COLUMNS[$condition])) {
+            // Items hold units in several conditions at once, so match any
+            // item with at least one unit in this condition (or an empty
+            // item whose main condition it is).
+            $column = InventoryItem::CONDITION_COLUMNS[$condition];
+            $query->where(function ($q) use ($column, $condition) {
+                $q->where($column, '>', 0)
+                  ->orWhere(function ($empty) use ($condition) {
+                      $empty->where('condition', $condition)
+                            ->where('new_quantity', 0)->where('good_quantity', 0)
+                            ->where('fair_quantity', 0)->where('poor_quantity', 0);
+                  });
+            });
         } else {
             $query->where('condition', $condition);
         }
+    }
+
+    /**
+     * When the form sends per-condition counts, the in-stock quantity is
+     * their sum (the model keeps the two in step on save).
+     */
+    private function conditionData(Request $request, array $data): array
+    {
+        $cols = array_values(InventoryItem::CONDITION_COLUMNS);
+        if (! $request->hasAny($cols)) {
+            return $data;
+        }
+        foreach ($cols as $col) {
+            if ($request->has($col)) {
+                $data[$col] = max(0, (int) $request->input($col));
+            }
+        }
+        $data['quantity'] = array_sum(array_map(fn ($c) => $data[$c] ?? 0, $cols));
+
+        return $data;
     }
 
     public function index(Request $request)
@@ -136,7 +169,7 @@ class InventoryController extends Controller
         }
 
         $items = InventoryItem::orderBy('name')
-            ->get(['id', 'name', 'quantity', 'condition', 'storage_location']);
+            ->get(['id', 'name', 'quantity', 'new_quantity', 'good_quantity', 'fair_quantity', 'poor_quantity', 'condition', 'storage_location']);
 
         return response()->json($items);
     }
@@ -148,6 +181,7 @@ class InventoryController extends Controller
         }
 
         $data = $request->only(['name', 'quantity', 'condition', 'storage_location', 'notes']);
+        $data = $this->conditionData($request, $data);
 
         if ($request->hasFile('photos')) {
             $res = PhotoSet::resolve([], $request, fn ($f) => $this->localUpload($f));
@@ -175,6 +209,9 @@ class InventoryController extends Controller
         // archiving the item -- a few lost or worn-out units must not take the
         // still-good ones out of Inventory or touch the loans in any way.
         $data = $request->only(['name', 'quantity', 'condition', 'storage_location', 'notes']);
+        // Per-condition counts (when sent) decide the base in-stock quantity;
+        // lost / disposed below then come out of it.
+        $data = $this->conditionData($request, $data);
 
         // Lost units -- reported per unit count, not by tagging the whole item.
         // They come out of the in-stock count right away; if the item is out on

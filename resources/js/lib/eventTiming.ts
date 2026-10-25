@@ -15,7 +15,7 @@ export type EventStatusLabel = "Upcoming" | "Ongoing" | "Past";
 export const STATUS_META = {
   Ongoing: { tab: "ongoing" as const, accent: "bg-gold-400", dot: "bg-gold-400", text: "text-gold-300", hint: "sectionOngoingHint" },
   Upcoming: { tab: "upcoming" as const, accent: "bg-[#4FBEB0]", dot: "bg-[#4FBEB0]", text: "text-[#7DD8CB]", hint: "sectionUpcomingHint" },
-  Past: { tab: "past" as const, accent: "bg-white/25", dot: "bg-white/40", text: "text-white/45", hint: "sectionPastHint" },
+  Past: { tab: "past" as const, accent: "bg-white/25", dot: "bg-[#8A8474]", text: "text-white/45", hint: "sectionPastHint" },
 };
 
 /**
@@ -52,7 +52,7 @@ export function makeEventTiming(t: (key: string) => string) {
     const now = new Date();
     const upcoming = { label: "Upcoming" as const, color: "bg-[#4FBEB0]/15 text-[#7DD8CB]", dot: "bg-[#4FBEB0]" };
     const ongoing = { label: "Ongoing" as const, color: "bg-gold-400/15 text-gold-300", dot: "bg-gold-400" };
-    const past = { label: "Past" as const, color: "bg-white/10 text-white/50", dot: "bg-white/40" };
+    const past = { label: "Past" as const, color: "bg-white/10 text-white/50", dot: "bg-[#8A8474]" };
 
     const start = parseEventDateTime(event.event_start) ?? parseEventDateTime(event.date);
     if (!start) return upcoming;

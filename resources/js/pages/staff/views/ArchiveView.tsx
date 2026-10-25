@@ -1,12 +1,15 @@
+import KpiCard from "../../../components/ui/KpiCard";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RefreshCw, Filter, Search, Trash2, Layers, Clock, AlertTriangle } from 'lucide-react';
-import FilterDropdown from '../../../components/ui/FilterDropdown';
+import FilterBar from '../../../components/ui/FilterBar';
 import StatusModal from '../../../components/ui/StatusModal';
 import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import Portal from "../../../components/ui/Portal";
 
 interface TrashedItem {
   id: string | number;
@@ -62,7 +65,10 @@ export default function ArchiveView() {
   // Brief skeleton flash on every page switch, same as Activity Logs --
   // this list paginates client-side so there's nothing to actually wait
   // on, but the flash keeps page switches feeling consistent app-wide.
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const [archiveSort, setArchiveSort] = useState('recent');
+  const filterSwitching = useFilterSwitching([typeFilter, searchQuery, archiveSort]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Anchor at the very top of the page -- scrolled into view on every
   // pagination click, same as Activity Logs, so switching pages always
@@ -198,8 +204,12 @@ export default function ArchiveView() {
         matchesSearch(searchQuery, item.name, item.type, item.deletedBy)
       );
     }
-    return filtered;
-  }, [allTrashedItems, typeFilter, searchQuery]);
+    const sorted = [...filtered];
+    if (archiveSort === 'oldest') sorted.sort((a, b) => String(a.deletedAtRaw).localeCompare(String(b.deletedAtRaw)));
+    else if (archiveSort === 'name-az') sorted.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    else sorted.sort((a, b) => String(b.deletedAtRaw).localeCompare(String(a.deletedAtRaw)));
+    return sorted;
+  }, [allTrashedItems, typeFilter, searchQuery, archiveSort]);
 
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
   const paginatedItems = useMemo(() => {
@@ -207,7 +217,7 @@ export default function ArchiveView() {
     return filteredItems.slice(startIndex, startIndex + itemsPerPage);
   }, [filteredItems, currentPage, itemsPerPage]);
 
-  useEffect(() => { setCurrentPage(1); }, [typeFilter, searchQuery]);
+  useEffect(() => { setCurrentPage(1); }, [typeFilter, searchQuery, archiveSort]);
   useEffect(() => { fetchArchivedItems(); }, []);
 
   // Quiet background poll -- paused while a restore/success/error modal is
@@ -355,70 +365,33 @@ export default function ArchiveView() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {statCards.map((card) => {
-          if (statsLoading) return <StatCardSkeleton key={card.key} />;
-          const Icon = card.icon;
-          return (
-            <div key={card.key} className={`rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white`}>
-              <div className="flex items-start justify-between">
-                <span className="text-[12px] font-bold uppercase tracking-wide">{card.label}</span>
-                <Icon className="h-5 w-5 text-white/40" />
-              </div>
-              <p
-                className={`mt-2 font-display font-extrabold tracking-tight [font-variant-numeric:tabular-nums] ${
-                  card.isText ? "text-xl lg:text-2xl" : "text-2xl lg:text-3xl"
-                }`}
-              >
-                {card.value}
-              </p>
-              <p className="mt-1 text-xs text-white/75">{card.desc}</p>
-            </div>
-          );
-        })}
+      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {statCards.map((card, idx) =>
+          statsLoading ? (
+            <StatCardSkeleton key={card.key} />
+          ) : (
+            <KpiCard key={card.key} value={card.value} label={card.label} description={card.desc} icon={card.icon} gradient={card.gradient} delay={idx * 70} />
+          )
+        )}
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t("searchArchivePlaceholder")}
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                aria-label="Clear search"
-                title="Clear"
-                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
-              >
-                {t("clearLabel")}
-              </button>
-            )}
-          </div>
-          <FilterDropdown
-            value={typeFilter}
-            onChange={setTypeFilter}
-            options={typeOptions}
-            align="right"
-            className="h-11 pl-10 pr-8 shrink-0"
-            icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-            dark
-            searchable
-            searchPlaceholder={t("search")}
-            noResultsLabel={t("noMatchesFoundLabel")}
-          />
-        </div>
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+        <FilterBar
+          search={{ value: searchQuery, onChange: setSearchQuery, placeholder: t("searchArchivePlaceholder") }}
+          filters={[{ key: "type", label: t("typeColumn"), value: typeFilter, onChange: setTypeFilter, options: typeOptions, searchable: true }]}
+          sort={{
+            value: archiveSort, onChange: setArchiveSort,
+            options: [
+              { value: 'recent', label: t("sortRecentlyDeleted") },
+              { value: 'oldest', label: t("sortOldest") },
+              { value: 'name-az', label: t("sortNameAZ") },
+            ],
+          }}
+          count={loading ? undefined : { shown: filteredItems.length, total: allTrashedItems.length }}
+        />
       </div>
 
-      <p className="text-xs text-white/45">
-        {loading || pageSwitching ? 0 : filteredItems.length} {t("itemsFoundCount")} &bull; {t("showingLabel")} {itemsPerPage} {t("perPage")}
-      </p>
+      <p className="text-xs text-white/45">{t("showingLabel")} {itemsPerPage} {t("perPage")}</p>
 
       {filteredItems.length === 0 && !loading ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-12 text-center text-white/45">
@@ -506,7 +479,7 @@ export default function ArchiveView() {
           step, and the success modal below) since restoring is the
           positive/undo action here, not the app's usual save/delete. */}
       {restoreItem && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="flex justify-center text-sage-400 mb-3"><RefreshCw size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("restoreItemModalTitle")}</h3>
@@ -528,7 +501,7 @@ export default function ArchiveView() {
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       <StatusModal open={showSuccessModal} type="success" title={t("successTitle")} message={t("itemRestoredSuccess")} okLabel={t("okLabel")} onClose={() => setShowSuccessModal(false)} />

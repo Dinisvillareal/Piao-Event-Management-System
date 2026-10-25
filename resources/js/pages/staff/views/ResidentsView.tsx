@@ -1,15 +1,25 @@
+import Portal from "../../../components/ui/Portal";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import SaveButton from "../../../components/ui/SaveButton";
 import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
 import SuffixSelect from "../../../components/ui/SuffixSelect";
+import FilterBar, { type FilterDef, type ExtraChip } from "../../../components/ui/FilterBar";
+import QuickTabs from "../../../components/ui/QuickTabs";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FormSelect from "../../../components/ui/FormSelect";
 import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
+import SlideOutGhost from "../../../components/ui/SlideOutGhost";
+import { createPortal } from "react-dom";
 import { renderMemberIdCard, renderMemberIdCardSides } from "../../../lib/memberIdCard";
 import IdCardFlip from "../../../components/ui/IdCardFlip";
 import BarangayPositionField, { type BarangayPositionValue } from "../../../components/ui/BarangayPositionField";
 import { useBarangayOfficials, OFFICIALS_CHANGED_EVENT } from "../../../lib/barangayOfficials";
 import { exportResidentsXlsx, RESIDENT_EXPORT_COLUMNS, MIN_EXPORT_COLUMNS, type ResidentExportColumnKey } from "../../../lib/residentsExport";
+import api from "../../../lib/api";
+import PasswordConfirmDialog from "../../../components/auth/PasswordConfirmDialog";
 import { checkPassword, isStrongPassword, PASSWORD_MAX } from "../../../lib/passwordPolicy";
 import {
   Search,
@@ -44,7 +54,6 @@ import DefaultAvatar from "../../../components/ui/DefaultAvatar";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 import { tc } from "../../../lib/contentTranslations";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Membership {
   id: number;
@@ -266,7 +275,7 @@ const withSuffix = (name: string, suffix?: string | null) =>
   suffix && suffix.trim() ? `${name}, ${suffix.trim()}` : name;
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function ResidentsView() {
+export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: boolean }) {
   const { t, locale, language } = useLanguage();
   // Current Barangay Captain / Secretary (one each) -- drives the replace notice in the forms.
   const officials = useBarangayOfficials();
@@ -295,11 +304,20 @@ export default function ResidentsView() {
   // (which already matches on role) and the dedicated Age & Status
   // Categories / Archive pages.
   const [membershipFilter, setMembershipFilter] = useState<"all" | "members" | "not-members">("all");
+  // Extra filters + sort (FilterBar). "all" means "no filter".
+  const [ageFilter, setAgeFilter] = useState("all");
+  const [genderFilter, setGenderFilter] = useState("all");
+  const [civilFilter, setCivilFilter] = useState("all");
+  const [currentFilter, setCurrentFilter] = useState("all");
+  const [membershipNameFilter, setMembershipNameFilter] = useState("all");
+  const [sortKey, setSortKey] = useState("recent");
+  const filterSwitching = useFilterSwitching([residentSearch, membershipFilter, ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter, sortKey]);
   const [currentPage, setCurrentPage] = useState(1);
-  // Brief skeleton flash on every page switch, same as Activity Logs --
-  // this list paginates client-side so there's nothing to actually wait
-  // on, but the flash keeps page switches feeling consistent app-wide.
-  const [pageSwitching, setPageSwitching] = useState(false);
+  // Brief skeleton flash on every page switch (table rows + pager), same
+  // as Inventory -- the list paginates client-side so there's nothing to
+  // actually wait on, but the flash keeps paging consistent app-wide.
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
@@ -308,9 +326,7 @@ export default function ResidentsView() {
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
-  // High enough that every real barangay resident list renders on one
-  // page -- the table itself scrolls, so there's no real ceiling here.
-  const itemsPerPage = 5000;
+  const itemsPerPage = 10;
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [viewRecord, setViewRecord] = useState<string | null>(null);
@@ -341,8 +357,25 @@ export default function ResidentsView() {
       if (el) setPanelTop(Math.round(el.getBoundingClientRect().top));
     };
     measure();
+    // Banners (offline notice, etc.) can change the pane's position after the
+    // panel opens, so keep re-measuring while it is open.
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(document.body);
+    const raf = requestAnimationFrame(measure);
     window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
+    // Focusing a field or scrollIntoView can scroll the page itself (not just
+    // the content pane), which moves the pane's top edge without resizing
+    // anything -- re-measure on any scroll so the panel never leaves a strip
+    // of the list peeking out above it.
+    window.addEventListener("scroll", measure, true);
+    const settle = window.setTimeout(measure, 350);
+    return () => {
+      ro?.disconnect();
+      cancelAnimationFrame(raf);
+      window.clearTimeout(settle);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
   }, [panelOpen]);
 
   // Always reopen a form with the password hidden.
@@ -407,6 +440,30 @@ export default function ResidentsView() {
     () => !!residentsData.find((x) => x.id === editRecord)?.hasAccount,
     [residentsData, editRecord]
   );
+
+  // Head Staff only: the role dropdown on the edit form. A change is applied
+  // through the same password-protected Staff Accounts endpoints, then the
+  // normal save runs. `roleApplied` remembers a change that already went
+  // through so a retry after a validation error never repeats it.
+  const [askRolePw, setAskRolePw] = useState(false);
+  const roleApplied = useRef<{ id: string; role: string } | null>(null);
+  const editOriginalRole = (() => {
+    if (roleApplied.current && roleApplied.current.id === editRecord) return roleApplied.current.role;
+    return residentsData.find((x) => x.id === editRecord)?.role ?? "Resident";
+  })();
+  const editIsSelf = !!editingResident && currentUserId === editingResident.real_id;
+  const canEditRole = isHeadStaff && !!editingResident && !editIsSelf;
+  const applyRoleChange = async (password: string) => {
+    if (!editingResident || !editRecord) return;
+    if (editingResident.role === "Staff") {
+      await api.post("/staff-accounts/promote", { user_id: editingResident.real_id, password });
+    } else {
+      await api.post(`/staff-accounts/${editingResident.real_id}/demote`, { password });
+    }
+    roleApplied.current = { id: editRecord, role: editingResident.role };
+    setAskRolePw(false);
+    await performUpdateResident();
+  };
 
   const hasAddChanges = useMemo(
     () => JSON.stringify(newResident) !== initialAddData || addPhotoFile !== null,
@@ -976,6 +1033,8 @@ export default function ResidentsView() {
   const performUpdateResident = async () => {
     setShowEditConfirm(false);
     if (!editRecord || !editingResident) return;
+    const appliedNow = roleApplied.current?.id === editRecord ? roleApplied.current.role : null;
+    if (canEditRole && editingResident.role !== (appliedNow ?? editOriginalRole)) { setAskRolePw(true); return; }
 
     const fd = new FormData();
     fd.append("_method", "PUT");
@@ -1139,6 +1198,31 @@ const handleDeleteResident = async () => {
   };
 
   // ─── Filter + Pagination ──────────────────────────────────────────────────
+  // One predicate for the table AND the export, so "what you see is what you
+  // export" can't drift. `extras` = the FilterBar dropdowns; scope = Members tab.
+  const residentSearchHit = (x: ResidentRow, q: string) =>
+    matchesSearch(q, x.id, x.firstName, x.middleName, x.lastName, x.suffix, x.contactNumber, x.memberships, x.role, x.barangayPosition === "captain" ? "barangay captain punong barangay" : x.barangayPosition === "secretary" ? "barangay secretary kalihim" : "");
+  const matchesExtraFilters = (x: ResidentRow) => {
+    if (ageFilter !== "all" && x.ageGroup !== ageFilter) return false;
+    if (genderFilter !== "all" && x.gender !== genderFilter) return false;
+    if (civilFilter !== "all" && String(x.civilStatusId ?? "") !== civilFilter) return false;
+    if (currentFilter !== "all" && !x.currentStatusIds.includes(Number(currentFilter))) return false;
+    if (membershipNameFilter !== "all" && !membershipListFor(x).includes(membershipNameFilter)) return false;
+    return true;
+  };
+  const extraFilterCount = [ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter].filter((v) => v !== "all").length;
+  const sortResidents = (rows: ResidentRow[]) => {
+    const byName = (a: ResidentRow, b: ResidentRow) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName);
+    const out = [...rows];
+    switch (sortKey) {
+      case "name-az": return out.sort(byName);
+      case "name-za": return out.sort((a, b) => byName(b, a));
+      case "age-young": return out.sort((a, b) => (a.age ?? 999) - (b.age ?? 999) || byName(a, b));
+      case "age-old": return out.sort((a, b) => (b.age ?? -1) - (a.age ?? -1) || byName(a, b));
+      case "oldest": return out.sort((a, b) => a.real_id - b.real_id);
+      default: return out.sort((a, b) => b.real_id - a.real_id); // recently added
+    }
+  };
   const filteredResidents = useMemo(() => {
     // Archived/trashed residents live on the Archive page now -- this
     // list only ever shows active records.
@@ -1147,13 +1231,11 @@ const handleDeleteResident = async () => {
     if (membershipFilter === "members") r = r.filter((x) => isActiveMember(x));
     else if (membershipFilter === "not-members") r = r.filter((x) => !isActiveMember(x));
 
-    if (residentSearch.trim()) {
-      r = r.filter((x) =>
-        matchesSearch(residentSearch, x.id, x.firstName, x.middleName, x.lastName, x.suffix, x.contactNumber, x.memberships, x.role, x.barangayPosition === "captain" ? "barangay captain punong barangay" : x.barangayPosition === "secretary" ? "barangay secretary kalihim" : "")
-      );
-    }
-    return r;
-  }, [residentsData, membershipFilter, residentSearch]);
+    r = r.filter(matchesExtraFilters);
+    if (residentSearch.trim()) r = r.filter((x) => residentSearchHit(x, residentSearch));
+    return sortResidents(r);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [residentsData, membershipFilter, residentSearch, ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter, sortKey]);
 
   // ─── Export (Excel / PDF) ─────────────────────────────────────────────────
   // Clicking Excel / PDF opens an options dialog: which residents to include
@@ -1192,14 +1274,25 @@ const handleDeleteResident = async () => {
     let r = residentsData.filter((x) => x.deleted_at === null);
     if (exportScope === "members") r = r.filter((x) => isActiveMember(x));
     else if (exportScope === "not-members") r = r.filter((x) => !isActiveMember(x));
-    if (exportApplySearch && residentSearch.trim()) {
-      r = r.filter((x) =>
-        matchesSearch(residentSearch, x.id, x.firstName, x.middleName, x.lastName, x.suffix, x.contactNumber, x.memberships, x.role, x.barangayPosition === "captain" ? "barangay captain punong barangay" : x.barangayPosition === "secretary" ? "barangay secretary kalihim" : "")
-      );
+    if (exportApplySearch) {
+      r = r.filter(matchesExtraFilters);
+      if (residentSearch.trim()) r = r.filter((x) => residentSearchHit(x, residentSearch));
     }
     return r;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [residentsData, exportScope, exportApplySearch, residentSearch]);
+  }, [residentsData, exportScope, exportApplySearch, residentSearch, ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter]);
+
+  // Plain-English description of the on-screen filters, printed on the report.
+  const onScreenFilterParts = (): string[] => {
+    const parts: string[] = [];
+    if (residentSearch.trim()) parts.push(`Search: "${residentSearch.trim()}"`);
+    if (ageFilter !== "all") parts.push(`Age group: ${ageFilter}`);
+    if (genderFilter !== "all") parts.push(`Gender: ${genderFilter}`);
+    if (civilFilter !== "all") parts.push(`Civil status: ${civilStatuses.find((c) => String(c.id) === civilFilter)?.label ?? civilFilter}`);
+    if (currentFilter !== "all") parts.push(`Current status: ${currentStatuses.find((c) => String(c.id) === currentFilter)?.label ?? currentFilter}`);
+    if (membershipNameFilter !== "all") parts.push(`Membership: ${membershipNameFilter}`);
+    return parts;
+  };
 
   const toggleExportCol = (key: ResidentExportColumnKey) =>
     setExportCols((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
@@ -1233,7 +1326,7 @@ const handleDeleteResident = async () => {
 
       const scopeLabel = exportScope === "members" ? "Members only" : exportScope === "not-members" ? "Not yet members" : "All records";
       const labelParts = [`${scopeLabel} · ${rows.length} resident${rows.length === 1 ? "" : "s"}`];
-      if (exportApplySearch && residentSearch.trim()) labelParts.push(`Search: "${residentSearch.trim()}"`);
+      if (exportApplySearch) labelParts.push(...onScreenFilterParts());
       const filterLabel = labelParts.join(" · ");
 
       // Opening message (English, like the rest of the exported document) -- optional.
@@ -1250,7 +1343,8 @@ const handleDeleteResident = async () => {
             : "all active residents registered in the barangay";
         const fields = columns.filter((c) => c.key !== "no").map((c) => c.label.toLowerCase());
         const fieldList = fields.length > 1 ? `${fields.slice(0, -1).join(", ")} and ${fields[fields.length - 1]}` : fields[0] ?? "";
-        const searchNote = exportApplySearch && residentSearch.trim() ? `, narrowed to the search "${residentSearch.trim()}"` : "";
+        const appliedParts = exportApplySearch ? onScreenFilterParts() : [];
+        const searchNote = appliedParts.length ? `, narrowed by ${appliedParts.join("; ")}` : "";
         message = [
           `This Residents Master List is prepared by the Barangay Piao office through the Piao Connect system to present the residents registered in the barangay as of ${today}.`,
           `It covers ${total} resident${total === 1 ? "" : "s"} (${scopePhrase}${searchNote}), listed alphabetically by last name${fieldList ? ` with their ${fieldList}` : ""}.${
@@ -1302,7 +1396,7 @@ const handleDeleteResident = async () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [residentSearch, membershipFilter]);
+  }, [residentSearch, membershipFilter, ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter, sortKey]);
 
   // ─── Sub-components ───────────────────────────────────────────────────────
   // Current Status is many-to-many (a resident can be, say, both a Solo
@@ -1732,6 +1826,41 @@ const handleDeleteResident = async () => {
   };
 
   // ─── JSX ──────────────────────────────────────────────────────────────────
+  const residentFilterDefs: FilterDef[] = [
+    {
+      key: "age", label: t("fltAge"), value: ageFilter, onChange: setAgeFilter,
+      options: [{ value: "all", label: t("fltAllAges") }, ...[...ageBrackets].sort((x, y) => x.min_age - y.min_age).map((b) => ({ value: b.label, label: tc(b.label, language as any) }))],
+    },
+    {
+      key: "gender", label: t("genderLabel"), value: genderFilter, onChange: setGenderFilter,
+      options: [{ value: "all", label: t("fltAllGenders") }, { value: "Male", label: t("maleOption") }, { value: "Female", label: t("femaleOption") }],
+    },
+    {
+      key: "civil", label: t("civilStatusLabel"), value: civilFilter, onChange: setCivilFilter,
+      options: [{ value: "all", label: t("fltAllCivil") }, ...civilStatuses.map((c) => ({ value: String(c.id), label: tc(c.label, language as any) }))],
+    },
+    {
+      key: "current", label: t("currentStatusLabel"), value: currentFilter, onChange: setCurrentFilter,
+      options: [{ value: "all", label: t("fltAllCurrent") }, ...[...currentStatuses].sort((x, y) => x.label.localeCompare(y.label)).map((c) => ({ value: String(c.id), label: tc(c.label, language as any) }))],
+    },
+    {
+      key: "membership", label: t("fltMembership"), value: membershipNameFilter, onChange: setMembershipNameFilter, searchable: true, minWidthClass: "min-w-[200px]",
+      options: [{ value: "all", label: t("fltAnyMembership") }, ...[...availableMemberships].sort((x, y) => x.name.localeCompare(y.name)).map((m) => ({ value: m.name, label: tc(m.name, language as any) }))],
+    },
+  ];
+  const residentSortOptions = [
+    { value: "recent", label: t("sortRecentlyAdded") },
+    { value: "oldest", label: t("sortOldest") },
+    { value: "name-az", label: t("sortNameAZ") },
+    { value: "name-za", label: t("sortNameZA") },
+    { value: "age-young", label: t("sortAgeYoung") },
+    { value: "age-old", label: t("sortAgeOld") },
+  ];
+  const residentTabChips: ExtraChip[] = membershipFilter === "all" ? [] : [{
+    key: "tab",
+    label: `${t("fltMembership")}: ${membershipFilter === "members" ? t("tabMembers") : t("resNotYetMembers")}`,
+    onRemove: () => setMembershipFilter("all"),
+  }];
   const activeResidents = residentsData.filter((x) => x.deleted_at === null);
   const membersCount = activeResidents.filter((x) => isActiveMember(x)).length;
 
@@ -1764,48 +1893,25 @@ const handleDeleteResident = async () => {
         </button>
       </div>
 
-      {/* Search + membership filter pills */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-            <input
-              type="text"
-              value={residentSearch}
-              onChange={(e) => setResidentSearch(e.target.value)}
-              placeholder={t("searchByIdNameContactPlaceholder")}
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]"
-            />
-            {residentSearch && (
-              <button
-                type="button"
-                onClick={() => setResidentSearch("")}
-                aria-label="Clear search"
-                title="Clear"
-                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
-              >
-                {t("clearLabel")}
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-2 shrink-0 overflow-x-auto">
-            {[
-              { key: "all" as const, label: `${t("allRecordsOption")} (${activeResidents.length})` },
-              { key: "members" as const, label: t("resMembersFilter").replace("{n}", String(membersCount)) },
-              { key: "not-members" as const, label: t("resNotYetMembers") },
-            ].map((opt) => (
-              <button
-                key={opt.key}
-                onClick={() => setMembershipFilter(opt.key)}
-                className={`px-4 py-2 rounded-full text-sm font-semibold whitespace-nowrap transition-colors ${
-                  membershipFilter === opt.key ? "bg-sage-700 text-white shadow-sm" : "bg-white/[0.04] text-white/60 hover:bg-white/[0.08]"
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        </div>
+      {/* Quick tabs + search / filters / sort / chips */}
+      <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+        <QuickTabs
+          value={membershipFilter}
+          onChange={(k) => { setMembershipFilter(k as typeof membershipFilter); goToPage(1); }}
+          tabs={[
+            { key: "all", label: t("allRecordsOption"), count: activeResidents.length },
+            { key: "members", label: t("tabMembers"), count: membersCount },
+            { key: "not-members", label: t("resNotYetMembers"), count: activeResidents.length - membersCount },
+          ]}
+        />
+        <FilterBar
+          search={{ value: residentSearch, onChange: setResidentSearch, placeholder: t("searchByIdNameContactPlaceholder") }}
+          filters={residentFilterDefs}
+          sort={{ value: sortKey, onChange: setSortKey, options: residentSortOptions }}
+          count={{ shown: filteredResidents.length, total: membershipFilter === "all" ? activeResidents.length : membershipFilter === "members" ? membersCount : activeResidents.length - membersCount }}
+          extraChips={residentTabChips}
+          onClearExtras={() => setMembershipFilter("all")}
+        />
       </div>
 
       {/* Table */}
@@ -1851,11 +1957,11 @@ const handleDeleteResident = async () => {
           <table className="w-full text-[15px] min-w-[760px]">
             <thead>
               <tr className="border-b border-white/10">
-                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("residentOption")}</th>
-                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("ageColumn")}</th>
-                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("rptColContact")}</th>
-                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("householdLabel")}</th>
-                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("reportTypeMembership")}</th>
+                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-20" /> : t("residentOption")}</th>
+                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-10" /> : t("ageColumn")}</th>
+                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-16" /> : t("rptColContact")}</th>
+                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-20" /> : t("householdLabel")}</th>
+                <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-24" /> : t("reportTypeMembership")}</th>
                 <th className="py-3 px-4 w-10" />
               </tr>
             </thead>
@@ -1931,25 +2037,37 @@ const handleDeleteResident = async () => {
             </tbody>
           </table>
         </div>
-        {totalPages > 1 && ((pageSwitching) ? <PagerSkeleton className="justify-end px-5 py-3 border-t border-white/10" /> : (
-          <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-white/10">
-            <button
-              onClick={() => goToPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
-            >
-              ←
-            </button>
-            <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
-              {currentPage}
-            </span>
-            <button
-              onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
-            >
-              →
-            </button>
+        {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton withLabel className="px-5 py-3 border-t border-white/10" /> : (
+          <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-white/10">
+            <p className="text-xs font-medium text-white/45">
+              {t("budgetPageRange")
+                .replace("{from}", String((currentPage - 1) * itemsPerPage + 1))
+                .replace("{to}", String(Math.min(currentPage * itemsPerPage, filteredResidents.length)))
+                .replace("{total}", String(filteredResidents.length))}
+            </p>
+            <nav className="flex items-center gap-2" aria-label="Pagination">
+              <button
+                type="button"
+                onClick={() => goToPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                aria-label={t("budgetPagePrev")}
+                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] active:scale-95 transition"
+              >
+                ←
+              </button>
+              <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold" aria-current="page">
+                {currentPage}
+              </span>
+              <button
+                type="button"
+                onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                aria-label={t("budgetPageNext")}
+                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] active:scale-95 transition"
+              >
+                →
+              </button>
+            </nav>
           </div>
         ))}
       </div>
@@ -1965,35 +2083,68 @@ const handleDeleteResident = async () => {
         const size = householdSizeFor(r.household?.id);
         // Encodes the same shape the QR Scanner already reads back out
         // (see ScanView.handleQRCodeScan: data.user_id / user_code / name).
+        // user_id is deliberately left out; the scanner resolves by user_code.
         const qrPayload = JSON.stringify({
-          user_id: r.real_id,
           user_code: r.id,
           name: `${r.firstName} ${r.lastName}`,
         });
 
-        const infoRows: [string, React.ReactNode][] = [
-          [t("contactNumberLabel"), r.contactNumber || "—"],
-          [t("resBirthdate"), formatDateShort(r.birthDate, locale)],
-          [t("resPurok"), r.address || "—"],
+        const dash = <span className="font-normal text-white/30">—</span>;
+        const identityRows: [string, React.ReactNode][] = [
+          [t("contactNumberLabel"), r.contactNumber || dash],
+          [t("resBirthdate"), r.birthDate ? formatDateShort(r.birthDate, locale) : dash],
+          [t("ageLabel"), r.age !== null ? `${r.age}${r.ageGroup ? ` · ${r.ageGroup}` : ""}` : dash],
+          [t("genderLabel"), r.gender ? (r.gender === "Male" ? t("maleOption") : t("femaleOption")) : dash],
+          [t("civilStatusLabel"), r.civilStatus ? tc(r.civilStatus, language as any) : dash],
         ];
-        if (r.age !== null) infoRows.push([t("ageLabel"), `${r.age}${r.ageGroup ? ` · ${r.ageGroup}` : ""}`]);
-        if (r.gender) infoRows.push([t("genderLabel"), r.gender === "Male" ? t("maleOption") : t("femaleOption")]);
-        if (r.civilStatus) infoRows.push([t("civilStatusLabel"), tc(r.civilStatus, language as any)]);
-        infoRows.push([t("resHouseholdSize"), size > 0 ? t(size === 1 ? "resOneMember" : "resNMembers").replace("{n}", String(size)) : "—"]);
-        infoRows.push([t("roleColumn"), r.role === "Resident" ? t("residentOption") : r.role === "Staff" ? t("staffOption") : r.role]);
-        infoRows.push([
-          t("resAccount"),
-          r.hasAccount ? (
-            <span className="inline-flex items-center gap-1.5">
-              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#4FBEB0]/15 text-[#7DD8CB]">{t("yesLabel")}</span>
-              <span className="text-xs text-white/50">{r.id}</span>
-            </span>
-          ) : (
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/10 text-white/60">{t("noLabel")}</span>
-          ),
-        ]);
+        const homeRows: [string, React.ReactNode][] = [
+          [t("resPurok"), r.address || dash],
+          [
+            t("householdLabel"),
+            r.household ? (
+              <span className="inline-flex flex-wrap items-center justify-end gap-2">
+                {r.household.code}
+                {r.isHouseholdHead && (
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gold-400/15 text-gold-300">{t("headBadgeLabel")}</span>
+                )}
+              </span>
+            ) : dash,
+          ],
+          [t("resHouseholdSize"), size > 0 ? t(size === 1 ? "resOneMember" : "resNMembers").replace("{n}", String(size)) : dash],
+          [t("roleColumn"), r.role === "Resident" ? t("residentOption") : r.role === "Staff" ? t("staffOption") : r.role],
+          [
+            t("resAccount"),
+            r.hasAccount ? (
+              <span className="inline-flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#4FBEB0]/15 text-[#7DD8CB]">{t("yesLabel")}</span>
+                <span className="text-xs font-normal text-white/50">{r.id}</span>
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-white/10 text-white/60">{t("noLabel")}</span>
+            ),
+          ],
+        ];
+        const InfoCard = ({ title, rows }: { title: string; rows: [string, React.ReactNode][] }) => (
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03]">
+            <p className="px-5 pb-2 pt-4 text-xs font-bold uppercase tracking-wider text-white/45">{title}</p>
+            <dl>
+              {rows.map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between gap-4 border-t border-white/10 px-5 py-3">
+                  <dt className="shrink-0 text-sm text-white/50">{label}</dt>
+                  <dd className="min-w-0 break-words text-right text-[15px] font-semibold text-white">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        );
+        // Attendance at a glance (from the same history list shown further down).
+        const attCounts = { complete: 0, incomplete: 0, missed: 0 };
+        attendanceHistory.forEach((a) => {
+          const k = String(a.status ?? "").toLowerCase();
+          if (k in attCounts) attCounts[k as keyof typeof attCounts] += 1;
+        });
 
-        return (
+        return createPortal(
           <>
             {/* Back to a right-anchored slide-over drawer (dimmed backdrop,
                 fixed narrower width, slides in from the right edge) rather
@@ -2008,19 +2159,20 @@ const handleDeleteResident = async () => {
               }
               .resident-profile-slide-in { animation: residentProfileSlideIn 280ms ease-out; }
             `}</style>
+            <SlideOutGhost />
             <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40" onClick={() => setViewRecord(null)} />
             <div className="resident-profile-slide-in fixed inset-y-0 right-0 z-50 w-full max-w-4xl bg-[#0A0E1A] border-l border-white/10 shadow-2xl flex flex-col overflow-hidden">
               <img
                 src="/logo-removebg-preview.png"
                 alt=""
                 aria-hidden="true"
-                className="pointer-events-none select-none absolute z-0 bottom-[-3rem] right-[-3rem] h-96 w-96 object-contain opacity-[0.05]"
+                className="pointer-events-none select-none absolute z-0 bottom-[-4rem] right-[-4rem] h-[30rem] w-[30rem] object-contain opacity-[0.05]"
               />
 
               <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b border-white/10 shrink-0 bg-[#0A0E1A]">
                 <h2 className="font-display text-xl font-bold text-white">{t("resProfileTitle")}</h2>
                 <button onClick={() => setViewRecord(null)} className="text-white/50 hover:text-white">
-                  <XIcon size={20} />
+                  <XIcon size={26} />
                 </button>
               </div>
 
@@ -2062,33 +2214,34 @@ const handleDeleteResident = async () => {
                   </span>
                 </div>
 
-                <section className="mt-8">
-                  <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-5">
-                    {t("resPersonalInfo")}
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {infoRows.map(([label, value]) => (
-                      <div key={label} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                        <span className="block text-[12px] font-semibold uppercase tracking-wider text-white/40">{label}</span>
-                        <span className="mt-1 block text-base font-semibold text-white break-words">{value}</span>
+                {(attendanceLoading || attendanceHistory.length > 0) && (
+                  <div className="mt-6 grid grid-cols-3 gap-3">
+                    {([
+                      ["complete", t("statusComplete"), "bg-[#4FBEB0]"],
+                      ["incomplete", t("statusIncomplete"), "bg-gold-400"],
+                      ["missed", t("statusMissed"), "bg-red-400"],
+                    ] as const).map(([key, label, bar]) => (
+                      <div key={key} className="flex items-stretch gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                        <span className={`w-1 shrink-0 rounded-full ${bar}`} />
+                        <div className="min-w-0">
+                          {attendanceLoading ? <Skeleton className="h-7 w-8" /> : <p className="text-2xl font-black leading-tight text-white">{attCounts[key]}</p>}
+                          <p className="truncate text-xs font-medium text-white/50">{label}</p>
+                        </div>
                       </div>
                     ))}
-                    {r.household && (
-                      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                        <span className="block text-[12px] font-semibold uppercase tracking-wider text-white/40">{t("householdLabel")}</span>
-                        <span className="mt-1 block text-base font-semibold text-white">
-                          {r.household.code}
-                          {r.isHouseholdHead && (
-                            <span className="ml-2 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gold-400/15 text-gold-300 align-middle">
-                              {t("headBadgeLabel")}
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    )}
+                  </div>
+                )}
+
+                <section className="mt-8">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-white/80 pb-2.5 border-b border-white/15 mb-4">
+                    {t("resPersonalInfo")}
+                  </h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <InfoCard title={t("resInfoIdentity")} rows={identityRows} />
+                    <InfoCard title={t("resInfoHome")} rows={homeRows} />
                     {r.currentStatuses.length > 0 && (
-                      <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 sm:col-span-2">
-                        <span className="block text-[12px] font-semibold uppercase tracking-wider text-white/40">{t("statusColumn")}</span>
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 sm:col-span-2">
+                        <span className="block text-xs font-bold uppercase tracking-wider text-white/45">{t("statusColumn")}</span>
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
                           {r.currentStatuses.map((cs) => (
                             <span key={cs.id} className="px-2.5 py-1 rounded-full text-[13px] font-medium bg-[#4FBEB0]/10 text-[#7DD8CB]">
@@ -2102,7 +2255,7 @@ const handleDeleteResident = async () => {
                 </section>
 
                 <section className="mt-8">
-                  <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-5">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-white/80 pb-2.5 border-b border-white/15 mb-4">
                     {t("reportTypeMembership")}
                   </h2>
                   {allMems.length > 0 && (
@@ -2123,7 +2276,7 @@ const handleDeleteResident = async () => {
                 </section>
 
                 <section className="mt-8">
-                  <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-5">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-white/80 pb-2.5 border-b border-white/15 mb-4">
                     {t("resAttendanceHistory")}
                   </h2>
                   {attendanceLoading ? (
@@ -2143,14 +2296,16 @@ const handleDeleteResident = async () => {
                   ) : (
                     <div className="space-y-2">
                       {attendanceHistory.slice(0, 8).map((a) => (
-                        <div key={a.id} className="flex items-center justify-between gap-3 text-base rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3">
+                        <div key={a.id} className="flex items-center justify-between gap-3 text-base rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 transition hover:bg-white/[0.05]">
                           <div className="min-w-0">
                             <p className="font-medium text-white truncate">{a.isEventDeleted ? t("resDeletedEvent") : a.eventTitle}</p>
                             {a.eventDate && <p className="text-sm text-white/40">{formatDateShort(a.eventDate, locale)}</p>}
                           </div>
                           <span
-                            className={`shrink-0 px-2.5 py-1 rounded-full text-[13px] font-medium ${
-                              String(a.status).toLowerCase() === "complete" ? "bg-[#4FBEB0]/10 text-[#7DD8CB]" : "bg-gold-400/15 text-gold-300"
+                            className={`shrink-0 whitespace-nowrap px-3 py-1 rounded-full text-[12.5px] font-semibold ${
+                              String(a.status).toLowerCase() === "complete" ? "bg-[#4FBEB0]/15 text-[#7DD8CB]"
+                              : String(a.status).toLowerCase() === "incomplete" ? "bg-gold-400/15 text-gold-300"
+                              : "bg-red-500/15 text-red-400"
                             }`}
                           >
                             {attendanceStatusLabel(a.status)}
@@ -2205,7 +2360,7 @@ const handleDeleteResident = async () => {
             </div>
 
             {showQrPanel && (
-              <div
+              <Portal><div
                 className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] flex flex-col items-center justify-center px-4 py-6"
                 onClick={() => setShowQrPanel(false)}
               >
@@ -2250,7 +2405,7 @@ const handleDeleteResident = async () => {
                     </button>
                   </div>
                 </div>
-              </div>
+              </div></Portal>
             )}
 
             <ConfirmDialog
@@ -2284,7 +2439,7 @@ const handleDeleteResident = async () => {
               z={70}
             />
           </>
-        );
+          , document.body);
       })()}
 
       {/* ─── Add Page ─────────────────────────────────────────────────────────────
@@ -2294,15 +2449,15 @@ const handleDeleteResident = async () => {
           sage caption pills, per the "register resident" layout redesign. Same
           fields, same handlers -- styling only. */}
       {showAddForm && (
-        <div style={{ top: panelTop }} className="fixed bottom-0 left-0 right-0 md:left-[280px] z-30 bg-[#0A0E1A] overflow-y-auto">
+        <div style={{ top: panelTop }} className="resident-form-panel fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
             aria-hidden="true"
-            className="pointer-events-none select-none fixed z-0 bottom-[-3rem] right-[-3rem] h-[22rem] w-[22rem] sm:h-[30rem] sm:w-[30rem] object-contain opacity-[0.06]"
+            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-[0.06]"
           />
 
-          <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
+          <div className="relative z-10 mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 pb-0 pt-10 sm:px-12 sm:pt-14">
             <button
               type="button"
               onClick={handleCancelAdd}
@@ -2318,7 +2473,7 @@ const handleDeleteResident = async () => {
               {t("resAddFormIntro")}
             </p>
 
-            <form onSubmit={handleAddResident} noValidate className="mt-10 space-y-10">
+            <form onSubmit={handleAddResident} noValidate className="mt-10 flex flex-1 flex-col space-y-10">
               <section>
                 <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
                   {t("resBasicInfo")}
@@ -2366,9 +2521,9 @@ const handleDeleteResident = async () => {
                         >
                           <option value="" style={{ display: "none" }}>{t("chooseARoleOption")}</option>
                           <option value="Resident" className="bg-[#0A0E1A] text-white">{t("residentOption")}</option>
-                          <option value="Staff" className="bg-[#0A0E1A] text-white">{t("staffOption")}</option>
                         </FormSelect>
                       </div>
+                      <p className="mt-1.5 text-xs text-white/45">{t("secRoleLockedNote")}</p>
                       {formErrors.role && <p className="text-red-400 text-xs mt-1">{formErrors.role}</p>}
                     </div>
 
@@ -2547,7 +2702,8 @@ const handleDeleteResident = async () => {
                 `}</style>
               </section>
 
-              <div className="pt-2 pb-4">
+              <div className="!mt-auto" />
+              <div className="sticky bottom-0 z-10 -mx-6 border-t border-white/10 bg-[#0A0E1A] px-6 py-4 sm:-mx-12 sm:px-12">
                 <button
                   type="submit"
                   disabled={!hasAddChanges}
@@ -2578,15 +2734,15 @@ const handleDeleteResident = async () => {
           headers -- for a consistent Add/Edit experience. Same fields, same
           handlers -- styling only. */}
       {editRecord && editingResident && (
-        <div style={{ top: panelTop }} className="fixed bottom-0 left-0 right-0 md:left-[280px] z-30 bg-[#0A0E1A] overflow-y-auto">
+        <div style={{ top: panelTop }} className="resident-form-panel fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
             aria-hidden="true"
-            className="pointer-events-none select-none fixed z-0 bottom-[-3rem] right-[-3rem] h-[22rem] w-[22rem] sm:h-[30rem] sm:w-[30rem] object-contain opacity-[0.06]"
+            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-[0.06]"
           />
 
-          <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
+          <div className="relative z-10 mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 pb-0 pt-10 sm:px-12 sm:pt-14">
             <button
               type="button"
               onClick={handleCancelEdit}
@@ -2611,7 +2767,7 @@ const handleDeleteResident = async () => {
             <form
               onSubmit={handleUpdateResident}
               noValidate
-              className="mt-10 space-y-10"
+              className="mt-10 flex flex-1 flex-col space-y-10"
               style={{
                 pointerEvents: editingResident.deleted_at !== null ? "none" : "auto",
                 opacity: editingResident.deleted_at !== null ? 0.6 : 1,
@@ -2659,15 +2815,23 @@ const handleDeleteResident = async () => {
                         <FormSelect
                           required
                           value={editingResident.role}
+                          disabled={!canEditRole}
                           onChange={(e) => setEditingResident((p) => p ? { ...p, role: e.target.value } : p)}
                           className={`w-full appearance-none rounded-full border px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 ${
                             formErrors.role ? "border-red-500" : "border-white/25"
                           }`}
                         >
                           <option value="Resident" className="bg-[#0A0E1A] text-white">{t("residentOption")}</option>
-                          <option value="Staff" className="bg-[#0A0E1A] text-white">{t("staffOption")}</option>
+                          {(editingResident.role === "Staff" || canEditRole) && (
+                            <option value="Staff" disabled={editingResident.role !== "Staff" && !editOriginalHasAccount} className="bg-[#0A0E1A] text-white">
+                              {t("staffOption")}{editingResident.role !== "Staff" && !editOriginalHasAccount ? ` (${t("secNeedsAccountShort")})` : ""}
+                            </option>
+                          )}
                         </FormSelect>
                       </div>
+                      <p className="mt-1.5 text-xs text-white/45">
+                        {!isHeadStaff ? t("secRoleLockedNote") : editIsSelf ? t("secRoleSelfNote") : !editOriginalHasAccount && editOriginalRole !== "Staff" ? t("secRoleNeedsAccountNote") : t("secRoleHeadNote")}
+                      </p>
                       {formErrors.role && <p className="text-red-400 text-xs mt-1">{formErrors.role}</p>}
                     </div>
 
@@ -2838,7 +3002,8 @@ const handleDeleteResident = async () => {
                 `}</style>
               </section>
 
-              <div className="pt-2 pb-4">
+              <div className="!mt-auto" />
+              <div className="sticky bottom-0 z-10 -mx-6 border-t border-white/10 bg-[#0A0E1A] px-6 py-4 sm:-mx-12 sm:px-12">
                 <button
                   type="submit"
                   disabled={!hasEditChanges || editingResident.deleted_at !== null}
@@ -2865,7 +3030,7 @@ const handleDeleteResident = async () => {
 
       {/* ─── ID Photo preview popup ───────────────────────────────────────────── */}
       {photoPreviewModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setPhotoPreviewModal(null)}>
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setPhotoPreviewModal(null)}>
           <div className="bg-white rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-[#E6E0D3] flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
@@ -2885,7 +3050,7 @@ const handleDeleteResident = async () => {
               <img src={photoPreviewModal.url} alt={photoPreviewModal.name} className="max-w-full max-h-[65vh] rounded-xl shadow-sm" />
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* ─── Validation / save-error popup (replaces the old inline red banner) ── */}
@@ -2903,6 +3068,15 @@ const handleDeleteResident = async () => {
         z={60}
       />
 
+      <PasswordConfirmDialog
+        open={askRolePw}
+        title={t("secChangeRoleTitle")}
+        body={editingResident ? (editingResident.role === "Staff" ? t("secChangeRoleToStaff") : t("secChangeRoleToResident")) : undefined}
+        confirmLabel={t("secConfirmRoleChange")}
+        tone={editingResident?.role === "Staff" ? "brand" : "danger"}
+        onConfirm={applyRoleChange}
+        onClose={() => setAskRolePw(false)}
+      />
       <ConfirmDialog
         open={showEditConfirm}
         icon={<Pencil size={32} />}
@@ -2921,21 +3095,21 @@ const handleDeleteResident = async () => {
         // every other popup in this view -- this one was still the old
         // light "paper" card (bg-white, sage button) left over from before
         // the page moved to the dark theme.
-        <div
+        <Portal><div
           className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4"
           onClick={() => !addHouseholdSaving && setShowAddHousehold(false)}
         >
           <div
-            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
+            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-1">
-              <h3 className="text-lg font-bold text-white">{t("resAddNewHousehold")}</h3>
+              <h3 className="font-display text-3xl sm:text-4xl font-extrabold tracking-tight text-white">{t("resAddNewHousehold")}</h3>
               <button
                 onClick={() => !addHouseholdSaving && setShowAddHousehold(false)}
-                className="text-white/50 hover:text-white transition"
+                className="shrink-0 text-white/50 hover:text-white"
               >
-                <XIcon size={20} />
+                <XIcon size={26} />
               </button>
             </div>
             <p className="text-sm text-white/50 mb-5">
@@ -2944,7 +3118,7 @@ const handleDeleteResident = async () => {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-white/70 mb-1">
+                <label className="block text-base font-semibold text-white mb-1.5">
                   {t("addressPurokLabel")} <span className="text-white/40 font-normal">({t("optionalLabel")})</span>
                 </label>
                 <input
@@ -2952,11 +3126,11 @@ const handleDeleteResident = async () => {
                   value={newHouseholdAddress}
                   onChange={(e) => setNewHouseholdAddress(e.target.value)}
                   placeholder={t("purokPlaceholder")}
-                  className="w-full rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                  className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-white/70 mb-1">
+                <label className="block text-base font-semibold text-white mb-1.5">
                   {t("contactNumberLabel")} <span className="text-white/40 font-normal">({t("optionalLabel")})</span>
                 </label>
                 <input
@@ -2965,7 +3139,7 @@ const handleDeleteResident = async () => {
                   onChange={(e) => setNewHouseholdContact(formatContactNumber(e.target.value))}
                   placeholder="09XX-XXX-XXXX"
                   maxLength={13}
-                  className="w-full rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                  className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                 />
               </div>
               {addHouseholdError && <p className="text-red-400 text-xs">{addHouseholdError}</p>}
@@ -2980,21 +3154,14 @@ const handleDeleteResident = async () => {
               >
                 {t("cancel")}
               </button>
-              <button
-                type="button"
-                onClick={submitNewHousehold}
-                disabled={addHouseholdSaving}
-                className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white font-bold transition disabled:opacity-50"
-              >
-                {addHouseholdSaving ? t("resCreating") : t("resCreateHousehold")}
-              </button>
+              <SaveButton size="sm" type="button" onClick={submitNewHousehold} active={!(addHouseholdSaving || (!newHouseholdAddress.trim() && !newHouseholdContact.trim()))}>{addHouseholdSaving ? t("resCreating") : t("resCreateHousehold")}</SaveButton>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {deleteRecord && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
              <div className="mb-4 text-red-400 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
             <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
@@ -3004,11 +3171,11 @@ const handleDeleteResident = async () => {
               <button onClick={handleDeleteResident} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition">{t("yesDeleteButton")}</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {exportDialog && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" onClick={() => !exporting && setExportDialog(null)}>
+        <Portal><div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 px-4 py-6 backdrop-blur-sm" onClick={() => !exporting && setExportDialog(null)}>
           <div
             className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[30px] border border-white/10 bg-[#0A0E1A] shadow-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -3024,8 +3191,8 @@ const handleDeleteResident = async () => {
                   <p className="mt-0.5 text-[15px] text-white/50">{t("residentsMasterList")} · {t("resExportDialogSubtitle")}</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setExportDialog(null)} disabled={!!exporting} aria-label="Close" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/50 transition hover:bg-white/10 hover:text-white">
-                <XIcon className="h-5 w-5" />
+              <button type="button" onClick={() => setExportDialog(null)} disabled={!!exporting} aria-label="Close" className="shrink-0 text-white/50 hover:text-white">
+                <XIcon size={26} />
               </button>
             </div>
 
@@ -3051,7 +3218,7 @@ const handleDeleteResident = async () => {
                     </button>
                   ))}
                 </div>
-                {residentSearch.trim() && (
+                {(residentSearch.trim() || extraFilterCount > 0) && (
                   <button
                     type="button"
                     onClick={() => setExportApplySearch((v) => !v)}
@@ -3059,7 +3226,7 @@ const handleDeleteResident = async () => {
                     className={`mt-3 flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${exportApplySearch ? "border-[#4FBEB0]/50 bg-[#4FBEB0]/[0.07]" : "border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]"}`}
                   >
                     <ExportBox checked={exportApplySearch} />
-                    <span className="text-[15px] font-semibold text-white">{t("resExportApplySearch").replace("{q}", residentSearch.trim())}</span>
+                    <span className="text-[15px] font-semibold text-white">{t("resExportApplyFilters")}</span>
                   </button>
                 )}
               </div>
@@ -3143,7 +3310,7 @@ const handleDeleteResident = async () => {
               </div>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
       <ConfirmDialog
         open={confirmExport && exportDialog !== null}
@@ -3179,7 +3346,7 @@ const handleDeleteResident = async () => {
 
       {/* ─── Cancel Unsaved Changes Confirm Modal ─────────────────────────────── */}
       {showCancelConfirm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
@@ -3198,7 +3365,7 @@ const handleDeleteResident = async () => {
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
     </div>
   );

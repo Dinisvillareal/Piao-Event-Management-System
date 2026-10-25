@@ -35,22 +35,36 @@ class User extends Authenticatable
         'household_contact_number',
         'household_id',
         'preferred_language',
+        'must_change_password',
     ];
 
     protected $hidden = [
-        'password'
+        'password',
+        'remember_token',
+        'two_factor_secret',
+        'failed_login_attempts',
+        'locked_until',
+        'last_login_ip',
     ];
 
     protected $casts = [
         'has_account' => 'boolean',
         'is_household_head' => 'boolean',
         'birth_date' => 'date',
+        'is_head_staff' => 'boolean',
+        'must_change_password' => 'boolean',
+        'suspended_at' => 'datetime',
+        'locked_until' => 'datetime',
+        'last_login_at' => 'datetime',
+        'password_changed_at' => 'datetime',
+        'two_factor_confirmed_at' => 'datetime',
     ];
 
     /**
      * Automatically include in JSON responses
      */
     protected $appends = [
+        'two_factor_enabled',
         'validation_id_url',
         'age',
         'age_group',
@@ -66,6 +80,11 @@ class User extends Authenticatable
      * Returns:
      * http://127.0.0.1:8000/storage/validation_ids/file.png
      */
+    public function getTwoFactorEnabledAttribute(): bool
+    {
+        return $this->two_factor_confirmed_at !== null;
+    }
+
     public function getValidationIdUrlAttribute(): ?string
     {
         return $this->validation_id

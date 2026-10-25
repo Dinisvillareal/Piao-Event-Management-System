@@ -305,15 +305,19 @@
 //   );
 // }
 
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Filter } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
+import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar from "../../../components/ui/FilterBar";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
 import { matchesSearch } from "../../../lib/search";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import { attendanceStatus, weekFirstOrder } from "../../../lib/attendanceStatus";
 
 
 export interface AttendanceRecord {
@@ -321,6 +325,7 @@ export interface AttendanceRecord {
   eventId?: number;
   eventTitle: string;
   eventDate: string;
+  eventEnd?: string;
   location: string;
   timeIn: string;
   timeOut: string;
@@ -346,6 +351,8 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   const statusLabel = (status: string) => {
     if (status === "complete") return t("statusComplete");
     if (status === "incomplete") return t("statusIncomplete");
+    if (status === "upcoming") return t("upcomingBadge");
+    if (status === "ongoing") return t("ongoingBadge");
     return t("statusMissed");
   };
 
@@ -353,10 +360,15 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   const [attendanceFilter, setAttendanceFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [selectedDate, setSelectedDate] = useState("");
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const filterSwitching = useFilterSwitching([attendanceSearch, attendanceFilter, membershipFilter, selectedDate]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
+    scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
@@ -365,6 +377,19 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   const itemsPerPage = 10;
 
   const showMembershipFilter = userMemberships.length > 1;
+
+  // " – 3:00 PM" tail for the event's end time (empty when none is set).
+  const formatEndTime = (datetimeStr?: string): string => {
+    if (!datetimeStr) return "";
+    const date = new Date(datetimeStr);
+    if (isNaN(date.getTime())) return "";
+    let hours = date.getHours();
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    return ` – ${hours}:${minutes} ${ampm}`;
+  };
 
   const formatEventDateTime = (datetimeStr: string): string => {
     if (!datetimeStr) return "";
@@ -394,8 +419,10 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
   };
 
   const filteredAttendance = useMemo(() => {
-    let result = attendanceRecords;
-    if (attendanceFilter !== "all") result = result.filter((rec) => rec.status === attendanceFilter);
+    // Only finished outcomes belong here: Complete, Incomplete, or Missed.
+    // Events that haven't ended yet (upcoming / ongoing) are not shown.
+    let result = attendanceRecords.filter((rec) => ["complete", "incomplete", "missed"].includes(attendanceStatus(rec)));
+    if (attendanceFilter !== "all") result = result.filter((rec) => attendanceStatus(rec) === attendanceFilter);
     if (showMembershipFilter && membershipFilter !== "all") {
       const selectedId = Number(membershipFilter);
       result = result.filter((rec) => {
@@ -408,8 +435,11 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
         matchesSearch(attendanceSearch, rec.eventTitle, rec.eventDate, rec.location, rec.timeIn, rec.timeOut)
       );
     }
-    return [...result].sort((a, b) => new Date(b.eventDate).getTime() - new Date(a.eventDate).getTime());
-  }, [attendanceRecords, attendanceFilter, membershipFilter, showMembershipFilter, allEvents, attendanceSearch]);
+    if (selectedDate) {
+      result = result.filter((rec) => String(rec.eventDate || "").split(/[ T]/)[0] === selectedDate);
+    }
+    return weekFirstOrder(result);
+  }, [attendanceRecords, attendanceFilter, membershipFilter, showMembershipFilter, allEvents, attendanceSearch, selectedDate]);
 
   const totalPages = Math.ceil(filteredAttendance.length / itemsPerPage);
   const paginatedAttendance = useMemo(() => {
@@ -419,7 +449,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [attendanceSearch, attendanceFilter, membershipFilter]);
+  }, [attendanceSearch, attendanceFilter, membershipFilter, selectedDate]);
 
   return (
     // h-full inherits from Members.tsx's h-full wrapper; flex flex-col
@@ -432,52 +462,41 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("attendanceRecords")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("attendanceSubtitle")}</p>
 
-          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-              <div className="flex-1 min-w-[220px]">
-                <SearchBar value={attendanceSearch} onChange={setAttendanceSearch} placeholder={t("searchAttendancePlaceholder")} dark />
-              </div>
-              <FilterDropdown
-                value={attendanceFilter}
-                onChange={setAttendanceFilter}
-                options={[
-                  { value: "all", label: t("allRecords") },
-                  { value: "complete", label: t("completeInOut") },
-                  { value: "incomplete", label: t("incompleteInOut") },
-                  { value: "missed", label: t("missedNoRecord") },
-                ]}
-                className="h-11 pl-10 pr-8 shrink-0"
-                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                dark
-              />
-              {showMembershipFilter && (
-                <FilterDropdown
-                  value={membershipFilter}
-                  onChange={setMembershipFilter}
-                  options={[
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+            <FilterBar
+              search={{ value: attendanceSearch, onChange: setAttendanceSearch, placeholder: t("searchAttendancePlaceholder") }}
+              filters={[
+                {
+                  key: "status", label: t("statusColumn"), value: attendanceFilter, onChange: setAttendanceFilter,
+                  options: [
+                    { value: "all", label: t("allRecords") },
+                    { value: "complete", label: t("completeInOut") },
+                    { value: "incomplete", label: t("incompleteInOut") },
+                    { value: "missed", label: t("missedNoRecord") },
+                  ],
+                },
+                ...(showMembershipFilter ? [{
+                  key: "membership", label: t("fltMembership"), value: membershipFilter, onChange: setMembershipFilter, searchable: true, minWidthClass: "min-w-[220px]",
+                  options: [
                     { value: "all", label: t("allMembershipsOption") },
                     ...userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
-                  ]}
-                  className="h-11 min-w-[220px] pl-10 pr-8 shrink-0"
-                  panelWidthPx={280}
-                  icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                  dark
-                  searchable
-                  searchPlaceholder={t("search")}
-                  noResultsLabel={t("noMatchesFoundLabel")}
-                />
-              )}
-            </div>
+                  ],
+                }] : []),
+              ]}
+              count={loading || pageSwitching ? undefined : { shown: filteredAttendance.length, total: attendanceRecords.length }}
+              extraChips={selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []}
+              onClearExtras={() => setSelectedDate("")}
+            >
+              <div className="h-11 shrink-0">
+                <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
+              </div>
+            </FilterBar>
           </div>
 
-          <p className="mt-2 text-xs text-white/40">
-            {loading || pageSwitching ? 0 : filteredAttendance.length} of {loading || pageSwitching ? 0 : attendanceRecords.length} {t("recordsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
-          </p>
-
           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-          <div className="flex justify-end mt-4">
-            {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
-              <div className="flex items-center gap-2">
+          <div className="flex justify-end mt-4 max-lg:mt-0">
+            {totalPages > 1 && (loading ? null : (
+              <div className="flex items-center gap-2 max-lg:fixed max-lg:bottom-5 max-lg:right-5 max-lg:z-40 max-lg:rounded-full max-lg:border max-lg:border-white/15 max-lg:bg-[#0A0E1A]/95 max-lg:px-3 max-lg:py-2 max-lg:shadow-2xl max-lg:backdrop-blur">
                 <button
                   onClick={() => goToPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
@@ -504,8 +523,9 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
       </div>
 
       {/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
-      <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0 pb-4">
+      <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0 pb-24 lg:pb-4">
         <div className="space-y-3">
+          <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
           {pageSwitching || loading ? (
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
@@ -524,7 +544,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                 className="rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] px-6 py-[18px] hover:bg-white/[0.06] transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex-1">
                   <h3 className="text-[16.5px] font-bold text-white">{highlightText(tc(rec.eventTitle, language as any), attendanceSearch)}</h3>
-                  <p className="text-[13.5px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)} · {tc(rec.location, language as any)}</p>
+                  <p className="text-[13.5px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)}{formatEndTime(rec.eventEnd)} · {tc(rec.location, language as any)}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
                   <div className="text-right whitespace-nowrap">
@@ -540,10 +560,12 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                     </span>
                   </div>
                   <span className={`whitespace-nowrap text-[12.5px] font-semibold px-3 py-1 rounded-full ${
-                    rec.status === 'complete' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
-                    : rec.status === 'incomplete' ? 'bg-gold-400/15 text-gold-300'
+                    attendanceStatus(rec) === 'complete' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
+                    : attendanceStatus(rec) === 'incomplete' ? 'bg-gold-400/15 text-gold-300'
+                    : attendanceStatus(rec) === 'upcoming' ? 'bg-[#6BA8FF]/15 text-[#9CC4FF]'
+                    : attendanceStatus(rec) === 'ongoing' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
                     : 'bg-red-500/15 text-red-400'}`}>
-                    {statusLabel(rec.status)}
+                    {statusLabel(attendanceStatus(rec))}
                   </span>
                 </div>
               </div>

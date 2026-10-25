@@ -1,8 +1,14 @@
+import KpiCard from "../../../components/ui/KpiCard";
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import SaveButton from "../../../components/ui/SaveButton";
+import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FormSelect from "../../../components/ui/FormSelect";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter } from "lucide-react";
-import FilterDropdown from "../../../components/ui/FilterDropdown";
+import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter, ChevronLeft, ChevronRight } from "lucide-react";
+import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
+import QuickTabs from "../../../components/ui/QuickTabs";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import NumberStepper from "../../../components/ui/NumberStepper";
@@ -15,6 +21,7 @@ import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/St
 
 import { tc } from "../../../lib/contentTranslations";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import Portal from "../../../components/ui/Portal";
 // An item's condition covers the units still in use. Lost and disposed units
 // are separate counters on the item, so they are only *filters*, not conditions.
 type Condition = "New" | "Good" | "Fair" | "Poor";
@@ -31,7 +38,14 @@ interface InventoryItem {
   lost_pending: number;
   // Worn-out / used-up units taken out of service (same idea as lost).
   disposed_quantity: number;
+  // Main condition (the one with the most units) -- kept for filters/reports.
   condition: Condition;
+  // In-stock units per condition (they add up to `quantity`), so one item can
+  // hold e.g. 45 Good + 15 New instead of needing a duplicate row.
+  new_quantity: number;
+  good_quantity: number;
+  fair_quantity: number;
+  poor_quantity: number;
   storage_location: string | null;
   notes: string | null;
   photo_url: string | null;
@@ -58,7 +72,39 @@ const CONDITION_STYLES: Record<Condition, string> = {
   Poor: "bg-[#8A3D2C]/25 text-[#E2A088]",
 };
 
-const emptyForm = { name: "", quantity: 1, lost_quantity: 0, disposed_quantity: 0, condition: "Good" as Condition, storage_location: "", notes: "" };
+const CONDITIONS: Condition[] = ["New", "Good", "Fair", "Poor"];
+const COUNT_KEY = { New: "new_quantity", Good: "good_quantity", Fair: "fair_quantity", Poor: "poor_quantity" } as const;
+
+// In-stock units of one item per condition, non-empty ones only. An item with
+// nothing in stock still shows its main condition (with 0 units).
+const conditionUnits = (item: InventoryItem): { condition: Condition; units: number }[] => {
+  const rows = CONDITIONS.map((c) => ({ condition: c, units: Number(item[COUNT_KEY[c]]) || 0 })).filter((r) => r.units > 0);
+  return rows.length ? rows : [{ condition: item.condition, units: 0 }];
+};
+
+const emptyForm = {
+  name: "",
+  new_quantity: 0,
+  good_quantity: 1,
+  fair_quantity: 0,
+  poor_quantity: 0,
+  lost_quantity: 0,
+  disposed_quantity: 0,
+  storage_location: "",
+  notes: "",
+};
+
+const formFromItem = (item: InventoryItem) => ({
+  name: item.name,
+  new_quantity: Number(item.new_quantity) || 0,
+  good_quantity: Number(item.good_quantity) || 0,
+  fair_quantity: Number(item.fair_quantity) || 0,
+  poor_quantity: Number(item.poor_quantity) || 0,
+  lost_quantity: item.lost_quantity ?? 0,
+  disposed_quantity: item.disposed_quantity ?? 0,
+  storage_location: item.storage_location ?? "",
+  notes: item.notes ?? "",
+});
 
 const CONDITION_LABEL_KEYS: Record<ConditionFilter, string> = {
   New: "conditionNew",
@@ -98,10 +144,17 @@ export default function InventoryView() {
   // Brief skeleton flash on every page switch, same as Activity Logs --
   // this list paginates client-side so there's nothing to actually wait
   // on, but the flash keeps page switches feeling consistent app-wide.
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  type InvTab = "all" | "on-loan" | "low" | "lost-pending" | "attention";
+  const [invTab, setInvTab] = useState<InvTab>("all");
+  const [sortKey, setSortKey] = useState("name-az");
+  const filterSwitching = useFilterSwitching([search, conditionFilter, invTab, sortKey]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
+    scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
@@ -116,6 +169,24 @@ export default function InventoryView() {
 
   // Full-size photo viewer (dark themed, matching the rest of the app).
   const [viewingPhoto, setViewingPhoto] = useState<{ url: string; name: string; urls?: string[] } | null>(null);
+  // Prev/next through a record's photos (wraps around) + ←/→ keys, Esc closes.
+  const stepViewingPhoto = (dir: 1 | -1) => {
+    setViewingPhoto((cur) => {
+      if (!cur || !cur.urls || cur.urls.length < 2) return cur;
+      const i = Math.max(0, cur.urls.indexOf(cur.url));
+      return { ...cur, url: cur.urls[(i + dir + cur.urls.length) % cur.urls.length] };
+    });
+  };
+  useEffect(() => {
+    if (!viewingPhoto) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") stepViewingPhoto(1);
+      else if (e.key === "ArrowLeft") stepViewingPhoto(-1);
+      else if (e.key === "Escape") setViewingPhoto(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewingPhoto]);
 
   // KPI strip data -- deliberately a SEPARATE, always-unfiltered fetch from
   // the search/condition-filtered `items` list below, so the summary
@@ -170,7 +241,7 @@ export default function InventoryView() {
     const totalUnits = allItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
     const onLoanCount = allItems.filter((i) => i.borrowed_quantity > 0).length;
     const needsAttentionCount = allItems.filter(
-      (i) => !!i.overdue_borrow_event || i.condition === "Poor" || (i.lost_quantity ?? 0) > 0
+      (i) => !!i.overdue_borrow_event || Number(i.poor_quantity) > 0 || (Number(i.quantity) === 0 && i.condition === "Poor") || (i.lost_quantity ?? 0) > 0
     ).length;
     return { totalItems, totalUnits, onLoanCount, needsAttentionCount };
   }, [allItems]);
@@ -195,10 +266,40 @@ export default function InventoryView() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, conditionFilter, items.length]);
+  }, [search, conditionFilter, invTab, sortKey, items.length]);
 
-  const totalPages = Math.max(1, Math.ceil(items.length / itemsPerPage));
-  const paginatedItems = items.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  // Quick tabs + sort run on top of the server's search/condition result.
+  // "Low stock" = 3 or fewer units still in stock (there is no reorder level
+  // on an item, so this is the one place the threshold lives).
+  const LOW_STOCK_AT = 3;
+  const isAttention = (i: InventoryItem) =>
+    !!i.overdue_borrow_event || Number(i.poor_quantity) > 0 || (Number(i.quantity) === 0 && i.condition === "Poor") || (i.lost_quantity ?? 0) > 0;
+  const tabTests: Record<InvTab, (i: InventoryItem) => boolean> = {
+    all: () => true,
+    "on-loan": (i) => i.borrowed_quantity > 0,
+    low: (i) => Number(i.quantity) <= LOW_STOCK_AT,
+    "lost-pending": (i) => (i.lost_pending ?? 0) > 0,
+    attention: isAttention,
+  };
+  const tabCount = (k: InvTab) => items.filter(tabTests[k]).length;
+  const viewItems = useMemo(() => {
+    const r = items.filter(tabTests[invTab]);
+    switch (sortKey) {
+      case "name-za": return [...r].sort((a, b) => b.name.localeCompare(a.name));
+      case "qty-high": return [...r].sort((a, b) => Number(b.quantity) - Number(a.quantity) || a.name.localeCompare(b.name));
+      case "qty-low": return [...r].sort((a, b) => Number(a.quantity) - Number(b.quantity) || a.name.localeCompare(b.name));
+      case "recent": return [...r].sort((a, b) => b.id - a.id);
+      default: return [...r].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, invTab, sortKey]);
+  const tabLabels: Record<InvTab, string> = {
+    all: t("tabAll"), "on-loan": t("tabOnLoan"), low: t("tabLowStock"), "lost-pending": t("tabLostPending"), attention: t("tabNeedsAttention"),
+  };
+  const invTabChips: ExtraChip[] = invTab === "all" ? [] : [{ key: "tab", label: tabLabels[invTab], onRemove: () => setInvTab("all") }];
+
+  const totalPages = Math.max(1, Math.ceil(viewItems.length / itemsPerPage));
+  const paginatedItems = viewItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Nothing to submit if editing an item and the form still matches its
   // original values -- keeps a no-op "Update Item" click (and its own
@@ -206,10 +307,12 @@ export default function InventoryView() {
   // or removed photo counts as a change too.
   const isFormUnchanged = !!editing && (
     form.name === editing.name &&
-    Number(form.quantity) === editing.quantity &&
+    Number(form.new_quantity) === (Number(editing.new_quantity) || 0) &&
+    Number(form.good_quantity) === (Number(editing.good_quantity) || 0) &&
+    Number(form.fair_quantity) === (Number(editing.fair_quantity) || 0) &&
+    Number(form.poor_quantity) === (Number(editing.poor_quantity) || 0) &&
     Number(form.lost_quantity) === (editing.lost_quantity ?? 0) &&
     Number(form.disposed_quantity) === (editing.disposed_quantity ?? 0) &&
-    form.condition === editing.condition &&
     form.storage_location === (editing.storage_location ?? "") &&
     form.notes === (editing.notes ?? "") &&
     !photoItemsChanged(photoItems, editing.photo_urls?.length ?? (editing.photo_url ? 1 : 0))
@@ -227,7 +330,7 @@ export default function InventoryView() {
   // Lost / Disposed move units out of (or back into) the in-stock Quantity
   // live, mirroring what the server does on save: stepping Lost or Disposed
   // up takes units out of Quantity, stepping down puts them back. When
-  // editing, form.quantity is the BASE stock sent to the server; the number
+  // editing, the sum of the per-condition counts is the BASE stock sent to the server; the number
   // shown in the Quantity box is what's left after the Lost/Disposed changes.
   // Units found again that were out on loan when reported (lost_pending)
   // settle with that loan instead of returning to stock.
@@ -243,7 +346,11 @@ export default function InventoryView() {
     }
     return s - (disposed - (editing.disposed_quantity ?? 0));
   };
-  const baseQuantity = Number(form.quantity) || 0;
+  const baseQuantity = CONDITIONS.reduce((sum, c) => sum + (Number(form[COUNT_KEY[c]]) || 0), 0);
+  // Main condition = the one holding the most units (ties go to the worse one).
+  const mainCondition: Condition = baseQuantity > 0
+    ? ([...CONDITIONS].reverse().reduce((best, c) => (Number(form[COUNT_KEY[c]]) > Number(form[COUNT_KEY[best]]) ? c : best), "Poor" as Condition))
+    : (editing?.condition ?? "Good");
   const shownQuantity = editing ? projectStock(baseQuantity, form.lost_quantity, form.disposed_quantity) : baseQuantity;
   // Upper limits so the numbers stay within what actually exists: disposed
   // can only come from stock, lost can also come from units out on loan.
@@ -289,15 +396,7 @@ export default function InventoryView() {
 
   const openEdit = (item: InventoryItem) => {
     setEditing(item);
-    setForm({
-      name: item.name,
-      quantity: item.quantity,
-      lost_quantity: item.lost_quantity ?? 0,
-      disposed_quantity: item.disposed_quantity ?? 0,
-      condition: item.condition,
-      storage_location: item.storage_location ?? "",
-      notes: item.notes ?? "",
-    });
+    setForm(formFromItem(item));
     setPhotoItems(photoItemsFromUrls(item.photo_url ? [item.photo_url] : []));
     setError(null);
     setShowForm(true);
@@ -324,7 +423,7 @@ export default function InventoryView() {
       setError(t("itemNameRequiredError"));
       return;
     }
-    if (!Number.isInteger(form.quantity) || form.quantity < 0) {
+    if (CONDITIONS.some((c) => !Number.isInteger(form[COUNT_KEY[c]]) || form[COUNT_KEY[c]] < 0)) {
       setError(t("invalidQuantityError"));
       return;
     }
@@ -340,8 +439,11 @@ export default function InventoryView() {
     try {
       const fd = new FormData();
       fd.append("name", form.name);
-      fd.append("quantity", String(form.quantity));
-      fd.append("condition", form.condition);
+      // Units per condition; the server adds them up into the in-stock
+      // quantity and keeps the item's main condition in step.
+      CONDITIONS.forEach((c) => fd.append(COUNT_KEY[c], String(form[COUNT_KEY[c]])));
+      fd.append("quantity", String(baseQuantity));
+      fd.append("condition", mainCondition);
       if (editing) {
         fd.append("lost_quantity", String(form.lost_quantity));
         fd.append("disposed_quantity", String(form.disposed_quantity));
@@ -363,7 +465,7 @@ export default function InventoryView() {
       closeForm();
       setSuccessMessage(
         archived
-          ? t("itemArchivedSuccess").replace("{condition}", form.condition)
+          ? t("itemArchivedSuccess").replace("{condition}", mainCondition)
           : wasEditing
           ? t("itemUpdatedSuccess")
           : t("itemAddedSuccess")
@@ -375,15 +477,7 @@ export default function InventoryView() {
       // Revert to the item's real values instead of leaving the
       // rejected edit sitting in the form.
       if (editing) {
-        setForm({
-          name: editing.name,
-          quantity: editing.quantity,
-          lost_quantity: editing.lost_quantity ?? 0,
-          disposed_quantity: editing.disposed_quantity ?? 0,
-          condition: editing.condition,
-          storage_location: editing.storage_location ?? "",
-          notes: editing.notes ?? "",
-        });
+        setForm(formFromItem(editing));
       }
     }
   };
@@ -442,7 +536,7 @@ export default function InventoryView() {
 
       {/* KPI strip -- same gradient-card language as the Dashboard's stat
           strip, so "at a glance" reads the same way on both pages. */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="report-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { value: stats.totalItems, label: t("totalItemsStatLabel"), description: t("totalItemsStatDesc"), icon: Package, gradient: "from-sage-400 to-sage-700" },
           { value: stats.totalUnits, label: t("unitsInStockStatLabel"), description: t("unitsInStockStatDesc"), icon: Layers, gradient: "from-sage-800 to-[#1C2E2B]" },
@@ -451,60 +545,44 @@ export default function InventoryView() {
         ].map((card, idx) => statsLoading ? (
           <StatCardSkeleton key={idx} />
         ) : (
-          <div
-            key={idx}
-            className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white shadow-sm transition-shadow duration-300 hover:shadow-md`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="font-display text-3xl lg:text-4xl font-extrabold tracking-tight [font-variant-numeric:tabular-nums]">{card.value}</h2>
-              <card.icon className="h-5 w-5 text-white/40 shrink-0" />
-            </div>
-            <p className="mt-2.5 text-[12px] font-bold uppercase tracking-wide">{card.label}</p>
-            <p className="mt-0.5 text-xs text-white/75">{card.description}</p>
-          </div>
+          <KpiCard key={idx} value={card.value} label={card.label} description={card.description} icon={card.icon} gradient={card.gradient} delay={idx * 70} />
         ))}
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("searchInventoryPlaceholder")}
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                aria-label="Clear search"
-                title="Clear"
-                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
-              >
-                {t("clearLabel")}
-              </button>
-            )}
-          </div>
-          <FilterDropdown
-            value={conditionFilter}
-            onChange={setConditionFilter}
-            options={[
+      <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+        <QuickTabs
+          value={invTab}
+          onChange={(k) => setInvTab(k as InvTab)}
+          tabs={([
+            ["all", false], ["on-loan", false], ["low", true], ["lost-pending", true], ["attention", true],
+          ] as [InvTab, boolean][]).map(([k, alert]) => ({ key: k, label: tabLabels[k], count: tabCount(k), alert }))}
+        />
+        <FilterBar
+          search={{ value: search, onChange: setSearch, placeholder: t("searchInventoryPlaceholder") }}
+          filters={[{
+            key: "condition", label: t("conditionColumn"), value: conditionFilter, defaultValue: "", onChange: setConditionFilter,
+            options: [
               { value: "", label: t("allConditions") },
-              ...(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as ConditionFilter[]).map((c) => ({
-                value: c,
-                label: t(CONDITION_LABEL_KEYS[c]),
-              })),
-            ]}
-            className="h-11 pl-10 pr-8 shrink-0"
-            icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-            dark
-          />
-        </div>
+              ...(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as ConditionFilter[]).map((c) => ({ value: c, label: t(CONDITION_LABEL_KEYS[c]) })),
+            ],
+          }]}
+          sort={{
+            value: sortKey, onChange: setSortKey,
+            options: [
+              { value: "name-az", label: t("sortNameAZ") },
+              { value: "name-za", label: t("sortNameZA") },
+              { value: "qty-high", label: t("sortQtyHigh") },
+              { value: "qty-low", label: t("sortQtyLow") },
+              { value: "recent", label: t("sortRecentlyAdded") },
+            ],
+          }}
+          count={{ shown: viewItems.length, total: allItems.length || items.length }}
+          extraChips={invTabChips}
+          onClearExtras={() => setInvTab("all")}
+        />
       </div>
 
+      <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
       {loading || pageSwitching ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
           <div className="border-b border-white/10 px-4 py-3">
@@ -523,10 +601,10 @@ export default function InventoryView() {
             ))}
           </div>
         </div>
-      ) : items.length === 0 ? (
+      ) : viewItems.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
           <Package size={40} className="mx-auto mb-3 text-white/20" />
-          <p>{t("noInventoryItems")}</p>
+          <p>{items.length === 0 && !search && !conditionFilter ? t("noInventoryItems") : t("fltNoMatches")}</p>
         </div>
       ) : (
         <>
@@ -576,7 +654,13 @@ export default function InventoryView() {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${CONDITION_STYLES[item.condition]}`}>{t(CONDITION_LABEL_KEYS[item.condition])}</span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {conditionUnits(item).map((r) => (
+                          <span key={r.condition} className={`px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap [font-variant-numeric:tabular-nums] ${CONDITION_STYLES[r.condition]}`}>
+                            {r.units} {t(CONDITION_LABEL_KEYS[r.condition])}
+                          </span>
+                        ))}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-[15px] font-semibold text-white [font-variant-numeric:tabular-nums]">
                       {item.quantity} <span className="font-normal text-[13px] text-white/45">{t("inStock")}</span>
@@ -650,7 +734,7 @@ export default function InventoryView() {
           {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton withLabel className="px-4 py-3 border-t border-white/10" /> : (
             <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 py-3 border-t border-white/10">
               <p className="text-sm text-white/45 text-center sm:text-left">
-                {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages} • {loading || pageSwitching ? 0 : items.length} {t("recordsShownLabel")}
+                {t("pageOfLabel")} {currentPage} {t("ofPagesLabel")} {totalPages} • {loading || pageSwitching ? 0 : viewItems.length} {t("recordsShownLabel")}
               </p>
               <div className="flex items-center gap-2">
                 <button
@@ -683,15 +767,15 @@ export default function InventoryView() {
           Households Edit modal (centered card rather than a full-page
           takeover, since this form is small). */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4" onClick={handleCloseForm}>
-          <div className="bg-[#0A0E1A] rounded-3xl w-full max-w-3xl p-6 sm:p-8 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl sm:text-3xl font-bold text-white">{editing ? t("editItem") : t("addInventoryItem")}</h2>
-              <button onClick={handleCloseForm} className="text-white/50 hover:text-white"><X size={26} /></button>
-            </div>
-            <form onSubmit={handleFormSubmit} noValidate className="space-y-5">
+        <FormDrawer
+          title={editing ? t("editItem") : t("addInventoryItem")}
+          onClose={handleCloseForm}
+          onSubmit={handleFormSubmit}
+          footer={<SaveButton className="w-full" active={hasFormChanges} title={!hasFormChanges ? t("noChangesToSaveHint") : undefined}>{editing ? t("updateItem") : t("addItem")}</SaveButton>}
+        >
+          <FormSection title={t("secItemDetails")} className="space-y-5">
               <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("photoRequiredLabel")}</label>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("photoRequiredLabel")}</label>
                 <PhotoAttachment
                   file={photoItems[0]?.file ?? null}
                   url={photoItems[0]?.url ?? null}
@@ -703,75 +787,62 @@ export default function InventoryView() {
               </div>
 
               <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("itemNameRequired")}</label>
-                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("opsPlaceholderPlasticChairs")} />
+                <label className="block text-base font-semibold text-white mb-1.5">{t("itemNameRequired")}</label>
+                <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("opsPlaceholderPlasticChairs")} />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-base font-semibold text-white mb-2">{t("quantityRequired")}</label>
-                  <NumberStepper
-                    min={0}
-                    required
-                    fullWidth
-                    value={String(shownQuantity)}
-                    onChange={(v) => {
-                      const typed = Math.max(0, Number(v) || 0);
-                      // Keep the Lost/Disposed adjustment, change only the base.
-                      setForm((p) => ({ ...p, quantity: Math.max(0, typed - (shownQuantity - baseQuantity)) }));
-                    }}
-                    className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+          </FormSection>
+          <FormSection title={t("secStock")} className="space-y-5">
+              <div>
+                <label className="block text-base font-semibold text-white mb-1.5">{t("conditionUnitsLabel")}</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {CONDITIONS.map((c) => (
+                    <div key={c}>
+                      <span className={`mb-1.5 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${CONDITION_STYLES[c]}`}>{t(CONDITION_LABEL_KEYS[c])}</span>
+                      <NumberStepper
+                        min={0}
+                        fullWidth
+                        value={String(form[COUNT_KEY[c]])}
+                        onChange={(v) => setForm((p) => ({ ...p, [COUNT_KEY[c]]: Math.max(0, Math.floor(Number(v) || 0)) }))}
+                        className="w-full rounded-full border border-white/25 bg-white/10 pl-4 pr-8 py-3 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <label className="block text-base font-semibold text-white mb-2">{t("conditionRequired")}</label>
-                  <FormSelect value={form.condition} onChange={(e) => setForm((p) => ({ ...p, condition: e.target.value as Condition }))} className="w-full appearance-none rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50">
-                    {(["New", "Good", "Fair", "Poor"] as Condition[]).map((c) => (
-                      <option key={c} value={c} className="bg-[#0A0E1A] text-white">{t(CONDITION_LABEL_KEYS[c])}</option>
-                    ))}
-                  </FormSelect>
-                </div>
+                <p className="mt-2 text-sm text-white/60 [font-variant-numeric:tabular-nums]">
+                  {t("totalInStockLabel")}: <span className="font-semibold text-white">{shownQuantity}</span>
+                </p>
               </div>
               {editing && (
                 <div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                     <div>
-                      <label className="block text-base font-semibold text-white mb-2">{t("lostUnitsLabel")}</label>
-                      <NumberStepper min={0} max={maxLost} fullWidth value={String(form.lost_quantity)} onChange={(v) => setForm((p) => ({ ...p, lost_quantity: Math.min(maxLost, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("lostUnitsLabel")}</label>
+                      <NumberStepper min={0} max={maxLost} fullWidth value={String(form.lost_quantity)} onChange={(v) => setForm((p) => ({ ...p, lost_quantity: Math.min(maxLost, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/25 bg-white/10 pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
                     </div>
                     <div>
-                      <label className="block text-base font-semibold text-white mb-2">{t("disposedUnitsLabel")}</label>
-                      <NumberStepper min={0} max={maxDisposed} fullWidth value={String(form.disposed_quantity)} onChange={(v) => setForm((p) => ({ ...p, disposed_quantity: Math.min(maxDisposed, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("disposedUnitsLabel")}</label>
+                      <NumberStepper min={0} max={maxDisposed} fullWidth value={String(form.disposed_quantity)} onChange={(v) => setForm((p) => ({ ...p, disposed_quantity: Math.min(maxDisposed, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/25 bg-white/10 pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
                     </div>
                   </div>
                   <p className="mt-2 text-sm text-white/45">{t("lostUnitsHint")}</p>
                 </div>
               )}
+          </FormSection>
+          <FormSection title={t("secAdditionalInfo")} className="space-y-5">
               <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("storageLocationLabel")}</label>
-                <input value={form.storage_location} onChange={(e) => setForm((p) => ({ ...p, storage_location: e.target.value }))} className="w-full rounded-full border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("storageLocationPlaceholder")} />
+                <label className="block text-base font-semibold text-white mb-1.5">{t("storageLocationLabel")}</label>
+                <input value={form.storage_location} onChange={(e) => setForm((p) => ({ ...p, storage_location: e.target.value }))} className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("storageLocationPlaceholder")} />
               </div>
               <div>
-                <label className="block text-base font-semibold text-white mb-2">{t("notesLabel")}</label>
-                <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={3} />
+                <label className="block text-base font-semibold text-white mb-1.5">{t("notesLabel")}</label>
+                <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={3} />
               </div>
-              <div className="flex gap-3 pt-3">
-                <button
-                  type="submit"
-                  disabled={isFormUnchanged}
-                  title={isFormUnchanged ? t("noChangesToSaveHint") : undefined}
-                  className="flex-1 py-3.5 text-base rounded-full font-bold bg-sage-700 hover:bg-sage-800 text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-700 transition"
-                >
-                  {editing ? t("updateItem") : t("addItem")}
-                </button>
-                <button type="button" onClick={handleCloseForm} className="px-8 py-3.5 text-base rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("cancelLabel")}</button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </FormSection>
+        </FormDrawer>
       )}
 
       {/* Unsaved-changes guard for the Add/Edit Item modal */}
       {showFormCancelConfirm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
             <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
@@ -789,7 +860,7 @@ export default function InventoryView() {
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       <StatusModal open={!!error} type="error" title={t("errorTitle")} message={error || ""} okLabel={t("okLabel")} onClose={() => setError(null)} z={65} />
@@ -799,7 +870,7 @@ export default function InventoryView() {
       <StatusModal open={!!successMessage} type="success" title={t("successTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} z={65} />
 
       {deleteId !== null && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-3 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-lg font-bold text-red-400 mb-2">{t("removeItemConfirmTitle")}</h3>
@@ -809,7 +880,7 @@ export default function InventoryView() {
               <button onClick={handleDelete} className="px-5 py-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition">{t("yesRemove")}</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Confirm-before-save step: shown on top of the open form when
@@ -830,7 +901,7 @@ export default function InventoryView() {
           app (same treatment as the Delete-confirm and Unsaved-changes
           modals: bg-[#0A0E1A] card, white/10 border, teal accents). */}
       {viewingPhoto && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setViewingPhoto(null)}>
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setViewingPhoto(null)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -844,8 +915,31 @@ export default function InventoryView() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
+            <div className="relative flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
               <img src={viewingPhoto.url} alt={viewingPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-2xl" />
+              {viewingPhoto.urls && viewingPhoto.urls.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => stepViewingPhoto(-1)}
+                    aria-label="Previous photo"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => stepViewingPhoto(1)}
+                    aria-label="Next photo"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/80">
+                    {Math.max(0, viewingPhoto.urls.indexOf(viewingPhoto.url)) + 1} / {viewingPhoto.urls.length}
+                  </span>
+                </>
+              )}
             </div>
             <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
               {viewingPhoto.urls && viewingPhoto.urls.length > 1 ? (
@@ -872,7 +966,7 @@ export default function InventoryView() {
               </button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
     </>
   );

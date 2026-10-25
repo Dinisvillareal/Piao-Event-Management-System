@@ -25,7 +25,7 @@ class CurrentStatus extends Model
     public static function allCached()
     {
         if (self::$cached === null) {
-            self::$cached = self::orderBy('sort_order')->get();
+            self::$cached = self::orderBy('label')->get();
         }
         return self::$cached;
     }

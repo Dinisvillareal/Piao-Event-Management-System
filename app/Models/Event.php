@@ -187,11 +187,14 @@ class Event extends Model
     {
         $membershipIds = $this->membership_ids ?? [];
 
+        // Staff are barangay residents too: an open ("All Residents") event
+        // includes them, and a membership-targeted event includes any staff
+        // member who is enrolled in that membership.
         if (empty($membershipIds)) {
-            return User::where('role', 'Resident')->get();
+            return User::whereIn('role', ['Resident', 'Staff'])->get();
         }
 
-        return User::where('role', 'Resident')
+        return User::whereIn('role', ['Resident', 'Staff'])
             ->whereHas('memberships', function ($query) use ($membershipIds) {
                 $query->whereIn('membership_id', $membershipIds);
             })
@@ -221,6 +224,45 @@ class Event extends Model
         }
 
         return count($records);
+    }
+
+    /**
+     * Additive only: creates the missing 'missed' rows for anyone currently
+     * eligible (e.g. staff on events created before staff counted as
+     * eligible) and never removes or edits an existing row.
+     */
+    public function addMissingAttendanceRecords(): int
+    {
+        $existingIds = $this->attendances()->pluck('user_id')->toArray();
+        $membershipIds = $this->membership_ids ?? [];
+        $eligibleQuery = User::whereIn('role', ['Resident', 'Staff']);
+        if (!empty($membershipIds)) {
+            $eligibleQuery->whereHas('memberships', function ($query) use ($membershipIds) {
+                $query->whereIn('membership_id', $membershipIds);
+            });
+        }
+        // Ids only -- avoids hydrating every user model on each attendance load.
+        $eligibleIds = $eligibleQuery->pluck('id')->toArray();
+        $missing = array_diff($eligibleIds, $existingIds);
+        $now = now();
+
+        $rows = [];
+        foreach ($missing as $userId) {
+            $rows[] = [
+                'event_id' => $this->id,
+                'user_id' => $userId,
+                'time_in' => null,
+                'time_out' => null,
+                'status' => 'missed',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        if (!empty($rows)) {
+            EventAttendance::insert($rows);
+        }
+
+        return count($rows);
     }
 
     public function syncAttendanceRecords()

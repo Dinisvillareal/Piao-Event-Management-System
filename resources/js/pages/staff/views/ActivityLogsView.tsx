@@ -1,3 +1,5 @@
+import KpiCard from "../../../components/ui/KpiCard";
+import { scrollListIntoView } from "../../../lib/scrollToList";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { highlightMatches } from "../../../lib/highlight";
 import {
@@ -18,6 +20,7 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 type Activity = {
@@ -87,8 +90,10 @@ export default function ActivityLogsView() {
   // top of the feed instead of leaving them wherever they'd scrolled to
   // on the previous page.
   const topRef = useRef<HTMLDivElement>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
     setCurrentPage(updater as any);
+    scrollListIntoView(listTopRef.current);
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
@@ -287,6 +292,7 @@ export default function ActivityLogsView() {
     { value: "household", label: t("households") },
     { value: "profiling", label: t("profilingSettingsOption") },
     { value: "archive", label: t("archiveActivityOption") },
+    { value: "report", label: t("reports") },
   ].sort((a, b) => a.label.localeCompare(b.label));
 
   const sortOptions = [
@@ -377,82 +383,35 @@ export default function ActivityLogsView() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {statCards.map((card) => {
-          if (statsLoading) return <StatCardSkeleton key={card.key} />;
-          const Icon = card.icon;
-          return (
-            <div key={card.key} className={`rounded-2xl bg-gradient-to-br ${card.gradient} p-5 text-white`}>
-              <div className="flex items-start justify-between">
-                <span className="text-[12px] font-bold uppercase tracking-wide">{card.label}</span>
-                <Icon className="h-5 w-5 text-white/40" />
-              </div>
-              <p
-                className={`mt-2 font-display font-extrabold tracking-tight [font-variant-numeric:tabular-nums] ${
-                  card.isText ? "text-xl lg:text-2xl" : "text-2xl lg:text-3xl"
-                }`}
-              >
-                {card.value}
-              </p>
-              <p className="mt-1 text-xs text-white/75">{card.desc}</p>
-            </div>
-          );
-        })}
+      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        {statCards.map((card, idx) =>
+          statsLoading ? (
+            <StatCardSkeleton key={card.key} />
+          ) : (
+            <KpiCard key={card.key} value={card.value} label={card.label} description={card.desc} icon={card.icon} gradient={card.gradient} delay={idx * 70} />
+          )
+        )}
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t("searchActivitiesPlaceholder")}
-              className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery("")}
-                aria-label="Clear search"
-                title="Clear"
-                className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
-              >
-                {t("clearLabel")}
-              </button>
-            )}
-          </div>
-          <FilterDropdown
-            value={filterType}
-            onChange={setFilterType}
-            options={typeOptions}
-            className="h-11 pl-10 pr-8 shrink-0"
-            icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-            dark
-            searchable
-            searchPlaceholder={t("search")}
-            noResultsLabel={t("noMatchesFoundLabel")}
-          />
-          <FilterDropdown
-            value={sortOrder}
-            onChange={(v) => setSortOrder(v as "desc" | "asc")}
-            options={sortOptions}
-            className="h-11 pl-10 pr-8 shrink-0"
-            icon={<ArrowUpDown className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-            dark
-          />
+      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+        <FilterBar
+          search={{ value: searchQuery, onChange: setSearchQuery, placeholder: t("searchActivitiesPlaceholder") }}
+          filters={[{ key: "type", label: t("typeColumn"), value: filterType, onChange: setFilterType, options: typeOptions, searchable: true }]}
+          sort={{ value: sortOrder, onChange: (v) => setSortOrder(v as "desc" | "asc"), options: sortOptions }}
+          count={loading ? undefined : { shown: totalRecords }}
+          extraChips={(selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []) as ExtraChip[]}
+          onClearExtras={() => setSelectedDate("")}
+        >
           <div className="h-11 shrink-0">
             <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 px-4" dark />
           </div>
-        </div>
+        </FilterBar>
       </div>
 
-      <p className="text-xs text-white/45">
-        {loading ? 0 : filteredActivities.length} {t("recordsFoundCount")} &bull; {t("showingLabel")} {itemsPerPage} {t("perPage")}
-      </p>
+      <p className="text-xs text-white/45">{t("showingLabel")} {itemsPerPage} {t("perPage")}</p>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+        <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
         {loading ? (
           <div>{Array(6).fill(0).map((_, i) => <SkeletonItem key={i} />)}</div>
         ) : filteredActivities.length === 0 ? (

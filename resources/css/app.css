@@ -1,5 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@600;700;800&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
 
+@import './theme-light.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -104,3 +106,86 @@ input[type="password"]::-ms-reveal {
     color: #667777;
   }
 }
+
+/* DARK THEME -- every form / dialog field gets the same look as the Register
+   Resident and Post Event forms: a clear, slightly lighter glass pill with a
+   visible edge. Cards, toggles, checkboxes, error / disabled / focused fields
+   and the login card keep their own styling. */
+@media screen {
+  html:not([data-theme="light"]) :is(form, [class*="fixed"][class*="inset-0"])
+    :is(input, select, textarea)[class*="bg-white/"]:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not(:disabled):not(:focus):not([class*="border-red"]):not([class*="border-amber"]):not(:is([class~="backdrop-blur-2xl"] *)) {
+    background-color: rgba(255, 255, 255, 0.10) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+  }
+}
+
+/* Right-anchored slide-over used by every staff form (same as Create New Event). */
+@keyframes slideOverIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.slide-over-in { animation: slideOverIn 280ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .slide-over-in { animation: none; } }
+
+/* ...and the way back out (see SlideOutGhost): the panel slides off to the right while its backdrop fades. */
+@keyframes slideOverOut {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+@keyframes slideBackdropOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.slide-over-out { animation: slideOverOut 240ms ease-in forwards; pointer-events: none; }
+.slide-backdrop-out { animation: slideBackdropOut 240ms ease-in forwards; pointer-events: none; }
+
+/* Staff dashboard "upcoming events" timeline card: in light mode the body is
+   plain white; the card has no outer border in either mode. */
+html[data-theme="light"] .timeline-card { background-color: #ffffff !important; }
+html[data-theme="light"] .timeline-card .timeline-cell:hover { background-color: #F1F3F5; }
+
+/* ── Reports & Analytics entrance animation ───────────────────────────── */
+@keyframes report-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes report-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.report-rise {
+  animation: report-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.report-stagger > * {
+  animation: report-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+.report-stagger > *:nth-child(2) { animation-delay: 70ms; }
+.report-stagger > *:nth-child(3) { animation-delay: 140ms; }
+.report-stagger > *:nth-child(4) { animation-delay: 210ms; }
+.report-stagger > *:nth-child(5) { animation-delay: 280ms; }
+.report-stagger > *:nth-child(6) { animation-delay: 320ms; }
+.report-stagger > *:nth-child(7) { animation-delay: 360ms; }
+.report-stagger > *:nth-child(8) { animation-delay: 400ms; }
+.report-grow {
+  transform-origin: left center;
+  animation: report-grow 1s cubic-bezier(0.22, 1, 0.36, 1) 0.3s backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .report-rise, .report-stagger > *, .report-grow { animation: none !important; }
+}
+@media print {
+  .report-rise, .report-stagger > *, .report-grow { animation: none !important; }
+}
+
+/* A drawer that is still sliding out when the browser's print starts must not end up on the paper
+   (it showed up as a dark strip down the right edge). */
+@media print {
+  .slide-over-out, .slide-backdrop-out, .slide-over-in { display: none !important; }
+}
+
+/* Dashboard shortcut pills: same hover feedback in light mode as in dark
+   (teal outline, highlighted fill, stronger label). */
+html[data-theme="light"] .dash-shortcut{transition:border-color .15s,background-color .15s,box-shadow .15s}
+html[data-theme="light"] .dash-shortcut:hover{border-color:rgba(46,142,130,.55) !important;background-color:#E6F5F2 !important;box-shadow:0 2px 10px rgba(46,142,130,.14)}
+html[data-theme="light"] .dash-shortcut:hover .dash-shortcut-icon{background-color:rgba(79,190,176,.28) !important}
+html[data-theme="light"] .dash-shortcut:hover .dash-shortcut-label{color:#0F172A !important}

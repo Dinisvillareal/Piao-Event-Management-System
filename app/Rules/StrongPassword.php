@@ -27,10 +27,20 @@ class StrongPassword implements ValidationRule
 
     public const MESSAGE = 'Password must be at least 8 characters and include a lowercase letter, an uppercase letter, a number, and a special character (no spaces).';
 
+    /** The Head Staff account is held to a longer minimum (12). */
+    public function __construct(private int $min = self::MIN)
+    {
+    }
+
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         $value = (string) $value;
         $length = mb_strlen($value);
+
+        if ($this->min > self::MIN && $length < $this->min) {
+            $fail("Password must be at least {$this->min} characters for this account, and include a lowercase letter, an uppercase letter, a number, and a special character (no spaces).");
+            return;
+        }
 
         $valid = $length >= self::MIN
             && $length <= self::MAX

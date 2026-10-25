@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import SaveButton from "../../../components/ui/SaveButton";
 import { Users2, Heart, Tag, Plus, Pencil, Trash2 } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
@@ -7,6 +8,7 @@ import NumberStepper from "../../../components/ui/NumberStepper";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 import { tc } from "../../../lib/contentTranslations";
+import Portal from "../../../components/ui/Portal";
 /**
  * Adviser example (Senior Citizen eligibility) — extended to Youth and
  * Solo Parent: this screen lets Staff manage the age brackets, civil
@@ -86,6 +88,58 @@ export default function ProfilingSettingsView() {
     tabSwitchTimer.current = setTimeout(() => setTabSwitching(false), 350);
   };
   useEffect(() => () => { if (tabSwitchTimer.current) clearTimeout(tabSwitchTimer.current); }, []);
+
+  // Pagination -- each list shows PER_PAGE rows, with its own page number so
+  // flipping between tabs keeps your place. A page change flashes the same
+  // skeleton the tab switch does.
+  const PER_PAGE = 6;
+  const [pages, setPages] = useState({ brackets: 1, civil: 1, current: 1 });
+  type ListTab = "brackets" | "civil" | "current";
+  const pageCountOf = (n: number) => Math.max(1, Math.ceil(n / PER_PAGE));
+  const safePageOf = (tab: ListTab, n: number) => Math.min(pages[tab], pageCountOf(n));
+  const pageSlice = <T,>(tab: ListTab, list: T[]): T[] => {
+    const start = (safePageOf(tab, list.length) - 1) * PER_PAGE;
+    return list.slice(start, start + PER_PAGE);
+  };
+  const goPage = (tab: ListTab, page: number) => {
+    setPages((prev) => ({ ...prev, [tab]: page }));
+    setTabSwitching(true);
+    if (tabSwitchTimer.current) clearTimeout(tabSwitchTimer.current);
+    tabSwitchTimer.current = setTimeout(() => setTabSwitching(false), 350);
+  };
+  const renderPager = (tab: ListTab, total: number) => {
+    const totalPages = pageCountOf(total);
+    if (totalPages <= 1) return null;
+    const current = safePageOf(tab, total);
+    return (
+      <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 sm:px-5 py-3 border-t border-white/10">
+        <p className="text-sm text-white/45 text-center sm:text-left">
+          {t("pageOfLabel")} {current} {t("ofPagesLabel")} {totalPages} • {total} {t("recordsLabelShort")} • {PER_PAGE} {t("perPage")}
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => goPage(tab, Math.max(1, current - 1))}
+            disabled={current === 1}
+            aria-label="Previous page"
+            className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
+          >
+            ←
+          </button>
+          <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">{current}</span>
+          <button
+            type="button"
+            onClick={() => goPage(tab, Math.min(totalPages, current + 1))}
+            disabled={current === totalPages}
+            aria-label="Next page"
+            className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
+          >
+            →
+          </button>
+        </div>
+      </div>
+    );
+  };
 
   const load = async () => {
     setLoading(true);
@@ -427,7 +481,7 @@ export default function ProfilingSettingsView() {
             {t("ageBracketsTitle")}
             <span
               className={`inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full px-1.5 text-xs font-bold ${
-                activeTab === "brackets" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
+                activeTab === "brackets" ? "bg-black/25 text-white" : "bg-white/20 text-white/90"
               }`}
             >
               {ageBrackets.length}
@@ -446,7 +500,7 @@ export default function ProfilingSettingsView() {
             {t("civilStatusesTitle")}
             <span
               className={`inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full px-1.5 text-xs font-bold ${
-                activeTab === "civil" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
+                activeTab === "civil" ? "bg-black/25 text-white" : "bg-white/20 text-white/90"
               }`}
             >
               {civilStatuses.length}
@@ -465,7 +519,7 @@ export default function ProfilingSettingsView() {
             {t("currentStatusesTitle")}
             <span
               className={`inline-flex h-5 min-w-[1.375rem] items-center justify-center rounded-full px-1.5 text-xs font-bold ${
-                activeTab === "current" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
+                activeTab === "current" ? "bg-black/25 text-white" : "bg-white/20 text-white/90"
               }`}
             >
               {currentStatuses.length}
@@ -504,7 +558,7 @@ export default function ProfilingSettingsView() {
             <>
               {ageBrackets.length > 0 && (
                 <ul className="divide-y divide-white/[0.06]">
-                  {ageBrackets.map((b) => (
+                  {pageSlice("brackets", ageBrackets).map((b) => (
                     <li key={b.id} className="flex items-center justify-between gap-3.5 px-5 sm:px-6 py-3.5">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="shrink-0 h-10 w-10 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] flex items-center justify-center">
@@ -541,6 +595,7 @@ export default function ProfilingSettingsView() {
                   ))}
                 </ul>
               )}
+              {renderPager("brackets", ageBrackets.length)}
 
               <form onSubmit={submitBracket} noValidate className="border-t border-white/10 p-4 sm:p-5 space-y-3">
                 <p className="text-xs font-bold uppercase tracking-wide text-white/40">
@@ -551,7 +606,7 @@ export default function ProfilingSettingsView() {
                     value={bracketForm.label}
                     onChange={(e) => setBracketForm((p) => ({ ...p, label: e.target.value }))}
                     placeholder={t("bracketLabelPlaceholder")}
-                    className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                    className="rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                     required
                   />
                   {/* Our own stepper instead of the browser's native
@@ -582,9 +637,7 @@ export default function ProfilingSettingsView() {
                       {t("cancelLabel")}
                     </button>
                   )}
-                  <button type="submit" disabled={savingBracket || isBracketFormUnchanged} title={isBracketFormUnchanged ? t("noChangesToSaveHint") : undefined} className="inline-flex items-center gap-2 bg-sage-700 hover:bg-sage-800 text-white px-5 py-2.5 rounded-full text-[15px] font-bold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-700 transition">
-                    <Plus className="h-4 w-4" /> {bracketForm.id ? t("saveChanges") : t("addAgeBracketLabel")}
-                  </button>
+                  <SaveButton size="sm" className="whitespace-nowrap" active={!(savingBracket || isBracketFormUnchanged)} title={isBracketFormUnchanged ? t("noChangesToSaveHint") : undefined}>{bracketForm.id ? t("saveChanges") : t("addAgeBracketLabel")}</SaveButton>
                 </div>
               </form>
             </>
@@ -619,7 +672,7 @@ export default function ProfilingSettingsView() {
             <>
               {civilStatuses.length > 0 && (
                 <ul className="divide-y divide-white/[0.06]">
-                  {civilStatuses.map((s) => (
+                  {pageSlice("civil", civilStatuses).map((s) => (
                     <li key={s.id} className="flex items-center justify-between gap-3.5 px-5 sm:px-6 py-3.5">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="shrink-0 h-10 w-10 rounded-full bg-gold-400/10 text-gold-300 flex items-center justify-center">
@@ -653,6 +706,7 @@ export default function ProfilingSettingsView() {
                   ))}
                 </ul>
               )}
+              {renderPager("civil", civilStatuses.length)}
 
               <form onSubmit={submitStatus} noValidate className="border-t border-white/10 p-4 sm:p-5 space-y-3">
                 <p className="text-xs font-bold uppercase tracking-wide text-white/40">
@@ -663,7 +717,7 @@ export default function ProfilingSettingsView() {
                     value={statusForm.label}
                     onChange={(e) => setStatusForm((p) => ({ ...p, label: e.target.value }))}
                     placeholder={t("statusLabelPlaceholder")}
-                    className="flex-1 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-gold-400/20 focus:border-gold-400/50"
+                    className="flex-1 rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-gold-400/20 focus:border-gold-400/50"
                     required
                   />
                   <div className="flex gap-2 justify-end">
@@ -672,9 +726,7 @@ export default function ProfilingSettingsView() {
                         {t("cancelLabel")}
                       </button>
                     )}
-                    <button type="submit" disabled={savingStatus || isStatusFormUnchanged} title={isStatusFormUnchanged ? t("noChangesToSaveHint") : undefined} className="inline-flex items-center gap-2 bg-sage-700 hover:bg-sage-800 text-white px-5 py-2.5 rounded-full text-[15px] font-bold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-700 transition whitespace-nowrap">
-                      <Plus className="h-4 w-4" /> {statusForm.id ? t("saveChanges") : t("addCivilStatusLabel")}
-                    </button>
+                    <SaveButton size="sm" className="whitespace-nowrap" active={!(savingStatus || isStatusFormUnchanged)} title={isStatusFormUnchanged ? t("noChangesToSaveHint") : undefined}>{statusForm.id ? t("saveChanges") : t("addCivilStatusLabel")}</SaveButton>
                   </div>
                 </div>
               </form>
@@ -710,7 +762,7 @@ export default function ProfilingSettingsView() {
             <>
               {currentStatuses.length > 0 && (
                 <ul className="divide-y divide-white/[0.06]">
-                  {currentStatuses.map((s) => (
+                  {pageSlice("current", currentStatuses).map((s) => (
                     <li key={s.id} className="flex items-center justify-between gap-3.5 px-5 sm:px-6 py-3.5">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="shrink-0 h-10 w-10 rounded-full bg-sage-400/10 text-sage-300 flex items-center justify-center">
@@ -744,6 +796,7 @@ export default function ProfilingSettingsView() {
                   ))}
                 </ul>
               )}
+              {renderPager("current", currentStatuses.length)}
 
               <form onSubmit={submitCurrentStatus} noValidate className="border-t border-white/10 p-4 sm:p-5 space-y-3">
                 <p className="text-xs font-bold uppercase tracking-wide text-white/40">
@@ -754,7 +807,7 @@ export default function ProfilingSettingsView() {
                     value={currentStatusForm.label}
                     onChange={(e) => setCurrentStatusForm((p) => ({ ...p, label: e.target.value }))}
                     placeholder={t("currentStatusLabelPlaceholder")}
-                    className="flex-1 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-400/20 focus:border-sage-400/50"
+                    className="flex-1 rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-400/20 focus:border-sage-400/50"
                     required
                   />
                   <div className="flex gap-2 justify-end">
@@ -763,9 +816,7 @@ export default function ProfilingSettingsView() {
                         {t("cancelLabel")}
                       </button>
                     )}
-                    <button type="submit" disabled={savingCurrentStatus || isCurrentStatusFormUnchanged} title={isCurrentStatusFormUnchanged ? t("noChangesToSaveHint") : undefined} className="inline-flex items-center gap-2 bg-sage-700 hover:bg-sage-800 text-white px-5 py-2.5 rounded-full text-[15px] font-bold disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-sage-700 transition whitespace-nowrap">
-                      <Plus className="h-4 w-4" /> {currentStatusForm.id ? t("saveChanges") : t("addCurrentStatusLabel")}
-                    </button>
+                    <SaveButton size="sm" className="whitespace-nowrap" active={!(savingCurrentStatus || isCurrentStatusFormUnchanged)} title={isCurrentStatusFormUnchanged ? t("noChangesToSaveHint") : undefined}>{currentStatusForm.id ? t("saveChanges") : t("addCurrentStatusLabel")}</SaveButton>
                   </div>
                 </div>
               </form>
@@ -811,7 +862,7 @@ export default function ProfilingSettingsView() {
         />
 
         {pendingDelete && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
             <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
               <div className="mb-4 text-red-400 flex justify-center"><svg width="40" height="40" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></div>
               <h3 className="text-xl font-bold text-red-400 mb-3">{t("confirmDeletionTitle")}</h3>
@@ -821,7 +872,7 @@ export default function ProfilingSettingsView() {
                 <button onClick={confirmPendingDelete} disabled={deleting} className="px-5 py-2.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition disabled:opacity-60">{t("yesDeleteButton")}</button>
               </div>
             </div>
-          </div>
+          </div></Portal>
         )}
       </div>
     </div>

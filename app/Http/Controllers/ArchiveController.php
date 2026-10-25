@@ -300,12 +300,17 @@ class ArchiveController extends Controller
             return response()->json(['message' => 'Item restored successfully']);
 
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 500);
+            return response()->json(['message' => config('app.debug') ? $e->getMessage() : 'Something went wrong. Please try again.'], 500);
         }
     }
 
     public function forceDelete(Request $request)
     {
+        // Permanent deletion is switched off for everyone, Head Staff included:
+        // archived records are kept for transparency.
+        return response()->json(['message' => 'Permanent deletion is disabled. Records are archived and kept.'], 403);
+
+        // --- previous implementation, intentionally unreachable ---
         if (auth()->user()?->role !== 'Staff') {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
@@ -387,7 +392,7 @@ class ArchiveController extends Controller
             return response()->json(['message' => 'Item permanently deleted']);
 
         } catch (\Exception $e) {
-            return response()->json(['message' => $e->getMessage()], 500);
+            return response()->json(['message' => config('app.debug') ? $e->getMessage() : 'Something went wrong. Please try again.'], 500);
         }
     }
 }

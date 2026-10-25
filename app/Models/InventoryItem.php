@@ -22,10 +22,31 @@ class InventoryItem extends Model
         'lost_quantity',
         'lost_pending',
         'disposed_quantity',
+        'new_quantity',
+        'good_quantity',
+        'fair_quantity',
+        'poor_quantity',
+    ];
+
+    /**
+     * In-stock units are split by condition: an item can hold 45 Good and
+     * 15 New at once. The four counts always add up to `quantity`; the old
+     * single `condition` column is kept as the item's main (largest)
+     * condition so filters and reports that only need one label still work.
+     */
+    public const CONDITION_COLUMNS = [
+        'New' => 'new_quantity',
+        'Good' => 'good_quantity',
+        'Fair' => 'fair_quantity',
+        'Poor' => 'poor_quantity',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
+        'new_quantity' => 'integer',
+        'good_quantity' => 'integer',
+        'fair_quantity' => 'integer',
+        'poor_quantity' => 'integer',
         'lost_quantity' => 'integer',
         'lost_pending' => 'integer',
         'disposed_quantity' => 'integer',
@@ -40,6 +61,140 @@ class InventoryItem extends Model
         'photo_url',
         'photo_urls',
     ];
+
+    protected static function booted(): void
+    {
+        // Keeps `quantity`, the per-condition counts and `condition` in step
+        // no matter who changes stock (the inventory form, event loans and
+        // returns, lost / disposed units):
+        //  - the form sends the per-condition counts -> quantity = their sum;
+        //  - anything else changes only `quantity` -> the counts follow it:
+        //    units leave the main condition first (then the largest groups)
+        //    and returned units go back into the main condition.
+        static::saving(function (InventoryItem $item) {
+            $columns = array_values(self::CONDITION_COLUMNS);
+            $counts = [];
+            foreach ($columns as $col) {
+                $counts[$col] = max(0, (int) $item->getAttribute($col));
+            }
+
+            $countsEdited = $item->isDirty($columns);
+            $quantityEdited = $item->isDirty('quantity') || ! $item->exists;
+            $quantity = max(0, (int) $item->getAttribute('quantity'));
+
+            if ($countsEdited && ! $item->isDirty('quantity')) {
+                $quantity = array_sum($counts);
+            } elseif ($quantityEdited || $countsEdited) {
+                $main = $countsEdited
+                    ? self::mainColumn($counts, $item->condition)
+                    : (self::CONDITION_COLUMNS[$item->condition] ?? 'good_quantity');
+                $delta = $quantity - array_sum($counts);
+
+                if ($delta > 0) {
+                    $counts[$main] += $delta;
+                } elseif ($delta < 0) {
+                    $take = -$delta;
+                    $order = $columns;
+                    usort($order, fn ($a, $b) => ($b === $main) <=> ($a === $main) ?: $counts[$b] <=> $counts[$a]);
+                    foreach ($order as $col) {
+                        $cut = min($take, $counts[$col]);
+                        $counts[$col] -= $cut;
+                        $take -= $cut;
+                        if ($take <= 0) {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            foreach ($counts as $col => $n) {
+                $item->setAttribute($col, $n);
+            }
+            $item->setAttribute('quantity', $quantity);
+
+            // The main condition is re-picked only when the counts themselves
+            // were edited; a loan or return keeps it, so returned units go
+            // back to where they came from.
+            if ($countsEdited) {
+                $flip = array_flip(self::CONDITION_COLUMNS);
+                if (array_sum($counts) > 0) {
+                    $item->setAttribute('condition', $flip[self::mainColumn($counts, $item->condition)]);
+                }
+            }
+        });
+    }
+
+    /** The condition column holding the most units (ties go to the worse condition). */
+    private static function mainColumn(array $counts, ?string $fallback): string
+    {
+        if (array_sum($counts) <= 0) {
+            return self::CONDITION_COLUMNS[$fallback] ?? 'good_quantity';
+        }
+
+        $best = null;
+        foreach (['poor_quantity', 'fair_quantity', 'good_quantity', 'new_quantity'] as $col) {
+            if ($best === null || $counts[$col] > $counts[$best]) {
+                $best = $col;
+            }
+        }
+
+        return $best;
+    }
+
+    /** In-stock units per condition, e.g. ['New' => 15, 'Good' => 45, 'Fair' => 0, 'Poor' => 0]. */
+    public function conditionCounts(): array
+    {
+        $out = [];
+        foreach (self::CONDITION_COLUMNS as $label => $col) {
+            $out[$label] = (int) $this->getAttribute($col);
+        }
+
+        return $out;
+    }
+
+    /** Puts units back into stock, into exactly the conditions given. */
+    public function giveUnits(array $units): void
+    {
+        $this->moveUnits($units, +1);
+    }
+
+    /**
+     * Takes units out of stock, out of exactly the conditions given. Callers
+     * check availableUnits() first; counts never go below 0.
+     */
+    public function takeUnits(array $units): void
+    {
+        $this->moveUnits($units, -1);
+    }
+
+    /** Which of the wanted units this item can't cover right now, e.g. ['Good' => 3]. */
+    public function shortfall(array $units): array
+    {
+        $have = $this->conditionCounts();
+        $short = [];
+        foreach ($units as $label => $n) {
+            if ((int) $n > ($have[$label] ?? 0)) {
+                $short[$label] = (int) $n - ($have[$label] ?? 0);
+            }
+        }
+
+        return $short;
+    }
+
+    private function moveUnits(array $units, int $sign): void
+    {
+        $total = 0;
+        foreach (self::CONDITION_COLUMNS as $label => $col) {
+            $n = max(0, (int) ($units[$label] ?? 0));
+            if ($n === 0) {
+                continue;
+            }
+            $this->{$col} = max(0, (int) $this->{$col} + $sign * $n);
+            $total += $n;
+        }
+        $this->quantity = max(0, (int) $this->quantity + $sign * $total);
+        $this->save();
+    }
 
     public function getPhotoUrlAttribute(): ?string
     {

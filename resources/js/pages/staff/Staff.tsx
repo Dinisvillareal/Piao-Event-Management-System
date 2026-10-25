@@ -20,10 +20,14 @@ import InventoryView from "./views/InventoryView";
 import ReturnsView from "./views/ReturnsView";
 import BudgetView from "./views/BudgetView";
 import IntegrationsView from "./views/IntegrationsView";
+import FeedbackRulesView from "./views/FeedbackRulesView";
 import ProfilingSettingsView from "./views/ProfilingSettingsView";
+import MyAccountView from "./views/MyAccountView";
+import StaffAccountsView from "./views/StaffAccountsView";
 import OfflineBanner from "../../components/ui/OfflineBanner";
 import api from "../../lib/api";
 import { useLanguage } from "../../i18n/LanguageContext";
+import { useThemeScope } from "../../lib/theme";
 import { staffKeyFromPath, staffUrlFor } from "../../lib/staffRoutes";
 
 // --- TYPES & MOCK DATA ---
@@ -46,10 +50,14 @@ export const highlightText = (text: string, query: string) => highlightMatches(t
 // --------------------------
 export default function StaffDashboard() {
   const { t } = useLanguage();
+  useThemeScope();
   const getInitialActive = () => staffKeyFromPath(window.location.pathname);
 
   const [active, setActiveState] = useState(getInitialActive());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  // A bell notification asks to open an event on a given tab (e.g. its Feedback).
+  const [notifyTabRequest, setNotifyTabRequest] = useState<{ tab: "notifications" | "sms" | "feedback"; nonce: number } | null>(null);
+  const [openEventRequest, setOpenEventRequest] = useState<{ eventId: number; tab: string; sub?: string; nonce: number } | null>(null);
 
   const [eventsCount, setEventsCount] = useState(0);
   const [upcomingEventsList, setUpcomingEventsList] = useState<any[]>([]);
@@ -74,6 +82,28 @@ export default function StaffDashboard() {
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const d = (e as CustomEvent).detail as { eventId?: number; tab?: string; sub?: string } | undefined;
+      if (!d?.eventId) return;
+      window.history.pushState({}, "", staffUrlFor("events"));
+      setActiveState("events");
+      setOpenEventRequest({ eventId: d.eventId, tab: d.tab ?? "overview", sub: d.sub, nonce: Date.now() });
+    };
+    const onNotify = (e: Event) => {
+      const tab = ((e as CustomEvent).detail?.tab ?? "feedback") as "notifications" | "sms" | "feedback";
+      window.history.pushState({}, "", staffUrlFor("notify"));
+      setActiveState("notify");
+      setNotifyTabRequest({ tab, nonce: Date.now() });
+    };
+    window.addEventListener("staff:open-event", onOpen);
+    window.addEventListener("staff:open-notifications", onNotify);
+    return () => {
+      window.removeEventListener("staff:open-event", onOpen);
+      window.removeEventListener("staff:open-notifications", onNotify);
+    };
   }, []);
 
   const staff = { id: "STAFF-001", name: "Brgy. Captain", role: t("dashStaffAdminRole") };
@@ -113,6 +143,22 @@ export default function StaffDashboard() {
 
   useEffect(() => {
     fetchEventsCount();
+  }, []);
+
+  // Keep-alive: while the person is really using the page (clicking, typing,
+  // scrolling) tell the server, at most every 2 minutes. Background polling
+  // doesn't count, so an unattended screen still signs out after the idle limit.
+  useEffect(() => {
+    let last = Date.now();
+    const ping = () => {
+      const now = Date.now();
+      if (now - last < 120000) return;
+      last = now;
+      api.post("/session/keepalive").catch(() => {});
+    };
+    const evts = ["pointerdown", "keydown", "wheel", "touchstart"] as const;
+    evts.forEach((e) => window.addEventListener(e, ping, { passive: true }));
+    return () => evts.forEach((e) => window.removeEventListener(e, ping));
   }, []);
 
   // ✅ ADD THIS - Fetch current logged-in user
@@ -256,20 +302,24 @@ export default function StaffDashboard() {
         setActive={setActive}
         userName={displayName}
         userRole={staff.role}
+        isHeadStaff={!!currentUser?.is_head_staff}
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />
 
-      <main className="flex-1 min-w-0">
+      <main className="flex-1 min-w-0 flex flex-col h-[100dvh] print:!block print:!h-auto">
         <TopHeader
           memberName={displayName}
           role={staff.role}
           onMenuClick={() => setMobileSidebarOpen(true)}
           userId={currentUser?.id}
+          userCode={currentUser?.user_code}
+          isHeadStaff={!!currentUser?.is_head_staff}
+          onNavigate={(k) => setActive(k as any)}
         />
         <OfflineBanner />
 
-        <div id="staff-content-scroll" className="h-[calc(100dvh-73px)] overflow-y-auto p-3 sm:p-6 smooth-scroll print:h-auto print:overflow-visible print:p-0">
+        <div id="staff-content-scroll" className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 smooth-scroll print:!h-auto print:!overflow-visible print:!p-0">
           {active === "dashboard" && (
             <DashboardView
               membershipsCount={membershipOptions.length}
@@ -280,11 +330,11 @@ export default function StaffDashboard() {
             />
           )}
          {active === "scan" && <ScanView events={allEvents} residents={allResidents} memberships={membershipOptions} />}
-          {active === "residents" && <ResidentsView />}
+          {active === "residents" && <ResidentsView isHeadStaff={!!currentUser?.is_head_staff} />}
           {active === "households" && <HouseholdsView />}
           {active === "memberships" && <QRCodesView highlightText={highlightText} />}
-          {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} loading={loadingEvents} />}
-          {active === "notify" && <NotificationsView memberships={membershipOptions} highlightText={highlightText} />}
+          {active === "events" && <EventsView allEvents={allEvents} onDeleteEvent={handleDeleteEvent} highlightText={highlightText} memberships={membershipOptions} loading={loadingEvents} openRequest={openEventRequest} onOpenRequestHandled={() => setOpenEventRequest(null)} />}
+          {active === "notify" && <NotificationsView memberships={membershipOptions} highlightText={highlightText} initialTab={notifyTabRequest} />}
           {active === "reports" && <ReportsView memberships={membershipOptions} events={allEvents} />}
           {active === "inventory" && <InventoryView />}
           {active === "returns" && <ReturnsView />}
@@ -292,7 +342,10 @@ export default function StaffDashboard() {
           {active === "activitylogs" && <ActivityLogsView />}
           {active === "archive" && <ArchiveView/>}
           {active === "integrations" && <IntegrationsView />}
+          {active === "feedbackrules" && <FeedbackRulesView isHeadStaff={!!currentUser?.is_head_staff} />}
           {active === "profiling" && <ProfilingSettingsView />}
+          {active === "myaccount" && <MyAccountView />}
+          {active === "staffaccounts" && <StaffAccountsView />}
         </div>
       </main>
 

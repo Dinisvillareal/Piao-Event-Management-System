@@ -344,11 +344,14 @@ class EventInventoryItemSeeder extends Seeder
                             $at = now()->subMinutes(30);
                         }
 
+                        // The units came back in the conditions they went out in.
+                        $release = new EventInventoryRelease();
+                        $release->setUnits($this->pickUnits($item, $qty));
+
                         // forceFill so the backdated created_at is kept.
-                        (new EventInventoryRelease())->forceFill([
+                        $release->forceFill([
                             'event_id' => $event->id,
                             'inventory_item_id' => $item->id,
-                            'quantity' => $qty,
                             'released_by' => $staffCodes[$returnCount % max(count($staffCodes), 1)] ?? null,
                             'created_at' => $at,
                             'updated_at' => $at,
@@ -365,15 +368,41 @@ class EventInventoryItemSeeder extends Seeder
                     continue;
                 }
 
-                $item->quantity -= $qty;
-                $item->save();
+                // Lend specific units (per condition) and remember them on the
+                // borrow row, so they go back to the same conditions on return.
+                $units = $this->pickUnits($item, $qty);
+                $item->takeUnits($units);
 
-                EventInventoryItem::create([
+                $borrow = new EventInventoryItem([
                     'event_id' => $event->id,
                     'inventory_item_id' => $item->id,
-                    'quantity' => $qty,
                 ]);
+                $borrow->setUnits($units);
+                $borrow->save();
             }
         }
+    }
+
+    /**
+     * Which units staff would hand out for $qty: the regular (Good) stock
+     * first, then New, Fair and Poor -- new gear is kept back. Returns units
+     * per condition adding up to $qty (callers check stock first).
+     */
+    private function pickUnits(InventoryItem $item, int $qty): array
+    {
+        $have = $item->conditionCounts();
+        $units = ['New' => 0, 'Good' => 0, 'Fair' => 0, 'Poor' => 0];
+
+        foreach (['Good', 'New', 'Fair', 'Poor'] as $label) {
+            $take = min($qty, $have[$label]);
+            $units[$label] = $take;
+            $qty -= $take;
+        }
+        // Nothing split yet on a row (shouldn't happen) -- count it as Good.
+        if ($qty > 0) {
+            $units['Good'] += $qty;
+        }
+
+        return $units;
     }
 }

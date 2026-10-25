@@ -1,12 +1,15 @@
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Filter, Users, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, Smartphone, Home } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
-import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar from "../../../components/ui/FilterBar";
 import Skeleton from "../../../components/ui/Skeleton";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import FeedbackAlertsPanel from "../components/FeedbackAlertsPanel";
+import { useStaffAlertsUnread } from "../../../lib/staffAlertsStore";
+import Portal from "../../../components/ui/Portal";
 
 
 interface Membership {
@@ -43,12 +46,14 @@ interface Notification {
 
 
 interface NotificationsViewProps {
+   // Which tab to show (the bell's "See all" asks for "feedback"); nonce makes repeat requests count.
+   initialTab?: { tab: "notifications" | "sms" | "feedback"; nonce: number } | null;
    memberships?: Membership[];
    highlightText: (text: string, query: string) => React.ReactNode;
 }
 
 
-export default function NotificationsView({ memberships = [], highlightText }: NotificationsViewProps) {
+export default function NotificationsView({ memberships = [], highlightText, initialTab = null }: NotificationsViewProps) {
                        const { t, locale } = useLanguage();
    const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
    const [loading, setLoading] = useState<boolean>(true);
@@ -59,7 +64,9 @@ export default function NotificationsView({ memberships = [], highlightText }: N
    // Brief skeleton flash on every page switch, same as Activity Logs --
    // this list paginates client-side so there's nothing to actually wait
    // on, but the flash keeps page switches feeling consistent app-wide.
-   const [pageSwitching, setPageSwitching] = useState(false);
+   const [pageSwitchingRaw, setPageSwitching] = useState(false);
+   const filterSwitching = useFilterSwitching([searchQuery, dateFilter, targetFilter]);
+   const pageSwitching = pageSwitchingRaw || filterSwitching;
    const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
    const goToPage = (updater: number | ((p: number) => number)) => {
        setCurrentPage(updater as any);
@@ -99,10 +106,18 @@ export default function NotificationsView({ memberships = [], highlightText }: N
    const [smsLastPage, setSmsLastPage] = useState<number>(1);
    const [smsTotal, setSmsTotal] = useState<number>(0);
    const smsPerPage = 10;
+   // Search + status filter are applied on the server (the list is paginated).
+   const [smsSearch, setSmsSearch] = useState("");
+   const [smsSearchApplied, setSmsSearchApplied] = useState("");
+   const [smsStatus, setSmsStatus] = useState("all");
+   const [smsAllTotal, setSmsAllTotal] = useState<number>(0);
+   const smsReq = useRef(0);
    // Notifications | Household SMS -- same pill switcher as Returns.
-   const [activeTab, setActiveTab] = useState<"notifications" | "sms">("notifications");
+   const [activeTab, setActiveTab] = useState<"notifications" | "sms" | "feedback">(initialTab?.tab ?? "notifications");
+   const feedbackUnread = useStaffAlertsUnread();
+   useEffect(() => { if (initialTab) setActiveTab(initialTab.tab); }, [initialTab?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
    // Switching tabs flashes the skeleton briefly, same as a page switch.
-   const switchTab = (tab: "notifications" | "sms") => {
+   const switchTab = (tab: "notifications" | "sms" | "feedback") => {
        if (tab === activeTab) return;
        setActiveTab(tab);
        setPageSwitching(true);
@@ -113,23 +128,37 @@ export default function NotificationsView({ memberships = [], highlightText }: N
    // Server-paginated: each page is its own request, so the skeleton shows
    // while the next page loads.
    const fetchSmsLogs = async (page: number): Promise<void> => {
+       const req = ++smsReq.current;
        setSmsLoading(true);
        try {
-           const response = await api.get('/notifications/sms-logs', { params: { per_page: smsPerPage, page } });
+           const params: Record<string, string | number> = { per_page: smsPerPage, page };
+           if (smsSearchApplied) params.search = smsSearchApplied;
+           if (smsStatus !== "all") params.status = smsStatus;
+           const response = await api.get('/notifications/sms-logs', { params });
+           if (req !== smsReq.current) return; // a newer request superseded this one
            const data = response.data;
+           const total = Array.isArray(data) ? data.length : (typeof data.total === 'number' ? data.total : (data.data || []).length);
            setSmsLogs(Array.isArray(data) ? data : (data.data || []));
            setSmsLastPage(Array.isArray(data) ? 1 : (data.last_page || 1));
-           setSmsTotal(Array.isArray(data) ? data.length : (typeof data.total === 'number' ? data.total : (data.data || []).length));
+           setSmsTotal(total);
+           if (!smsSearchApplied && smsStatus === "all") setSmsAllTotal(total);
        } catch (error) {
            console.error('Error fetching SMS logs:', error);
        } finally {
-           setSmsLoading(false);
+           if (req === smsReq.current) setSmsLoading(false);
        }
    };
 
+   // Typing waits a moment before asking the server; any change goes back to page 1.
+   useEffect(() => {
+       const id = setTimeout(() => setSmsSearchApplied(smsSearch.trim()), 300);
+       return () => clearTimeout(id);
+   }, [smsSearch]);
+   useEffect(() => { setSmsPage(1); }, [smsSearchApplied, smsStatus]);
+
    useEffect(() => {
        fetchSmsLogs(smsPage);
-   }, [smsPage]);
+   }, [smsPage, smsSearchApplied, smsStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
    const filteredNotifications = useMemo(() => {
@@ -276,83 +305,74 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                    <button
                        type="button"
                        onClick={() => switchTab("notifications")}
-                       className={`inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-base font-bold transition ${
+                       className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
                            activeTab === "notifications"
                                ? "bg-sage-700 text-white shadow-sm"
                                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
                        }`}
                    >
-                       <Bell className="h-5 w-5" />
+                       <Bell className="h-[18px] w-[18px]" />
                        {t("notify")}
-                       <span className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "notifications" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
+                       <span className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "notifications" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
                            {loading ? 0 : allNotifications.length}
                        </span>
                    </button>
                    <button
                        type="button"
                        onClick={() => switchTab("sms")}
-                       className={`inline-flex items-center gap-2.5 rounded-full px-6 py-3 text-base font-bold transition ${
+                       className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
                            activeTab === "sms"
                                ? "bg-sage-700 text-white shadow-sm"
                                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
                        }`}
                    >
-                       <Smartphone className="h-5 w-5" />
+                       <Smartphone className="h-[18px] w-[18px]" />
                        {t("householdSmsDeliveries")}
-                       <span className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "sms" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
-                           {smsLoading ? 0 : smsTotal}
+                       <span className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "sms" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
+                           {smsAllTotal}
                        </span>
+                   </button>
+                   <button
+                       type="button"
+                       onClick={() => switchTab("feedback")}
+                       className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
+                           activeTab === "feedback"
+                               ? "bg-sage-700 text-white shadow-sm"
+                               : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                       }`}
+                   >
+                       <MessageSquare className="h-[18px] w-[18px]" />
+                       {t("alertsTabLabel")}
+                       {feedbackUnread > 0 && (
+                           <span className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "feedback" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
+                               {feedbackUnread > 99 ? "99+" : feedbackUnread}
+                           </span>
+                       )}
                    </button>
                </div>
 
-               {activeTab === "notifications" ? (<>
-               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                   <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-                       <div className="flex-1 min-w-[220px]">
-                           <SearchBar
-                               value={searchQuery}
-                               onChange={setSearchQuery}
-                               placeholder={t("searchNotificationsPlaceholder")}
-                               dark
-                           />
-                       </div>
-
-                       <FilterDropdown
-                           value={dateFilter}
-                           onChange={setDateFilter}
-                           options={dateFilterOptions}
-                           className="h-11 pl-10 pr-8 shrink-0"
-                           icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                           dark
-                       />
-
-                       <div className="flex items-center gap-2 shrink-0">
-                           <span className="text-sm font-medium text-white/60">{t("toColon")}</span>
-                           <FilterDropdown
-                               value={targetFilter}
-                               onChange={setTargetFilter}
-                               options={targetFilterOptions}
-                               align="right"
-                               panelWidthPx={256}
-                               className="h-11 min-w-[200px] pl-10 pr-8"
-                               icon={<Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                               dark
-                               searchable
-                               searchPlaceholder={t("search")}
-                               noResultsLabel={t("noMatchesFoundLabel")}
-                           />
-                       </div>
-                   </div>
+               {activeTab === "feedback" ? null : activeTab === "notifications" ? (<>
+               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+                   <FilterBar
+                       search={{ value: searchQuery, onChange: setSearchQuery, placeholder: t("searchNotificationsPlaceholder") }}
+                       filters={[
+                           { key: "when", label: t("fltWhen"), value: dateFilter, onChange: setDateFilter, options: dateFilterOptions },
+                           {
+                               key: "to", label: t("toColon").replace(":", ""), value: targetFilter, defaultValue: "all-residents", onChange: setTargetFilter,
+                               options: targetFilterOptions, searchable: true, minWidthClass: "min-w-[200px]",
+                               icon: <Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />,
+                           },
+                       ]}
+                       count={loading ? undefined : { shown: filteredNotifications.length }}
+                   />
                </div>
 
-               <p className="mt-2 text-xs text-white/40">
-                   {loading || pageSwitching ? 0 : filteredNotifications.length} {t("notificationsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
-               </p>
+               <p className="mt-2 text-xs text-white/40">{t("showingLabel")} {itemsPerPage} {t("perPage")}</p>
 
 
                {/* ✅ PAGINATION - ← 1 → STYLE */}
                <div className="flex justify-end mt-4">
-                   {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton /> : (
+                   {totalPages > 1 && ((pageSwitching || loading) ? null : (
                        <div className="flex items-center gap-2">
                            <button
                                onClick={() => goToPage(p => Math.max(1, p - 1))}
@@ -377,12 +397,26 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                    ))}
                </div>
                </>) : (<>
+               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+                   <FilterBar
+                       search={{ value: smsSearch, onChange: setSmsSearch, placeholder: t("smsSearchPlaceholder") }}
+                       filters={[{
+                           key: "sms-status", label: t("statusColumn"), value: smsStatus, onChange: setSmsStatus,
+                           options: [
+                               { value: "all", label: t("smsStatusAll") },
+                               { value: "sent", label: t("smsStatusSent") },
+                               { value: "failed", label: t("smsStatusFailed") },
+                               { value: "simulated", label: t("smsStatusLogged") },
+                           ],
+                       }]}
+                       count={smsLoading ? undefined : { shown: smsTotal }}
+                   />
+               </div>
+
                {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-               <p className="mt-4 text-xs text-white/40">
-                   {smsLoading || pageSwitching ? 0 : smsTotal} {t("smsFoundCount")} — {t("showingLabel")} {smsPerPage} {t("perPage")}
-               </p>
+               <p className="mt-4 text-xs text-white/40">{t("showingLabel")} {smsPerPage} {t("perPage")}</p>
                <div className="flex justify-end mt-4">
-                   {smsLastPage > 1 && ((smsLoading || pageSwitching) ? <PagerSkeleton /> : (
+                   {smsLastPage > 1 && ((smsLoading || pageSwitching) ? null : (
                        <div className="flex items-center gap-2">
                            <button
                                onClick={() => setSmsPage(p => Math.max(1, p - 1))}
@@ -409,7 +443,11 @@ export default function NotificationsView({ memberships = [], highlightText }: N
 
 
            {/* Scrollable content area - only the list scrolls */}
-           {activeTab === "notifications" ? (
+           {activeTab === "feedback" ? (
+           <div className="lg:flex-1 lg:min-h-0 lg:overflow-hidden">
+               <FeedbackAlertsPanel />
+           </div>
+           ) : activeTab === "notifications" ? (
            <div className="lg:flex-1 lg:overflow-y-auto pb-4">
                {pageSwitching || loading ? (
                    <div className="space-y-3">
@@ -493,22 +531,22 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                ) : smsLogs.length === 0 ? (
                    <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
                        <Smartphone size={40} className="mx-auto mb-3 text-white/20" />
-                       <p>{t("noSmsSentYet")}</p>
+                       <p>{smsSearchApplied || smsStatus !== "all" ? t("smsNoMatch") : t("noSmsSentYet")}</p>
                    </div>
                ) : (
-                   <div className="space-y-2">
+                   <div className="space-y-3">
                        {smsLogs.map((log: any) => (
-                               <div key={log.id} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-                                   <div className="min-w-0 flex items-center gap-2">
+                               <div key={log.id} className="relative flex items-center justify-between gap-4 rounded-2xl sm:rounded-3xl bg-white/[0.04] px-5 sm:px-6 py-6 sm:py-7 border-l-4 border-l-gold-400 border-y border-r border-white/10 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.35)] hover:-translate-y-1 hover:bg-white/[0.07] active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100">
+                                   <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm">
+                                       <span className="font-medium text-white shrink-0">{t("toColon")}</span>
                                        {log.user?.is_household_head && <span title={t("householdHeadTitle")}><Home className="h-4 w-4 text-orange-400 shrink-0" /></span>}
-                                       <div className="min-w-0">
-                                           <p className="text-sm font-medium text-white truncate">
-                                               {log.user ? `${log.user.first_name} ${log.user.last_name}` : log.to_number} · {log.to_number}
-                                           </p>
-                                           <p className="text-xs text-white/40 truncate">{log.event?.name ?? "—"}</p>
-                                       </div>
+                                       <span className="text-white/70 break-words">
+                                           {log.user ? `${log.user.first_name} ${log.user.last_name}` : log.to_number} · {log.to_number}
+                                       </span>
+                                       <span className="text-white/30 hidden sm:block">•</span>
+                                       <span className="font-semibold text-[#7DD8CB] break-words">{log.event?.name ?? "—"}</span>
                                    </div>
-                                   <span className={`px-2 py-1 rounded-full text-[11px] font-semibold shrink-0 ${
+                                   <span className={`px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 ${
                                        log.status === 'sent' ? 'bg-green-100 text-green-800'
                                        : log.status === 'failed' ? 'bg-red-500/15 text-red-400'
                                        : 'bg-white/10 text-white/50'
@@ -526,7 +564,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                the app's popups (StatusModal / ConfirmDialog) instead of the
                white card this used to be. */}
            {selectedNotification && (
-               <div className="notif-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+               <Portal><div className="notif-overlay fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                    <style>{`
                        @keyframes notif-overlay-in { from { opacity: 0 } to { opacity: 1 } }
                        @keyframes notif-pop-in { from { opacity: 0; transform: translateY(18px) scale(0.94) } to { opacity: 1; transform: translateY(0) scale(1) } }
@@ -616,7 +654,7 @@ export default function NotificationsView({ memberships = [], highlightText }: N
                            </div>
                        </div>
                    </div>
-               </div>
+               </div></Portal>
            )}
        </div>
    );

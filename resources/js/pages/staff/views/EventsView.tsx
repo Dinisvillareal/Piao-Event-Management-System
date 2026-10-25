@@ -1,13 +1,22 @@
+import Portal from "../../../components/ui/Portal";
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
+import { makeEventTiming, STATUS_META } from "../../../lib/eventTiming";
 import FormSelect from "../../../components/ui/FormSelect";
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
+import FeedbackComment from "../../../components/ui/FeedbackComment";
+import type { ResponseFields } from "../../../components/ui/FeedbackComment";
 import {
   Filter, X, LogIn, LogOut, ChevronLeft, Archive,
   Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown,
-  Megaphone, ClipboardList, Users, ArrowLeft, Save, Download, Printer,
+  Megaphone, ClipboardList, Users, ArrowLeft, Save, Download, Printer, CheckCircle2, ChevronRight, Eye,
 } from "lucide-react";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
+import QuickTabs from "../../../components/ui/QuickTabs";
 import DatePicker from "../../../components/ui/DatePicker";
 import TimePicker from "../../../components/ui/TimePicker";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
@@ -16,12 +25,12 @@ import NumberStepper from "../../../components/ui/NumberStepper";
 import EventBudgetWorkspace from "../../../components/budget/EventBudgetWorkspace";
 import Skeleton from "../../../components/ui/Skeleton";
 import { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
+import SlideOutGhost from "../../../components/ui/SlideOutGhost";
 import ReportOptionsModal, { type SectionDef, type AttendeeFilter } from "./ReportOptionsModal";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 import { tc } from "../../../lib/contentTranslations";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 // What can go on one event's printout / PDF / Word file. Keys must match the
 // backend's allowed attendance sections (ReportController::buildExportPayload).
 const EVENT_REPORT_SECTIONS: SectionDef[] = [
@@ -52,7 +61,13 @@ interface MyEvent {
   membershipIds?: (string | number)[];
   membershipNames?: string[];
   approvedBudget?: number | string | null;
-  borrowedItems?: { inventoryItemId: string; name: string; quantity: number }[];
+  // How many different inventory items this event took (still out or already returned) -- known as soon as the events load.
+  inventoryCount?: number;
+  // Feedback + non-attendance reasons received for this event.
+  feedbackCount?: number;
+  // How many attendance rows the event has -- known as soon as the events load.
+  attendanceCount?: number;
+  borrowedItems?: { inventoryItemId: string; name: string; quantity: number; units: Record<string, number> }[];
 }
 
 interface BorrowableInventoryItem {
@@ -60,8 +75,25 @@ interface BorrowableInventoryItem {
   name: string;
   quantity: number;
   condition: string;
+  // In-stock units per condition (they add up to `quantity`).
+  new_quantity?: number;
+  good_quantity?: number;
+  fair_quantity?: number;
+  poor_quantity?: number;
   storage_location?: string | null;
 }
+
+// One borrowed item in the Create/Edit Event form. `units` is how many of each
+// condition staff picked (kept as strings, like the other form fields);
+// `quantity` is always their sum.
+type BorrowRow = { inventoryItemId: string; quantity: string; units: Record<string, string> };
+
+const BORROW_CONDITIONS = [
+  { key: "new_quantity", label: "conditionNew", chip: "bg-[#4FBEB0]/20 text-[#7DD8CB]" },
+  { key: "good_quantity", label: "conditionGood", chip: "bg-[#4FBEB0]/10 text-[#7DD8CB]" },
+  { key: "fair_quantity", label: "conditionFair", chip: "bg-gold-400/15 text-gold-300" },
+  { key: "poor_quantity", label: "conditionPoor", chip: "bg-[#8A3D2C]/25 text-[#E2A088]" },
+] as const;
 
 interface EventsViewProps {
   allEvents: MyEvent[];
@@ -72,6 +104,9 @@ interface EventsViewProps {
   memberships?: any[];
   attendanceRecords?: any[];
   loading?: boolean;
+  // Asks the page to open one event on a given tab (used by the bell notifications).
+  openRequest?: { eventId: number; tab: string; sub?: string; nonce: number } | null;
+  onOpenRequestHandled?: () => void;
 }
 
 export function EventsView({
@@ -83,15 +118,18 @@ export function EventsView({
   memberships = [],
   attendanceRecords = [],
   loading = false,
+  openRequest = null,
+  onOpenRequestHandled,
 }: EventsViewProps) {
   const { t, locale, language } = useLanguage();
-  const eventStatusLabel = (label: string) => (label === "Upcoming" ? t("upcomingBadge") : label === "Ongoing" ? t("ongoingBadge") : t("pastBadge"));
+  const eventStatusLabel = (label: string) => (label === "CheckIn" ? t("checkInOpenLabel") : label === "Upcoming" ? t("upcomingBadge") : label === "Ongoing" ? t("ongoingBadge") : t("pastBadge"));
   // The card/detail-view chip reads "Completed" for a finished event instead
   // of "Past" -- "Past" stays as-is everywhere else (filter dropdown option,
   // etc.) since that wording is still correct there.
   const eventStatusChipLabel = (label: string) => (label === "Past" ? t("completedBadge") : eventStatusLabel(label));
   const statusPillClasses = (label: string, dark = false) => {
     if (dark) {
+      if (label === "CheckIn") return "bg-sky-400/15 text-sky-300";
       if (label === "Upcoming") return "bg-[#4FBEB0]/15 text-[#7DD8CB]";
       if (label === "Ongoing") return "bg-gold-400/15 text-gold-300";
       return "bg-white/10 text-white/50";
@@ -102,9 +140,10 @@ export function EventsView({
   };
   const statusDotClasses = (label: string, dark = false) => {
     if (dark) {
+      if (label === "CheckIn") return "bg-sky-400 animate-pulse";
       if (label === "Upcoming") return "bg-[#4FBEB0]";
       if (label === "Ongoing") return "bg-gold-400";
-      return "bg-white/40";
+      return "bg-[#8A8474]";
     }
     if (label === "Upcoming") return "bg-sage-600";
     if (label === "Ongoing") return "bg-gold-600";
@@ -113,31 +152,87 @@ export function EventsView({
   const attendanceStatusLabel = (label: string) => {
     if (label === "Complete") return t("statusComplete");
     if (label === "Incomplete") return t("statusIncomplete");
+    if (label === "Upcoming") return t("upcomingBadge");
+    if (label === "Ongoing") return t("ongoingBadge");
     return t("statusMissed");
   };
+  const { relativeLabel } = makeEventTiming(t);
   const [eventSearch, setEventSearch] = useState("");
   const [eventFilter, setEventFilter] = useState("all");
   const [membershipFilter, setMembershipFilter] = useState("all");
   const [selectedDate, setSelectedDate] = useState<string>("");
+  // Quick tabs (Today / This week / Has feedback) and sort, on top of the status + membership + date filters.
+  const [eventTab, setEventTab] = useState<"all" | "today" | "week" | "feedback">("all");
+  const [eventSort, setEventSort] = useState("default");
   const [viewEv, setViewEv] = useState<MyEvent | null>(null);
+  // Tab to land on when the detail view opens (set by a bell notification).
+  const pendingSubRef = useRef<"ratings" | "reasons" | null>(null);
+  const pendingTabRef = useRef<"overview" | "attendance" | "inventory" | "budget" | "feedback" | null>(null);
   // Which of the 4 tabs (Overview / Attendance / Budget / Feedback) is
   // showing in the full-page event detail view.
-  const [detailTab, setDetailTab] = useState<"overview" | "attendance" | "budget" | "feedback">("overview");
+  const [detailTab, setDetailTab] = useState<"overview" | "attendance" | "inventory" | "budget" | "feedback">("overview");
   // UC-16 (staff side): the ratings/comments residents left for this
   // event -- fetched from /feedback/event/{id} (backend already existed,
   // it just wasn't wired into any staff screen yet).
-  const [eventFeedback, setEventFeedback] = useState<{ id: number; rating: number; comment: string | null; user?: { first_name: string; last_name: string } }[]>([]);
+  type FeedbackRow = ResponseFields & { rating: number; comment: string | null; user?: { first_name: string; last_name: string } };
+  type AbsenceRow = ResponseFields & { reason: string; comment: string | null; user?: { first_name: string; last_name: string } };
+  const [eventFeedback, setEventFeedback] = useState<FeedbackRow[]>([]);
+  const [eventAbsences, setEventAbsences] = useState<AbsenceRow[]>([]);
+  const [feedbackSubTab, setFeedbackSubTab] = useState<"ratings" | "reasons">("ratings");
   const [feedbackLoading, setFeedbackLoading] = useState(false);
+  // The event's Inventory tab: what it borrowed, what is still out, and what
+  // came back (and in which condition) -- from /events/{id}/inventory.
+  type EventInventoryRow = {
+    inventory_item_id: number; name: string; photo_url?: string | null; total: number; status: "borrowed" | "partial" | "returned";
+    out: number; out_units: Record<string, number>; returned: number; returned_units: Record<string, number>;
+  };
+  const [eventInventory, setEventInventory] = useState<{
+    items: EventInventoryRow[];
+    returns: { id: number; name: string; photo_url?: string | null; evidence_photo_urls?: string[]; quantity: number; units: Record<string, number>; released_by: string | null; released_at: string }[];
+  }>({ items: [], returns: [] });
+  const [eventInventoryLoading, setEventInventoryLoading] = useState(false);
+  // Full-size look at an item photo or a return's evidence photo (prev/next, Esc closes).
+  const [invPhoto, setInvPhoto] = useState<{ url: string; name: string; urls: string[] } | null>(null);
+  const stepInvPhoto = (dir: 1 | -1) => setInvPhoto((cur) => {
+    if (!cur || cur.urls.length < 2) return cur;
+    const i = Math.max(0, cur.urls.indexOf(cur.url));
+    return { ...cur, url: cur.urls[(i + dir + cur.urls.length) % cur.urls.length] };
+  });
+  useEffect(() => {
+    if (!invPhoto) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setInvPhoto(null);
+      else if (e.key === "ArrowRight") stepInvPhoto(1);
+      else if (e.key === "ArrowLeft") stepInvPhoto(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [invPhoto]); // eslint-disable-line react-hooks/exhaustive-deps
   const [feedbackCurrentPage, setFeedbackCurrentPage] = useState(1);
+
+  // A new feedback arrived for the event on screen: refresh its Feedback tab live.
+  useEffect(() => {
+    const onFeedback = (e: Event) => {
+      const id = (e as CustomEvent).detail?.eventId;
+      if (!viewEv || id == null || String(viewEv.id) !== String(id)) return;
+      api.get(`/feedback/event/${viewEv.id}`).then((res) => setEventFeedback(res.data ?? [])).catch(() => {});
+      api.get(`/feedback/absence/event/${viewEv.id}`).then((res) => setEventAbsences(res.data ?? [])).catch(() => {});
+    };
+    window.addEventListener("staff:feedback-received", onFeedback);
+    return () => window.removeEventListener("staff:feedback-received", onFeedback);
+  }, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const feedbackItemsPerPage = 5;
 
 
   useEffect(() => {
     if (!viewEv) {
       setEventFeedback([]);
+      setEventAbsences([]);
+      setEventInventory({ items: [], returns: [] });
       return;
     }
-    setDetailTab("overview");
+    setDetailTab(pendingTabRef.current ?? "overview");
+    pendingTabRef.current = null;
     setAttendanceCurrentPage(1);
     setAttendanceSearch("");
     setAttendanceStatusFilter("all");
@@ -145,10 +240,21 @@ export function EventsView({
     let cancelled = false;
     setFeedbackLoading(true);
     setFeedbackCurrentPage(1);
+    setFeedbackSubTab(pendingSubRef.current ?? "ratings");
+    pendingSubRef.current = null;
+    api.get(`/feedback/absence/event/${viewEv.id}`)
+      .then((res) => { if (!cancelled) setEventAbsences(res.data ?? []); })
+      .catch(() => { if (!cancelled) setEventAbsences([]); });
     api.get(`/feedback/event/${viewEv.id}`)
       .then((res) => { if (!cancelled) setEventFeedback(res.data ?? []); })
       .catch(() => { if (!cancelled) setEventFeedback([]); })
       .finally(() => { if (!cancelled) setFeedbackLoading(false); });
+
+    setEventInventoryLoading(true);
+    api.get(`/events/${viewEv.id}/inventory`)
+      .then((res) => { if (!cancelled) setEventInventory({ items: res.data?.items ?? [], returns: res.data?.returns ?? [] }); })
+      .catch(() => { if (!cancelled) setEventInventory({ items: [], returns: [] }); })
+      .finally(() => { if (!cancelled) setEventInventoryLoading(false); });
 
 
     return () => { cancelled = true; };
@@ -172,13 +278,20 @@ export function EventsView({
   // Activity Logs page (which re-fetches per page). This list paginates
   // client-side over already-loaded data, so there's nothing to actually
   // wait on -- the flash is purely so switching pages always feels the same.
-  const [pageSwitching, setPageSwitching] = useState(false);
+  const [pageSwitchingRaw, setPageSwitching] = useState(false);
+  const filterSwitching = useFilterSwitching([eventSearch, eventFilter, membershipFilter, selectedDate, eventTab, eventSort]);
+  const pageSwitching = pageSwitchingRaw || filterSwitching;
   // Page-open skeleton -- `loading` is only true during Staff's very first
   // fetch, so without this, opening Events later showed the cards instantly.
   const openSkeleton = usePageOpenSkeleton(loading);
+  // While the page is still showing its skeleton the counters read 0, not the
+  // numbers of a list that has not loaded yet.
+  const countsLoading = openSkeleton || loading;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (page: number) => {
     setCurrentPage(page);
+    scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
@@ -194,6 +307,8 @@ export function EventsView({
     detailSwitchTimer.current = setTimeout(() => setDetailSwitching(false), 350);
   };
   useEffect(() => () => { if (detailSwitchTimer.current) clearTimeout(detailSwitchTimer.current); }, []);
+  // Opening an event also flashes the detail skeleton, same as switching tabs.
+  useEffect(() => { if (viewEv?.id) flashDetail(); }, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -207,6 +322,28 @@ export function EventsView({
 
   const initialLoadDone = useRef(false);
   const [localEvents, setLocalEvents] = useState<MyEvent[]>([]);
+
+  // Bell notification -> open that event on the requested tab. Waits for the
+  // events to be loaded, then clears the request so it only fires once.
+  useEffect(() => {
+    if (!openRequest) return;
+    const tabs = ["overview", "attendance", "inventory", "budget", "feedback"] as const;
+    const tab = (tabs as readonly string[]).includes(openRequest.tab) ? (openRequest.tab as (typeof tabs)[number]) : "overview";
+    const subTab = openRequest.sub === "reasons" ? "reasons" : "ratings";
+    if (viewEv && String(viewEv.id) === String(openRequest.eventId)) {
+      setDetailTab(tab);
+      if (tab === "feedback") setFeedbackSubTab(subTab);
+      onOpenRequestHandled?.();
+      return;
+    }
+    const target = localEvents.find((e) => String(e.id) === String(openRequest.eventId));
+    if (!target) return; // events still loading -- runs again when they arrive
+    pendingTabRef.current = tab;
+    pendingSubRef.current = tab === "feedback" ? subTab : null;
+    setViewEv(target);
+    onOpenRequestHandled?.();
+  }, [openRequest, localEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+
 
   const getStartOfWeek = (date: Date) => {
     const d = new Date(date);
@@ -279,6 +416,9 @@ export function EventsView({
 
     return {
       id: dbEvent.id,
+      attendanceCount: typeof dbEvent.attendances_count === "number" ? dbEvent.attendances_count : undefined,
+      inventoryCount: typeof dbEvent.inventory_items_count === "number" ? dbEvent.inventory_items_count : undefined,
+      feedbackCount: typeof dbEvent.feedback_count === "number" ? dbEvent.feedback_count : undefined,
       title: dbEvent.name,
       date: dbEvent.event_start,
       event_start: dbEvent.event_start,
@@ -298,11 +438,23 @@ export function EventsView({
       membershipNames: [],
       approvedBudget: dbEvent.approved_budget ?? null,
       borrowedItems: Array.isArray(dbEvent.borrowed_items)
-        ? dbEvent.borrowed_items.map((bi: any) => ({
-            inventoryItemId: String(bi.inventory_item_id),
-            name: bi.inventory_item?.name ?? "",
-            quantity: Number(bi.quantity) || 0,
-          }))
+        ? dbEvent.borrowed_items.map((bi: any) => {
+            const units: Record<string, number> = {
+              New: Number(bi.new_quantity) || 0,
+              Good: Number(bi.good_quantity) || 0,
+              Fair: Number(bi.fair_quantity) || 0,
+              Poor: Number(bi.poor_quantity) || 0,
+            };
+            // Borrows made before units were split count toward the item's main condition.
+            const rest = (Number(bi.quantity) || 0) - Object.values(units).reduce((a, b) => a + b, 0);
+            if (rest > 0) units[units[bi.inventory_item?.condition] !== undefined ? bi.inventory_item.condition : "Good"] += rest;
+            return {
+              inventoryItemId: String(bi.inventory_item_id),
+              name: bi.inventory_item?.name ?? "",
+              quantity: Number(bi.quantity) || 0,
+              units,
+            };
+          })
         : [],
     };
   };
@@ -358,34 +510,33 @@ export function EventsView({
 
   const [liveAttendances, setLiveAttendances] = useState<Record<string, any[]>>({});
 
+  // Only the event being viewed needs its attendance list, so fetch just that
+  // one (instead of every event one-by-one). Cached copy shows instantly while
+  // a fresh one loads in the background.
   useEffect(() => {
-    if (!localEvents || localEvents.length === 0) return;
+    if (!viewEv?.id) return;
+    const event = viewEv;
+    let cancelled = false;
 
-    const fetchAttendance = async () => {
-      for (const event of localEvents) {
-        if (liveAttendances[event.id]) continue;
-
-        try {
-          const response = await api.get(`/events/${event.id}/attendances`);
-          const data = response.data;
-          const formatted = data.map((record: any) => ({
-            eventId: event.id,
-            residentId: record.user_id,
-            residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
-            userCode: record.user?.user_code ?? "",
-            timeIn: record.time_in,
-            timeOut: record.time_out
-          }));
-
-          setLiveAttendances(prev => ({ ...prev, [event.id]: formatted }));
-        } catch (error) {
-          console.error("Failed to fetch live attendance for event:", error);
-        }
+    (async () => {
+      try {
+        const response = await api.get(`/events/${event.id}/attendances`);
+        const formatted = (response.data as any[]).map((record: any) => ({
+          eventId: event.id,
+          residentId: record.user_id,
+          residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
+          userCode: record.user?.user_code ?? "",
+          timeIn: record.time_in,
+          timeOut: record.time_out
+        }));
+        if (!cancelled) setLiveAttendances(prev => ({ ...prev, [event.id]: formatted }));
+      } catch (error) {
+        console.error("Failed to fetch live attendance for event:", error);
       }
-    };
+    })();
 
-    fetchAttendance();
-  }, [localEvents]);
+    return () => { cancelled = true; };
+  }, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real-time-ish refresh: this app has no websocket/push layer, so a
   // second staff member adding/editing/attending an event elsewhere is
@@ -445,12 +596,12 @@ export function EventsView({
     targetMembership: "all",
     approvedBudget: "",
     postToFacebook: false,
-    borrowedItems: [] as { inventoryItemId: string; quantity: string }[],
+    borrowedItems: [] as BorrowRow[],
   });
 
   const blankEventForm = {
     title: "", date: "", time: "", endTime: "", callTimeStart: "", callTimeEnd: "", location: "", description: "",
-    notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [] as { inventoryItemId: string; quantity: string }[],
+    notificationMessage: "", targetMembership: "all", approvedBudget: "", postToFacebook: false, borrowedItems: [] as BorrowRow[],
   };
 
   // Whether the currently-selected event date is today -- used below to
@@ -513,6 +664,15 @@ export function EventsView({
     return map;
   }, [editingEvent]);
 
+  // Same idea per condition: units of this item this event already holds.
+  const availableUnitsFor = (itemId: string, label: string): number => {
+    const item = borrowableItems.find((it) => String(it.id) === String(itemId));
+    const key = BORROW_CONDITIONS.find((c) => c.label === `condition${label}`)?.key;
+    const inStock = key && item ? Number(item[key] ?? 0) : 0;
+    const own = (editingEvent?.borrowedItems ?? []).find((bi) => String(bi.inventoryItemId) === String(itemId))?.units?.[label] ?? 0;
+    return inStock + own;
+  };
+
   const availableStockFor = (itemId: string): number => {
     const base = borrowableItems.find((it) => String(it.id) === String(itemId))?.quantity ?? 0;
     return base + (originalBorrowedMap.get(String(itemId)) ?? 0);
@@ -521,14 +681,29 @@ export function EventsView({
   const addBorrowRow = (itemId: string) => {
     if (!itemId) return;
     if (newEvent.borrowedItems.some((r) => r.inventoryItemId === itemId)) return;
-    setNewEvent((prev) => ({ ...prev, borrowedItems: [...prev.borrowedItems, { inventoryItemId: itemId, quantity: "1" }] }));
+    // Start with one unit from the condition that has the most stock; staff
+    // then choose how many of each condition they want.
+    const best = BORROW_CONDITIONS.map((c) => c.label.replace("condition", "")).reduce(
+      (top, label) => (availableUnitsFor(itemId, label) > availableUnitsFor(itemId, top) ? label : top),
+      "Good"
+    );
+    const units: Record<string, string> = { New: "0", Good: "0", Fair: "0", Poor: "0" };
+    units[best] = "1";
+    setNewEvent((prev) => ({ ...prev, borrowedItems: [...prev.borrowedItems, { inventoryItemId: itemId, quantity: "1", units }] }));
     setBorrowItemToAdd("");
   };
 
-  const updateBorrowQuantity = (itemId: string, quantity: string) => {
+  const updateBorrowUnits = (itemId: string, label: string, raw: string) => {
+    const max = availableUnitsFor(itemId, label);
+    const value = raw === "" ? 0 : Math.max(0, Math.min(max, Math.round(Number(raw)) || 0));
     setNewEvent((prev) => ({
       ...prev,
-      borrowedItems: prev.borrowedItems.map((r) => (r.inventoryItemId === itemId ? { ...r, quantity } : r)),
+      borrowedItems: prev.borrowedItems.map((r) => {
+        if (r.inventoryItemId !== itemId) return r;
+        const units = { ...r.units, [label]: String(value) };
+        const total = Object.values(units).reduce((a, b) => a + (Number(b) || 0), 0);
+        return { ...r, units, quantity: String(total) };
+      }),
     }));
   };
 
@@ -545,6 +720,11 @@ export function EventsView({
 
   const [attendanceSearch, setAttendanceSearch] = useState("");
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState("all");
+  // Skeleton flash on every search/status change, and always jump back to
+  // page 1 -- otherwise a filter applied from page 3 left the table empty
+  // (page 3 of a 1-page result), which looked like the filter did nothing.
+  const attendanceFiltering = useFilterSwitching([attendanceSearch, attendanceStatusFilter]);
+  useEffect(() => { setAttendanceCurrentPage(1); }, [attendanceSearch, attendanceStatusFilter]);
 
   const formatTime12Hour = (timeStr: string | undefined): string => {
     if (!timeStr) return "";
@@ -617,6 +797,15 @@ export function EventsView({
     return ongoing;
   };
 
+  // Display-only: an upcoming event whose sign-in window (call time start)
+  // has already opened reads "Check-in open". Filters/locking still use the
+  // real Upcoming/Ongoing/Past status.
+  const chipKey = (event: MyEvent, label: string) => {
+    if (label !== "Upcoming") return label;
+    const open = parseEventDateTime(event.call_time_start);
+    return open && new Date() >= open ? "CheckIn" : label;
+  };
+
   const isEventLocked = (label: "Upcoming" | "Ongoing" | "Past") => label === "Past" || label === "Ongoing";
 
   const getFilterStatus = (event: MyEvent, filter: string): boolean => {
@@ -628,10 +817,10 @@ export function EventsView({
     return true;
   };
 
-  const filteredEvents = useMemo(() => {
+  // Everything except the Ongoing/Upcoming/Past tab, so the tab counts stay
+  // truthful for the current search / membership / date.
+  const baseScopedEvents = useMemo(() => {
     let result = [...localEvents];
-
-    result = result.filter(event => getFilterStatus(event, eventFilter));
 
     if (membershipFilter !== "all") {
       result = result.filter((e) =>
@@ -666,43 +855,100 @@ export function EventsView({
     }
 
     return result;
-  }, [localEvents, eventFilter, membershipFilter, eventSearch, selectedDate]);
+  }, [localEvents, membershipFilter, eventSearch, selectedDate]);
 
-  const sortedFilteredEvents = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const weekStart = getStartOfWeek(today);
-    const weekEnd = getEndOfWeek(today);
+  // Quick-tab tests. "Today" = the event runs at any point today; "This week"
+  // = it starts Monday-Sunday of the current week; "Has feedback" = at least
+  // one rating or non-attendance reason came in.
+  const eventTabTest = (tab: typeof eventTab, e: MyEvent): boolean => {
+    if (tab === "all") return true;
+    if (tab === "feedback") return (e.feedbackCount ?? 0) > 0;
+    const start = parseEventDateTime(e.event_start) ?? parseEventDateTime(e.date) ?? parseEventDateTime(e.startDate);
+    if (!start) return false;
+    const end = parseEventDateTime(e.event_end) ?? start;
+    const now = new Date();
+    if (tab === "today") {
+      const d0 = new Date(now); d0.setHours(0, 0, 0, 0);
+      const d1 = new Date(d0); d1.setDate(d0.getDate() + 1);
+      return start < d1 && end >= d0;
+    }
+    const w0 = new Date(now); w0.setHours(0, 0, 0, 0); w0.setDate(w0.getDate() - ((w0.getDay() + 6) % 7));
+    const w1 = new Date(w0); w1.setDate(w0.getDate() + 7);
+    return start >= w0 && start < w1;
+  };
+  const eventTabCounts = useMemo(() => ({
+    all: baseScopedEvents.length,
+    today: baseScopedEvents.filter((e) => eventTabTest("today", e)).length,
+    week: baseScopedEvents.filter((e) => eventTabTest("week", e)).length,
+    feedback: baseScopedEvents.filter((e) => eventTabTest("feedback", e)).length,
+  }), [baseScopedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scopedEvents = useMemo(
+    () => baseScopedEvents.filter((e) => eventTabTest(eventTab, e)),
+    [baseScopedEvents, eventTab] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-    return [...filteredEvents].sort((a, b) => {
-      let dateA = a.date || a.event_start || a.startDate || "";
-      let dateB = b.date || b.event_start || b.startDate || "";
+  const filteredEvents = useMemo(
+    () => scopedEvents.filter((event) => getFilterStatus(event, eventFilter)),
+    [scopedEvents, eventFilter] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
-      if (dateA.includes(" ")) dateA = dateA.split(" ")[0];
-      if (dateA.includes("T")) dateA = dateA.split("T")[0];
-      if (dateB.includes(" ")) dateB = dateB.split(" ")[0];
-      if (dateB.includes("T")) dateB = dateB.split("T")[0];
-
-      const eventDateA = new Date(dateA);
-      const eventDateB = new Date(dateB);
-      eventDateA.setHours(0, 0, 0, 0);
-      eventDateB.setHours(0, 0, 0, 0);
-
-      const isThisWeekA = !isNaN(eventDateA.getTime()) && eventDateA >= weekStart && eventDateA <= weekEnd;
-      const isThisWeekB = !isNaN(eventDateB.getTime()) && eventDateB >= weekStart && eventDateB <= weekEnd;
-
-      if (isThisWeekA && !isThisWeekB) return -1;
-      if (!isThisWeekA && isThisWeekB) return 1;
-
-      return eventDateB.getTime() - eventDateA.getTime();
+  const statusCounts = useMemo(() => {
+    const c = { all: scopedEvents.length, ongoing: 0, upcoming: 0, past: 0 };
+    scopedEvents.forEach((e) => {
+      const l = getEventStatus(e).label;
+      if (l === "Ongoing") c.ongoing++;
+      else if (l === "Upcoming") c.upcoming++;
+      else c.past++;
     });
-  }, [filteredEvents]);
+    return c;
+  }, [scopedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ongoing first, then Upcoming (soonest first), then Past (most recent first).
+  const sortedFilteredEvents = useMemo(() => {
+    const order = { Ongoing: 0, Upcoming: 1, Past: 2 } as const;
+    const startOf = (e: MyEvent) => (parseEventDateTime(e.event_start) ?? parseEventDateTime(e.date) ?? parseEventDateTime(e.startDate))?.getTime() ?? 0;
+    return [...filteredEvents]
+      .map((e) => ({ e, label: getEventStatus(e).label, start: startOf(e) }))
+      .sort((x, y) => {
+        if (order[x.label] !== order[y.label]) return order[x.label] - order[y.label];
+        // Sections stay grouped by status; the sort picks the order inside each one.
+        if (eventSort === "soonest") return x.start - y.start;
+        if (eventSort === "latest") return y.start - x.start;
+        if (eventSort === "name-az") return String(x.e.title).localeCompare(String(y.e.title));
+        return x.label === "Past" ? y.start - x.start : x.start - y.start;
+      })
+      .map((x) => x.e);
+  }, [filteredEvents, eventSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalPages = Math.ceil(sortedFilteredEvents.length / itemsPerPage);
   const paginatedEvents = useMemo(() => {
     const startIndex = (currentPage - 1) * itemsPerPage;
     return sortedFilteredEvents.slice(startIndex, startIndex + itemsPerPage);
   }, [sortedFilteredEvents, currentPage, itemsPerPage]);
+
+  // The cards on the visible page show an attendee count, so load just those
+  // few events' attendance, in parallel, once each (cached afterwards).
+  const requestedAttendance = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    paginatedEvents.forEach((event) => {
+      const key = String(event.id);
+      if (requestedAttendance.current.has(key) || liveAttendances[event.id]) return;
+      requestedAttendance.current.add(key);
+      api.get(`/events/${event.id}/attendances`)
+        .then((response) => {
+          const formatted = (response.data as any[]).map((record: any) => ({
+            eventId: event.id,
+            residentId: record.user_id,
+            residentName: record.user ? `${record.user.first_name} ${record.user.last_name}` : `User #${record.user_id}`,
+            userCode: record.user?.user_code ?? "",
+            timeIn: record.time_in,
+            timeOut: record.time_out
+          }));
+          setLiveAttendances(prev => ({ ...prev, [event.id]: formatted }));
+        })
+        .catch(() => requestedAttendance.current.delete(key));
+    });
+  }, [paginatedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filters / search changing flashes the list skeleton too (not on first mount).
   const filtersMounted = useRef(false);
@@ -712,7 +958,7 @@ export function EventsView({
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
-  }, [eventSearch, eventFilter, membershipFilter, selectedDate]);
+  }, [eventSearch, eventFilter, membershipFilter, selectedDate, eventTab, eventSort]);
 
   // Runs the field-level checks that used to live at the top of the old
   // handleSaveEvent, then -- if they pass -- opens the confirm step
@@ -812,7 +1058,12 @@ export function EventsView({
       approved_budget: newEvent.approvedBudget !== "" ? newEvent.approvedBudget : null,
       borrowed_items: newEvent.borrowedItems
         .filter((r) => r.inventoryItemId && Number(r.quantity) > 0)
-        .map((r) => ({ inventory_item_id: Number(r.inventoryItemId), quantity: Number(r.quantity) })),
+        .map((r) => ({
+          inventory_item_id: Number(r.inventoryItemId),
+          quantity: Number(r.quantity),
+          // Exactly the units staff picked, per condition.
+          conditions: Object.fromEntries(Object.entries(r.units).map(([k, v]) => [k, Number(v) || 0])),
+        })),
     };
     // Adviser recommendation: "2 in 1 — Facebook Page" (only relevant on create)
     if (!editingEvent && newEvent.postToFacebook) {
@@ -924,7 +1175,11 @@ export function EventsView({
       targetMembership: currentMembershipId,
       approvedBudget: event.approvedBudget !== null && event.approvedBudget !== undefined ? String(event.approvedBudget) : "",
       postToFacebook: false,
-      borrowedItems: (event.borrowedItems ?? []).map((bi) => ({ inventoryItemId: bi.inventoryItemId, quantity: String(bi.quantity) })),
+      borrowedItems: (event.borrowedItems ?? []).map((bi) => ({
+        inventoryItemId: bi.inventoryItemId,
+        quantity: String(bi.quantity),
+        units: Object.fromEntries(Object.entries(bi.units ?? {}).map(([k, v]) => [k, String(v)])) as Record<string, string>,
+      })),
     };
     setNewEvent(initialForm);
     setOriginalEventForm(JSON.stringify(initialForm));
@@ -933,7 +1188,9 @@ export function EventsView({
 
   // Nothing to submit if editing an event and the form still matches what
   // was loaded (title, schedule, borrowed items, everything).
-  const isEventFormUnchanged = !!editingEvent && JSON.stringify(newEvent) === originalEventForm;
+  const isEventFormUnchanged = editingEvent
+    ? JSON.stringify(newEvent) === originalEventForm
+    : JSON.stringify(newEvent) === JSON.stringify(blankEventForm); // new event: nothing entered yet
 
   const closeEventModal = () => {
     if (isSubmitting) return;
@@ -999,19 +1256,59 @@ export function EventsView({
       }
     });
 
+    // Sort: Complete -> Incomplete -> Missed (who actually attended first),
+    // then last name A-Z inside each group so a name is easy to find.
+    const rank = (r: any) => (r.timeIn && r.timeOut ? 0 : r.timeIn || r.timeOut ? 1 : 2);
+    const lastName = (name: string) => {
+      const parts = String(name ?? "").trim().split(/\s+/);
+      return (parts[parts.length - 1] || "").toLowerCase();
+    };
+    combinedList.sort((x: any, y: any) =>
+      rank(x) - rank(y) ||
+      lastName(x.residentName).localeCompare(lastName(y.residentName)) ||
+      String(x.residentName).localeCompare(String(y.residentName))
+    );
+
     return combinedList;
   };
+  // "No scan" only means Missed once the event is over: before it starts the
+  // row reads Upcoming, and while it is running, Ongoing.
   const getAttendanceStatus = (record: any) => {
     if (record.timeIn && record.timeOut) return { label: "Complete" };
     if (record.timeIn || record.timeOut) return { label: "Incomplete" };
+    const ev = viewEv;
+    if (ev) {
+      const phase = getEventStatus(ev).label;
+      if (phase === "Upcoming") return { label: "Upcoming" };
+      if (phase === "Ongoing") return { label: "Ongoing" };
+    }
     return { label: "Missed" };
   };
+
+  // The status filter only offers what can exist for this event right now:
+  // an event that hasn't started offers Upcoming (never Missed), a running one
+  // offers Ongoing, and only a finished one offers Missed.
+  const attendanceFilterOptions = (() => {
+    const phase = viewEv ? getEventStatus(viewEv).label : "Past";
+    const pending = phase === "Upcoming"
+      ? [{ value: "upcoming", label: t("upcomingBadge") }]
+      : phase === "Ongoing"
+        ? [{ value: "ongoing", label: t("ongoingBadge") }]
+        : [{ value: "missed", label: t("statusMissed") }];
+    return [
+      { value: "all", label: t("allStatus") },
+      { value: "complete", label: t("statusComplete") },
+      { value: "incomplete", label: t("statusIncomplete") },
+      ...pending,
+    ];
+  })();
 
   const getFilteredAttendance = (fullList: any[]) => {
     return fullList.filter((record) => {
       const matchesName = matchesSearch(attendanceSearch, record.residentName, record.userCode);
       const status = getAttendanceStatus(record).label.toLowerCase();
-      const matchesStatus = attendanceStatusFilter === "all" || status === attendanceStatusFilter;
+      const offered = attendanceFilterOptions.some((o) => o.value === attendanceStatusFilter);
+      const matchesStatus = attendanceStatusFilter === "all" || !offered || status === attendanceStatusFilter;
       return matchesName && matchesStatus;
     });
   };
@@ -1039,7 +1336,10 @@ export function EventsView({
 
   const fullAttendanceCountForTab = useMemo(() => {
     if (!viewEv) return 0;
-    return getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).length;
+    // Residents and the attendance rows arrive a moment after the event opens;
+    // the server's own count is there from the start, so the tab never
+    // begins at 0 and climbs.
+    return Math.max(getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).length, viewEv.attendanceCount ?? 0);
   }, [viewEv, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- Budget tab -------------------------------------------------------
@@ -1071,7 +1371,9 @@ export function EventsView({
 
   const openEventReport = (mode: "print" | "download") => {
     setReportSections(EVENT_REPORT_SECTIONS.map((x) => x.key));
-    setReportAttendeeFilter("all");
+    // Start from what the Attendance tab is showing: filtered to "Missed" -> the
+    // report starts on "Absent" (the other statuses have no exact match, so "All").
+    setReportAttendeeFilter(attendanceStatusFilter === "missed" ? "absent" : "all");
     setReportMode(mode);
   };
 
@@ -1115,45 +1417,55 @@ export function EventsView({
     return typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse) and (hover: none)").matches;
   };
 
-  // Desktop: the PDF loads into a hidden frame on this very page and the
-  // browser's own print dialog opens straight away -- no new tab and no
-  // blob: address. Phones/tablets can't print a hidden frame reliably, so
+  // Desktop: the report is rendered by the browser itself in a hidden frame
+  // on this very page and the print dialog opens straight away -- no new tab
+  // and no blob: address. Printing the browser's own HTML (instead of a PDF
+  // inside a frame) is what lets the page margins be exact, with no blank
+  // band at the top. Phones/tablets can't print a hidden frame reliably, so
   // they open the PDF in the device's viewer instead (same as Reports).
   const handleEventReportPrint = async () => {
     const mobile = isPhoneOrTabletDevice();
     const win = mobile ? window.open("", "_blank") : null;
     setReportBusy(true);
     try {
-      const blob = await fetchEventReportBlob("pdf");
-      const url = URL.createObjectURL(blob);
       if (mobile) {
+        const blob = await fetchEventReportBlob("pdf");
+        const url = URL.createObjectURL(blob);
         if (win && !win.closed) win.location.href = url;
         else saveBlob(blob, `${reportFileBase()}.pdf`);
         window.setTimeout(() => URL.revokeObjectURL(url), 120000);
         setReportMode(null);
         return;
       }
+      const params: Record<string, string> = {
+        type: "attendance",
+        event_id: String(viewEv?.id ?? ""),
+        sections: reportSections.join(","),
+      };
+      if (reportSections.includes("records")) {
+        params.event_ids = String(viewEv?.id ?? "");
+        params.attendee_filter = reportAttendeeFilter;
+      }
+      const response = await api.get("/reports/export/html", { params, responseType: "text", transformResponse: (d: any) => d });
+      const html = String(response.data);
       const frame = document.createElement("iframe");
       frame.setAttribute("aria-hidden", "true");
-      frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
-      const cleanup = () => {
-        window.setTimeout(() => {
-          frame.remove();
-          URL.revokeObjectURL(url);
-        }, 60000);
-      };
+      frame.style.cssText = "position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;";
       frame.onload = () => {
-        window.setTimeout(() => {
+        window.setTimeout(async () => {
           try {
+            // Wait for the seal image / fonts so the preview is complete.
+            await (frame.contentDocument as any)?.fonts?.ready;
             frame.contentWindow?.focus();
             frame.contentWindow?.print();
           } catch {
+            const blob = await fetchEventReportBlob("pdf");
             saveBlob(blob, `${reportFileBase()}.pdf`);
           }
-          cleanup();
+          window.setTimeout(() => frame.remove(), 60000);
         }, 400);
       };
-      frame.src = url;
+      frame.srcdoc = html;
       document.body.appendChild(frame);
       setReportMode(null);
     } catch {
@@ -1186,11 +1498,12 @@ export function EventsView({
           const locked = isEventLocked(status.label);
           const coverageNames = getMembershipNames(viewEv);
           const coverageDisplay = coverageNames.length === 0 ? t("allResidentsCoverageLabel") : coverageNames.join(", ");
-          const signedInCount = getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn).length;
+          const signedInCount = getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn || a.timeOut).length;
 
           const tabs: { key: typeof detailTab; label: string; count?: number }[] = [
             { key: "overview", label: t("overviewTabLabel") },
             { key: "attendance", label: t("attendanceTabLabel"), count: fullAttendanceCountForTab },
+            { key: "inventory", label: t("inventoryTabLabel"), count: eventInventoryLoading ? (viewEv.inventoryCount ?? 0) : (eventInventory.items.length || viewEv.inventoryCount || 0) },
             { key: "budget", label: t("budgetTabLabel") },
             { key: "feedback", label: t("feedbackTabLabel"), count: eventFeedback.length },
           ];
@@ -1213,16 +1526,16 @@ export function EventsView({
                 <div className="min-w-0">
                   <div className="flex items-center gap-2.5 flex-wrap">
                     <h1 className="font-display text-2xl sm:text-3xl font-bold text-white break-words">{viewEv.title}</h1>
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${statusPillClasses(status.label, true)}`}>
-                      <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(status.label, true)}`} />
-                      {eventStatusChipLabel(status.label)}
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${statusPillClasses(chipKey(viewEv, status.label), true)}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(chipKey(viewEv, status.label), true)}`} />
+                      {eventStatusChipLabel(chipKey(viewEv, status.label))}
                     </span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/50">
                     <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-gold-300 shrink-0" /> {viewEv.location}</span>
                     <span className="inline-flex items-center gap-1.5">
                       <Clock className="h-4 w-4 text-gold-300 shrink-0" />
-                      {(viewEv.startDate || viewEv.date)} · {formatTime12Hour(viewEv.startTime)}
+                      {(viewEv.startDate || viewEv.date)} · {formatTime12Hour(viewEv.startTime)}{viewEv.endTime ? ` – ${formatTime12Hour(viewEv.endTime)}` : ""}
                     </span>
                   </div>
                 </div>
@@ -1262,7 +1575,32 @@ export function EventsView({
 
               {detailTab === "overview" && (
                 <div className="space-y-5">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                  {detailSwitching && (
+                    <>
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
+                        <Skeleton className="h-3 w-28" />
+                        <Skeleton className="h-4 w-2/3" />
+                        <div className="pt-4 mt-4 border-t border-white/10 space-y-3">
+                          <Skeleton className="h-3 w-36" />
+                          <Skeleton className="h-11 w-full rounded-xl" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {[0, 1, 2].map((k) => (
+                          <div key={k} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 flex flex-col items-center gap-2.5">
+                            <Skeleton className="h-3 w-24" />
+                            <Skeleton className="h-5 w-20" />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-3">
+                        <Skeleton className="h-11 w-52 rounded-full" />
+                        <Skeleton className="h-11 w-44 rounded-full" />
+                        <Skeleton className="h-11 w-11 rounded-full" />
+                      </div>
+                    </>
+                  )}
+                  <div className={`rounded-2xl border border-white/10 bg-white/[0.04] p-5 ${detailSwitching ? "hidden" : ""}`}>
                     <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">{t("descriptionLabel")}</h3>
                     <p className="text-[15px] text-white leading-relaxed whitespace-pre-wrap">{viewEv.description || t("noDescription")}</p>
                     {viewEv.notificationMessage && (
@@ -1278,29 +1616,29 @@ export function EventsView({
                       colors, just flat instead of the Dashboard's gradient.
                       These already read fine on the dark page, so only the
                       surrounding surfaces needed to change. */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className={`grid grid-cols-1 sm:grid-cols-3 gap-4 ${detailSwitching ? "hidden" : ""}`}>
                     <div className="rounded-2xl bg-sage-700 p-4 text-center">
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/70">{t("coverageStatLabel")}</p>
+                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/90">{t("coverageStatLabel")}</p>
                       <p className="mt-1.5 text-base font-bold text-white break-words">{coverageDisplay}</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => setDetailTab("budget")}
                       title={t("budgetTabLabel")}
-                      className="rounded-2xl bg-gold-700 p-4 text-center transition hover:brightness-110 active:scale-[0.99]"
+                      className="rounded-2xl bg-gradient-to-br from-gold-500 to-gold-700 p-4 text-center transition hover:brightness-110 active:scale-[0.99]"
                     >
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/70">{t("approvedBudgetStatLabel")}</p>
+                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/90">{t("approvedBudgetStatLabel")}</p>
                       <p className="mt-1.5 text-base font-bold text-white">
                         {viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined ? `₱${Number(viewEv.approvedBudget).toLocaleString()}` : "—"}
                       </p>
                     </button>
                     <div className="rounded-2xl bg-[#5C2A1E] p-4 text-center">
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/70">{t("attendeesStatLabel")}</p>
+                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/90">{t("attendeesStatLabel")}</p>
                       <p className="mt-1.5 text-base font-bold text-white">{signedInCount}</p>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-3">
+                  <div className={`flex flex-wrap gap-3 ${detailSwitching ? "hidden" : ""}`}>
                     <button
                       type="button"
                       disabled
@@ -1418,12 +1756,7 @@ export function EventsView({
                         <FilterDropdown
                           value={attendanceStatusFilter}
                           onChange={setAttendanceStatusFilter}
-                          options={[
-                            { value: "all", label: t("allStatus") },
-                            { value: "complete", label: t("statusComplete") },
-                            { value: "incomplete", label: t("statusIncomplete") },
-                            { value: "missed", label: t("statusMissed") },
-                          ]}
+                          options={attendanceFilterOptions}
                           className="h-11 pl-9 pr-8"
                           icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
                           dark
@@ -1444,7 +1777,7 @@ export function EventsView({
                         </tr>
                       </thead>
                       <tbody>
-                        {detailSwitching ? (
+                        {detailSwitching || attendanceFiltering ? (
                           Array.from({ length: 6 }).map((_, i) => (
                             <tr key={`sk-${i}`} className="border-t border-white/[0.06]">
                               <td className="px-5 py-4"><Skeleton className="h-4 w-8" /></td>
@@ -1467,6 +1800,8 @@ export function EventsView({
                             if (recStatus.label === "Complete") statusColor = "text-[#7DD8CB] bg-[#4FBEB0]/15";
                             if (recStatus.label === "Incomplete") statusColor = "text-gold-300 bg-gold-400/15";
                             if (recStatus.label === "Missed") statusColor = "text-red-400 bg-red-500/15";
+                            if (recStatus.label === "Upcoming") statusColor = "text-[#9CC4FF] bg-[#6BA8FF]/15";
+                            if (recStatus.label === "Ongoing") statusColor = "text-[#7DD8CB] bg-[#4FBEB0]/15";
 
                             return (
                               <tr key={i} className="border-t border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors">
@@ -1507,7 +1842,7 @@ export function EventsView({
 
                   {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
                   <div className="flex justify-end mt-4">
-                    {attendanceTotalPages > 1 && (detailSwitching ? <PagerSkeleton /> : (
+                    {attendanceTotalPages > 1 && (detailSwitching || attendanceFiltering ? null : (
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => { flashDetail(); setAttendanceCurrentPage(p => Math.max(1, p - 1)); }}
@@ -1532,6 +1867,177 @@ export function EventsView({
                 </div>
               )}
 
+              {detailTab === "inventory" && (
+                <div className="space-y-5">
+                  {eventInventoryLoading || detailSwitching ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
+                      {[0, 1, 2].map((k) => <Skeleton key={k} className="h-16 w-full rounded-xl" />)}
+                    </div>
+                  ) : eventInventory.items.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center text-white/55">
+                      {t("eventInventoryEmpty")}
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {([
+                          { key: "borrowed", label: t("eventInventoryBorrowed"), value: eventInventory.items.reduce((a, r) => a + r.total, 0), bg: "bg-sage-700", Icon: Package },
+                          { key: "out", label: t("eventInventoryStillOut"), value: eventInventory.items.reduce((a, r) => a + r.out, 0), bg: "bg-gold-600", Icon: Clock },
+                          { key: "back", label: t("eventInventoryReturned"), value: eventInventory.items.reduce((a, r) => a + r.returned, 0), bg: "bg-sage-800", Icon: CheckCircle2 },
+                        ] as const).map(({ key, label, value, bg, Icon }) => (
+                          <div key={key} className={`rounded-2xl ${bg} px-5 py-5 flex items-center gap-4`}>
+                            <span className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-xl bg-white/20">
+                              <Icon className="h-6 w-6 text-white" />
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-bold uppercase tracking-wide text-white/85">{label}</p>
+                              <p className="text-3xl font-black text-white leading-none mt-1">{value}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-3">
+                        {eventInventory.items.map((row) => {
+                          const pct = row.total > 0 ? Math.round((row.returned / row.total) * 100) : 0;
+                          return (
+                            <div key={row.inventory_item_id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                              <div className="flex flex-wrap items-center gap-3">
+                                {row.photo_url ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setInvPhoto({ url: row.photo_url!, name: tc(row.name, language as any), urls: [row.photo_url!] })}
+                                    className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 hover:border-[#4FBEB0]/60 transition"
+                                  >
+                                    <img src={row.photo_url} alt={row.name} className="h-full w-full object-cover" />
+                                    <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur"><Eye className="h-3 w-3" /></span>
+                                  </button>
+                                ) : (
+                                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/15">
+                                    <Package className="h-6 w-6 text-[#7DD8CB]" />
+                                  </span>
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-base font-bold text-white truncate">{tc(row.name, language as any)}</p>
+                                  <p className="text-xs text-white/50">
+                                    {t("eventInventoryReturned")}: <span className="font-bold text-white">{row.returned}</span> / {row.total}
+                                  </p>
+                                </div>
+                                <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+                                  row.status === "returned" ? "bg-[#4FBEB0]/15 text-[#7DD8CB]" : row.status === "partial" ? "bg-gold-400/15 text-gold-300" : "bg-[#8A3D2C]/25 text-[#E2A088]"
+                                }`}>
+                                  {row.status === "returned" ? t("eventInventoryStatusReturned") : row.status === "partial" ? t("eventInventoryStatusPartial") : t("eventInventoryStatusBorrowed")}
+                                </span>
+                              </div>
+
+                              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                                <div className="h-full rounded-full bg-[#4FBEB0] transition-all" style={{ width: `${pct}%` }} />
+                              </div>
+
+                              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                {([["out", t("eventInventoryStillOut")], ["returned", t("eventInventoryReturned")]] as const).map(([k, title]) => {
+                                  const units = k === "out" ? row.out_units : row.returned_units;
+                                  const total = k === "out" ? row.out : row.returned;
+                                  return (
+                                    <div key={k} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                                      <div className="flex items-center justify-between">
+                                        <p className="text-xs font-bold uppercase tracking-wide text-white/55">{title}</p>
+                                        <p className="text-sm font-bold text-white">{total}</p>
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap gap-1.5 min-h-[26px]">
+                                        {total === 0 ? (
+                                          <span className="text-sm text-white/40">{k === "out" ? t("eventInventoryNoneOut") : t("eventInventoryNoneBack")}</span>
+                                        ) : (
+                                          BORROW_CONDITIONS.filter((c) => (units[c.label.replace("condition", "")] ?? 0) > 0).map((c) => (
+                                            <span key={c.key} className={`rounded-full px-3 py-1 text-xs font-semibold ${c.chip}`}>
+                                              {units[c.label.replace("condition", "")]} {t(c.label)}
+                                            </span>
+                                          ))
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {eventInventory.returns.length > 0 && (
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                          <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-3">{t("eventInventoryReturnLog")}</h3>
+                          <div className="space-y-3">
+                            {eventInventory.returns.map((r) => {
+                              const photos = r.evidence_photo_urls ?? [];
+                              const itemName = tc(r.name, language as any);
+                              return (
+                                <div key={r.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4 flex items-start gap-4">
+                                  {r.photo_url ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setInvPhoto({ url: r.photo_url!, name: itemName, urls: [r.photo_url!] })}
+                                      className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 hover:border-[#4FBEB0]/60 transition"
+                                    >
+                                      <img src={r.photo_url} alt={r.name} className="h-full w-full object-cover" />
+                                    <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur"><Eye className="h-3 w-3" /></span>
+                                    </button>
+                                  ) : (
+                                    <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/15">
+                                      <Package className="h-6 w-6 text-[#7DD8CB]" />
+                                    </span>
+                                  )}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                                      <p className="text-base font-bold text-white truncate">{r.quantity}&times; {itemName}</p>
+                                      <span className="text-xs text-white/45">
+                                        {r.released_by ? `${r.released_by} \u00b7 ` : ""}{new Date(r.released_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                                      </span>
+                                    </div>
+                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                      {BORROW_CONDITIONS.filter((c) => (r.units[c.label.replace("condition", "")] ?? 0) > 0).map((c) => (
+                                        <span key={c.key} className={`rounded-full px-3 py-1 text-xs font-semibold ${c.chip}`}>
+                                          {r.units[c.label.replace("condition", "")]} {t(c.label)}
+                                        </span>
+                                      ))}
+                                    </div>
+                                    <div className="mt-3">
+                                      <p className="text-xs font-bold uppercase tracking-wide text-white/45 mb-1.5">{t("evidencePhotoLabel")}</p>
+                                      {photos.length === 0 ? (
+                                        <span className="text-sm text-white/40">{t("eventInventoryNoPhoto")}</span>
+                                      ) : (
+                                        <div className="relative inline-block shrink-0">
+                                          <div className="h-11 w-11 rounded-full overflow-hidden border border-white/15">
+                                            <img src={photos[0]} alt="" className="h-full w-full object-cover" />
+                                          </div>
+                                          {photos.length > 1 && (
+                                            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#4FBEB0] text-[#0A0E1A] text-[10px] font-bold flex items-center justify-center">
+                                              {photos.length}
+                                            </span>
+                                          )}
+                                          <button
+                                            type="button"
+                                            onClick={() => setInvPhoto({ url: photos[0], name: `${itemName} \u00b7 ${t("evidencePhotoLabel")}`, urls: photos })}
+                                            title={t("viewPhotoLabel")}
+                                            className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-[#0A0E1A] border border-white/20 text-white/60 hover:text-[#7DD8CB] hover:border-[#4FBEB0]/50 flex items-center justify-center transition"
+                                          >
+                                            <Eye className="h-2.5 w-2.5" />
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
               {detailTab === "budget" && (
                 <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-8">
                   <EventBudgetWorkspace
@@ -1545,16 +2051,58 @@ export function EventsView({
 
               {detailTab === "feedback" && (
                 <div className="space-y-5">
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center">
-                    <p className="text-4xl font-black text-white">{averageRating > 0 ? averageRating.toFixed(1) : "—"}</p>
-                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-white/45">{t("averageRatingLabel")}</p>
-                    <div className="mt-2.5 flex justify-center gap-1">
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <Star key={n} className={`h-5 w-5 ${n <= Math.round(averageRating) ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
-                      ))}
-                    </div>
-                    <p className="mt-1.5 text-xs text-white/45">{eventFeedback.length} {t("ratingsCountLabel")}</p>
+                  <div className="flex flex-wrap gap-2.5">
+                    {([
+                      { key: "ratings", label: t("absTabRatings"), count: eventFeedback.length },
+                      { key: "reasons", label: t("absTabReasons"), count: eventAbsences.length },
+                    ] as const).map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        onClick={() => setFeedbackSubTab(tab.key)}
+                        className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition ${
+                          feedbackSubTab === tab.key ? "bg-sage-700 text-white shadow-sm" : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                        }`}
+                      >
+                        {tab.label}
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] ${feedbackSubTab === tab.key ? "bg-white/20" : "bg-white/10"}`}>{tab.count}</span>
+                      </button>
+                    ))}
                   </div>
+                  <div className={feedbackSubTab === "ratings" ? "space-y-5" : "hidden"}>
+                  {feedbackLoading || detailSwitching ? (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 flex flex-col items-center">
+                      <Skeleton className="h-10 w-16" />
+                      <Skeleton className="mt-2 h-3 w-28" />
+                      <div className="mt-3 flex justify-center gap-1">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Skeleton key={n} className="h-5 w-5 rounded-md" />
+                        ))}
+                      </div>
+                      <Skeleton className="mt-2 h-3 w-20" />
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center">
+                      <p className="text-4xl font-black text-white">{averageRating > 0 ? averageRating.toFixed(1) : "—"}</p>
+                      <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-white/45">{t("averageRatingLabel")}</p>
+                      <div className="mt-2.5 flex justify-center gap-1">
+                        {[1, 2, 3, 4, 5].map((n) => {
+                          // Whole, half or empty star (4.5 -> four and a half).
+                          const rounded = Math.round(averageRating * 2) / 2;
+                          const fill = Math.max(0, Math.min(1, rounded - (n - 1)));
+                          return (
+                            <span key={n} className="relative inline-block h-5 w-5">
+                              <Star className="absolute inset-0 h-5 w-5 text-white/15" />
+                              <span className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
+                                <Star className="h-5 w-5 max-w-none text-amber-400 fill-amber-400" />
+                              </span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-1.5 text-xs text-white/45">{eventFeedback.length} {t("ratingsCountLabel")}</p>
+                    </div>
+                  )}
 
                   {feedbackLoading || detailSwitching ? (
                     <div className="space-y-2">
@@ -1577,21 +2125,22 @@ export function EventsView({
                         const name = f.user ? `${f.user.first_name} ${f.user.last_name}` : t("unknownItemLabel");
                         const initials = f.user ? `${f.user.first_name?.charAt(0) ?? ""}${f.user.last_name?.charAt(0) ?? ""}` : "?";
                         return (
-                          <div key={f.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 flex items-start gap-3">
-                            <div className="w-10 h-10 rounded-full bg-[#123A38] border border-white/10 flex items-center justify-center text-[#7DD8CB] font-bold text-sm shrink-0">
-                              {initials}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <span className="text-sm font-semibold text-white truncate">{name}</span>
-                                <span className="flex items-center gap-0.5 shrink-0">
+                          <div key={f.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                            <FeedbackComment
+                              role="staff"
+                              kind="rating"
+                              item={f}
+                              author={f.user ?? null}
+                              comment={f.comment}
+                              header={
+                                <span className="flex items-center gap-0.5">
                                   {[1, 2, 3, 4, 5].map((n) => (
                                     <Star key={n} className={`h-3.5 w-3.5 ${n <= f.rating ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
                                   ))}
                                 </span>
-                              </div>
-                              {f.comment && <p className="mt-1 text-sm text-white/50">{f.comment}</p>}
-                            </div>
+                              }
+                              onChange={(patch) => setEventFeedback((prev) => prev.map((x) => (x.id === f.id ? { ...x, ...patch } : x)))}
+                            />
                           </div>
                         );
                       })}
@@ -1602,7 +2151,7 @@ export function EventsView({
 
                       {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
                       <div className="flex justify-end mt-4">
-                        {feedbackTotalPages > 1 && (detailSwitching ? <PagerSkeleton /> : (
+                        {feedbackTotalPages > 1 && (detailSwitching ? null : (
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() => { flashDetail(); setFeedbackCurrentPage(p => Math.max(1, p - 1)); }}
@@ -1624,6 +2173,50 @@ export function EventsView({
                             </div>
                         ))}
                       </div>
+                    </div>
+                  )}
+                  </div>
+
+                  {feedbackSubTab === "reasons" && (
+                    <div className="space-y-4">
+                      {eventAbsences.length > 0 && (
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-white/45">{t("absSummary")}</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {Object.entries(eventAbsences.reduce<Record<string, number>>((acc, r) => { acc[r.reason] = (acc[r.reason] ?? 0) + 1; return acc; }, {}))
+                              .sort((a, b) => b[1] - a[1])
+                              .map(([reason, n]) => (
+                                <span key={reason} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.05] px-3.5 py-1.5 text-sm text-white">
+                                  {t(`absReason_${reason}`)}
+                                  <span className="rounded-full bg-[#4FBEB0]/20 px-2 py-0.5 text-xs font-bold text-[#7DD8CB]">{n}</span>
+                                </span>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+                      {eventAbsences.length === 0 ? (
+                        <p className="text-sm text-white/40 italic bg-white/[0.03] rounded-2xl p-6 text-center">{t("absNoneYet")}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {eventAbsences.map((r) => {
+                            const name = r.user ? `${r.user.first_name} ${r.user.last_name}` : t("unknownItemLabel");
+                            const initials = r.user ? `${r.user.first_name?.charAt(0) ?? ""}${r.user.last_name?.charAt(0) ?? ""}` : "?";
+                            return (
+                              <div key={r.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                                <FeedbackComment
+                                  role="staff"
+                                  kind="absence"
+                                  item={r}
+                                  author={r.user ?? null}
+                                  comment={r.comment}
+                                  header={<span className="inline-block rounded-full border border-gold-400/30 bg-gold-400/10 px-3 py-0.5 text-xs font-semibold text-gold-300">{t(`absReason_${r.reason}`)}</span>}
+                                  onChange={(patch) => setEventAbsences((prev) => prev.map((x) => (x.id === r.id ? { ...x, ...patch } : x)))}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1658,77 +2251,65 @@ export function EventsView({
             </button>
           </div>
 
-          {/* Search bar matches the Residents/Households/Memberships pattern
-              exactly (same card, icon, input sizing/colors) -- the event
-              status filter and date filter sit alongside it in the same
-              card, resized to match, instead of being removed. */}
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-              <div className="relative flex-1 min-w-[220px]">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-                <input
-                  type="text"
-                  value={eventSearch}
-                  onChange={(e) => setEventSearch(e.target.value)}
-                  placeholder={t("searchEventsPlaceholder")}
-                  className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
-                />
-                {eventSearch && (
-                  <button
-                    type="button"
-                    onClick={() => setEventSearch("")}
-                    aria-label="Clear search"
-                    title="Clear"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
-                  >
-                    {t("clearLabel")}
-                  </button>
-                )}
-              </div>
-              <FilterDropdown
-                value={eventFilter}
-                onChange={setEventFilter}
-                options={[
-                  { value: "all", label: t("allEvents") },
-                  { value: "upcoming", label: t("upcomingEvents") },
-                  { value: "ongoing", label: t("ongoingEvents") },
-                  { value: "past", label: t("pastEvents") },
-                ]}
-                className="h-11 pl-10 pr-8 shrink-0"
-                icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                dark
-              />
-              <FilterDropdown
-                value={membershipFilter}
-                onChange={setMembershipFilter}
-                options={[
-                  { value: "all", label: t("allMembershipsOption") },
-                  ...memberships
-                    .slice()
-                    .sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)))
-                    .map((m: any) => ({ value: String(m.id), label: m.name })),
-                ]}
-                className="h-11 min-w-[220px] pl-10 pr-8 shrink-0"
-                panelWidthPx={280}
-                icon={<Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-                dark
-                searchable
-                searchPlaceholder={t("search")}
-                noResultsLabel={t("noMatchesFoundLabel")}
-              />
+          <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+            <QuickTabs
+              value={eventTab}
+              onChange={(k) => setEventTab(k as typeof eventTab)}
+              tabs={[
+                { key: "all", label: t("tabAll"), count: countsLoading ? 0 : eventTabCounts.all },
+                { key: "today", label: t("tabToday"), count: countsLoading ? 0 : eventTabCounts.today },
+                { key: "week", label: t("tabThisWeek"), count: countsLoading ? 0 : eventTabCounts.week },
+                { key: "feedback", label: t("tabNeedsFeedback"), count: countsLoading ? 0 : eventTabCounts.feedback },
+              ]}
+            />
+            <FilterBar
+              search={{ value: eventSearch, onChange: setEventSearch, placeholder: t("searchEventsPlaceholder") }}
+              filters={[
+                {
+                  key: "status", label: t("statusColumn"), value: eventFilter, onChange: setEventFilter,
+                  options: [
+                    { value: "all", label: `${t("allEvents")} (${countsLoading ? 0 : statusCounts.all})` },
+                    { value: "ongoing", label: `${t("ongoingEvents")} (${countsLoading ? 0 : statusCounts.ongoing})` },
+                    { value: "upcoming", label: `${t("upcomingEvents")} (${countsLoading ? 0 : statusCounts.upcoming})` },
+                    { value: "past", label: `${t("pastEvents")} (${countsLoading ? 0 : statusCounts.past})` },
+                  ],
+                },
+                {
+                  key: "membership", label: t("fltMembership"), value: membershipFilter, onChange: setMembershipFilter, searchable: true, minWidthClass: "min-w-[220px]",
+                  icon: <Users className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />,
+                  options: [
+                    { value: "all", label: t("allMembershipsOption") },
+                    ...memberships.slice().sort((a: any, b: any) => String(a.name).localeCompare(String(b.name))).map((m: any) => ({ value: String(m.id), label: m.name })),
+                  ],
+                },
+              ]}
+              sort={{
+                value: eventSort, onChange: setEventSort,
+                options: [
+                  { value: "default", label: t("sortEventDefault") },
+                  { value: "soonest", label: t("sortEventSoonest") },
+                  { value: "latest", label: t("sortEventLatest") },
+                  { value: "name-az", label: t("sortNameAZ") },
+                ],
+              }}
+              count={{ shown: countsLoading ? 0 : filteredEvents.length, total: countsLoading ? 0 : localEvents.length }}
+              extraChips={[
+                ...(eventTab !== "all" ? [{ key: "tab", label: eventTab === "today" ? t("tabToday") : eventTab === "week" ? t("tabThisWeek") : t("tabNeedsFeedback"), onRemove: () => setEventTab("all") }] : []),
+                ...(selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString(language === "tl" ? "fil-PH" : language === "ceb" ? "fil-PH" : "en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []),
+              ] as ExtraChip[]}
+              onClearExtras={() => { setSelectedDate(""); setEventTab("all"); }}
+            >
               <div className="h-11 shrink-0">
                 <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
               </div>
-            </div>
+            </FilterBar>
           </div>
 
-          <p className="mt-2 text-xs text-white/40">
-            {openSkeleton || loading || pageSwitching ? 0 : filteredEvents.length} {t("eventsMatchCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
-          </p>
-
-          {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-          <div className="flex justify-end">
-            {((openSkeleton || pageSwitching || loading) || totalPages > 1) && ((openSkeleton || pageSwitching || loading) ? <PagerSkeleton /> : (
+          <div className="flex min-h-8 flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-white/40">
+              {t("showingLabel")} {itemsPerPage} {t("perPage")}
+            </p>
+            {totalPages > 1 && ((openSkeleton || filterSwitching || loading) ? null : (
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => goToPage(Math.max(1, currentPage - 1))}
@@ -1737,7 +2318,7 @@ export function EventsView({
                 >
                   ←
                 </button>
-                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sage-700 text-sm font-bold text-white shadow-sm">
                   {currentPage}
                 </span>
                 <button
@@ -1751,102 +2332,122 @@ export function EventsView({
             ))}
           </div>
 
+          <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
           {loading || pageSwitching || openSkeleton ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-                  <div className="flex items-start justify-between gap-2">
-                    <Skeleton className="h-11 w-11 rounded-full shrink-0" />
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <Skeleton className="h-6 w-6 rounded-full" />
-                      <Skeleton className="h-6 w-6 rounded-full" />
-                      <Skeleton className="h-6 w-20 rounded-full" />
+            <div className="space-y-3">
+              <Skeleton className="h-4 w-40" />
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex gap-5 rounded-2xl border border-white/10 bg-white/[0.04] py-5 pl-7 pr-5">
+                    <Skeleton className="h-20 w-20 shrink-0 rounded-2xl" />
+                    <div className="min-w-0 flex-1">
+                      <Skeleton className="h-4 w-2/3" />
+                      <Skeleton className="mt-2 h-3 w-1/3" />
+                      <Skeleton className="mt-3 h-3 w-1/2" />
+                      <Skeleton className="mt-2 h-3 w-3/5" />
+                      <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+                        <Skeleton className="h-3 w-20" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
                     </div>
                   </div>
-                  <Skeleton className="mt-4 h-4 w-2/3" />
-                  <Skeleton className="mt-3 h-3 w-1/2" />
-                  <Skeleton className="mt-2 h-3 w-2/5" />
-                  <Skeleton className="mt-3 h-3 w-full" />
-                  <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-2">
-                    <Skeleton className="h-3 w-20" />
-                    <Skeleton className="h-3 w-24" />
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           ) : paginatedEvents.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
               {t("noEventsMatchStaff")}
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-                {paginatedEvents.map((e) => {
-                  const status = getEventStatus(e);
-                  const locked = isEventLocked(status.label);
-                  const eligibleMembers = getMembersForEvent(e);
-                  const attendanceList = getFullAttendanceList(e.id, eligibleMembers);
-                  const signedIn = attendanceList.filter((a: any) => a.timeIn).length;
-
-                  return (
-                    <div
-                      key={e.id}
-                      onClick={() => setViewEv(e)}
-                      className="cursor-pointer rounded-2xl border border-white/10 bg-white/[0.04] p-5 hover:border-white/20 hover:shadow-md transition-all duration-300 flex flex-col"
-                    >
-                      <div className="flex items-start justify-between gap-2 flex-wrap">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#4FBEB0]/10 text-[#4FBEB0] shrink-0">
-                          <Calendar className="h-5 w-5" />
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            onClick={(ev) => { ev.stopPropagation(); startEditEvent(e); }}
-                            disabled={isSubmitting || locked}
-                            title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
-                            className="p-1.5 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={(ev) => { ev.stopPropagation(); setEventToDelete(e.id); }}
-                            disabled={locked}
-                            title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
-                            className="p-1.5 rounded-full text-white/50 hover:bg-red-500/10 hover:text-red-400 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                          >
-                            <Archive className="h-3.5 w-3.5" />
-                          </button>
-                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap ${statusPillClasses(status.label, true)}`}>
-                            <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(status.label, true)}`} />
-                            {eventStatusChipLabel(status.label)}
-                          </span>
-                        </div>
-                      </div>
-
-                      <h2 className="mt-4 text-base font-bold text-white break-words">
-                        {highlightText(tc(e.title, language as any), eventSearch)}
-                      </h2>
-                      <p className="mt-1.5 text-sm text-white/50 flex items-center gap-1.5">
-                        <MapPin className="h-3.5 w-3.5 text-gold-300 shrink-0" />
-                        <span className="truncate">{highlightText(tc(e.location, language as any), eventSearch)}</span>
-                      </p>
-                      <p className="mt-1 text-sm text-white/50 flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 text-gold-300 shrink-0" />
-                        <span className="truncate">
-                          {(e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || "")} · {formatTime12Hour(e.startTime)}
-                        </span>
-                      </p>
-                      <p className="mt-2 text-sm text-white/50 break-words line-clamp-2">
-                        {highlightText(tc(e.description || t("noDescription"), language as any), eventSearch)}
-                      </p>
-
-                      <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-2 text-xs text-white/50">
-                        <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {signedIn} {t("attendeesCountLabel")}</span>
-                        <span className="font-medium truncate" title={getCoverageLabel(e)}>{getCoverageLabel(e)}</span>
-                      </div>
+            <div className="space-y-8">
+              {(["Ongoing", "Upcoming", "Past"] as const).map((sectionKey) => {
+                const items = paginatedEvents.filter((ev) => getEventStatus(ev).label === sectionKey);
+                if (items.length === 0) return null;
+                const meta = STATUS_META[sectionKey];
+                return (
+                  <section key={sectionKey}>
+                    <div className="mb-3 flex items-center gap-2.5">
+                      <span className={`h-2 w-2 rounded-full ${meta.dot} ${sectionKey === "Ongoing" ? "animate-pulse" : ""}`} />
+                      <h3 className={`text-xs font-bold uppercase tracking-wider ${meta.text}`}>{eventStatusLabel(sectionKey)}</h3>
+                      <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-semibold text-white/70">{statusCounts[sectionKey.toLowerCase() as "ongoing" | "upcoming" | "past"]}</span>
+                      <span className="h-px flex-1 bg-white/10" />
+                      <span className="text-[11px] text-white/35">{t(meta.hint)}</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                      {items.map((e) => {
+                        const status = getEventStatus(e);
+                        const locked = isEventLocked(status.label);
+                        const eligibleMembers = getMembersForEvent(e);
+                        const attendanceList = getFullAttendanceList(e.id, eligibleMembers);
+                        const signedIn = attendanceList.filter((a: any) => a.timeIn || a.timeOut).length;
+                        const startDt = parseEventDateTime(e.event_start) ?? parseEventDateTime(e.date) ?? parseEventDateTime(e.startDate);
+                        const rel = relativeLabel(e, status.label);
+
+                        return (
+                          <div
+                            key={e.id}
+                            onClick={() => setViewEv(e)}
+                            className="group relative flex cursor-pointer gap-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] py-4 pl-6 pr-4 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.06]"
+                          >
+                            <span className={`absolute inset-y-0 left-0 w-1.5 ${meta.accent}`} />
+
+                            <div className="flex h-[72px] w-[72px] shrink-0 flex-col items-center justify-center rounded-2xl bg-white/10">
+                              <span className="text-xs font-bold uppercase tracking-wider text-[#7DD8CB]">
+                                {startDt ? startDt.toLocaleDateString(locale, { month: "short" }) : "—"}
+                              </span>
+                              <span className="mt-0.5 text-2xl font-bold leading-none text-white">{startDt ? startDt.getDate() : "—"}</span>
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <h2 className="min-w-0 break-words text-base font-bold leading-snug text-white">
+                                  {highlightText(tc(e.title, language as any), eventSearch)}
+                                </h2>
+                                <div className="flex shrink-0 items-center gap-0.5">
+                                  <button
+                                    onClick={(ev) => { ev.stopPropagation(); startEditEvent(e); }}
+                                    disabled={isSubmitting || locked}
+                                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
+                                    className="rounded-full p-1.5 text-white/50 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={(ev) => { ev.stopPropagation(); setEventToDelete(e.id); }}
+                                    disabled={locked}
+                                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
+                                    className="rounded-full p-1.5 text-white/50 transition hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+                                  >
+                                    <Archive className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {rel && <p className={`mt-0.5 text-xs font-semibold ${meta.text}`}>{rel}</p>}
+
+                              <p className="mt-2.5 flex items-center gap-2 text-sm text-white/55">
+                                <MapPin className="h-3.5 w-3.5 shrink-0 text-gold-300" />
+                                <span className="truncate">{highlightText(tc(e.location, language as any), eventSearch)}</span>
+                              </p>
+                              <p className="mt-1 flex items-center gap-2 text-sm text-white/55">
+                                <Clock className="h-3.5 w-3.5 shrink-0 text-gold-300" />
+                                <span className="truncate">
+                                  {(e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || "")} · {formatTime12Hour(e.startTime)}{e.endTime ? ` – ${formatTime12Hour(e.endTime)}` : ""}
+                                </span>
+                              </p>
+
+                              <div className="mt-3.5 flex items-center justify-between gap-2 border-t border-white/10 pt-3.5 text-[13px] text-white/50">
+                                <span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4" /> {signedIn} {t("attendeesCountLabel")}</span>
+                                <span className="truncate font-medium" title={getCoverageLabel(e)}>{getCoverageLabel(e)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           )}
           </div>
@@ -1861,7 +2462,7 @@ export function EventsView({
           watermark, same title/back link treatment, same section header
           and input styling, same full-width Save button inside -- only the
           outer positioning/animation changed. Same fields, same handlers. */}
-      {formOpen && (
+      {formOpen && createPortal(
         <>
           <style>{`
             @keyframes eventFormSlideIn {
@@ -1870,16 +2471,17 @@ export function EventsView({
             }
             .event-form-slide-in { animation: eventFormSlideIn 280ms ease-out; }
           `}</style>
-          <div className="fixed inset-0 bg-black/80 z-40" onClick={closeEventModal} />
-          <div className="event-form-slide-in fixed inset-y-0 right-0 z-50 w-full sm:w-1/2 bg-[#0A0E1A] border-l border-white/10 shadow-2xl overflow-y-auto">
+          <SlideOutGhost />
+          <div className="fixed inset-0 bg-black/80 z-50" onClick={closeEventModal} />
+          <div className="resident-form-panel event-form-slide-in fixed inset-y-0 right-0 z-50 w-full sm:w-1/2 bg-[#0A0E1A] border-l border-white/10 shadow-2xl overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
             aria-hidden="true"
-            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-20"
+            className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[40rem] sm:w-[40rem] object-contain opacity-[0.06]"
           />
 
-          <div className="relative z-10 mx-auto w-full max-w-5xl px-6 py-10 sm:px-12 sm:py-14">
+          <div className="relative z-10 mx-auto flex min-h-full w-full max-w-5xl flex-col px-6 pb-0 pt-10 sm:px-12 sm:pt-14">
             <button
               type="button"
               onClick={closeEventModal}
@@ -1896,7 +2498,7 @@ export function EventsView({
               {editingEvent ? t("editEventModalSubtitle") : t("newEventModalSubtitle")}
             </p>
 
-            <form onSubmit={handleSaveEvent} noValidate className="mt-10 space-y-10">
+            <form onSubmit={handleSaveEvent} noValidate className="mt-10 flex flex-1 flex-col space-y-10">
               <section>
                 <h2 className="text-base font-bold uppercase tracking-wider text-white pb-3 border-b-2 border-white/40 mb-6">
                   {t("eventDetailsLabel")}
@@ -2018,29 +2620,45 @@ export function EventsView({
                     {newEvent.borrowedItems.length > 0 && (
                       <div className="space-y-2">
                         {newEvent.borrowedItems.map((row) => {
-                          const max = Math.max(0, availableStockFor(row.inventoryItemId));
+                          const total = Object.values(row.units).reduce((sum, v) => sum + (Number(v) || 0), 0);
                           return (
-                            <div key={row.inventoryItemId} className="flex items-center gap-2 rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2">
-                              <span className="flex-1 text-sm text-white truncate">{getBorrowItemName(row.inventoryItemId)}</span>
-                              <NumberStepper
-                                min={1}
-                                max={max}
-                                value={row.quantity}
-                                onChange={(raw) => {
-                                  const clamped = raw === "" ? "" : String(Math.max(1, Math.min(max || 1, Math.round(Number(raw)) || 1)));
-                                  updateBorrowQuantity(row.inventoryItemId, clamped);
-                                }}
-                                className="w-16 rounded-full border border-white/20 bg-white/10 pl-2 pr-5 py-1 text-sm text-center text-white font-sans"
-                              />
-                              <span className="text-xs text-white/50 shrink-0">/ {max} {t("availableStockShortLabel")}</span>
-                              <button
-                                type="button"
-                                onClick={() => removeBorrowRow(row.inventoryItemId)}
-                                className="text-white/50 hover:text-red-400 transition shrink-0"
-                                title={t("removeLabel")}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
+                            <div key={row.inventoryItemId} className="rounded-xl bg-white/[0.04] border border-white/10 px-3 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <span className="flex-1 min-w-0 truncate text-sm font-semibold text-white">{getBorrowItemName(row.inventoryItemId)}</span>
+                                <span className="shrink-0 text-xs text-white/60 [font-variant-numeric:tabular-nums]">
+                                  {t("borrowTotalLabel")}: <span className="font-bold text-white">{total}</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeBorrowRow(row.inventoryItemId)}
+                                  className="text-white/50 hover:text-red-400 transition shrink-0"
+                                  title={t("removeLabel")}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                {BORROW_CONDITIONS.map((c) => {
+                                  const label = c.label.replace("condition", "");
+                                  const max = availableUnitsFor(row.inventoryItemId, label);
+                                  if (max <= 0) return null;
+                                  return (
+                                    <div key={c.key}>
+                                      <span className={`mb-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${c.chip}`}>{t(c.label)}</span>
+                                      <div className="flex items-center gap-1.5">
+                                        <NumberStepper
+                                          min={0}
+                                          max={max}
+                                          value={row.units[label] ?? "0"}
+                                          onChange={(raw) => updateBorrowUnits(row.inventoryItemId, label, raw)}
+                                          className="w-16 rounded-full border border-white/20 bg-white/10 pl-2 pr-5 py-1 text-sm text-center text-white font-sans"
+                                        />
+                                        <span className="text-xs text-white/50 shrink-0">/ {max}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
                           );
                         })}
@@ -2061,7 +2679,10 @@ export function EventsView({
                           .map((it) => ({
                             value: String(it.id),
                             label: it.name,
-                            hint: `(${it.quantity} ${t("availableStockShortLabel")})`,
+                            hint: (() => {
+                              const parts = BORROW_CONDITIONS.filter((c) => Number(it[c.key] ?? 0) > 0).map((c) => `${it[c.key]} ${t(c.label)}`);
+                              return parts.length > 1 ? `(${it.quantity} ${t("availableStockShortLabel")}: ${parts.join(" · ")})` : `(${it.quantity} ${t("availableStockShortLabel")}${parts.length ? ` · ${t(BORROW_CONDITIONS.find((c) => Number(it[c.key] ?? 0) > 0)!.label)}` : ""})`;
+                            })(),
                           }))}
                         dark
                       />
@@ -2084,7 +2705,8 @@ export function EventsView({
                 </div>
               </section>
 
-              <div className="pt-2 pb-4">
+              <div className="!mt-auto" />
+              <div className="sticky bottom-0 z-10 -mx-6 border-t border-white/10 bg-[#0A0E1A] px-6 py-4 sm:-mx-12 sm:px-12">
                 <button
                   type="submit"
                   disabled={isSubmitting || isEventFormUnchanged}
@@ -2108,8 +2730,8 @@ export function EventsView({
             </form>
           </div>
           </div>
-        </>
-      )}
+        </>,
+      document.body)}
 
       <ConfirmDialog
         open={showSaveConfirm}
@@ -2124,7 +2746,7 @@ export function EventsView({
 
       {/* Delete Event Confirm Modal */}
       {eventToDelete !== null && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">
+        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
             <div className="mb-4 text-red-400 flex justify-center"><Trash2 size={36} /></div>
             <h3 className="text-lg font-bold text-red-400 mb-2">{t("confirmDeletionTitle")}</h3>
@@ -2134,7 +2756,7 @@ export function EventsView({
               <button onClick={confirmDelete} className="px-5 py-2 rounded-full bg-red-500 text-white hover:bg-red-600 transition">{t("yesDelete")}</button>
             </div>
           </div>
-        </div>
+        </div></Portal>
       )}
 
       {/* Result popups -- every Add / Update / Delete lands on one of these. */}
@@ -2165,6 +2787,81 @@ export function EventsView({
         onClose={() => setDeleteErrorMessage(null)}
         z={9999}
       />
+      {invPhoto && createPortal(
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10001] px-4"
+          onClick={() => setInvPhoto(null)}
+        >
+          <div
+            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] text-[11px] font-bold uppercase tracking-wide px-3 py-1 shrink-0">
+                  <Eye className="h-3 w-3" />
+                  {t("viewPhotoLabel")}
+                </span>
+                <span className="text-sm font-medium text-white truncate">{invPhoto.name}</span>
+              </div>
+              <button onClick={() => setInvPhoto(null)} className="text-white/50 hover:text-white p-1 shrink-0">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="relative flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
+              <img src={invPhoto.url} alt={invPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-2xl" />
+              {invPhoto.urls.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => stepInvPhoto(-1)}
+                    aria-label="Previous photo"
+                    className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => stepInvPhoto(1)}
+                    aria-label="Next photo"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
+                  >
+                    <ChevronRight className="h-5 w-5" />
+                  </button>
+                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/80">
+                    {Math.max(0, invPhoto.urls.indexOf(invPhoto.url)) + 1} / {invPhoto.urls.length}
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
+              {invPhoto.urls.length > 1 ? (
+                <div className="flex items-center gap-2">
+                  {invPhoto.urls.map((u, i) => (
+                    <button
+                      key={u + i}
+                      type="button"
+                      onClick={() => setInvPhoto({ ...invPhoto, url: u })}
+                      className={`h-10 w-10 overflow-hidden rounded-lg border transition ${u === invPhoto.url ? "border-[#7DD8CB]" : "border-white/20 opacity-60 hover:opacity-100"}`}
+                    >
+                      <img src={u} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <span />
+              )}
+              <button
+                onClick={() => setInvPhoto(null)}
+                className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold transition"
+              >
+                {t("closeLabel")}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

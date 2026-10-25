@@ -8,9 +8,11 @@ use App\Models\EventAttendance;
 use App\Models\EventExpense;
 use App\Models\Feedback;
 use App\Models\InventoryItem;
+use App\Models\GeneratedReport;
 use App\Models\Membership;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Settings as PhpWordSettings;
@@ -33,7 +35,13 @@ class ReportController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        return response()->json($this->buildAttendanceData($request));
+        $data = $this->buildAttendanceData($request);
+        $data['previous'] = $request->boolean('compare')
+            ? $this->previousPeriod($request, fn ($r) => $this->buildAttendanceData($r))
+            : null;
+        $data['generated_at'] = now()->toIso8601String();
+
+        return response()->json($data);
     }
 
     /**
@@ -58,6 +66,16 @@ class ReportController extends Controller
         if ($request->filled('event_id')) $eventsQuery->where('id', (int) $request->event_id);
 
         $events = $eventsQuery->orderBy('event_start')->get();
+
+        // Events that haven't ended yet pick up anyone newly eligible (e.g.
+        // staff, who now count as residents) so the eligible count matches
+        // the real list. Finished events keep their record untouched.
+        foreach ($events as $ev) {
+            if (!$ev->event_end || strtotime((string) $ev->event_end) > time()) {
+                $ev->addMissingAttendanceRecords();
+            }
+        }
+
         $eventIds = $events->pluck('id');
 
         $ageRanges = [
@@ -82,7 +100,8 @@ class ReportController extends Controller
             $totalEligible += $event->attendances()->count();
         }
 
-        $attendedCount = $attendances->filter(fn ($a) => $a->time_in)->count();
+        // Attended = Complete + Incomplete (any sign-in and/or sign-out on record).
+        $attendedCount = $attendances->filter(fn ($a) => $a->time_in || $a->time_out)->count();
         $percentage = $totalEligible > 0 ? round(($attendedCount / $totalEligible) * 100, 1) : 0;
 
         // Optional attendee lists (the "Event Attendance Records" section):
@@ -97,7 +116,7 @@ class ReportController extends Controller
         $perEvent = $events->map(function ($event) use ($attendances, $includeAttendees, $eventIdFilter, $attendeeFilter) {
             $eventAttendances = $attendances->where('event_id', $event->id);
             $eligible = $event->attendances()->count();
-            $attended = $eventAttendances->filter(fn ($a) => $a->time_in)->count();
+            $attended = $eventAttendances->filter(fn ($a) => $a->time_in || $a->time_out)->count();
             $status = $this->eventStatusLabel($event);
 
             $row = [
@@ -122,8 +141,8 @@ class ReportController extends Controller
             if ($includeAttendees && ($eventIdFilter === null || in_array($event->id, $eventIdFilter, true))) {
                 $row['attendees'] = $eventAttendances
                     ->filter(function ($a) use ($attendeeFilter) {
-                        if ($attendeeFilter === 'present') return (bool) $a->time_in;
-                        if ($attendeeFilter === 'absent') return !$a->time_in;
+                        if ($attendeeFilter === 'present') return (bool) ($a->time_in || $a->time_out);
+                        if ($attendeeFilter === 'absent') return !($a->time_in || $a->time_out);
                         return true;
                     })
                     ->sortBy(fn ($a) => mb_strtolower(($a->user->last_name ?? '') . ' ' . ($a->user->first_name ?? '')))
@@ -140,7 +159,11 @@ class ReportController extends Controller
                             'age_group' => $u->age_group ?? null,
                             'gender' => $u->gender ?? null,
                             'contact_number' => $u->contact_number ?? null,
-                            'attendance' => $a->time_in ? 'Present' : ($status === 'Upcoming' ? 'Expected' : 'Absent'),
+                            // Complete = signed in and out; Incomplete = only one of the two
+                            // (never a plain "Absent" for someone who did scan); Absent = no scan.
+                            'attendance' => ($a->time_in && $a->time_out)
+                                ? 'Complete'
+                                : (($a->time_in || $a->time_out) ? 'Incomplete' : ($status === 'Upcoming' ? 'Expected' : 'Absent')),
                             'time_in' => $a->time_in ? \Carbon\Carbon::parse($a->time_in)->format('g:i A') : null,
                             'time_out' => $a->time_out ? \Carbon\Carbon::parse($a->time_out)->format('g:i A') : null,
                         ];
@@ -160,7 +183,7 @@ class ReportController extends Controller
         $ageBreakdown = collect($ageRanges)->map(function ($range, $label) use ($eventIds) {
             [$min, $max] = $range;
             $count = EventAttendance::whereIn('event_id', $eventIds)
-                ->whereNotNull('time_in')
+                ->where(fn ($q) => $q->whereNotNull('time_in')->orWhereNotNull('time_out'))
                 ->whereHas('user', function ($q) use ($min, $max) {
                     $q->whereNotNull('birth_date')
                         ->whereRaw('TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN ? AND ?', [$min, $max]);
@@ -170,6 +193,29 @@ class ReportController extends Controller
         })->values();
 
         $avgRating = Feedback::whereIn('event_id', $eventIds)->avg('rating');
+
+        // Who showed up, by gender (same filters as everything else on the page).
+        $gender = $attendances
+            ->filter(fn ($a) => $a->time_in || $a->time_out)
+            ->groupBy(fn ($a) => $a->user && $a->user->gender ? ucfirst(strtolower((string) $a->user->gender)) : 'Unspecified')
+            ->map(fn ($group, $label) => ['label' => $label, 'value' => $group->count()])
+            ->sortByDesc('value')
+            ->values();
+
+        // Attendance over time -- one point per day / week / month / year depending on how long the period is.
+        $trend = $this->buildTrend(
+            $this->safeDate($dateFrom),
+            $this->safeDate($dateTo),
+            $perEvent->pluck('date')->all(),
+            ['events' => 0, 'attended' => 0, 'eligible' => 0],
+            function (array &$bucket, int $i) use ($perEvent) {
+                $row = $perEvent[$i];
+                $bucket['events'] += 1;
+                $bucket['attended'] += (int) $row['attended'];
+                $bucket['eligible'] += (int) $row['eligible'];
+            },
+            fn (array $b) => $b + ['rate' => $b['eligible'] > 0 ? round($b['attended'] / $b['eligible'] * 100, 1) : 0]
+        );
 
         return [
             'filters' => [
@@ -188,6 +234,8 @@ class ReportController extends Controller
             'per_event' => $perEvent,
             'per_month' => $perMonth,
             'age_breakdown' => $ageBreakdown,
+            'gender' => $gender,
+            'trend' => $trend,
         ];
     }
 
@@ -230,7 +278,10 @@ class ReportController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        return response()->json($this->buildMembershipData($request));
+        $data = $this->buildMembershipData($request);
+        $data['generated_at'] = now()->toIso8601String();
+
+        return response()->json($data);
     }
 
     private function buildMembershipData(Request $request): array
@@ -284,7 +335,13 @@ class ReportController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        return response()->json($this->buildBudgetData($request));
+        $data = $this->buildBudgetData($request);
+        $data['previous'] = $request->boolean('compare')
+            ? $this->previousPeriod($request, fn ($r) => $this->buildBudgetData($r))
+            : null;
+        $data['generated_at'] = now()->toIso8601String();
+
+        return response()->json($data);
     }
 
     private function buildBudgetData(Request $request): array
@@ -382,6 +439,20 @@ class ReportController extends Controller
         $totalApproved = round($events->sum('approved_budget'), 2);
         $totalSpent = round($perEvent->sum('total_expenses'), 2);
 
+        // Spending over time: every expense entry, placed on the day it was recorded.
+        $allExpenses = $expenseRows->flatten(1)->values();
+        $trend = $this->buildTrend(
+            $eventId ? null : $this->safeDate($dateFrom),
+            $eventId ? null : $this->safeDate($dateTo),
+            $allExpenses->map(fn ($x) => optional($x->created_at)->format('Y-m-d'))->all(),
+            ['amount' => 0.0, 'entries' => 0],
+            function (array &$bucket, int $i) use ($allExpenses) {
+                $bucket['amount'] = round($bucket['amount'] + (float) $allExpenses[$i]->amount, 2);
+                $bucket['entries'] += 1;
+            },
+            fn (array $b) => $b
+        );
+
         return [
             'summary' => [
                 'total_events' => $events->count(),
@@ -396,10 +467,16 @@ class ReportController extends Controller
                 'events_without_budget' => $unbudgeted->count(),
                 'unbudgeted_spent' => round($unbudgeted->sum('total_expenses'), 2),
             ],
+            'status_counts' => [
+                'within' => $perEvent->where('budget_status', 'Within budget')->count(),
+                'near' => $perEvent->where('budget_status', 'Near limit')->count(),
+                'over' => $overBudget->count(),
+            ],
             'per_event' => $perEvent,
             'over_budget' => $overBudget,
             'unbudgeted' => $unbudgeted,
             'top_expenses' => $topExpenses,
+            'trend' => $trend,
         ];
     }
 
@@ -415,7 +492,22 @@ class ReportController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        return response()->json($this->buildInventoryData($request));
+        $data = $this->buildInventoryData($request);
+        $data['generated_at'] = now()->toIso8601String();
+
+        return response()->json($data);
+    }
+
+    private function conditionUnits(\App\Models\InventoryItem $item): array
+    {
+        $rows = [];
+        foreach ($item->conditionCounts() as $label => $units) {
+            if ($units > 0) {
+                $rows[] = ['condition' => $label, 'units' => $units];
+            }
+        }
+
+        return $rows ?: [['condition' => $item->condition, 'units' => 0]];
     }
 
     private function buildInventoryData(Request $request): array
@@ -427,14 +519,27 @@ class ReportController extends Controller
 
         $items = $query->orderBy('name')->get();
 
-        $byCondition = $items->groupBy('condition')
-            ->map(fn ($group, $label) => ['condition' => $label, 'count' => $group->count(), 'quantity' => $group->sum('quantity')])
+        // An item can hold units in several conditions at once (e.g. 45 Good
+        // + 15 New), so each condition counts the items that have units in it
+        // and sums those units. An item with nothing in stock is counted
+        // under its main condition.
+        $byCondition = collect(\App\Models\InventoryItem::CONDITION_COLUMNS)
+            ->map(function ($column, $label) use ($items) {
+                $has = $items->filter(fn ($i) => (int) $i->{$column} > 0
+                    || ((int) $i->quantity === 0 && $i->condition === $label));
+
+                return ['condition' => $label, 'count' => $has->count(), 'quantity' => (int) $items->sum($column)];
+            })
+            ->filter(fn ($row) => $row['count'] > 0)
             ->values();
 
         return [
             'summary' => [
                 'total_items' => $items->count(),
                 'total_quantity' => $items->sum('quantity'),
+                // Units written off, so the Inventory report can flag losses at a glance.
+                'lost_units' => (int) $items->sum(fn ($i) => (int) $i->lost_quantity + (int) $i->lost_pending),
+                'disposed_units' => (int) $items->sum(fn ($i) => (int) $i->disposed_quantity),
             ],
             'by_condition' => $byCondition,
             'items' => $items->map(fn ($i) => [
@@ -442,6 +547,10 @@ class ReportController extends Controller
                 'name' => $i->name,
                 'quantity' => $i->quantity,
                 'condition' => $i->condition,
+                // In-stock units per condition, non-empty ones only, e.g.
+                // [['condition' => 'Good', 'units' => 45], ['condition' => 'New', 'units' => 15]].
+                // An empty item shows its main condition with 0 units.
+                'condition_units' => $this->conditionUnits($i),
                 'storage_location' => $i->storage_location,
                 // Units written off: lost (confirmed + still pending) and disposed.
                 'lost_quantity' => (int) $i->lost_quantity + (int) $i->lost_pending,
@@ -460,6 +569,27 @@ class ReportController extends Controller
      * stay translated, but these two endpoints never touch that system at
      * all. Every label below is a plain hardcoded English string.
      */
+    /**
+     * Same report as the PDF, as plain HTML for the browser's own print
+     * dialog (desktop "Print"). Printing HTML lets @page margins be exact,
+     * unlike a PDF printed from inside a frame.
+     */
+    public function exportHtml(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $payload = $this->buildExportPayload($request);
+        $payload['htmlMode'] = true;
+        // The Generate Report drawer's live preview asks for the same page with preview=1 -- that is not a printout.
+        if (!$request->boolean('preview')) {
+            $this->recordGeneration($request, $payload, 'print');
+        }
+
+        return response(view('reports.export', $payload)->render(), 200, ['Content-Type' => 'text/html; charset=UTF-8']);
+    }
+
     public function exportPdf(Request $request)
     {
         if (!$this->isStaff()) {
@@ -467,6 +597,7 @@ class ReportController extends Controller
         }
 
         $payload = $this->buildExportPayload($request);
+        $this->recordGeneration($request, $payload, 'pdf');
 
         $pdf = Pdf::loadView('reports.export', $payload)->setPaper('a4', 'portrait');
 
@@ -530,6 +661,7 @@ class ReportController extends Controller
         PhpWordSettings::setOutputEscapingEnabled(true);
 
         $payload = $this->buildExportPayload($request);
+        $this->recordGeneration($request, $payload, 'word');
         $phpWord = $this->buildWordDocument($payload);
 
         $fileName = Str::slug($payload['reportTitle']) . '.docx';
@@ -701,7 +833,7 @@ class ReportController extends Controller
             $paragraphs[] = match ($type) {
                 'attendance' => str_starts_with($scope, 'the event "')
                     // Single-event report: say it plainly instead of "1 event was held in this period".
-                    ? 'For this event, ' . $count($s['total_attended'] ?? 0, 'resident has', 'residents have') . ' signed in out of '
+                    ? 'For this event, ' . $count($s['total_attended'] ?? 0, 'resident has', 'residents have') . ' attended out of '
                         . $count($s['total_eligible'] ?? 0, 'eligible resident', 'eligible residents') . ', an attendance rate of ' . ($s['attendance_percentage'] ?? 0) . '%.'
                         . (isset($s['average_feedback_rating']) && $s['average_feedback_rating'] !== null ? ' Residents rated the event ' . $s['average_feedback_rating'] . ' out of 5 on average.' : '')
                     : $count($s['total_events'] ?? 0, 'event was', 'events were') . ' held in this period, with ' . $count($s['total_attended'] ?? 0, 'recorded attendance', 'recorded attendances')
@@ -1037,11 +1169,14 @@ class ReportController extends Controller
 
                 if ($show('items')) {
                     $this->addPagedCardGrid($section, 'Inventory Items', null, $data['items'], function ($c, $item, $in) {
-                        [$bg, $fg] = $this->conditionColors($item['condition']);
                         $c->addText($item['name'], ['bold' => true, 'size' => 9.5, 'color' => '005F63'], ['spaceAfter' => 0]);
                         $c->addText($item['storage_location'] ?? '—', ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 40]);
                         $run = $c->addTextRun(['spaceAfter' => 0, 'tabs' => [new \PhpOffice\PhpWord\Style\Tab('right', $in)]]);
-                        $run->addText(' ' . $item['condition'] . ' ', ['size' => 8, 'bold' => true, 'color' => $fg, 'bgColor' => $bg]);
+                        foreach ($item['condition_units'] as $cu) {
+                            [$bg, $fg] = $this->conditionColors($cu['condition']);
+                            $run->addText(' ' . $cu['condition'] . ' ×' . $cu['units'] . ' ', ['size' => 8, 'bold' => true, 'color' => $fg, 'bgColor' => $bg]);
+                            $run->addText(' ');
+                        }
                         // Lost / disposed units get their own chips next to the condition.
                         foreach (['Lost' => $item['lost_quantity'] ?? 0, 'Disposed' => $item['disposed_quantity'] ?? 0] as $label => $units) {
                             if ($units > 0) {
@@ -1207,7 +1342,10 @@ class ReportController extends Controller
                 $table->addCell($gap)->addText('', ['size' => 2], ['spaceAfter' => 0]);
             }
             $cell = $table->addCell($w, ['bgColor' => $color]);
-            $cell->addText($value, ['bold' => true, 'size' => 19, 'color' => 'FFFFFF'], ['spaceAfter' => 10]);
+            // Shrink long values (e.g. P106,420.99) so they stay inside the tile.
+            $len = mb_strlen((string) $value);
+            $size = $len >= 13 ? 11 : ($len >= 11 ? 13 : ($len >= 9 ? 15 : ($len >= 7 ? 17 : 19)));
+            $cell->addText($value, ['bold' => true, 'size' => $size, 'color' => 'FFFFFF'], ['spaceAfter' => 10]);
             $cell->addText(strtoupper($label), ['bold' => true, 'size' => 7.5, 'color' => 'FFFFFF', 'spacing' => 10], ['spaceAfter' => 0]);
         }
         $section->addTextBreak(1, ['size' => 5]);
@@ -1582,5 +1720,362 @@ class ReportController extends Controller
             'Lost' => ['FEF2F2', 'DC2626'],
             default => ['F3F4F6', '6B7280'],
         };
+    }
+
+    /**
+     * The same figures for the period just before the one being viewed, so
+     * the KPI cards can show "up / down vs previous period". A full calendar
+     * month compares with the month before it, a full quarter with the
+     * quarter before, a full year with the year before; any other range
+     * compares with the same number of days directly before it. Returns null
+     * when there is no complete date range (or one event is pinned), because
+     * a comparison would not mean anything then.
+     */
+    private function previousPeriod(Request $request, \Closure $build): ?array
+    {
+        if (!$request->filled('date_from') || !$request->filled('date_to') || $request->filled('event_id')) {
+            return null;
+        }
+
+        try {
+            $from = Carbon::parse($request->date_from)->startOfDay();
+            $to = Carbon::parse($request->date_to)->startOfDay();
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if ($to->lt($from)) {
+            return null;
+        }
+
+        $endsOnMonthEnd = $to->isSameDay($to->copy()->endOfMonth());
+        $months = ($to->year - $from->year) * 12 + ($to->month - $from->month) + 1;
+
+        if ($from->day === 1 && $endsOnMonthEnd && $months === 1) {
+            $prevFrom = $from->copy()->subMonthNoOverflow()->startOfMonth();
+            $prevTo = $prevFrom->copy()->endOfMonth()->startOfDay();
+        } elseif ($from->day === 1 && $endsOnMonthEnd && $months === 3 && in_array($from->month, [1, 4, 7, 10], true)) {
+            $prevFrom = $from->copy()->subMonthsNoOverflow(3)->startOfMonth();
+            $prevTo = $prevFrom->copy()->addMonthsNoOverflow(2)->endOfMonth()->startOfDay();
+        } elseif ($from->month === 1 && $from->day === 1 && $months === 12 && $endsOnMonthEnd) {
+            $prevFrom = $from->copy()->subYear();
+            $prevTo = $to->copy()->subYear();
+        } else {
+            $days = (int) round($from->diffInDays($to)) + 1;
+            $prevTo = $from->copy()->subDay();
+            $prevFrom = $prevTo->copy()->subDays($days - 1);
+        }
+
+        $prev = $request->duplicate(array_merge($request->query->all(), [
+            'date_from' => $prevFrom->toDateString(),
+            'date_to' => $prevTo->toDateString(),
+            'compare' => 0,
+            'include_attendees' => 0,
+        ]));
+        $data = $build($prev);
+
+        return [
+            'date_from' => $prevFrom->toDateString(),
+            'date_to' => $prevTo->toDateString(),
+            'summary' => $data['summary'] ?? [],
+            'trend' => $data['trend'] ?? null,
+        ];
+    }
+
+    /**
+     * Cheap "has anything changed?" check for the live Reports page. It
+     * returns a short fingerprint of the tables the chosen report reads from;
+     * the page polls this every few seconds and only reloads the (heavier)
+     * report itself when the fingerprint changes.
+     */
+    public function pulse(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $stamp = fn (string $model) => [
+            rescue(fn () => $model::count(), 0, false),
+            (string) rescue(fn () => $model::max('updated_at'), '', false),
+        ];
+
+        $type = $request->query('type');
+        $parts = match ($type) {
+            'membership' => [
+                $stamp(Membership::class),
+                rescue(fn () => \DB::table('membership_residents')->count(), 0, false),
+                $stamp(\App\Models\User::class),
+            ],
+            'budget' => [$stamp(Event::class), $stamp(EventExpense::class)],
+            'inventory' => [$stamp(InventoryItem::class)],
+            default => [$stamp(Event::class), $stamp(EventAttendance::class), $stamp(Feedback::class)],
+        };
+
+        return response()->json([
+            'token' => md5(json_encode($parts)),
+            'at' => now()->toIso8601String(),
+        ]);
+    }
+
+    /** CSV export (opens in Excel / Google Sheets) -- follows the same filters as the report on screen. */
+    public function exportCsv(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $payload = $this->buildExportPayload($request);
+        $this->recordGeneration($request, $payload, 'csv');
+
+        $type = $payload['type'];
+        $data = $payload['data'];
+        $header = [];
+        $rows = [];
+
+        if ($type === 'attendance') {
+            $header = ['Event', 'Date', 'Start', 'End', 'Location', 'Status', 'Memberships', 'Registered', 'Present', 'Absent', 'Attendance %', 'Average rating', 'Approved budget', 'Expenses'];
+            foreach ($data['per_event'] as $e) {
+                $rows[] = [
+                    $e['name'], $e['date'], $e['start_time'], $e['end_time'], $e['location'], $e['status'],
+                    collect($e['memberships'])->implode('; '), $e['eligible'], $e['attended'], $e['absent'], $e['percentage'],
+                    $e['average_rating'], $e['approved_budget'], $e['total_expenses'],
+                ];
+            }
+        } elseif ($type === 'membership') {
+            $header = ['Membership', 'Members', 'Age bracket', 'Civil status', 'Current status', 'Gender'];
+            foreach ($data['per_membership'] as $m) {
+                $rows[] = [$m['name'], $m['member_count'], $m['eligible_age_bracket'], $m['eligible_civil_status'], $m['eligible_current_status'], $m['eligible_gender']];
+            }
+        } elseif ($type === 'budget') {
+            $header = ['Event', 'Date', 'Event status', 'Approved budget', 'Spent', 'Remaining', 'Over by', 'Used %', 'Budget status', 'Expense entries'];
+            foreach ($data['per_event'] as $e) {
+                $rows[] = [$e['name'], $e['date'], $e['event_status'], $e['approved_budget'], $e['total_expenses'], $e['remaining'], $e['over_by'], $e['utilization'], $e['budget_status'], $e['expense_count']];
+            }
+            foreach ($data['unbudgeted'] as $e) {
+                $rows[] = [$e['name'], $e['date'], $e['event_status'], '', $e['total_expenses'], '', '', '', 'No budget set', $e['expense_count']];
+            }
+        } else {
+            $header = ['Item', 'Quantity', 'Main condition', 'Condition breakdown', 'Storage location', 'Lost / pending', 'Disposed'];
+            foreach ($data['items'] as $i) {
+                $rows[] = [
+                    $i['name'], $i['quantity'], $i['condition'],
+                    collect($i['condition_units'])->map(fn ($c) => "{$c['units']} {$c['condition']}")->implode('; '),
+                    $i['storage_location'], $i['lost_quantity'], $i['disposed_quantity'],
+                ];
+            }
+        }
+
+        $fileName = Str::slug($payload['reportTitle']) . '-' . now()->format('Ymd') . '.csv';
+
+        return response()->streamDownload(function () use ($header, $rows, $payload) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads accents and the peso sign correctly
+            fputcsv($out, [$payload['reportTitle']]);
+            fputcsv($out, [$payload['filterSummary'], 'Generated ' . now()->format('F j, Y g:i A')]);
+            fputcsv($out, []);
+            fputcsv($out, $header);
+            foreach ($rows as $row) {
+                // Guard against spreadsheet formula injection from user-typed names.
+                fputcsv($out, array_map(fn ($v) => is_string($v) && $v !== '' && in_array($v[0], ['=', '+', '-', '@'], true) ? "'" . $v : $v, $row));
+            }
+            fclose($out);
+        }, $fileName, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /** Report History -- who generated what, newest first. Query: type, format, search, page, per_page. */
+    public function history(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $query = GeneratedReport::query()->orderByDesc('id');
+        if ($request->filled('type') && $request->type !== 'all') {
+            $query->where('type', $request->type);
+        }
+        if ($request->filled('format') && $request->format !== 'all') {
+            $query->where('format', $request->format);
+        }
+        if ($request->filled('search')) {
+            $like = '%' . $request->search . '%';
+            $query->where(fn ($q) => $q->where('title', 'like', $like)->orWhere('scope_label', 'like', $like));
+        }
+        if ($request->boolean('mine')) {
+            $query->where('user_code', auth()->user()->user_code);
+        }
+
+        $perPage = max(1, min(50, (int) $request->input('per_page', 10)));
+        $page = $query->paginate($perPage);
+
+        $people = \App\Models\User::whereIn('user_code', $page->pluck('user_code')->filter()->unique())
+            ->get(['user_code', 'first_name', 'last_name'])->keyBy('user_code');
+
+        $page->getCollection()->transform(function ($r) use ($people) {
+            $p = $people->get($r->user_code);
+
+            return [
+                'id' => $r->id,
+                'type' => $r->type,
+                'format' => $r->format,
+                'title' => $r->title,
+                'scope_label' => $r->scope_label,
+                'filters' => $r->filters ?? (object) [],
+                'sections' => $r->sections,
+                'generated_by' => $p ? trim($p->first_name . ' ' . $p->last_name) : ($r->user_code ?: 'System'),
+                'generated_at' => optional($r->created_at)->toIso8601String(),
+            ];
+        });
+
+        return response()->json($page);
+    }
+
+    /** The browser's own Print (desktop) never reaches the export routes, so the page reports it here. */
+    public function recordPrint(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate(['type' => 'required|in:attendance,membership,budget,inventory']);
+
+        $titles = [
+            'attendance' => 'Attendance Summary Report',
+            'membership' => 'Membership Summary Report',
+            'budget' => 'Budget Summary Report',
+            'inventory' => 'Inventory Summary Report',
+        ];
+        $type = $request->input('type');
+        $sections = $request->filled('sections')
+            ? array_values(array_filter(array_map('trim', is_array($request->input('sections')) ? $request->input('sections') : explode(',', (string) $request->input('sections')))))
+            : null;
+
+        $this->recordGeneration($request, [
+            'type' => $type,
+            'reportTitle' => $titles[$type],
+            'filterSummary' => $this->buildFilterSummaryLine($type, $request),
+            'sections' => $sections,
+        ], 'print');
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Saves one Report History row and one Activity Log row. Never lets a logging problem block the download. */
+    private function recordGeneration(Request $request, array $payload, string $format): void
+    {
+        try {
+            $filters = array_filter(
+                $request->only(['date_from', 'date_to', 'membership_id', 'age_group', 'event_id', 'condition']),
+                fn ($v) => $v !== null && $v !== ''
+            );
+
+            GeneratedReport::create([
+                'user_code' => auth()->user()?->user_code,
+                'type' => $payload['type'],
+                'format' => $format,
+                'title' => $payload['reportTitle'],
+                'scope_label' => $payload['filterSummary'] ?? null,
+                'filters' => $filters ?: null,
+                'sections' => $payload['sections'] ?? null,
+            ]);
+
+            $label = ['print' => 'printed', 'pdf' => 'downloaded as PDF', 'word' => 'downloaded as Word', 'csv' => 'downloaded as CSV'][$format] ?? $format;
+            $this->createLog('Generate', 'Reports', "{$payload['reportTitle']} {$label} — " . ($payload['filterSummary'] ?? ''));
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function safeDate($value): ?Carbon
+    {
+        if (!$value) {
+            return null;
+        }
+        try {
+            return Carbon::parse($value)->startOfDay();
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Turns dated records into a continuous time series for the line charts.
+     * The period picks the step: up to 5 weeks -> days, up to ~5 months -> weeks
+     * (Monday start), up to 3 years -> months, longer -> years. Every step in
+     * the period gets a point (empty ones are zero) so a line never skips time.
+     * With no chosen period the series spans the records themselves; records
+     * outside a chosen period are counted in the nearest end step so totals
+     * always match the figures above the chart.
+     *
+     * @param array<int, string|null> $dates one 'Y-m-d' per record
+     * @param array $blank   starting values of every point
+     * @param \Closure $add  function (array &$point, int $recordIndex) adds one record to its point
+     * @param \Closure $finish function (array $point): array  adds computed fields
+     */
+    private function buildTrend(?Carbon $from, ?Carbon $to, array $dates, array $blank, \Closure $add, \Closure $finish): array
+    {
+        $valid = array_values(array_filter($dates));
+        if (!$from && $valid) {
+            $from = Carbon::parse(min($valid))->startOfDay();
+        }
+        if (!$to && $valid) {
+            $to = Carbon::parse(max($valid))->startOfDay();
+        }
+        if (!$from || !$to || $to->lt($from)) {
+            return ['unit' => 'day', 'points' => []];
+        }
+
+        $days = (int) round($from->diffInDays($to)) + 1;
+        $months = ($to->year - $from->year) * 12 + ($to->month - $from->month) + 1;
+        $unit = $days <= 35 ? 'day' : ($days <= 150 ? 'week' : ($months <= 36 ? 'month' : 'year'));
+
+        $keyFor = fn (Carbon $d) => match ($unit) {
+            'day' => $d->format('Y-m-d'),
+            'week' => $d->copy()->startOfWeek(Carbon::MONDAY)->format('Y-m-d'),
+            'month' => $d->format('Y-m'),
+            default => $d->format('Y'),
+        };
+
+        $points = [];
+        $cursor = match ($unit) {
+            'day' => $from->copy(),
+            'week' => $from->copy()->startOfWeek(Carbon::MONDAY),
+            'month' => $from->copy()->startOfMonth(),
+            default => $from->copy()->startOfYear(),
+        };
+        while ($cursor->lte($to) && count($points) < 400) {
+            [$label, $full] = match ($unit) {
+                'day' => [$cursor->format('M j'), $cursor->format('D, M j, Y')],
+                'week' => [$cursor->format('M j'), $cursor->format('M j') . ' – ' . $cursor->copy()->addDays(6)->format('M j, Y')],
+                'month' => [$cursor->format('M Y'), $cursor->format('F Y')],
+                default => [$cursor->format('Y'), $cursor->format('Y')],
+            };
+            $points[$keyFor($cursor)] = ['key' => $keyFor($cursor), 'label' => $label, 'full' => $full] + $blank;
+            match ($unit) {
+                'day' => $cursor->addDay(),
+                'week' => $cursor->addWeek(),
+                'month' => $cursor->addMonthNoOverflow(),
+                default => $cursor->addYear(),
+            };
+        }
+
+        $firstKey = array_key_first($points);
+        $lastKey = array_key_last($points);
+        foreach ($dates as $i => $date) {
+            if (!$date) {
+                continue;
+            }
+            $d = Carbon::parse($date)->startOfDay();
+            if ($d->lt($from)) {
+                $key = $firstKey;
+            } elseif ($d->gt($to)) {
+                $key = $lastKey;
+            } else {
+                $key = $keyFor($d);
+            }
+            if (isset($points[$key])) {
+                $add($points[$key], $i);
+            }
+        }
+
+        return ['unit' => $unit, 'points' => array_values(array_map($finish, $points))];
     }
 }

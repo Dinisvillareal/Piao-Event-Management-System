@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasConditionUnits;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 
 class EventInventoryRelease extends Model
 {
+    use HasConditionUnits;
+
     protected $fillable = [
         'event_id',
         'inventory_item_id',

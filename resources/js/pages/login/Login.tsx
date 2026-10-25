@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { ArrowRight, Copy, LayoutDashboard, Users, CheckCircle, LogOut } from "lucide-react";
+import ForgotPasswordModal from "../../components/auth/ForgotPasswordModal";
+import { ArrowRight, Copy, LayoutDashboard, Users, CheckCircle, LogOut, AlertCircle, Info } from "lucide-react";
 import StatusModal from "../../components/ui/StatusModal";
 import SplashScreen from "../../components/ui/SplashScreen";
 import { useLanguage } from "../../i18n/LanguageContext";
 import EyeToggleIcon from "../../components/ui/EyeToggleIcon";
+import ThemeToggle from "../../components/ui/ThemeToggle";
+import { useThemeScope } from "../../lib/theme";
 
 // ─── Decorative corner wave art -- a few overlapping stroked lines, standing
 // in for the flowing line-art motif in the reference selection screen. ────
@@ -72,7 +75,8 @@ function PortalSelectionModal({
       <CornerWaveArt className="pointer-events-none absolute left-0 top-0 h-40 w-72 opacity-60 sm:h-56 sm:w-96" />
       <CornerWaveArt className="pointer-events-none absolute bottom-0 right-0 h-40 w-72 rotate-180 opacity-60 sm:h-56 sm:w-96" />
 
-      <div className="relative flex items-center justify-end px-6 py-6 sm:px-10">
+      <div className="relative flex items-center justify-end gap-4 px-6 py-6 sm:px-10">
+        <ThemeToggle />
         <button
           onClick={onLogout}
           className="flex items-center gap-1.5 text-[13px] font-semibold text-white/60 transition hover:text-white"
@@ -230,11 +234,31 @@ function LiveActivityFeed() {
 // ─── Login Page ───────────────────────────────────────────────────────────────
 export default function LoginPage() {
   const { t } = useLanguage();
+  useThemeScope();
   const [showContact, setShowContact] = useState(false);
   const [error, setError] = useState("");
+  // What kind of message the banner shows: a sign-in failure (red) or a plain
+  // notice such as "you were signed out" (neutral). `credsWrong` also flags the
+  // username/password inputs; `fieldErr` is for left-empty fields.
+  const [errorKind, setErrorKind] = useState<"error" | "notice">("error");
+  const [errorTitle, setErrorTitle] = useState("");
+  const [credsWrong, setCredsWrong] = useState<"username" | "password" | null>(null);
+  const [fieldErr, setFieldErr] = useState<{ username?: string; password?: string }>({});
+  const clearErrors = () => { setError(""); setErrorTitle(""); setCredsWrong(null); setFieldErr({}); };
   const [isLoading, setIsLoading] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // Two-step login: asked for only after the password was right and the account has an authenticator.
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+
+  // A notice left by the app when it signed the person out (inactivity, suspension...).
+  useEffect(() => {
+    try {
+      const notice = sessionStorage.getItem("login_notice");
+      if (notice) { sessionStorage.removeItem("login_notice"); setErrorKind("notice"); setErrorTitle(t("loginNoticeTitle")); setError(notice); }
+    } catch { /* ignore */ }
+  }, []);
 
   const [showPortalModal, setShowPortalModal] = useState(false);
   const [loggedInUser, setLoggedInUser] = useState<any>(null);
@@ -259,14 +283,18 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setError("");
+    clearErrors();
+    setErrorKind("error");
 
     const form = e.currentTarget;
     const username = (form.elements.namedItem("username") as HTMLInputElement).value;
     const password = (form.elements.namedItem("password") as HTMLInputElement).value;
 
     if (!username.trim() || !password.trim()) {
-      setError(t("loginErrEnterBoth"));
+      setFieldErr({
+        username: username.trim() ? undefined : t("loginErrEnterUsername"),
+        password: password.trim() ? undefined : t("loginErrEnterPassword"),
+      });
       return;
     }
 
@@ -290,6 +318,7 @@ export default function LoginPage() {
           username,
           password,
           remember_me: keepSignedIn,
+          ...(otpRequired && { otp: ((form.elements.namedItem("otp") as HTMLInputElement | null)?.value ?? "").trim() }),
         }),
       });
 
@@ -321,14 +350,43 @@ export default function LoginPage() {
         }
         window.location.href = "/member/dashboard";
       } else {
-        if (response.status === 401) {
+        if (response.status === 401 && data.two_factor_required) {
+          // Password was right -- now ask for the authenticator code.
+          // (Only a wrong code is an error; the first ask is just the next step.)
+          if (otpRequired) { setErrorTitle(t("loginErrCodeTitle")); setError(data.message || ""); }
+          setOtpRequired(true);
+          const otpInput = form.elements.namedItem("otp") as HTMLInputElement | null;
+          if (otpInput) otpInput.value = "";
+          return;
+        } else if (response.status === 401) {
           if (data.message && data.message.includes("deleted")) {
             setShowAccountDeletedModal(true);
             return;
           }
-          setError(data.message || t("loginErrInvalid"));
+          const codeKey: Record<string, string> = {
+            username_not_found: "loginErrUserNotFound",
+            no_portal_account: "loginErrNoPortalAccount",
+            account_suspended: "loginErrSuspended",
+            wrong_password: "loginErrWrongPassword",
+          };
+          if (data.field === "username" || data.field === "password") {
+            // Specific message right under the field that needs fixing.
+            setCredsWrong(data.field);
+            const msg = codeKey[data.code] ? t(codeKey[data.code]) : (data.message || t("loginErrInvalidClear"));
+            setFieldErr({ [data.field]: msg });
+          } else if (!data.message || data.message === "Invalid credentials") {
+            setCredsWrong("username");
+            setErrorTitle(t("loginErrInvalidTitle"));
+            setError(t("loginErrInvalidClear"));
+          } else {
+            setErrorTitle(t("loginSignInFailed"));
+            setError(data.message);
+          }
         } else if (response.status === 419) {
           setError(t("loginErrSessionExpired"));
+        } else if (response.status === 429 && data.code === "too_many_attempts") {
+          setErrorTitle(t("loginErrLockedTitle"));
+          setError(t("loginErrLockedBody"));
         } else if (response.status === 429) {
           const retryAfter = parseInt(response.headers.get("Retry-After") || "", 10);
           setError(
@@ -364,10 +422,8 @@ export default function LoginPage() {
     } else {
       sessionStorage.setItem("portalMode", "staff");
     }
-    setPortalTransitionVisible(true);
-    setTimeout(() => {
-      window.location.href = "/";
-    }, PORTAL_TRANSITION_MS);
+    // No second splash here: the app's own splash plays once after this reload.
+    window.location.href = "/";
   };
 
   const handleGoToMember = () => {
@@ -377,10 +433,8 @@ export default function LoginPage() {
     } else {
       sessionStorage.setItem("portalMode", "member");
     }
-    setPortalTransitionVisible(true);
-    setTimeout(() => {
-      window.location.href = "/member/dashboard";
-    }, PORTAL_TRANSITION_MS);
+    // No second splash here: the app's own splash plays once after this reload.
+    window.location.href = "/member/dashboard";
   };
 
   const handleLogoutFromPortalSelect = () => {
@@ -436,20 +490,6 @@ export default function LoginPage() {
         onClose={() => { setShowAccountDeletedModal(false); window.location.href = "/login"; }}
       />
 
-      {/* Sign-in error -- was an inline banner above the form fields, now a
-          popup like every other error in the app (invalid credentials,
-          account not activated, session expired, network error, etc), using
-          the same shared dark StatusModal every other screen's errors use
-          (red icon/title, red button) instead of its own bespoke light card. */}
-      <StatusModal
-        open={!!error}
-        type="error"
-        title={t("loginSignInFailed")}
-        message={error}
-        okLabel={t("okLabel")}
-        onClose={() => setError("")}
-      />
-
       {showCopiedToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[45] flex items-center gap-2 rounded-full bg-[#0A0E1A] text-white text-sm font-medium px-5 py-2.5 shadow-xl animate-in fade-in slide-in-from-bottom-2">
           <CheckCircle size={16} className="text-gold-400" /> {t("loginCopied")}
@@ -469,7 +509,7 @@ export default function LoginPage() {
             className="absolute inset-0 scale-105 bg-cover bg-center blur-sm"
             style={{ backgroundImage: "url('/barangay-assembly.jpg')" }}
           />
-          <div className="absolute inset-0 bg-[#0A0E1A]/85" />
+          <div className="absolute inset-0 bg-[#0A0E1A]/75" />
           <div className="absolute inset-0 bg-gradient-to-b from-[#0A0E1A] via-transparent to-[#0A0E1A]" />
         </div>
 
@@ -492,17 +532,18 @@ export default function LoginPage() {
               <span className="text-[11px] font-semibold uppercase tracking-wide text-white/55">{t("loginSystemOnline")}</span>
             </div>
             <LiveClock />
+            <ThemeToggle />
           </div>
         </div>
 
         {/* Wording on the left, the sign-in card on the right */}
         <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center gap-10 px-6 py-14 sm:px-10 lg:flex-row lg:items-center lg:justify-between lg:gap-16">
           {/* Left: branding + wording */}
-          <div className="w-full max-w-xl text-center lg:text-left">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-white/60 sm:text-[12px]">
+          <div className="w-full max-w-2xl text-center lg:text-left">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.3em] text-white/60 sm:text-[15px]">
               {t("loginWelcomeTo")}
             </p>
-            <p className="mt-2 font-display text-[34px] font-extrabold uppercase leading-none tracking-tight sm:text-[48px]">
+            <p className="mt-2 font-display text-[40px] font-extrabold uppercase leading-none tracking-tight sm:text-[60px]">
               <span
                 className="bg-clip-text text-transparent"
                 style={{
@@ -513,51 +554,58 @@ export default function LoginPage() {
                 {t("loginCommunityName")}
               </span>
             </p>
-            <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.25em] text-white/50 sm:text-[13px]">
+            <p className="mt-4 text-[12px] font-semibold uppercase tracking-[0.25em] text-white/50 sm:text-[14px] sm:tracking-[0.2em] sm:whitespace-nowrap">
               {t("loginTagline")}
             </p>
-            <p className="mx-auto mt-6 max-w-md text-[14px] leading-relaxed text-white/55 lg:mx-0">
+            <p className="mx-auto mt-6 max-w-lg text-[16px] leading-relaxed text-white/55 lg:mx-0">
               {t("loginIntro")}
             </p>
           </div>
 
           {/* Right: the sign-in card */}
-          <div className="w-full max-w-md rounded-3xl border border-white/15 bg-white/[0.07] p-8 shadow-[0_25px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-10">
+          <div className="w-full max-w-lg rounded-3xl border border-white/15 bg-white/[0.07] p-8 shadow-[0_25px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-10">
             <div className="text-center">
-              <h2 className="font-display text-[28px] font-bold text-white">{t("welcomeBack")}</h2>
-              <p className="mt-2 text-[14px] text-white/55">
+              <h2 className="font-display text-[34px] font-bold text-white">{t("welcomeBack")}</h2>
+              <p className="mt-2 text-[16px] text-white/55">
                 {t("loginSubtitle")}
               </p>
             </div>
 
             <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-5">
               <div>
-                <label className="text-[13px] font-semibold text-white/80">{t("usernameLabel")}</label>
+                <label className="text-[15px] font-semibold text-white/80">{t("usernameLabel")}</label>
                 <input
                   type="text"
                   name="username"
-                  className="w-full mt-1.5 rounded-xl border border-white/15 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-white/30 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-4 focus:ring-[#4FBEB0]/15"
+                  className={`w-full mt-1.5 rounded-xl border bg-white/5 px-4 py-3.5 text-[15px] text-white placeholder-white/30 transition focus:outline-none focus:ring-4 ${
+                    fieldErr.username || credsWrong === "username" ? "border-red-400 focus:border-red-400 focus:ring-red-400/15" : "border-white/15 focus:border-[#4FBEB0] focus:ring-[#4FBEB0]/15"
+                  }`}
                   placeholder="PR-0001"
                   required
                   disabled={isLoading}
+                  aria-invalid={!!(fieldErr.username || credsWrong === "username")}
+                  onInput={() => { if (error || fieldErr.username || credsWrong) clearErrors(); }}
                 />
+                {fieldErr.username && <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium text-red-400"><AlertCircle className="h-4 w-4 shrink-0" />{fieldErr.username}</p>}
               </div>
 
               <div>
                 <div className="flex justify-between items-baseline text-sm">
-                  <label className="text-[13px] font-semibold text-white/80">{t("passwordLabel")}</label>
-                  <span className="text-xs font-semibold text-[#7DD8CB] cursor-pointer hover:underline">
-                    {t("loginForgot")}
-                  </span>
+                  <label className="text-[15px] font-semibold text-white/80">{t("passwordLabel")}</label>
+                  <button type="button" onClick={() => setShowForgot(true)} className="text-[13px] font-semibold text-[#7DD8CB] hover:underline">{t("secForgotLink")}</button>
                 </div>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     name="password"
-                    className="password-field w-full mt-1.5 rounded-xl border border-white/15 bg-white/5 px-3.5 py-2.5 pr-11 text-sm text-white placeholder-white/30 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-4 focus:ring-[#4FBEB0]/15"
+                    className={`password-field w-full mt-1.5 rounded-xl border bg-white/5 px-4 py-3.5 pr-11 text-[15px] text-white placeholder-white/30 transition focus:outline-none focus:ring-4 ${
+                      fieldErr.password || credsWrong === "password" ? "border-red-400 focus:border-red-400 focus:ring-red-400/15" : "border-white/15 focus:border-[#4FBEB0] focus:ring-[#4FBEB0]/15"
+                    }`}
                     placeholder="••••••••"
                     required
                     disabled={isLoading}
+                    aria-invalid={!!(fieldErr.password || credsWrong === "password")}
+                    onInput={() => { if (error || fieldErr.password || credsWrong) clearErrors(); }}
                   />
                   <button
                     type="button"
@@ -580,31 +628,69 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 text-sm">
+              {fieldErr.password && <p className="-mt-3 flex items-center gap-1.5 text-[13px] font-medium text-red-400"><AlertCircle className="h-4 w-4 shrink-0" />{fieldErr.password}</p>}
+
+              {otpRequired && (
+                <div>
+                  <label className="text-[15px] font-semibold text-white/80">{t("secAuthCodeLabel")}</label>
+                  <input
+                    type="text"
+                    name="otp"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={8}
+                    autoFocus
+                    className="w-full mt-1.5 rounded-xl border border-white/15 bg-white/5 px-4 py-3.5 text-center text-[20px] tracking-[0.4em] text-white placeholder-white/30 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-4 focus:ring-[#4FBEB0]/15"
+                    placeholder="000000"
+                    disabled={isLoading}
+                  />
+                  <p className="mt-1.5 text-[13px] text-white/45">{t("secAuthCodeHint")}</p>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2.5 text-sm">
                 <input
                   type="checkbox"
                   id="keepSignedIn"
                   checked={keepSignedIn}
                   onChange={(e) => setKeepSignedIn(e.target.checked)}
-                  className="rounded border-white/30 bg-white/10 text-[#4FBEB0] focus:ring-[#4FBEB0]"
+                  className="h-5 w-5 shrink-0 cursor-pointer rounded-md border-white/40 bg-white/10 text-[#4FBEB0] focus:ring-[#4FBEB0]"
                   disabled={isLoading}
                 />
-                <label htmlFor="keepSignedIn" className="text-[13px] text-white/60">
+                <label htmlFor="keepSignedIn" className="cursor-pointer select-none text-[15px] text-white/75">
                   {t("loginKeepSignedIn")}
                 </label>
               </div>
 
+              {error && (
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  className={`flex items-start gap-3 rounded-xl border px-4 py-3.5 ${
+                    errorKind === "error" ? "border-red-400/40 bg-red-500/10" : "border-[#4FBEB0]/35 bg-[#4FBEB0]/10"
+                  }`}
+                >
+                  {errorKind === "error"
+                    ? <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-400" />
+                    : <Info className="mt-0.5 h-5 w-5 shrink-0 text-[#7DD8CB]" />}
+                  <div className="min-w-0">
+                    <p className={`text-[15px] font-bold ${errorKind === "error" ? "text-red-300" : "text-[#7DD8CB]"}`}>{errorTitle || t("loginSignInFailed")}</p>
+                    <p className="mt-0.5 text-[14px] leading-snug text-white/75">{error}</p>
+                  </div>
+                </div>
+              )}
+
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 rounded-full font-bold text-[14px] shadow-sm transition text-[#08130F] flex items-center justify-center gap-2 bg-gradient-to-r from-gold-400 to-[#4FBEB0] hover:opacity-90 disabled:opacity-50"
+                className="w-full py-3.5 rounded-full font-bold text-[16px] shadow-sm transition text-[#08130F] flex items-center justify-center gap-2 bg-gradient-to-r from-gold-400 to-[#4FBEB0] hover:opacity-90 disabled:opacity-50"
               >
                 {isLoading ? t("loginSigningIn") : t("signInWord")}
                 {!isLoading && <ArrowRight className="h-4 w-4" />}
               </button>
 
               <div className="relative flex justify-center mt-1" ref={contactRef}>
-                <p className="text-xs text-white/45">
+                <p className="text-[13px] text-white/45">
                   {t("loginNoAccount")}{" "}
                   <span
                     onClick={() => setShowContact(true)}
@@ -633,23 +719,26 @@ export default function LoginPage() {
               </div>
             </form>
 
-            <p className="mt-8 text-center text-[11px] leading-relaxed text-white/35">
+            <p className="mt-8 text-center text-[12px] leading-relaxed text-white/35">
               {t("loginResidentNote")}
             </p>
           </div>
         </div>
       </div>
 
+      {showForgot && <ForgotPasswordModal onClose={() => setShowForgot(false)} />}
+
       {/* Giant watermark band -- a huge faint "PC" (PiaoConnect) outline
           behind a two-line statement, echoing the reference's oversized
           agency-initials watermark, done with our own initials and copy. */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-[#0A0E1A] via-[#0D1526] to-[#0A0E1A] px-6 py-24 sm:px-10 sm:py-32">
+      <section className="login-band relative overflow-hidden bg-gradient-to-b from-[#0A0E1A] via-[#0D1526] to-[#0A0E1A] px-6 py-24 sm:px-10 sm:py-32">
         <div className="pointer-events-none absolute inset-0 flex select-none items-center justify-center overflow-hidden">
           <span
-            className="font-display font-extrabold leading-none text-transparent"
+            className="login-band-mark font-display font-extrabold leading-none text-transparent"
             style={{
               fontSize: "clamp(220px, 34vw, 480px)",
-              WebkitTextStroke: "1px rgba(255,255,255,0.08)",
+              WebkitTextStroke: "2px rgba(255,255,255,0.28)",
+              color: "rgba(255,255,255,0.04)",
             }}
           >
             PC
@@ -657,17 +746,17 @@ export default function LoginPage() {
         </div>
 
         <div className="relative mx-auto max-w-4xl text-center">
-          <p className="text-[20px] font-bold leading-snug text-white sm:text-[28px]">
+          <p className="login-band-text text-[20px] font-bold leading-snug text-white sm:text-[28px]">
             {t("loginBuildingPrefix")}{" "}
-            <span className="bg-gradient-to-r from-gold-300 to-gold-400 bg-clip-text text-transparent">
+            <span className="login-band-gold bg-gradient-to-r from-gold-300 to-gold-400 bg-clip-text text-transparent">
               {t("loginBarangayWord")}
             </span>
             ,{" "}
-            <span className="bg-gradient-to-r from-[#8FC59B] to-[#4FBEB0] bg-clip-text text-transparent">
+            <span className="login-band-teal bg-gradient-to-r from-[#8FC59B] to-[#4FBEB0] bg-clip-text text-transparent">
               {t("loginCommittedTo")}
             </span>
           </p>
-          <p className="mt-3 text-[18px] font-bold text-white sm:text-[24px]">
+          <p className="login-band-text mt-3 text-[18px] font-bold text-white sm:text-[24px]">
             {t("loginOneAtATime")}
           </p>
         </div>

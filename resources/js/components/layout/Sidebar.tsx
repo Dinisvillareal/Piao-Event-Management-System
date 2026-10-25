@@ -8,7 +8,7 @@ import {
   Settings,
   X as XIcon,
 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useLanguage } from "../../i18n/LanguageContext";
 
 interface SidebarProps {
@@ -29,15 +29,15 @@ interface SidebarProps {
 // search input isn't needed the way it is for staff's larger, grouped nav.
 export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile, userName, userRole, badges }: SidebarProps) {
   const { t } = useLanguage();
-  const accountName = (userName ?? "").trim();
-  const accountInitials = accountName
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join("") || "M";
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // The profile menu in the top bar asks for sign-out through this event.
+  useEffect(() => {
+    const open = () => setShowLogoutConfirm(true);
+    window.addEventListener("member:request-logout", open);
+    return () => window.removeEventListener("member:request-logout", open);
+  }, []);
 
   const navItems = [
     { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -88,11 +88,11 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   return (
     <>
       {mobileOpen && (
-        <div className="fixed inset-0 bg-black/40 z-30 xl:hidden" onClick={onCloseMobile} />
+        <div className="fixed inset-0 bg-black/55 z-30 xl:hidden" onClick={onCloseMobile} />
       )}
 
       <aside
-        className={`w-[340px] max-w-[85vw] flex-col bg-[#0A0E1A] h-[100dvh] fixed xl:sticky top-0 z-40 flex overflow-hidden ${
+        className={`w-[300px] sm:w-[320px] xl:w-[300px] 2xl:w-[340px] max-w-[88vw] flex-col transition-transform duration-300 ease-out overscroll-contain bg-[#0A0E1A] h-[100dvh] fixed xl:sticky top-0 z-40 flex overflow-hidden ${
           mobileOpen ? "translate-x-0" : "-translate-x-full xl:translate-x-0"
         }`}
       >
@@ -137,7 +137,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
                   <span className="truncate flex-1 min-w-0 text-left">{t(item.key)}</span>
                   {(badges?.[item.key] ?? 0) > 0 && (
                     <span
-                      className="ml-auto inline-flex h-6 min-w-[1.5rem] shrink-0 items-center justify-center rounded-full bg-gold-400 px-2 text-xs font-bold text-[#08130F] shadow-sm"
+                      className="ml-auto inline-flex h-6 min-w-[1.5rem] shrink-0 items-center justify-center rounded-full bg-red-500 px-2 text-xs font-bold text-white shadow-sm"
                       aria-label={`${badges![item.key]} unread`}
                     >
                       {badges![item.key] > 99 ? "99+" : badges![item.key]}
@@ -149,30 +149,13 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           </div>
         </div>
 
-        {/* Logout -- avatar + Sign out, same footer as the staff Sidebar. */}
-        <div className="border-t border-white/10 p-3 shrink-0 flex items-center gap-2.5">
-          <div
-            title={`${accountName}${userRole ? ` · ${userRole}` : ""}`}
-            aria-label={accountName}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-400 text-[12px] font-bold text-[#08130F]"
-          >
-            {accountInitials}
-          </div>
-          <button
-            className="flex min-w-0 flex-1 items-center justify-start gap-3 rounded-xl border border-white/10 px-3 py-2.5 text-[13.5px] font-semibold text-white/70 transition-all hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
-            onClick={() => setShowLogoutConfirm(true)}
-          >
-            <LogOut className="h-5 w-5 shrink-0" />
-            <span className="truncate">{t("signOut")}</span>
-          </button>
-        </div>
       </aside>
 
       {/* Same dark "are you sure" confirm used by the staff Sidebar's own
           logout -- ending the session gets a deliberate, prominent step
           instead of the light peripheral-alert treatment. */}
       {showLogoutConfirm && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
           <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-6 text-center shadow-2xl">
             <div className="mb-4 flex justify-center text-[#4FBEB0]"><LogOut size={40} /></div>
             <h3 className="font-display text-xl font-bold text-white mb-3">{t("confirmLogoutTitle")}</h3>

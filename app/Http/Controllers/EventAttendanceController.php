@@ -268,8 +268,20 @@ class EventAttendanceController extends Controller
 
     public function getEventAttendees($eventId)
     {
+        // Attendee lists carry other residents' personal details -- staff only.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Events that haven't ended yet get any newly eligible people (e.g.
+        // staff) added to their roster. Finished events keep their record.
+        $event = Event::find($eventId);
+        if ($event && (!$event->event_end || strtotime((string) $event->event_end) > time())) {
+            $event->addMissingAttendanceRecords();
+        }
+
         return response()->json(
-            EventAttendance::with('user')
+            EventAttendance::with('user:id,first_name,last_name,user_code')
                 ->where('event_id', $eventId)
                 ->orderBy('time_in', 'desc')
                 ->get()
@@ -278,6 +290,11 @@ class EventAttendanceController extends Controller
 
    public function getMemberHistory($userId)
 {
+    // A resident may only read their own attendance history; staff can read anyone's.
+    if ((int) auth()->id() !== (int) $userId && !$this->isStaff()) {
+        return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
     $attendances = EventAttendance::where('user_id', $userId)
         ->with('event')  // ✅ ADD THIS - LOADS THE EVENT RELATIONSHIP
         ->orderBy('time_in', 'desc')
@@ -290,6 +307,7 @@ class EventAttendanceController extends Controller
                 'eventId' => $attendance->event_id,
                 'eventTitle' => $isEventDeleted ? '' : $attendance->event->name,
                 'eventDate' => $isEventDeleted ? '' : $attendance->event->event_start,
+                'eventEnd' => $isEventDeleted ? '' : $attendance->event->event_end,
                 'location' => $isEventDeleted ? '' : $attendance->event->location,
                 'timeIn' => $attendance->time_in,
                 'timeOut' => $attendance->time_out,

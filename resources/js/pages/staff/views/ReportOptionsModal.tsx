@@ -127,9 +127,9 @@ export default function ReportOptionsModal({
             type="button"
             onClick={onClose}
             aria-label={t("cancelLabel")}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/50 transition hover:bg-white/10 hover:text-white"
+            className="shrink-0 text-white/50 hover:text-white"
           >
-            <X className="h-5 w-5" />
+            <X size={26} />
           </button>
         </div>
 

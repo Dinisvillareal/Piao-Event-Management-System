@@ -204,6 +204,7 @@ class EventController extends Controller
         if ($effectiveRole === 'Staff') {
             // Staff portal: show all active events (exclude soft-deleted)
             $events = Event::withoutTrashed()->with('borrowedItems.inventoryItem')->orderByDesc('event_start')->get();
+            $this->attachInventoryCounts($events);
         } else {
             // Resident mode: filter by user's memberships (exclude soft-deleted)
             $residentMembershipIds = DB::table('membership_residents')
@@ -226,6 +227,46 @@ class EventController extends Controller
         }
 
         return response()->json(['data' => $events]);
+    }
+
+    /**
+     * Gives each event `inventory_items_count` -- how many different items it
+     * took from Inventory (still out or already returned) -- in one query, so
+     * the event page's Inventory tab can show its count right away.
+     */
+    private function attachInventoryCounts($events): void
+    {
+        $ids = $events->pluck('id')->all();
+        if (!$ids) {
+            return;
+        }
+
+        $borrowed = DB::table('event_inventory_items')->whereIn('event_id', $ids)->select('event_id', 'inventory_item_id');
+        $returned = DB::table('event_inventory_releases')->whereIn('event_id', $ids)->whereNull('undone_at')->select('event_id', 'inventory_item_id');
+
+        $counts = DB::query()->fromSub($borrowed->union($returned), 'u')
+            ->select('event_id', DB::raw('COUNT(DISTINCT inventory_item_id) as c'))
+            ->groupBy('event_id')
+            ->pluck('c', 'event_id');
+
+        $attendances = DB::table('attendances')->whereIn('event_id', $ids)
+            ->select('event_id', DB::raw('COUNT(*) as c'))
+            ->groupBy('event_id')
+            ->pluck('c', 'event_id');
+
+        // Feedback + non-attendance reasons per event, so the staff Events list
+        // can offer a "Has feedback" quick tab without loading every event.
+        $feedbackCounts = DB::table('feedback')->whereIn('event_id', $ids)
+            ->select('event_id', DB::raw('COUNT(*) as c'))->groupBy('event_id')->pluck('c', 'event_id');
+        $absenceCounts = DB::table('absence_reasons')->whereIn('event_id', $ids)
+            ->select('event_id', DB::raw('COUNT(*) as c'))->groupBy('event_id')->pluck('c', 'event_id');
+
+        foreach ($events as $event) {
+            $event->setAttribute('feedback_count', (int) ($feedbackCounts[$event->id] ?? 0) + (int) ($absenceCounts[$event->id] ?? 0));
+            $event->setAttribute('inventory_items_count', (int) ($counts[$event->id] ?? 0));
+            // Known up front so the Attendance tab's count doesn't start at 0.
+            $event->setAttribute('attendances_count', (int) ($attendances[$event->id] ?? 0));
+        }
     }
 
     public function list()
@@ -272,6 +313,10 @@ class EventController extends Controller
             'borrowed_items'                     => 'nullable|array',
             'borrowed_items.*.inventory_item_id'  => 'required_with:borrowed_items|integer|exists:inventory_items,id',
             'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1',
+            // Which units to borrow, per condition (e.g. Good => 10, New => 5).
+            // When sent, their sum is the quantity borrowed.
+            'borrowed_items.*.conditions'         => 'nullable|array',
+            'borrowed_items.*.conditions.*'       => 'integer|min:0',
         ]);
 
         // Double-booking guard: two events can't reasonably share the same
@@ -396,6 +441,10 @@ class EventController extends Controller
             'borrowed_items'                     => 'nullable|array',
             'borrowed_items.*.inventory_item_id'  => 'required_with:borrowed_items|integer|exists:inventory_items,id',
             'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1',
+            // Which units to borrow, per condition (e.g. Good => 10, New => 5).
+            // When sent, their sum is the quantity borrowed.
+            'borrowed_items.*.conditions'         => 'nullable|array',
+            'borrowed_items.*.conditions.*'       => 'integer|min:0',
         ]);
 
         // ✅ MODIFIED: Find event excluding soft-deleted
@@ -590,14 +639,19 @@ class EventController extends Controller
             $event->delete();
 
             // ✅ Step 2: Update notifications to show event was cancelled
-            Notification::where('event_id', $id)->update([
-                'type' => 'event_deleted',
-                'title' => '❌ Event Cancelled: ' . $eventName,
-                'message' => 'We apologize for the inconvenience. This event has been cancelled.',
-                'is_updated' => true,
-                'read' => false,
-                'updated_at' => now(),
-            ]);
+            // Only the members' announcements -- staff alerts and staff replies
+            // keep their own type.
+            Notification::where('event_id', $id)
+                ->whereIn('type', ['event_announcement', 'event_updated'])
+                ->update([
+                    'type' => 'event_deleted',
+                    'title' => '❌ Event Cancelled: ' . $eventName,
+                    'message' => 'We apologize for the inconvenience. This event has been cancelled.',
+                    'is_updated' => true,
+                    'read' => false,
+                    'updated_at_notification' => now(),
+                    'updated_at' => now(),
+                ]);
 
             // ✅ Step 3: Log the archive action
             $this->createLog('Archive Event', 'Events', "Archived event: {$eventName}");
@@ -651,6 +705,10 @@ class EventController extends Controller
     // ✅ NEW: Force delete (permanent) - for admin only
     public function forceDelete($id)
     {
+        // Permanent deletion is switched off for everyone, Head Staff included.
+        return response()->json(['message' => 'Permanent deletion is disabled. Events are archived and kept.'], 403);
+
+        // --- previous implementation, intentionally unreachable ---
         // Only Staff permanently delete events -- same reasoning as store()
         // above, but higher stakes: this wipes the event and its
         // notifications/attendance/inventory records with no recovery.
@@ -742,8 +800,11 @@ class EventController extends Controller
 
         foreach ($userIds as $userId) {
             if ($isUpdate) {
+                // Only the event's own announcement is re-used -- never a staff
+                // reply / heart the member received about their feedback.
                 $notification = Notification::where('user_id', $userId)
                     ->where('event_id', $event->id)
+                    ->whereIn('type', ['event_announcement', 'event_updated'])
                     ->first();
 
                 if ($notification) {
@@ -792,8 +853,25 @@ class EventController extends Controller
      */
     private function applyBorrowedItems(Event $event, array $items): void
     {
+        $labels = array_keys(InventoryItem::CONDITION_COLUMNS);
+
         foreach ($items as $bi) {
-            $quantity = (int) ($bi['quantity'] ?? 0);
+            // Staff choose which units to borrow (e.g. 10 Good + 5 New). When
+            // they do, exactly those come out of stock and go back to the
+            // same conditions on return. Without it (older callers) the
+            // quantity is taken from the item's main condition.
+            $units = null;
+            if (!empty($bi['conditions']) && is_array($bi['conditions'])) {
+                $units = [];
+                foreach ($labels as $label) {
+                    $units[$label] = max(0, (int) ($bi['conditions'][$label] ?? 0));
+                }
+                if (array_sum($units) <= 0) {
+                    $units = null;
+                }
+            }
+
+            $quantity = $units ? array_sum($units) : (int) ($bi['quantity'] ?? 0);
             if ($quantity <= 0) {
                 continue;
             }
@@ -804,14 +882,28 @@ class EventController extends Controller
                 throw new \Exception("Not enough stock for \"{$item->name}\" (available: {$item->quantity}, requested: {$quantity}).");
             }
 
-            $item->quantity -= $quantity;
-            $item->save();
+            if ($units) {
+                $short = $item->shortfall($units);
+                if ($short) {
+                    $have = $item->conditionCounts();
+                    $label = array_key_first($short);
+                    throw new \Exception("Not enough {$label} stock for \"{$item->name}\" (available: {$have[$label]}, requested: {$units[$label]}).");
+                }
+                $item->takeUnits($units);
+            } else {
+                $item->quantity -= $quantity;
+                $item->save();
+            }
 
-            EventInventoryItem::create([
+            $borrow = new EventInventoryItem([
                 'event_id'           => $event->id,
                 'inventory_item_id'  => $item->id,
                 'quantity'           => $quantity,
             ]);
+            if ($units) {
+                $borrow->setUnits($units);
+            }
+            $borrow->save();
         }
     }
 
@@ -828,19 +920,22 @@ class EventController extends Controller
         $touchedItems = [];
         foreach ($event->borrowedItems()->get() as $borrowed) {
             $item = InventoryItem::withTrashed()->find($borrowed->inventory_item_id);
+            // The borrowed units go back into the same conditions they came from.
+            $units = $borrowed->resolvedUnits($item->condition ?? 'Good');
             if ($item) {
                 $touchedItems[$item->id] = $item;
-                $item->quantity += $borrowed->quantity;
-                $item->save();
+                $item->giveUnits($units);
             }
 
             if ($logRelease) {
-                EventInventoryRelease::create([
+                $log = new EventInventoryRelease([
                     'event_id' => $event->id,
                     'inventory_item_id' => $borrowed->inventory_item_id,
                     'quantity' => $borrowed->quantity,
                     'released_by' => auth()->user()?->user_code,
                 ]);
+                $log->setUnits($units);
+                $log->save();
             }
         }
 
@@ -867,7 +962,7 @@ class EventController extends Controller
 
         $events = Event::withoutTrashed()
             ->whereHas('borrowedItems')
-            ->with(['borrowedItems.inventoryItem:id,name'])
+            ->with(['borrowedItems.inventoryItem:id,name,condition'])
             ->get()
             ->filter(function ($event) {
                 $endedAt = $event->event_end ?? $event->event_start;
@@ -882,12 +977,90 @@ class EventController extends Controller
                         'id' => $b->id,
                         'name' => $b->inventoryItem->name ?? 'Unknown item',
                         'quantity' => $b->quantity,
+                        // Units still out, per condition (what the return form starts from).
+                        'units' => $b->resolvedUnits($b->inventoryItem->condition ?? 'Good'),
                     ])->values(),
                 ];
             })
             ->values();
 
         return response()->json($events);
+    }
+
+    /**
+     * Everything this event took from Inventory, for the event's Inventory
+     * tab: per item, how many units (by condition) are still out, how many
+     * came back (and in what condition), plus each return on record.
+     */
+    public function eventInventory($id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $event = Event::withoutTrashed()->findOrFail($id);
+
+        $labels = array_keys(InventoryItem::CONDITION_COLUMNS);
+        $zero = array_fill_keys($labels, 0);
+
+        $out = $event->borrowedItems()->with('inventoryItem')->get();
+        $releases = EventInventoryRelease::where('event_id', $event->id)
+            ->whereNull('undone_at')
+            ->with('inventoryItem')
+            ->orderBy('created_at')
+            ->get();
+
+        $items = [];
+        $touch = function ($itemId, $name, $photo = null) use (&$items, $zero) {
+            return $items[$itemId] ??= [
+                'inventory_item_id' => $itemId,
+                'name' => $name ?? 'Unknown item',
+                'photo_url' => $photo,
+                'out' => 0, 'out_units' => $zero,
+                'returned' => 0, 'returned_units' => $zero,
+            ];
+        };
+
+        foreach ($out as $b) {
+            $row = $touch($b->inventory_item_id, $b->inventoryItem->name ?? null, $b->inventoryItem->photo_url ?? null);
+            $units = $b->resolvedUnits($b->inventoryItem->condition ?? 'Good');
+            $row['out'] += $b->quantity;
+            foreach ($units as $label => $n) {
+                $row['out_units'][$label] += $n;
+            }
+            $items[$b->inventory_item_id] = $row;
+        }
+
+        foreach ($releases as $r) {
+            $row = $touch($r->inventory_item_id, $r->inventoryItem->name ?? null, $r->inventoryItem->photo_url ?? null);
+            $units = $r->resolvedUnits($r->inventoryItem->condition ?? 'Good');
+            $row['returned'] += $r->quantity;
+            foreach ($units as $label => $n) {
+                $row['returned_units'][$label] += $n;
+            }
+            $items[$r->inventory_item_id] = $row;
+        }
+
+        $items = collect($items)->map(function ($row) {
+            $row['total'] = $row['out'] + $row['returned'];
+            $row['status'] = $row['out'] === 0 ? 'returned' : ($row['returned'] > 0 ? 'partial' : 'borrowed');
+
+            return $row;
+        })->sortBy('name')->values();
+
+        return response()->json([
+            'items' => $items,
+            'returns' => $releases->map(fn ($r) => [
+                'id' => $r->id,
+                'name' => $r->inventoryItem->name ?? 'Unknown item',
+                'quantity' => $r->quantity,
+                'units' => $r->resolvedUnits($r->inventoryItem->condition ?? 'Good'),
+                'released_by' => $r->released_by,
+                'released_at' => $r->created_at,
+                'photo_url' => $r->inventoryItem->photo_url ?? null,
+                'evidence_photo_urls' => $r->evidence_photo_urls,
+            ])->reverse()->values(),
+        ]);
     }
 
     /**
@@ -940,6 +1113,10 @@ class EventController extends Controller
         // required on every release -- see EventInventoryRelease::evidence_photo_url.
         $request->validate([
             'quantity' => 'nullable|integer|min:1|max:' . $borrow->quantity,
+            // Condition each returned unit comes back in, e.g. Good => 2, Poor => 1.
+            // When sent, their sum is the quantity returned.
+            'conditions' => 'nullable|array',
+            'conditions.*' => 'integer|min:0',
             // One or more evidence photos (first = cover), up to 5.
             'photos' => 'required_without:photo|array|min:1|max:5',
             'photos.*' => 'image|max:5120',
@@ -948,17 +1125,42 @@ class EventController extends Controller
         $releaseQty = $request->filled('quantity') ? (int) $request->quantity : $borrow->quantity;
 
         $item = InventoryItem::withTrashed()->find($borrow->inventory_item_id);
-        if ($item) {
-            $item->quantity += $releaseQty;
-            $item->save();
+        $mainCondition = $item->condition ?? 'Good';
+
+        // Staff say which condition each returned unit comes back in
+        // (e.g. 3 Good + 1 Poor if one got damaged). Without that, a full
+        // return gives back exactly what was borrowed and a partial one takes
+        // from the largest condition first.
+        $returned = null;
+        if (is_array($request->input('conditions'))) {
+            $returned = [];
+            foreach (array_keys(InventoryItem::CONDITION_COLUMNS) as $label) {
+                $returned[$label] = max(0, (int) ($request->input("conditions.{$label}") ?? 0));
+            }
+            if (array_sum($returned) <= 0) {
+                $returned = null;
+            }
         }
+
+        if ($returned) {
+            $releaseQty = array_sum($returned);
+            if ($releaseQty > $borrow->quantity) {
+                return response()->json([
+                    'message' => "Can't return {$releaseQty} -- only {$borrow->quantity} of this item is out on loan.",
+                ], 422);
+            }
+            $borrow->takeOutMatching($returned, $mainCondition);
+            $releasedUnits = $returned;
+        } else {
+            $releasedUnits = $borrow->takeOutUnits($releaseQty, $mainCondition);
+        }
+        $item?->giveUnits($releasedUnits);
 
         $itemName = $item->name ?? 'item';
 
-        if ($releaseQty >= $borrow->quantity) {
+        if ($borrow->quantity <= 0) {
             $borrow->delete();
         } else {
-            $borrow->quantity -= $releaseQty;
             $borrow->save();
         }
 
@@ -972,7 +1174,7 @@ class EventController extends Controller
             $evidence = [$this->localUpload($request->file('photo'), 'release_evidence_photos')];
         }
 
-        $release = EventInventoryRelease::create([
+        $release = new EventInventoryRelease([
             'event_id' => $event->id,
             'inventory_item_id' => $borrow->inventory_item_id,
             'quantity' => $releaseQty,
@@ -980,6 +1182,8 @@ class EventController extends Controller
             'evidence_photo_path' => $evidence[0] ?? null,
             'extra_evidence_photo_paths' => count($evidence) > 1 ? array_slice($evidence, 1) : null,
         ]);
+        $release->setUnits($releasedUnits);
+        $release->save();
 
         $this->createLog('Return Items', 'Inventory', "Returned {$releaseQty}x {$itemName} from event: {$event->name}");
 
@@ -1027,7 +1231,7 @@ class EventController extends Controller
         $lastPage = max(1, (int) ceil($total / $perPage));
         $page = min($page, $lastPage);
 
-        $rows = $base->with(['event:id,name', 'inventoryItem:id,name'])
+        $rows = $base->with(['event:id,name', 'inventoryItem:id,name,condition'])
             ->latest()
             ->skip(($page - 1) * $perPage)
             ->take($perPage)
@@ -1042,18 +1246,47 @@ class EventController extends Controller
             ->groupBy(fn ($b) => $b->event_id . '-' . $b->inventory_item_id)
             ->map(fn ($group) => (int) $group->sum('quantity'));
 
-        $releases = $rows->map(fn ($r) => [
+        // Units still out per condition, so Edit Return can cap each condition.
+        $stillOutUnits = EventInventoryItem::with('inventoryItem:id,condition')
+            ->whereIn('event_id', $rows->pluck('event_id')->unique())
+            ->whereIn('inventory_item_id', $rows->pluck('inventory_item_id')->unique())
+            ->get()
+            ->groupBy(fn ($b) => $b->event_id . '-' . $b->inventory_item_id)
+            ->map(function ($group) {
+                $sum = array_fill_keys(array_keys(InventoryItem::CONDITION_COLUMNS), 0);
+                foreach ($group as $b) {
+                    foreach ($b->resolvedUnits($b->inventoryItem->condition ?? 'Good') as $label => $n) {
+                        $sum[$label] += $n;
+                    }
+                }
+                return $sum;
+            });
+
+        $releases = $rows->map(function ($r) use ($stillBorrowed, $stillOutUnits) {
+            $main = $r->inventoryItem->condition ?? 'Good';
+            $units = $r->resolvedUnits($main);
+            $out = $stillOutUnits[$r->event_id . '-' . $r->inventory_item_id] ?? array_fill_keys(array_keys($units), 0);
+            $maxUnits = [];
+            foreach ($units as $label => $n) {
+                $maxUnits[$label] = $n + ($out[$label] ?? 0);
+            }
+
+            return [
                 'id' => $r->id,
                 'event_id' => $r->event_id,
                 'event_name' => $r->event?->name ?? 'Deleted event',
                 'item_name' => $r->inventoryItem->name ?? 'Unknown item',
                 'quantity' => $r->quantity,
+                // Condition each returned unit came back in.
+                'units' => $units,
+                'max_units' => $maxUnits,
                 'max_quantity' => $r->quantity + ($stillBorrowed[$r->event_id . '-' . $r->inventory_item_id] ?? 0),
                 'released_by' => $r->released_by,
                 'released_at' => $r->created_at,
                 'evidence_photo_url' => $r->evidence_photo_url,
                 'evidence_photo_urls' => $r->evidence_photo_urls,
-            ]);
+            ];
+        });
 
         return response()->json([
             'data' => $releases,
@@ -1104,27 +1337,29 @@ class EventController extends Controller
         // been lent out again (to this event or another one) in the
         // meantime, there may not be enough of it sitting in Inventory
         // to take back -- undoing anyway would push the count negative.
-        if ($item && $item->quantity < $requestedQty) {
+        // The units taken back are the ones this release returned (same
+        // conditions), so each has to still be in stock.
+        $mainCondition = $item->condition ?? 'Good';
+        $undoUnits = $release->takeOutUnits($requestedQty, $mainCondition);
+
+        if ($item && ($item->quantity < $requestedQty || $item->shortfall($undoUnits))) {
             return response()->json([
                 'message' => "Can't undo -- only {$item->quantity} of this item is left in Inventory now. Some of it may have already been lent out again since it was released.",
             ], 422);
         }
 
         $borrow = $event->borrowedItems()->where('inventory_item_id', $release->inventory_item_id)->first();
-        if ($borrow) {
-            $borrow->quantity += $requestedQty;
-            $borrow->save();
-        } else {
-            $borrow = $event->borrowedItems()->create([
+        if (!$borrow) {
+            $borrow = new EventInventoryItem([
+                'event_id' => $event->id,
                 'inventory_item_id' => $release->inventory_item_id,
-                'quantity' => $requestedQty,
+                'quantity' => 0,
             ]);
         }
+        $borrow->addUnits($undoUnits, $mainCondition);
+        $borrow->save();
 
-        if ($item) {
-            $item->quantity -= $requestedQty;
-            $item->save();
-        }
+        $item?->takeUnits($undoUnits);
 
         $undoPhotoPath = null;
         if ($request->hasFile('photo')) {
@@ -1143,7 +1378,7 @@ class EventController extends Controller
         // undone; once nothing is left of it, mark it fully undone so it
         // drops off the Recently Released list. A partial undo leaves the
         // record showing the remaining (still genuinely released) amount.
-        $release->quantity -= $requestedQty;
+        // (takeOutUnits above already took $requestedQty off this record.)
         if ($release->quantity <= 0) {
             $release->quantity = 0;
             $release->undone_at = now();
@@ -1202,6 +1437,8 @@ class EventController extends Controller
             'photos.*' => 'image|max:5120',
             'keep_photos' => 'nullable|array',
             'keep_photos.*' => 'integer|min:0',
+            'conditions' => 'nullable|array',
+            'conditions.*' => 'nullable|integer|min:0',
         ]);
 
         // Validate the photo list up front (nothing is uploaded or changed
@@ -1213,47 +1450,94 @@ class EventController extends Controller
             }
         }
 
-        $newQty = $request->filled('quantity') ? (int) $request->quantity : $release->quantity;
+        $item = InventoryItem::withTrashed()->find($release->inventory_item_id);
+        $mainCondition = $item->condition ?? 'Good';
+
+        $current = $release->resolvedUnits($mainCondition);
+        $stillOut = $borrow ? $borrow->resolvedUnits($mainCondition) : array_fill_keys(array_keys($current), 0);
+
+        // Staff may pick exactly how many units came back in each condition
+        // (conditions[New|Good|Fair|Poor]); otherwise only the total changes.
+        $target = null;
+        if ($request->has('conditions')) {
+            $target = [];
+            foreach (array_keys($current) as $label) {
+                $target[$label] = max(0, (int) ($request->input("conditions.{$label}") ?? 0));
+                if ($target[$label] > $current[$label] + ($stillOut[$label] ?? 0)) {
+                    return response()->json([
+                        'message' => "Only " . ($current[$label] + ($stillOut[$label] ?? 0)) . " {$label} unit(s) of this item belong to this return.",
+                    ], 422);
+                }
+            }
+            if (array_sum($target) < 1) {
+                return response()->json(['message' => 'A return needs at least one unit.'], 422);
+            }
+            $newQty = array_sum($target);
+        } else {
+            $newQty = $request->filled('quantity') ? (int) $request->quantity : $release->quantity;
+        }
         $delta = $newQty - $release->quantity; // < 0: send back to pending, > 0: release more
 
-        $item = InventoryItem::withTrashed()->find($release->inventory_item_id);
+        if ($target !== null) {
+            $backUnits = [];
+            $moreUnits = [];
+            foreach ($target as $label => $n) {
+                $backUnits[$label] = max(0, $current[$label] - $n);
+                $moreUnits[$label] = max(0, $n - $current[$label]);
+            }
+        } else {
+            $backUnits = $delta < 0 ? $release->takeOutUnits(-$delta, $mainCondition) : [];
+            $moreUnits = null;
+        }
 
-        if ($delta < 0) {
-            $back = -$delta;
-
-            if ($item && $item->quantity < $back) {
+        $backTotal = array_sum($backUnits);
+        if ($backTotal > 0) {
+            if ($item && ($item->quantity < $backTotal || $item->shortfall($backUnits))) {
                 return response()->json([
-                    'message' => "Can't lower this -- only {$item->quantity} of this item is left in Inventory now. Some of it may have already been lent out again since it was released.",
+                    'message' => "Can't lower this -- not enough of those units are left in Inventory now. Some of it may have already been lent out again since it was released.",
                 ], 422);
             }
 
-            if ($borrow) {
-                $borrow->quantity += $back;
-                $borrow->save();
-            } else {
-                $event->borrowedItems()->create([
+            if (!$borrow) {
+                $borrow = new EventInventoryItem([
+                    'event_id' => $event->id,
                     'inventory_item_id' => $release->inventory_item_id,
-                    'quantity' => $back,
+                    'quantity' => 0,
                 ]);
             }
+            $borrow->addUnits($backUnits, $mainCondition);
+            $borrow->save();
 
-            if ($item) {
-                $item->quantity -= $back;
-                $item->save();
+            $item?->takeUnits($backUnits);
+        }
+
+        if ($target !== null) {
+            if (array_sum($moreUnits) > 0) {
+                // Exactly these units come out of what is still borrowed.
+                $left = $borrow->resolvedUnits($mainCondition);
+                foreach ($moreUnits as $label => $n) {
+                    $left[$label] = max(0, ($left[$label] ?? 0) - $n);
+                }
+                $borrow->setUnits($left);
+                if ($borrow->quantity <= 0) {
+                    $borrow->delete();
+                } else {
+                    $borrow->save();
+                }
+                $item?->giveUnits($moreUnits);
             }
+            $release->setUnits($target);
         } elseif ($delta > 0) {
             // $borrow is guaranteed by the max rule above ($delta <= its quantity).
-            if ($delta >= $borrow->quantity) {
+            $moreUnits = $borrow->takeOutUnits($delta, $mainCondition);
+            if ($borrow->quantity <= 0) {
                 $borrow->delete();
             } else {
-                $borrow->quantity -= $delta;
                 $borrow->save();
             }
 
-            if ($item) {
-                $item->quantity += $delta;
-                $item->save();
-            }
+            $item?->giveUnits($moreUnits);
+            $release->addUnits($moreUnits, $mainCondition);
         }
 
         if ($request->boolean('photos_sync')) {

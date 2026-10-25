@@ -19,6 +19,9 @@ export const STAFF_ROUTES = [
   { key: "archive", path: "archive" },
   { key: "profiling", path: "age-status-categories" },
   { key: "integrations", path: "integrations" },
+  { key: "feedbackrules", path: "feedback-rules" },
+  { key: "myaccount", path: "my-account" },
+  { key: "staffaccounts", path: "staff-accounts" },
 ] as const;
 
 export const STAFF_BASE = "/admin";
