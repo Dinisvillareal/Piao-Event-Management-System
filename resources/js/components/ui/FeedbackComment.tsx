@@ -557,13 +557,22 @@ export default function FeedbackComment({
               </div>
             )}
 
-            {/* Staff can edit their own reply */}
+            {/* Staff actions (Like indicator + Edit button) */}
             {role === "staff" && (
-              <div className="mt-1 flex gap-3 px-2 text-xs text-white/50">
+              <div className="mt-1 flex items-center gap-3 px-2 text-xs">
+                {/* Show the heart if the member liked it */}
+                {replyLiked && (
+                  <span className="flex items-center gap-1 text-red-400 font-medium">
+                    <Heart className="h-3.5 w-3.5 fill-current" />
+                    {t("Loved") || "Liked by member"}
+                  </span>
+                )}
+
+                {/* The Edit Reply button */}
                 <button
                   type="button"
                   onClick={startReply}
-                  className="hover:text-white"
+                  className="text-white/50 hover:text-white transition"
                 >
                   {t("Edit Reply") || "Edit reply"}
                 </button>

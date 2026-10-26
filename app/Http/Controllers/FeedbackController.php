@@ -489,7 +489,8 @@ class FeedbackController extends Controller
             ($kind === 'absence' ? 'reason' : 'feedback') . '.';
 
         $exists = Notification::where('user_id', $target->staff_replied_by)
-            ->where('type', 'feedback_received')
+            # ->where('type', 'feedback_received')
+            ->where('type', 'reply_liked')
             ->where('event_id', $target->event_id)
             ->where('title', $title)
             ->where('message', $message)
@@ -502,7 +503,8 @@ class FeedbackController extends Controller
         Notification::insert([[
             'user_id'    => $target->staff_replied_by,
             'event_id'   => $target->event_id,
-            'type'       => 'feedback_received',
+            # 'type'       => 'feedback_received',
+            'type'       => 'reply_liked',
             'title'      => $title,
             'message'    => $message,
             'read'       => false,

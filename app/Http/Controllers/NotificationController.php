@@ -221,7 +221,8 @@ class NotificationController extends Controller
 
     private function alertRow(Notification $n): array
     {
-        $replyLike = str_contains((string) $n->title, 'liked your reply on their ');
+        # $replyLike = str_contains((string) $n->title, 'liked your reply on their ');
+        $replyLike = str_contains((string) $n->title, 'liked your reply') || str_contains((string) $n->message, 'liked your reply on their ');
         preg_match('/(\d)\/5/', $replyLike ? '' : (string) $n->message, $m);
         $lines = preg_split('/\r?\n/', (string) $n->message, 2);
         $isAbsence = str_ends_with((string) $n->title, 'for not attending') || str_ends_with((string) $n->title, 'their response');
@@ -255,7 +256,8 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $base = Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT);
+        # $base = Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT);
+        $base = Notification::where('user_id', Auth::id())->whereIn('type', [self::STAFF_ALERT, 'reply_liked']);
 
         $items = (clone $base)->with('event:id,name')->orderByDesc('id')->limit(30)->get();
         $afterId = (int) $request->query('after_id', 0);
@@ -329,7 +331,11 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT)->where('id', $id)->update(['read' => true]);
+        # Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT)->where('id', $id)->update(['read' => true]);
+        Notification::where('user_id', Auth::id())
+        ->whereIn('type', [self::STAFF_ALERT, 'reply_liked'])
+        ->where('id', $id)
+        ->update(['read' => true]);
 
         return response()->json(['message' => 'Marked as read']);
     }
@@ -340,7 +346,11 @@ class NotificationController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT)->where('read', false)->update(['read' => true]);
+        # Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT)->where('read', false)->update(['read' => true]);
+        Notification::where('user_id', Auth::id())
+        ->whereIn('type', [self::STAFF_ALERT, 'reply_liked'])
+        ->where('read', false)
+        ->update(['read' => true]);
 
         return response()->json(['message' => 'All marked as read']);
     }
