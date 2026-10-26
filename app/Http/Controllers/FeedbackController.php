@@ -15,38 +15,24 @@ use Illuminate\Support\Carbon;
 
 class FeedbackController extends Controller
 {
-    // ==================================================================
-    // WINDOW HELPERS
-    // ==================================================================
+    // ------------------------------------------------------------------
+    // Window helpers
+    // ------------------------------------------------------------------
 
-    /**
-     * True once a resident's attendance record can be reviewed
-     * (signed out AND the event has ended, or status explicitly Complete).
-     */
     private function attendanceIsReviewable(EventAttendance $attendance): bool
     {
         if ($attendance->status === 'Complete') {
             return true;
         }
-
         $event = $attendance->event;
         return $event && $event->event_end && now()->greaterThan($event->event_end);
     }
 
-    /**
-     * A member "attended" if the entrance recorded a time-in or time-out.
-     */
     private function attendedScope($query)
     {
         return $query->where(fn ($q) => $q->whereNotNull('time_in')->orWhereNotNull('time_out'));
     }
 
-    /**
-     * When the submit window (12h default) closes for a NEW feedback row.
-     * Reads the CURRENT AppSetting because there is no row yet to hold
-     * a frozen value. Once the row exists, feedback.close_after_hours is
-     * authoritative for all future edit/delete checks.
-     */
     private function submitClosesAtFor(Event $event): ?Carbon
     {
         $rules = AppSetting::feedbackRules();
@@ -57,23 +43,9 @@ class FeedbackController extends Controller
         return Carbon::parse($end)->addHours((int) $rules['close_after_hours']);
     }
 
-    /**
-     * Same idea for absence reasons (which do not have per-row frozen
-     * columns today — they follow the current Settings live).
-     */
-    private function absenceClosesAtFor(Event $event): ?Carbon
-    {
-        $rules = AppSetting::feedbackRules();
-        $end = $event->event_end ?? $event->event_start;
-        if (!$end) {
-            return null;
-        }
-        return Carbon::parse($end)->addHours((int) $rules['close_after_hours']);
-    }
-
-    // ==================================================================
-    // SETTINGS (Head Staff only — see route middleware)
-    // ==================================================================
+    // ------------------------------------------------------------------
+    // Settings
+    // ------------------------------------------------------------------
 
     public function rules()
     {
@@ -83,8 +55,8 @@ class FeedbackController extends Controller
     public function updateRules(Request $request)
     {
         $request->validate([
-            'close_after_hours'   => 'required|integer|min:1|max:168',  // 1 hour … 7 days
-            'edit_window_minutes' => 'required|integer|min:1|max:120',  // 1 min … 2 hours
+            'close_after_hours'   => 'required|integer|min:1|max:168',
+            'edit_window_minutes' => 'required|integer|min:1|max:120',
             'password'            => 'required|string',
         ]);
 
@@ -97,32 +69,18 @@ class FeedbackController extends Controller
         );
 
         $this->createLog(
-            'Update Feedback Rules',
-            'Settings',
-            "Feedback rules updated: submit window {$rules['close_after_hours']}h, "
-            . "edit window {$rules['edit_window_minutes']}m"
+            'Update Settings',
+            'Feedback',
+            "Updated feedback rules: submit window {$rules['close_after_hours']}h, edit window {$rules['edit_window_minutes']}m"
         );
 
         return response()->json($rules);
     }
 
-    // ==================================================================
-    // SUBMIT / EDIT (same endpoint) + REMOVE
-    // ==================================================================
+    // ------------------------------------------------------------------
+    // Submit / edit / remove (Resident)
+    // ------------------------------------------------------------------
 
-    /**
-     * Create OR edit feedback — one endpoint for both.
-     *
-     *  • No existing row  → first submit. Requires the submit window
-     *                        (12h default) to still be open. Freezes the
-     *                        CURRENT Settings onto the new row so later
-     *                        Settings changes never affect it.
-     *  • Existing row      → edit. Requires the row's OWN frozen
-     *                        edit_window_minutes to still be open.
-     *                        Never extends the window — a feedback_edits
-     *                        history row is written for the version
-     *                        being replaced.
-     */
     public function store(Request $request)
     {
         $request->validate([
@@ -158,9 +116,7 @@ class FeedbackController extends Controller
             ->where('user_id', $userId)
             ->first();
 
-        // ---------------------------------------------------------------
-        // EDIT PATH — uses the row's FROZEN edit_window_minutes
-        // ---------------------------------------------------------------
+        // ---------- Edit path ----------
         if ($existing && !$existing->trashed()) {
             if ($existing->isEditLocked()) {
                 return response()->json([
@@ -169,7 +125,6 @@ class FeedbackController extends Controller
                 ], 403);
             }
 
-            // Keep the version being replaced, so the edit history shows it.
             FeedbackEdit::create([
                 'kind'       => 'rating',
                 'item_id'    => $existing->id,
@@ -197,9 +152,7 @@ class FeedbackController extends Controller
             ]);
         }
 
-        // ---------------------------------------------------------------
-        // FIRST-SUBMIT PATH — reads CURRENT Settings, then freezes them
-        // ---------------------------------------------------------------
+        // ---------- First-submit path ----------
         $closes = $this->submitClosesAtFor($event);
         if ($closes && now()->greaterThan($closes)) {
             $rules = AppSetting::feedbackRules();
@@ -216,8 +169,6 @@ class FeedbackController extends Controller
             'user_id'             => $userId,
             'rating'              => (int) $request->rating,
             'comment'             => $request->comment,
-            // Freeze the CURRENT rules onto the record. This is what future
-            // edit/remove checks will use — never the live Settings again.
             'close_after_hours'   => (int) $rules['close_after_hours'],
             'edit_window_minutes' => (int) $rules['edit_window_minutes'],
         ]);
@@ -236,21 +187,13 @@ class FeedbackController extends Controller
         ], 201);
     }
 
-    /**
-     * Remove the resident's own feedback (soft delete). Uses the row's
-     * FROZEN edit_window_minutes. Past the window → 403, same rule as
-     * editing. Staff cannot remove someone else's feedback via this route.
-     */
     public function destroy($id)
     {
         $userId = auth()->id();
-
         $feedback = Feedback::with('event')->findOrFail($id);
 
         if ((int) $feedback->user_id !== (int) $userId) {
-            return response()->json([
-                'message' => 'You can only remove your own feedback.',
-            ], 403);
+            return response()->json(['message' => 'You can only remove your own feedback.'], 403);
         }
 
         if ($feedback->isEditLocked()) {
@@ -260,7 +203,6 @@ class FeedbackController extends Controller
             ], 403);
         }
 
-        // Keep the version being removed in the history, exactly like an edit.
         FeedbackEdit::create([
             'kind'       => 'rating',
             'item_id'    => $feedback->id,
@@ -279,10 +221,6 @@ class FeedbackController extends Controller
         return response()->json(['message' => 'Feedback removed.']);
     }
 
-    /**
-     * Shared JSON shape returned by store()/mine() so the frontend always
-     * receives the same fields (edit_seconds_left, is_locked, ...).
-     */
     private function shapeRow(Feedback $f): array
     {
         return array_merge($f->toArray(), [
@@ -293,9 +231,9 @@ class FeedbackController extends Controller
         ]);
     }
 
-    // ==================================================================
-    // MEMBER READS
-    // ==================================================================
+    // ------------------------------------------------------------------
+    // Member reads
+    // ------------------------------------------------------------------
 
     public function mine()
     {
@@ -336,7 +274,6 @@ class FeedbackController extends Controller
             })
             ->values();
 
-        // withTrashed() so a removed feedback doesn't pop back up as "pending".
         $rated = Feedback::withTrashed()->where('user_id', $userId)->pluck('event_id');
         $pending = $attended->reject(fn ($event) => $rated->contains($event->id))->values();
 
@@ -358,9 +295,9 @@ class FeedbackController extends Controller
         );
     }
 
-    // ==================================================================
-    // ABSENCE REASONS
-    // ==================================================================
+    // ------------------------------------------------------------------
+    // Absence reasons
+    // ------------------------------------------------------------------
 
     private function eventIsOver(Event $event): bool
     {
@@ -395,8 +332,6 @@ class FeedbackController extends Controller
         $rules = AppSetting::feedbackRules();
 
         if ($existing) {
-            // Same 20-minute rule applied live (absence reasons don't have
-            // frozen columns; they follow current Settings).
             $locked = $existing->created_at->copy()->addMinutes((int) $rules['edit_window_minutes']);
             if (now()->greaterThan($locked)) {
                 return response()->json([
@@ -404,7 +339,9 @@ class FeedbackController extends Controller
                 ], 403);
             }
         } else {
-            $closes = $this->absenceClosesAtFor($event);
+            $closes = $event->event_end
+                ? Carbon::parse($event->event_end)->addHours((int) $rules['close_after_hours'])
+                : null;
             if ($closes && now()->greaterThan($closes)) {
                 return response()->json([
                     'message' => "This closed {$rules['close_after_hours']} hour(s) after the event ended.",
@@ -464,9 +401,9 @@ class FeedbackController extends Controller
         );
     }
 
-    // ==================================================================
-    // STAFF RESPONSES (heart / reply / member like-reply / history)
-    // ==================================================================
+    // ------------------------------------------------------------------
+    // Staff responses (heart / reply / member like-reply / history)
+    // ------------------------------------------------------------------
 
     private function findResponseTarget(string $kind, $id)
     {
@@ -508,6 +445,11 @@ class FeedbackController extends Controller
             );
         }
 
+        // LOG: Staff likes feedback
+        $eventName = $target->event ? $target->event->name : 'Unknown event';
+        $action = $liking ? 'Like Feedback' : 'Unlike Feedback';
+        $this->createLog($action, 'Feedback', "Staff {$action} for event '{$eventName}'");
+
         return response()->json(['staff_liked_at' => $target->staff_liked_at]);
     }
 
@@ -527,6 +469,11 @@ class FeedbackController extends Controller
             $this->notifyReplyLike($target, $kind);
         }
 
+        // LOG: Resident likes staff reply
+        $eventName = $target->event ? $target->event->name : 'Unknown event';
+        $action = $liking ? 'Like Reply' : 'Unlike Reply';
+        $this->createLog($action, 'Feedback', "Resident {$action} on staff reply for event '{$eventName}'");
+
         return response()->json(['member_liked_reply_at' => $target->member_liked_reply_at]);
     }
 
@@ -538,8 +485,8 @@ class FeedbackController extends Controller
 
         $member = auth()->user();
         $title   = 'Member liked your reply';
-        $message = "{$member->first_name} {$member->last_name} liked your reply on their "
-                 . ($kind === 'absence' ? 'reason' : 'feedback') . '.';
+        $message = "{$member->first_name} {$member->last_name} liked your reply on their " .
+            ($kind === 'absence' ? 'reason' : 'feedback') . '.';
 
         $exists = Notification::where('user_id', $target->staff_replied_by)
             ->where('type', 'feedback_received')
@@ -574,6 +521,9 @@ class FeedbackController extends Controller
 
         $target = $this->findResponseTarget($kind, $id);
         $text   = trim((string) $request->reply);
+        
+        $wasEmpty = $target->staff_reply === null;
+        $isDeleting = $text === '';
 
         $target->staff_reply      = $text !== '' ? $text : null;
         $target->staff_replied_at = $text !== '' ? now() : null;
@@ -588,6 +538,16 @@ class FeedbackController extends Controller
             );
         }
 
+        // LOG: Staff reply actions
+        $eventName = $target->event ? $target->event->name : 'Unknown event';
+        if ($isDeleting) {
+            $this->createLog('Delete Reply', 'Feedback', "Staff removed their reply on feedback for event '{$eventName}'");
+        } elseif ($wasEmpty) {
+            $this->createLog('Reply', 'Feedback', "Staff replied to feedback for event '{$eventName}'");
+        } else {
+            $this->createLog('Update Reply', 'Feedback', "Staff edited their reply on feedback for event '{$eventName}'");
+        }
+
         $target->load('repliedBy:id,first_name,last_name');
 
         return response()->json([
@@ -599,9 +559,7 @@ class FeedbackController extends Controller
 
     public function history(string $kind, $id)
     {
-        $row = $kind === 'absence'
-            ? AbsenceReason::findOrFail($id)
-            : Feedback::withTrashed()->findOrFail($id);
+        $row = $kind === 'absence' ? AbsenceReason::findOrFail($id) : Feedback::withTrashed()->findOrFail($id);
 
         if (!$this->isStaff() && (int) $row->user_id !== (int) auth()->id()) {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -616,33 +574,26 @@ class FeedbackController extends Controller
         ];
 
         $versions = collect([$shape($row, $row->updated_at, true)]);
-        FeedbackEdit::where('kind', $kind)
-            ->where('item_id', $row->id)
-            ->orderByDesc('id')
-            ->get()
+        FeedbackEdit::where('kind', $kind)->where('item_id', $row->id)->orderByDesc('id')->get()
             ->each(fn ($e) => $versions->push($shape($e, $e->written_at ?? $e->created_at, false)));
 
         return response()->json($versions->values());
     }
 
-    // ==================================================================
-    // STAFF NOTIFICATIONS (never block the member's submission)
-    // ==================================================================
+    // ------------------------------------------------------------------
+    // Staff notifications
+    // ------------------------------------------------------------------
 
     private function notifyStaff(Feedback $feedback, $event, $member): void
     {
         try {
-            $staffIds = User::where('role', 'Staff')
-                ->where('id', '!=', $member->id)
-                ->pluck('id');
-
+            $staffIds = User::where('role', 'Staff')->where('id', '!=', $member->id)->pluck('id');
             if ($staffIds->isEmpty()) {
                 return;
             }
 
-            $msg = "{$member->first_name} {$member->last_name} rated \"{$event->name}\": "
-                 . "{$feedback->rating}/5"
-                 . ($feedback->comment ? " — {$feedback->comment}" : '');
+            $msg = "{$member->first_name} {$member->last_name} rated \"{$event->name}\": {$feedback->rating}/5" .
+                ($feedback->comment ? " — {$feedback->comment}" : '');
 
             Notification::insert($staffIds->map(fn ($id) => [
                 'user_id'    => $id,
@@ -662,16 +613,12 @@ class FeedbackController extends Controller
     private function notifyStaffAbsence(AbsenceReason $row, Event $event, $member): void
     {
         try {
-            $staffIds = User::where('role', 'Staff')
-                ->where('id', '!=', $member->id)
-                ->pluck('id');
-
+            $staffIds = User::where('role', 'Staff')->where('id', '!=', $member->id)->pluck('id');
             if ($staffIds->isEmpty()) {
                 return;
             }
 
-            $msg = "{$member->first_name} {$member->last_name} reported couldn't attend "
-                 . "\"{$event->name}\": {$row->reason}";
+            $msg = "{$member->first_name} {$member->last_name} reported couldn't attend \"{$event->name}\": {$row->reason}";
 
             Notification::insert($staffIds->map(fn ($id) => [
                 'user_id'    => $id,
