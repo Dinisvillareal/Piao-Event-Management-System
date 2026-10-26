@@ -290,27 +290,60 @@ Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(
     Route::get('/reports/history', [ReportController::class, 'history'])->middleware(EnsureStaff::class);
     Route::post('/reports/history', [ReportController::class, 'recordPrint'])->middleware(EnsureStaff::class);
 
-    /*
+   /*
     |--------------------------------------------------------------------------
     | FEEDBACK (UC-16)
     |--------------------------------------------------------------------------
     */
-    Route::post('/feedback', [FeedbackController::class, 'store']);
-    Route::get('/feedback/pending', [FeedbackController::class, 'pending']);
-    Route::get('/feedback/mine', [FeedbackController::class, 'mine']);
-    Route::get('/feedback/event/{eventId}', [FeedbackController::class, 'forEvent']);
-    // Feedback rules: everyone reads them, only Head Staff changes them.
-    Route::get('/settings/feedback-rules', [FeedbackController::class, 'rules']);
-    Route::put('/settings/feedback-rules', [FeedbackController::class, 'updateRules'])->middleware([EnsureHeadStaff::class, 'throttle:sensitive']);
-    Route::get('/feedback/{kind}/{id}/history', [FeedbackController::class, 'history'])->whereIn('kind', ['rating', 'absence']);
-    // Non-attendance reasons + staff heart/reply (UC-16 alternate flow)
-    Route::post('/feedback/absence', [FeedbackController::class, 'storeAbsence'])->middleware('throttle:30,1');
-    Route::get('/feedback/absence/mine', [FeedbackController::class, 'mineAbsences']);
-    Route::get('/feedback/absence/event/{eventId}', [FeedbackController::class, 'absencesForEvent']);
-    Route::put('/feedback/{kind}/{id}/like', [FeedbackController::class, 'like'])->whereIn('kind', ['rating', 'absence'])->middleware(EnsureStaff::class);
-    Route::put('/feedback/{kind}/{id}/reply-like', [FeedbackController::class, 'likeReply'])->whereIn('kind', ['rating', 'absence'])->middleware('throttle:60,1');
-    Route::put('/feedback/{kind}/{id}/reply', [FeedbackController::class, 'reply'])->whereIn('kind', ['rating', 'absence'])->middleware([EnsureStaff::class, 'throttle:60,1']);
 
+// Submit (first time) OR edit (same handler — the controller decides by
+// whether the resident already has a row for that event). Both paths
+// enforce the 12h submit / 20m edit window from the row's FROZEN values
+// (see FeedbackController::store() and Feedback::isEditLocked()).
+Route::post('/feedback', [FeedbackController::class, 'store']);
+
+// RESTful edit alias — same handler as POST /feedback above. Kept so a
+// PUT /feedback/{id} request from the client doesn't fall through to the
+// SPA catch-all.
+Route::put('/feedback/{id}', [FeedbackController::class, 'store']);
+
+// Remove the resident's own feedback (soft delete + activity log).
+// Returns 403 with code 'edit_window_closed' once the frozen 20m
+// edit window has passed.
+Route::delete('/feedback/{id}', [FeedbackController::class, 'destroy']);
+
+// Member reads
+Route::get('/feedback/pending', [FeedbackController::class, 'pending']);
+Route::get('/feedback/mine', [FeedbackController::class, 'mine']);
+Route::get('/feedback/event/{eventId}', [FeedbackController::class, 'forEvent']);
+
+// Feedback rules: everyone reads them, only Head Staff changes them.
+Route::get('/settings/feedback-rules', [FeedbackController::class, 'rules']);
+Route::put('/settings/feedback-rules', [FeedbackController::class, 'updateRules'])
+    ->middleware([EnsureHeadStaff::class, 'throttle:sensitive']);
+
+// Edit history of one rating / absence reason (staff OR the author).
+Route::get('/feedback/{kind}/{id}/history', [FeedbackController::class, 'history'])
+    ->whereIn('kind', ['rating', 'absence']);
+
+// Non-attendance reasons (same 20-minute rule)
+Route::post('/feedback/absence', [FeedbackController::class, 'storeAbsence'])
+    ->middleware('throttle:30,1');
+Route::get('/feedback/absence/mine', [FeedbackController::class, 'mineAbsences']);
+Route::get('/feedback/absence/event/{eventId}', [FeedbackController::class, 'absencesForEvent']);
+
+// Staff response layer (heart / reply / member like-reply) — does NOT
+// touch the resident's rating/comment; only the reply columns.
+Route::put('/feedback/{kind}/{id}/like', [FeedbackController::class, 'like'])
+    ->whereIn('kind', ['rating', 'absence'])
+    ->middleware(EnsureStaff::class);
+Route::put('/feedback/{kind}/{id}/reply-like', [FeedbackController::class, 'likeReply'])
+    ->whereIn('kind', ['rating', 'absence'])
+    ->middleware('throttle:60,1');
+Route::put('/feedback/{kind}/{id}/reply', [FeedbackController::class, 'reply'])
+    ->whereIn('kind', ['rating', 'absence'])
+    ->middleware([EnsureStaff::class, 'throttle:60,1']);
+    
     /*
     |--------------------------------------------------------------------------
     | BUDGET & EXPENSES (UC-8)
