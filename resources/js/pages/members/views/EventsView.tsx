@@ -1533,13 +1533,24 @@ export default function EventsView({
   };
 
   const canGiveReason = (ev: Event) => {
-    const isPast = new Date(ev.date).getTime() < Date.now();
-    if (!isPast) return false;
+    // Mirror FeedbackController::eventIsOver(): event_end → call_time_end → end-of-day on start.
+    const start = new Date(ev.date);
+    if (isNaN(start.getTime())) return false;
+
+    const end = ev.event_end
+      ? new Date(ev.event_end)
+      : (ev as any).call_time_end
+      ? new Date((ev as any).call_time_end)
+      : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999);
+
+    if (Date.now() <= end.getTime()) return false; // event hasn't ended yet
+
     const attendance = getAttendanceForEvent(ev.id);
     if (attendance && (attendance.status === "complete" || attendance.status === "incomplete")) {
-      return false;
+      return false; // they attended → rate instead
     }
-    return !getAbsenceForEvent(ev.id);
+
+    return !getAbsenceForEvent(ev.id); // not answered yet
   };
 
   const startReview = (eventId: number) => {
@@ -2082,7 +2093,8 @@ export default function EventsView({
                             </div>
                           )}
 
-                          {canGiveReason(e) && (
+                          {/* CHANGED: was `{canGiveReason(e) && (` -- now also renders when an absence entry already exists */}
+                          {(canGiveReason(e) || absence) && (
                             <div className="mt-4 pt-4 border-t border-white/10">
                               {isReasoning ? (
                                 <div>
@@ -2137,30 +2149,38 @@ export default function EventsView({
                                   </div>
                                 </div>
                               ) : absence ? (
-                                <div>
-                                  <FeedbackComment
-                                    entry={absence}
-                                    role="member"
-                                    member={member}
-                                    locked={
-                                      (absence.edit_until !== undefined &&
-                                        absence.edit_until <= nowTick) ||
-                                      (absence.edit_seconds_left !== undefined &&
-                                        absence.edit_seconds_left <= 0)
-                                    }
-                                    onEditStart={() => startReason(e.id)}
-                                    onChange={(patch) => {
-                                      onAbsenceSubmitted?.({
-                                        ...absence,
-                                        ...patch,
-                                      } as AbsenceEntry);
-                                    }}
-                                  />
+                                <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3">
+                                  <p className="text-[11px] font-bold uppercase tracking-wide text-white/40 mb-1">
+                                    Your reason
+                                  </p>
+                                  <p className="text-sm text-white">
+                                    {absence.reason.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                  </p>
+                                  {absence.comment && (
+                                    <p className="mt-1 text-sm text-white/70">"{absence.comment}"</p>
+                                  )}
+
+                                  <div className="mt-3 flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => startReason(e.id)}
+                                      className="inline-flex items-center gap-1.5 rounded-full border border-white/15 text-white/70 text-xs font-semibold px-3 py-1.5 hover:bg-white/10 transition"
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                      Edit
+                                    </button>
+
+                                    {(absence.edits_count ?? 0) > 0 && (
+                                      <span className="text-[11px] text-white/40">
+                                        Edited · {absence.edits_count}×
+                                      </span>
+                                    )}
+                                  </div>
+
                                   {justSubmittedReasonEventId === e.id && (
                                     <p className="mt-2 flex items-center gap-1 text-xs font-medium text-[#7DD8CB]">
                                       <CheckCircle className="h-3.5 w-3.5" />
-                                      {t("reasonSavedConfirmation") ||
-                                        "Thank you for letting us know."}
+                                      {t("reasonSavedConfirmation") || "Thank you for letting us know."}
                                     </p>
                                   )}
                                 </div>

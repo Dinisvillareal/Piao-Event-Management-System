@@ -299,92 +299,160 @@ class FeedbackController extends Controller
     // Absence reasons
     // ------------------------------------------------------------------
 
+    // private function eventIsOver(Event $event): bool
+    // {
+    //     $end = $event->event_end ?? $event->event_start;
+    //     return $end && now()->greaterThan($end);
+    // }
+
     private function eventIsOver(Event $event): bool
     {
-        $end = $event->event_end ?? $event->event_start;
+        $end = $event->event_end
+            ?? $event->call_time_end
+            ?? optional($event->event_start)->copy()->endOfDay();
+
         return $end && now()->greaterThan($end);
     }
 
+    // public function storeAbsence(Request $request)
+    // {
+    //     $request->validate([
+    //         'event_id' => 'required|integer|exists:events,id',
+    //         'reason'   => 'required|string|max:40',
+    //         'comment'  => 'nullable|string|max:1000',
+    //     ]);
+
+    //     $userId = auth()->id();
+    //     $event  = Event::findOrFail($request->event_id);
+
+    //     if (!$this->eventIsOver($event)) {
+    //         return response()->json(['message' => 'You can tell us why you could not attend once the event has ended.'], 403);
+    //     }
+
+    //     $attended = $this->attendedScope(
+    //         EventAttendance::where('event_id', $event->id)->where('user_id', $userId)
+    //     )->exists();
+
+    //     if ($attended) {
+    //         return response()->json(['message' => 'You attended this event, so you can rate it instead.'], 403);
+    //     }
+
+    //     $existing = AbsenceReason::where('event_id', $event->id)->where('user_id', $userId)->first();
+    //     $rules = AppSetting::feedbackRules();
+
+    //     if ($existing) {
+    //         $locked = $existing->created_at->copy()->addMinutes((int) $rules['edit_window_minutes']);
+    //         if (now()->greaterThan($locked)) {
+    //             return response()->json([
+    //                 'message' => "You can only change your answer within {$rules['edit_window_minutes']} minute(s) after sending it.",
+    //             ], 403);
+    //         }
+    //     } else {
+    //         $closes = $event->event_end
+    //             ? Carbon::parse($event->event_end)->addHours((int) $rules['close_after_hours'])
+    //             : null;
+    //         if ($closes && now()->greaterThan($closes)) {
+    //             return response()->json([
+    //                 'message' => "This closed {$rules['close_after_hours']} hour(s) after the event ended.",
+    //             ], 403);
+    //         }
+    //     }
+
+    //     $row = AbsenceReason::updateOrCreate(
+    //         ['event_id' => $event->id, 'user_id' => $userId],
+    //         ['reason' => $request->reason, 'comment' => $request->comment],
+    //     );
+
+    //     $this->createLog(
+    //         $existing ? 'Update' : 'Create',
+    //         'Feedback',
+    //         ($existing ? 'Edited' : 'Submitted') . " non-attendance reason for event '{$event->name}' ({$request->reason})"
+    //     );
+
+    //     $this->notifyStaffAbsence($row, $event, auth()->user());
+
+    //     return response()->json(['message' => 'Thank you for letting us know.', 'absence' => $row], 201);
+    // }
+
     public function storeAbsence(Request $request)
-    {
-        $request->validate([
-            'event_id' => 'required|integer|exists:events,id',
-            'reason'   => 'required|string|max:40',
-            'comment'  => 'nullable|string|max:1000',
-        ]);
+{
+    $userId = auth()->id();
+    $event = Event::findOrFail($request->event_id);
 
-        $userId = auth()->id();
-        $event  = Event::findOrFail($request->event_id);
-
-        if (!$this->eventIsOver($event)) {
-            return response()->json(['message' => 'You can tell us why you could not attend once the event has ended.'], 403);
-        }
-
-        $attended = $this->attendedScope(
-            EventAttendance::where('event_id', $event->id)->where('user_id', $userId)
-        )->exists();
-
-        if ($attended) {
-            return response()->json(['message' => 'You attended this event, so you can rate it instead.'], 403);
-        }
-
-        $existing = AbsenceReason::where('event_id', $event->id)->where('user_id', $userId)->first();
-        $rules = AppSetting::feedbackRules();
-
-        if ($existing) {
-            $locked = $existing->created_at->copy()->addMinutes((int) $rules['edit_window_minutes']);
-            if (now()->greaterThan($locked)) {
-                return response()->json([
-                    'message' => "You can only change your answer within {$rules['edit_window_minutes']} minute(s) after sending it.",
-                ], 403);
-            }
-        } else {
-            $closes = $event->event_end
-                ? Carbon::parse($event->event_end)->addHours((int) $rules['close_after_hours'])
-                : null;
-            if ($closes && now()->greaterThan($closes)) {
-                return response()->json([
-                    'message' => "This closed {$rules['close_after_hours']} hour(s) after the event ended.",
-                ], 403);
-            }
-        }
-
-        $row = AbsenceReason::updateOrCreate(
-            ['event_id' => $event->id, 'user_id' => $userId],
-            ['reason' => $request->reason, 'comment' => $request->comment],
-        );
-
-        $this->createLog(
-            $existing ? 'Update' : 'Create',
-            'Feedback',
-            ($existing ? 'Edited' : 'Submitted') . " non-attendance reason for event '{$event->name}' ({$request->reason})"
-        );
-
-        $this->notifyStaffAbsence($row, $event, auth()->user());
-
-        return response()->json(['message' => 'Thank you for letting us know.', 'absence' => $row], 201);
+    if (!$this->eventIsOver($event)) {
+        return response()->json(['message' => 'You can tell us why you could not attend once the event has ended.'], 403);
     }
+
+    $alreadyAttended = $this->attendedScope(
+        EventAttendance::where('event_id', $event->id)->where('user_id', $userId)
+    )->exists();
+
+    if ($alreadyAttended) {
+        return response()->json(['message' => 'You attended this event, so you can rate it instead.'], 403);
+    }
+
+    $existing = AbsenceReason::where('event_id', $event->id)->where('user_id', $userId)->first();
+
+    // if ($existing && $this->editLocked($existing)) {
+    //     $rules = AppSetting::feedbackRules();
+    //     return response()->json(['message' => "You can only change your answer within {$rules['edit_window_minutes']} minute(s) after sending it."], 403);
+    // }
+
+    $row = AbsenceReason::updateOrCreate(
+        ['event_id' => $event->id, 'user_id' => $userId],
+        ['reason' => $request->reason, 'comment' => $request->comment]
+    );
+
+    if ($existing) {
+        // keep the pre-edit version for the edit history, same as the rating path
+        FeedbackEdit::create([
+            'kind' => 'absence',
+            'item_id' => $row->id,
+            'reason' => $existing->reason,
+            'comment' => $existing->comment,
+            'written_at' => $existing->updated_at ?? $existing->created_at,
+        ]);
+    }
+
+    $this->notifyStaffAbsence($row, $event, auth()->user());
+
+    return response()->json(['message' => 'Thank you for letting us know.', 'absence' => $row], 201);
+}
+
+    // public function mineAbsences()
+    // {
+    //     $rules = AppSetting::feedbackRules();
+
+    //     return response()->json(
+    //         AbsenceReason::withCount('edits')
+    //             ->where('user_id', auth()->id())
+    //             ->get([
+    //                 'id', 'event_id', 'reason', 'comment',
+    //                 'staff_liked_at', 'staff_reply', 'staff_replied_at',
+    //                 'member_liked_reply_at', 'created_at',
+    //             ])
+    //             ->map(fn ($r) => array_merge($r->toArray(), [
+    //                 'edit_seconds_left' => max(0, (int) floor(now()->diffInSeconds(
+    //                     $r->created_at->copy()->addMinutes((int) $rules['edit_window_minutes']), false
+    //                 ))),
+    //             ]))
+    //             ->values()
+    //     );
+    // }
 
     public function mineAbsences()
-    {
-        $rules = AppSetting::feedbackRules();
-
-        return response()->json(
-            AbsenceReason::withCount('edits')
-                ->where('user_id', auth()->id())
-                ->get([
-                    'id', 'event_id', 'reason', 'comment',
-                    'staff_liked_at', 'staff_reply', 'staff_replied_at',
-                    'member_liked_reply_at', 'created_at',
-                ])
-                ->map(fn ($r) => array_merge($r->toArray(), [
-                    'edit_seconds_left' => max(0, (int) floor(now()->diffInSeconds(
-                        $r->created_at->copy()->addMinutes((int) $rules['edit_window_minutes']), false
-                    ))),
-                ]))
-                ->values()
-        );
-    }
+{
+    return response()->json(
+        AbsenceReason::withCount('edits')
+            ->where('user_id', auth()->id())
+            ->get([
+                'id', 'event_id', 'reason', 'comment',
+                'staff_liked_at', 'staff_reply', 'staff_replied_at',
+                'member_liked_reply_at', 'created_at',
+            ])
+            ->values()
+    );
+}
 
     public function absencesForEvent($eventId)
     {
