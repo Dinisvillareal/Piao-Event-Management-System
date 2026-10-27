@@ -1,23 +1,305 @@
+// import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+// import { createPortal } from "react-dom";
+// import { Clock, X } from "lucide-react";
+// import { useLanguage } from "../../i18n/LanguageContext";
+
+// interface TimePickerProps {
+//   /** 24-hour "HH:MM" string, or "" for none selected -- same shape a
+//       native <input type="time"> used. */
+//   value: string;
+//   onChange: (value: string) => void;
+//   placeholder?: string;
+//   clearLabel?: string;
+//   /** Extra classes applied to the trigger button -- pass sizing/height to match whatever it's replacing. */
+//   className?: string;
+//   /** Dark navy styling, matching DatePicker/Calendar -- applies to both
+//       the trigger and the dropdown panel. */
+//   dark?: boolean;
+//   disabled?: boolean;
+//   required?: boolean;
+//   /** Shows the trigger's border in red, matching the app's other field-level validation errors. */
+//   error?: boolean;
+//   title?: string;
+//   align?: "left" | "right";
+// }
+
+// const HOURS_12 = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+// const MINUTES = Array.from({ length: 60 }, (_, i) => i);
+
+// function parse(v: string): { h12: number; m: number; period: "AM" | "PM" } | null {
+//   if (!v) return null;
+//   const [hStr, mStr] = v.split(":");
+//   const h = Number(hStr);
+//   const m = Number(mStr);
+//   if (Number.isNaN(h) || Number.isNaN(m)) return null;
+//   const period: "AM" | "PM" = h >= 12 ? "PM" : "AM";
+//   let h12 = h % 12;
+//   if (h12 === 0) h12 = 12;
+//   return { h12, m, period };
+// }
+
+// function to24(h12: number, m: number, period: "AM" | "PM"): string {
+//   let h = h12 % 12;
+//   if (period === "PM") h += 12;
+//   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+// }
+
+// function formatDisplay(v: string): string | null {
+//   const parsed = parse(v);
+//   if (!parsed) return null;
+//   return `${String(parsed.h12).padStart(2, "0")}:${String(parsed.m).padStart(2, "0")} ${parsed.period.toLowerCase()}`;
+// }
+
+// /**
+//  * Dropdown-triggered time picker, backed by our own hour/minute/AM-PM
+//  * columns instead of the browser's native <input type="time"> -- that
+//  * native picker is rendered outside the DOM as OS chrome and, unlike a
+//  * native <select>'s <option> list, can't be recolored with CSS at all, so
+//  * it always shows up as a plain white popup no matter how dark the rest
+//  * of the page is. Drop-in replacement: give it `value`/`onChange` as a
+//  * 24-hour "HH:MM" string, same shape a native time input used.
+//  */
+// export default function TimePicker({
+//   value,
+//   onChange,
+//   placeholder = "--:-- --",
+//   clearLabel,
+//   className = "",
+//   dark = false,
+//   disabled = false,
+//   required = false,
+//   error = false,
+//   title,
+//   align = "left",
+// }: TimePickerProps) {
+//   const { t } = useLanguage();
+//   const clearText = clearLabel ?? t("clearLabel");
+//   const [open, setOpen] = useState(false);
+//   const wrapperRef = useRef<HTMLDivElement>(null);
+//   const panelRef = useRef<HTMLDivElement>(null);
+//   const hourListRef = useRef<HTMLDivElement>(null);
+//   const minuteListRef = useRef<HTMLDivElement>(null);
+//   const periodListRef = useRef<HTMLDivElement>(null);
+//   // Portaled to document.body and positioned with `position: fixed` from
+//   // the trigger's own getBoundingClientRect (same fix as FilterDropdown and
+//   // DatePicker), instead of a plain `absolute` panel -- a plain absolute
+//   // panel gets silently clipped by any scrollable/overflow-y-auto ancestor,
+//   // exactly what a tall Add/Edit form modal is.
+//   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
+
+//   const parsed = parse(value);
+
+//   useLayoutEffect(() => {
+//     if (!open || !wrapperRef.current) return;
+
+//     const recompute = () => {
+//       if (!wrapperRef.current) return;
+//       const rect = wrapperRef.current.getBoundingClientRect();
+//       const margin = 8;
+//       const panelWidth = Math.min(window.innerWidth * 0.92, 260);
+//       const panelHeightEstimate = 260;
+
+//       let left = align === "right" ? rect.right - panelWidth : rect.left;
+//       if (left + panelWidth + margin > window.innerWidth) {
+//         left = window.innerWidth - margin - panelWidth;
+//       }
+//       if (left < margin) left = margin;
+
+//       const openUp = rect.bottom + panelHeightEstimate > window.innerHeight && rect.top > panelHeightEstimate;
+//       const top = openUp ? rect.top - panelHeightEstimate - 6 : rect.bottom + 6;
+
+//       setPanelPos({ top, left });
+//     };
+
+//     recompute();
+//     window.addEventListener("resize", recompute);
+//     window.addEventListener("scroll", recompute, true);
+//     return () => {
+//       window.removeEventListener("resize", recompute);
+//       window.removeEventListener("scroll", recompute, true);
+//     };
+//   }, [open, align]);
+
+//   useEffect(() => {
+//     if (!open) return;
+//     const handleClick = (e: MouseEvent) => {
+//       const target = e.target as Node;
+//       if (
+//         wrapperRef.current && !wrapperRef.current.contains(target) &&
+//         panelRef.current && !panelRef.current.contains(target)
+//       ) {
+//         setOpen(false);
+//       }
+//     };
+//     const handleEsc = (e: KeyboardEvent) => {
+//       if (e.key === "Escape") setOpen(false);
+//     };
+//     document.addEventListener("mousedown", handleClick);
+//     document.addEventListener("keydown", handleEsc);
+//     return () => {
+//       document.removeEventListener("mousedown", handleClick);
+//       document.removeEventListener("keydown", handleEsc);
+//     };
+//   }, [open]);
+
+//   // Scroll each column's current value into view when the panel opens,
+//   // instead of always starting at the top of a 60-row minute list.
+//   useEffect(() => {
+//     if (!open) return;
+//     const scrollIntoView = (el: HTMLDivElement | null) => {
+//       if (!el) return;
+//       const selected = el.querySelector('[data-selected="true"]') as HTMLElement | null;
+//       selected?.scrollIntoView({ block: "center" });
+//     };
+//     // Run after the panel has painted so scrollHeight is accurate.
+//     const id = requestAnimationFrame(() => {
+//       scrollIntoView(hourListRef.current);
+//       scrollIntoView(minuteListRef.current);
+//       scrollIntoView(periodListRef.current);
+//     });
+//     return () => cancelAnimationFrame(id);
+//   }, [open]);
+
+//   const setPart = (part: Partial<{ h12: number; m: number; period: "AM" | "PM" }>) => {
+//     const base = parsed ?? { h12: 12, m: 0, period: "AM" as const };
+//     const next = { ...base, ...part };
+//     onChange(to24(next.h12, next.m, next.period));
+//   };
+
+//   const columnButtonClasses = (active: boolean) =>
+//     [
+//       "w-full h-9 shrink-0 rounded-full text-sm font-medium transition",
+//       active
+//         ? dark
+//           ? "!bg-[#4FBEB0] !text-[#08130F] font-bold shadow-sm"
+//           : "!bg-[#005f63] !text-white font-bold shadow-sm"
+//         : dark
+//           ? "text-white hover:bg-white/10 cursor-pointer"
+//           : "text-gray-700 hover:bg-teal-50 cursor-pointer",
+//     ].join(" ");
+
+//   return (
+//     <div className="relative" ref={wrapperRef}>
+//       <button
+//         type="button"
+//         disabled={disabled}
+//         title={title}
+//         onClick={() => !disabled && setOpen((v) => !v)}
+//         className={`w-full inline-flex items-center gap-2 rounded-full border text-left disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none transition ${
+//           dark
+//             ? `text-base bg-white/10 focus:ring-2 focus:ring-[#4FBEB0]/40 ${error ? "border-red-500" : "border-white/25"} ${open ? "ring-2 ring-[#4FBEB0]/40 border-[#4FBEB0]/70" : ""}`
+//             : `text-sm bg-white focus:ring-2 focus:ring-[#005f63]/30 ${error ? "border-red-400" : "border-gray-200"} ${open ? "ring-2 ring-[#005f63]/30 border-[#005f63]/40" : ""}`
+//         } ${className}`}
+//       >
+//         <span className={`flex-1 truncate ${value ? (dark ? "text-white" : "text-gray-800") : (dark ? "text-white/50" : "text-gray-400")}`}>
+//           {formatDisplay(value) ?? placeholder}
+//         </span>
+//         {required && !value && <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" aria-hidden />}
+//         <Clock className={`shrink-0 ${dark ? "h-5 w-5 text-white/40" : "h-4 w-4 text-gray-400"}`} />
+//       </button>
+
+//       {open && panelPos &&
+//         createPortal(
+//         <div
+//           ref={panelRef}
+//           style={{ position: "fixed", top: panelPos.top, left: panelPos.left }}
+//           className={`z-[9999] w-[min(92vw,260px)] rounded-[24px] border shadow-xl p-4 ${
+//             dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#ddd5ca] bg-white"
+//           }`}
+//         >
+//           <div className="grid grid-cols-3 gap-2">
+//             <div>
+//               <p className={`text-center text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>{t("uiHour")}</p>
+//               <div ref={hourListRef} className="max-h-40 overflow-y-auto space-y-0.5 pr-0.5">
+//                 {HOURS_12.map((h) => {
+//                   const active = !!parsed && parsed.h12 === h;
+//                   return (
+//                     <button
+//                       key={h}
+//                       type="button"
+//                       data-selected={active}
+//                       onClick={() => setPart({ h12: h })}
+//                       className={columnButtonClasses(active)}
+//                     >
+//                       {String(h).padStart(2, "0")}
+//                     </button>
+//                   );
+//                 })}
+//               </div>
+//             </div>
+//             <div>
+//               <p className={`text-center text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>{t("uiMin")}</p>
+//               <div ref={minuteListRef} className="max-h-40 overflow-y-auto space-y-0.5 pr-0.5">
+//                 {MINUTES.map((m) => {
+//                   const active = !!parsed && parsed.m === m;
+//                   return (
+//                     <button
+//                       key={m}
+//                       type="button"
+//                       data-selected={active}
+//                       onClick={() => setPart({ m })}
+//                       className={columnButtonClasses(active)}
+//                     >
+//                       {String(m).padStart(2, "0")}
+//                     </button>
+//                   );
+//                 })}
+//               </div>
+//             </div>
+//             <div>
+//               <p className={`text-center text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>&nbsp;</p>
+//               <div ref={periodListRef} className="space-y-0.5 pr-0.5">
+//                 {(["AM", "PM"] as const).map((p) => {
+//                   const active = !!parsed && parsed.period === p;
+//                   return (
+//                     <button
+//                       key={p}
+//                       type="button"
+//                       data-selected={active}
+//                       onClick={() => setPart({ period: p })}
+//                       className={columnButtonClasses(active)}
+//                     >
+//                       {p}
+//                     </button>
+//                   );
+//                 })}
+//               </div>
+//             </div>
+//           </div>
+
+//           <div className={`flex items-center justify-end mt-3 pt-3 border-t ${dark ? "border-white/10" : "border-gray-100"}`}>
+//             <button
+//               type="button"
+//               onClick={() => {
+//                 onChange("");
+//                 setOpen(false);
+//               }}
+//               className={`inline-flex items-center gap-1 text-xs font-medium transition ${dark ? "text-white/50 hover:text-red-400" : "text-gray-500 hover:text-red-500"}`}
+//             >
+//               <X className="h-3.5 w-3.5" /> {clearText}
+//             </button>
+//           </div>
+//         </div>,
+//         document.body
+//         )}
+//     </div>
+//   );
+// }
+
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Clock, X } from "lucide-react";
 import { useLanguage } from "../../i18n/LanguageContext";
 
 interface TimePickerProps {
-  /** 24-hour "HH:MM" string, or "" for none selected -- same shape a
-      native <input type="time"> used. */
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   clearLabel?: string;
-  /** Extra classes applied to the trigger button -- pass sizing/height to match whatever it's replacing. */
   className?: string;
-  /** Dark navy styling, matching DatePicker/Calendar -- applies to both
-      the trigger and the dropdown panel. */
   dark?: boolean;
   disabled?: boolean;
   required?: boolean;
-  /** Shows the trigger's border in red, matching the app's other field-level validation errors. */
   error?: boolean;
   title?: string;
   align?: "left" | "right";
@@ -50,15 +332,6 @@ function formatDisplay(v: string): string | null {
   return `${String(parsed.h12).padStart(2, "0")}:${String(parsed.m).padStart(2, "0")} ${parsed.period.toLowerCase()}`;
 }
 
-/**
- * Dropdown-triggered time picker, backed by our own hour/minute/AM-PM
- * columns instead of the browser's native <input type="time"> -- that
- * native picker is rendered outside the DOM as OS chrome and, unlike a
- * native <select>'s <option> list, can't be recolored with CSS at all, so
- * it always shows up as a plain white popup no matter how dark the rest
- * of the page is. Drop-in replacement: give it `value`/`onChange` as a
- * 24-hour "HH:MM" string, same shape a native time input used.
- */
 export default function TimePicker({
   value,
   onChange,
@@ -75,19 +348,31 @@ export default function TimePicker({
   const { t } = useLanguage();
   const clearText = clearLabel ?? t("clearLabel");
   const [open, setOpen] = useState(false);
+
+  // --- LOCAL DRAFT STATE ---
+  // While the panel is open, we hold a working copy of the time here so the
+  // user can pick hour → minute → period (or any order) without each partial
+  // click immediately firing onChange and getting rejected by the parent.
+  // onChange only fires when the user commits (closes the panel with a
+  // complete selection, or picks a fresh hour while period/minute are set).
+  const [draft, setDraft] = useState<{ h12: number; m: number; period: "AM" | "PM" } | null>(null);
+
   const wrapperRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const hourListRef = useRef<HTMLDivElement>(null);
   const minuteListRef = useRef<HTMLDivElement>(null);
   const periodListRef = useRef<HTMLDivElement>(null);
-  // Portaled to document.body and positioned with `position: fixed` from
-  // the trigger's own getBoundingClientRect (same fix as FilterDropdown and
-  // DatePicker), instead of a plain `absolute` panel -- a plain absolute
-  // panel gets silently clipped by any scrollable/overflow-y-auto ancestor,
-  // exactly what a tall Add/Edit form modal is.
   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
 
-  const parsed = parse(value);
+  // The "display" state = draft if we're editing, else the committed value.
+  const parsed = open ? draft : parse(value);
+
+  // Seed the draft from the current value when the panel opens.
+  useEffect(() => {
+    if (open) {
+      setDraft(parse(value) ?? { h12: 12, m: 0, period: "AM" });
+    }
+  }, [open, value]);
 
   useLayoutEffect(() => {
     if (!open || !wrapperRef.current) return;
@@ -120,6 +405,18 @@ export default function TimePicker({
     };
   }, [open, align]);
 
+  // --- CLOSE-AND-COMMIT ---
+  // Any way the panel closes (backdrop click, Escape, hour/min/period click
+  // followed by outside click) sends the CURRENT draft to the parent. That
+  // way partial picks never reach EventsView, so its validation can't reject
+  // mid-selection.
+  const closeAndCommit = () => {
+    if (draft) {
+      onChange(to24(draft.h12, draft.m, draft.period));
+    }
+    setOpen(false);
+  };
+
   useEffect(() => {
     if (!open) return;
     const handleClick = (e: MouseEvent) => {
@@ -128,11 +425,11 @@ export default function TimePicker({
         wrapperRef.current && !wrapperRef.current.contains(target) &&
         panelRef.current && !panelRef.current.contains(target)
       ) {
-        setOpen(false);
+        closeAndCommit();
       }
     };
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") closeAndCommit();
     };
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleEsc);
@@ -140,7 +437,7 @@ export default function TimePicker({
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleEsc);
     };
-  }, [open]);
+  }, [open, draft]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll each column's current value into view when the panel opens,
   // instead of always starting at the top of a 60-row minute list.
@@ -151,7 +448,6 @@ export default function TimePicker({
       const selected = el.querySelector('[data-selected="true"]') as HTMLElement | null;
       selected?.scrollIntoView({ block: "center" });
     };
-    // Run after the panel has painted so scrollHeight is accurate.
     const id = requestAnimationFrame(() => {
       scrollIntoView(hourListRef.current);
       scrollIntoView(minuteListRef.current);
@@ -160,10 +456,13 @@ export default function TimePicker({
     return () => cancelAnimationFrame(id);
   }, [open]);
 
+  // --- LOCAL setPart ---
+  // Only touches the draft; does NOT fire onChange. The commit happens on
+  // close (see closeAndCommit above). This is what makes picking hour then
+  // period work correctly.
   const setPart = (part: Partial<{ h12: number; m: number; period: "AM" | "PM" }>) => {
-    const base = parsed ?? { h12: 12, m: 0, period: "AM" as const };
-    const next = { ...base, ...part };
-    onChange(to24(next.h12, next.m, next.period));
+    const base = draft ?? parse(value) ?? { h12: 12, m: 0, period: "AM" as const };
+    setDraft({ ...base, ...part });
   };
 
   const columnButtonClasses = (active: boolean) =>
@@ -192,7 +491,10 @@ export default function TimePicker({
         } ${className}`}
       >
         <span className={`flex-1 truncate ${value ? (dark ? "text-white" : "text-gray-800") : (dark ? "text-white/50" : "text-gray-400")}`}>
-          {formatDisplay(value) ?? placeholder}
+          {/* Show the draft while editing so the picked hour/period appear even before commit */}
+          {open && draft
+            ? formatDisplay(to24(draft.h12, draft.m, draft.period)) ?? placeholder
+            : formatDisplay(value) ?? placeholder}
         </span>
         {required && !value && <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" aria-hidden />}
         <Clock className={`shrink-0 ${dark ? "h-5 w-5 text-white/40" : "h-4 w-4 text-gray-400"}`} />
@@ -267,7 +569,7 @@ export default function TimePicker({
             </div>
           </div>
 
-          <div className={`flex items-center justify-end mt-3 pt-3 border-t ${dark ? "border-white/10" : "border-gray-100"}`}>
+          <div className={`flex items-center justify-between mt-3 pt-3 border-t ${dark ? "border-white/10" : "border-gray-100"}`}>
             <button
               type="button"
               onClick={() => {
@@ -277,6 +579,15 @@ export default function TimePicker({
               className={`inline-flex items-center gap-1 text-xs font-medium transition ${dark ? "text-white/50 hover:text-red-400" : "text-gray-500 hover:text-red-500"}`}
             >
               <X className="h-3.5 w-3.5" /> {clearText}
+            </button>
+            <button
+              type="button"
+              onClick={closeAndCommit}
+              className={`inline-flex items-center gap-1 text-xs font-bold transition ${
+                dark ? "text-[#4FBEB0] hover:text-white" : "text-[#005f63] hover:text-black"
+              }`}
+            >
+              {t("doneLabel") || "Done"}
             </button>
           </div>
         </div>,

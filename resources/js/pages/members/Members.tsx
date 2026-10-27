@@ -461,7 +461,7 @@ const PAGE_HEADINGS: Record<string, [string, string]> = {
 //   );
 // }
 
-
+//LAST WORKING IMPLEMENTATION
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "../../components/layout/Sidebar";
 import TopHeader from "../../components/layout/TopHeader";
@@ -893,12 +893,22 @@ export default function MemberDashboard() {
                   onAbsenceSubmitted={(entry) =>
                     setMyAbsences((prev) => [...prev.filter((r) => r.event_id !== entry.event_id), entry])
                   }
-                  onFeedbackSubmitted={(entry) =>
+                  // onFeedbackSubmitted={(entry) =>
+                  //   setMyFeedback((prev) => {
+                  //     const rest = prev.filter((f) => f.event_id !== entry.event_id);
+                  //     return [...rest, entry];
+                  //   })
+                  // }
+
+                  onFeedbackSubmitted={(entry) => {
                     setMyFeedback((prev) => {
                       const rest = prev.filter((f) => f.event_id !== entry.event_id);
+                      if ((entry as any).deleted_at) {
+                        return rest;
+                      }
                       return [...rest, entry];
-                    })
-                  }
+                    });
+                  }}
                 />
               )}
 
