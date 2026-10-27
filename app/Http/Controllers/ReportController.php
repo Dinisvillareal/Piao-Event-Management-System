@@ -1816,7 +1816,12 @@ class ReportController extends Controller
         ]);
     }
 
-    /** CSV export (opens in Excel / Google Sheets) -- follows the same filters as the report on screen. */
+    /**
+     * Excel / CSV export. With ?as=json it returns the structured report
+     * (letterhead data, message, details, tiles, table, totals) that the
+     * browser turns into the styled workbook (see reportExcelExport.ts); without
+     * it, it falls back to a plain CSV file. Both log one Report History row.
+     */
     public function exportCsv(Request $request)
     {
         if (!$this->isStaff()) {
@@ -1825,45 +1830,27 @@ class ReportController extends Controller
 
         $payload = $this->buildExportPayload($request);
         $this->recordGeneration($request, $payload, 'csv');
+        $table = $this->buildTabularExport($payload);
 
-        $type = $payload['type'];
-        $data = $payload['data'];
-        $header = [];
-        $rows = [];
-
-        if ($type === 'attendance') {
-            $header = ['Event', 'Date', 'Start', 'End', 'Location', 'Status', 'Memberships', 'Registered', 'Present', 'Absent', 'Attendance %', 'Average rating', 'Approved budget', 'Expenses'];
-            foreach ($data['per_event'] as $e) {
-                $rows[] = [
-                    $e['name'], $e['date'], $e['start_time'], $e['end_time'], $e['location'], $e['status'],
-                    collect($e['memberships'])->implode('; '), $e['eligible'], $e['attended'], $e['absent'], $e['percentage'],
-                    $e['average_rating'], $e['approved_budget'], $e['total_expenses'],
-                ];
-            }
-        } elseif ($type === 'membership') {
-            $header = ['Membership', 'Members', 'Age bracket', 'Civil status', 'Current status', 'Gender'];
-            foreach ($data['per_membership'] as $m) {
-                $rows[] = [$m['name'], $m['member_count'], $m['eligible_age_bracket'], $m['eligible_civil_status'], $m['eligible_current_status'], $m['eligible_gender']];
-            }
-        } elseif ($type === 'budget') {
-            $header = ['Event', 'Date', 'Event status', 'Approved budget', 'Spent', 'Remaining', 'Over by', 'Used %', 'Budget status', 'Expense entries'];
-            foreach ($data['per_event'] as $e) {
-                $rows[] = [$e['name'], $e['date'], $e['event_status'], $e['approved_budget'], $e['total_expenses'], $e['remaining'], $e['over_by'], $e['utilization'], $e['budget_status'], $e['expense_count']];
-            }
-            foreach ($data['unbudgeted'] as $e) {
-                $rows[] = [$e['name'], $e['date'], $e['event_status'], '', $e['total_expenses'], '', '', '', 'No budget set', $e['expense_count']];
-            }
-        } else {
-            $header = ['Item', 'Quantity', 'Main condition', 'Condition breakdown', 'Storage location', 'Lost / pending', 'Disposed'];
-            foreach ($data['items'] as $i) {
-                $rows[] = [
-                    $i['name'], $i['quantity'], $i['condition'],
-                    collect($i['condition_units'])->map(fn ($c) => "{$c['units']} {$c['condition']}")->implode('; '),
-                    $i['storage_location'], $i['lost_quantity'], $i['disposed_quantity'],
-                ];
-            }
+        if ($request->query('as') === 'json') {
+            return response()->json([
+                'type' => $payload['type'],
+                'reportTitle' => $payload['reportTitle'],
+                'filterSummary' => $payload['filterSummary'],
+                'printedOn' => $payload['printedOn'],
+                'generatedAt' => now()->format('F j, Y g:i A'),
+                'message' => $payload['message'],
+                'officials' => $payload['officials'],
+                'tiles' => $table['tiles'],
+                'details' => $table['details'],
+                'columns' => $table['columns'],
+                'rows' => $table['rows'],
+                'totals' => $table['totals'],
+            ]);
         }
 
+        $header = array_column($table['columns'], 'label');
+        $rows = $table['rows'];
         $fileName = Str::slug($payload['reportTitle']) . '-' . now()->format('Ymd') . '.csv';
 
         return response()->streamDownload(function () use ($header, $rows, $payload) {
@@ -1879,6 +1866,137 @@ class ReportController extends Controller
             }
             fclose($out);
         }, $fileName, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * The one table each report type exports, plus the headline tiles, the
+     * details grid and a totals row. Column formats: text, int, money,
+     * percent, rating. A column with 'sum' => true is added up in the totals row.
+     *
+     * @return array{columns: array, rows: array, totals: array, tiles: array, details: array}
+     */
+    private function buildTabularExport(array $payload): array
+    {
+        $type = $payload['type'];
+        $data = $payload['data'];
+        $s = $data['summary'] ?? [];
+        $col = fn (string $label, string $format = 'text', bool $sum = false) => ['label' => $label, 'format' => $format, 'sum' => $sum];
+        $detail = fn (string $label, $value) => ['label' => $label, 'value' => (string) $value];
+        $scope = $payload['filterSummary'] ?? '';
+        $rows = [];
+
+        if ($type === 'attendance') {
+            $columns = [
+                $col('Event'), $col('Date'), $col('Start'), $col('End'), $col('Location'), $col('Status'), $col('Memberships'),
+                $col('Registered', 'int', true), $col('Present', 'int', true), $col('Absent', 'int', true), $col('Attendance %', 'percent'),
+                $col('Average rating', 'rating'), $col('Approved budget', 'money', true), $col('Expenses', 'money', true),
+            ];
+            foreach ($data['per_event'] as $e) {
+                $rows[] = [
+                    $e['name'], $e['date'], $e['start_time'], $e['end_time'], $e['location'], $e['status'],
+                    collect($e['memberships'])->implode('; '), $e['eligible'], $e['attended'], $e['absent'], $e['percentage'],
+                    $e['average_rating'], $e['approved_budget'], $e['total_expenses'],
+                ];
+            }
+            $tiles = [
+                ['label' => 'EVENTS', 'value' => (int) ($s['total_events'] ?? 0), 'format' => 'int', 'tone' => 'sage'],
+                ['label' => 'REGISTERED', 'value' => (int) ($s['total_eligible'] ?? 0), 'format' => 'int', 'tone' => 'gold'],
+                ['label' => 'PRESENT', 'value' => (int) ($s['total_attended'] ?? 0), 'format' => 'int', 'tone' => 'green'],
+                ['label' => 'ATTENDANCE RATE', 'value' => (float) ($s['attendance_percentage'] ?? 0), 'format' => 'percent', 'tone' => 'green'],
+            ];
+            $details = [
+                $detail('Scope', $scope),
+                $detail('Events', ($s['total_events'] ?? 0) . ' listed'),
+                $detail('Registered', number_format((float) ($s['total_eligible'] ?? 0))),
+                $detail('Present', number_format((float) ($s['total_attended'] ?? 0))),
+                $detail('Attendance Rate', ($s['attendance_percentage'] ?? 0) . '%'),
+                $detail('Average Rating', isset($s['average_feedback_rating']) ? $s['average_feedback_rating'] . ' / 5' : 'No ratings yet'),
+            ];
+        } elseif ($type === 'membership') {
+            $columns = [
+                $col('Membership'), $col('Members', 'int', true), $col('Age bracket'), $col('Civil status'), $col('Current status'), $col('Gender'),
+            ];
+            foreach ($data['per_membership'] as $m) {
+                $rows[] = [$m['name'], $m['member_count'], $m['eligible_age_bracket'], $m['eligible_civil_status'], $m['eligible_current_status'], $m['eligible_gender']];
+            }
+            $tiles = [
+                ['label' => 'MEMBERSHIPS', 'value' => (int) ($s['total_memberships'] ?? 0), 'format' => 'int', 'tone' => 'sage'],
+                ['label' => 'ENROLLED RESIDENTS', 'value' => (int) ($s['total_assignments'] ?? 0), 'format' => 'int', 'tone' => 'green'],
+            ];
+            $details = [
+                $detail('Scope', $scope),
+                $detail('Memberships', $s['total_memberships'] ?? 0),
+                $detail('Enrolled Residents', $s['total_assignments'] ?? 0),
+                $detail('Generated', $payload['printedOn']),
+            ];
+        } elseif ($type === 'budget') {
+            $columns = [
+                $col('Event'), $col('Date'), $col('Event status'), $col('Approved budget', 'money', true), $col('Spent', 'money', true),
+                $col('Remaining', 'money', true), $col('Over by', 'money', true), $col('Used %', 'percent'), $col('Budget status'), $col('Expense entries', 'int', true),
+            ];
+            foreach ($data['per_event'] as $e) {
+                $rows[] = [$e['name'], $e['date'], $e['event_status'], $e['approved_budget'], $e['total_expenses'], $e['remaining'], $e['over_by'], $e['utilization'], $e['budget_status'], $e['expense_count']];
+            }
+            foreach ($data['unbudgeted'] as $e) {
+                $rows[] = [$e['name'], $e['date'], $e['event_status'], null, $e['total_expenses'], null, null, null, 'No budget set', $e['expense_count']];
+            }
+            $remaining = (float) ($s['total_remaining'] ?? 0);
+            $tiles = [
+                ['label' => 'APPROVED BUDGET', 'value' => (float) ($s['total_approved_budget'] ?? 0), 'format' => 'money', 'tone' => 'sage'],
+                ['label' => 'TOTAL SPENT', 'value' => (float) ($s['total_expenses'] ?? 0), 'format' => 'money', 'tone' => 'gold'],
+                ['label' => 'REMAINING', 'value' => $remaining, 'format' => 'money', 'tone' => $remaining < 0 ? 'red' : 'green'],
+            ];
+            $details = [
+                $detail('Scope', $scope),
+                $detail('Events', ($s['total_events'] ?? 0) . ' with a budget'),
+                $detail('Budget Used', ($s['utilization_percentage'] ?? 0) . '%'),
+                $detail('Over Budget', ($s['events_over_budget'] ?? 0) . ' event(s)'),
+                $detail('Near Limit', ($s['events_near_limit'] ?? 0) . ' event(s)'),
+                $detail('Without Budget', ($s['events_without_budget'] ?? 0) . ' event(s)'),
+                $detail('Expense Entries', $s['total_expense_entries'] ?? 0),
+                $detail('Spent Without Budget', '₱' . number_format((float) ($s['unbudgeted_spent'] ?? 0), 2)),
+            ];
+        } else {
+            $columns = [
+                $col('Item'), $col('Quantity', 'int', true), $col('Main condition'), $col('Condition breakdown'),
+                $col('Storage location'), $col('Lost / pending', 'int', true), $col('Disposed', 'int', true),
+            ];
+            foreach ($data['items'] as $i) {
+                $rows[] = [
+                    $i['name'], $i['quantity'], $i['condition'],
+                    collect($i['condition_units'])->map(fn ($c) => "{$c['units']} {$c['condition']}")->implode('; '),
+                    $i['storage_location'], $i['lost_quantity'], $i['disposed_quantity'],
+                ];
+            }
+            $tiles = [
+                ['label' => 'ITEMS', 'value' => (int) ($s['total_items'] ?? 0), 'format' => 'int', 'tone' => 'sage'],
+                ['label' => 'TOTAL UNITS', 'value' => (int) ($s['total_quantity'] ?? 0), 'format' => 'int', 'tone' => 'green'],
+                ['label' => 'LOST UNITS', 'value' => (int) ($s['lost_units'] ?? 0), 'format' => 'int', 'tone' => ($s['lost_units'] ?? 0) > 0 ? 'red' : 'sage'],
+                ['label' => 'DISPOSED UNITS', 'value' => (int) ($s['disposed_units'] ?? 0), 'format' => 'int', 'tone' => 'gold'],
+            ];
+            $details = [
+                $detail('Scope', $scope),
+                $detail('Items', $s['total_items'] ?? 0),
+                $detail('Total Units', $s['total_quantity'] ?? 0),
+                $detail('Lost Units', $s['lost_units'] ?? 0),
+                $detail('Disposed Units', $s['disposed_units'] ?? 0),
+                $detail('Generated', $payload['printedOn']),
+            ];
+        }
+
+        // Totals row: "TOTAL" in the first column, sums for the columns marked 'sum'.
+        $totals = [];
+        foreach ($columns as $idx => $c) {
+            if ($idx === 0) {
+                $totals[] = 'TOTAL';
+            } elseif ($c['sum']) {
+                $totals[] = round(collect($rows)->sum(fn ($r) => is_numeric($r[$idx] ?? null) ? (float) $r[$idx] : 0), 2);
+            } else {
+                $totals[] = null;
+            }
+        }
+
+        return compact('columns', 'rows', 'totals', 'tiles', 'details');
     }
 
     /** Report History -- who generated what, newest first. Query: type, format, search, page, per_page. */
