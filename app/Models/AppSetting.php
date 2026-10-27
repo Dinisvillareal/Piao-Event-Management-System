@@ -5,42 +5,63 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
 
-// Admin-editable rules stored as key => JSON value.
 class AppSetting extends Model
 {
     protected $fillable = ['key', 'value'];
 
     protected $casts = ['value' => 'array'];
 
-    public const FEEDBACK_DEFAULTS = [
-        // Members can send feedback from the moment an event ends until this many hours later.
-        'close_after_hours' => 12,
-        // After the first submit a member may change it for this many minutes (0 = no edits).
-        'edit_window_minutes' => 30,
-    ];
+    /**
+     * Fallback used ONLY when Settings → Feedback Rules has never been
+     * saved. The running values are always read from AppSetting at
+     * runtime — these constants are never returned to the caller as-is.
+     */
+    public const DEFAULT_CLOSE_AFTER_HOURS   = 12;   // 12 hours after event ends
+    public const DEFAULT_EDIT_WINDOW_MINUTES = 20;   // 20 minutes after first submit
 
+    /**
+     * Returns the current feedback rules. Reads from the app_settings
+     * table (key = 'feedback_rules'); falls back to the constants above
+     * when the table doesn't exist yet or nothing was ever saved.
+     *
+     * Existing feedback rows are NOT affected by later changes to these
+     * values — FeedbackController freezes the values onto each record
+     * on first submission (see feedback.close_after_hours /
+     * feedback.edit_window_minutes columns).
+     */
     public static function feedbackRules(): array
     {
-        $stored = [];
-        try {
-            if (Schema::hasTable('app_settings')) {
-                $stored = static::where('key', 'feedback_rules')->value('value') ?? [];
-            }
-        } catch (\Throwable $e) {
-            // Table not migrated yet -- fall back to the defaults.
+        $defaults = [
+            'close_after_hours'   => self::DEFAULT_CLOSE_AFTER_HOURS,
+            'edit_window_minutes' => self::DEFAULT_EDIT_WINDOW_MINUTES,
+        ];
+
+        // Fresh installs may run this before `app_settings` is migrated.
+        if (!Schema::hasTable('app_settings')) {
+            return $defaults;
         }
 
+        $stored = static::where('key', 'feedback_rules')->value('value') ?? [];
+
         return [
-            'close_after_hours' => max(1, (int) ($stored['close_after_hours'] ?? self::FEEDBACK_DEFAULTS['close_after_hours'])),
-            'edit_window_minutes' => max(0, (int) ($stored['edit_window_minutes'] ?? self::FEEDBACK_DEFAULTS['edit_window_minutes'])),
+            'close_after_hours'   => (int) ($stored['close_after_hours']   ?? $defaults['close_after_hours']),
+            'edit_window_minutes' => (int) ($stored['edit_window_minutes'] ?? $defaults['edit_window_minutes']),
         ];
     }
 
+    /**
+     * Persist new feedback rules. Called from
+     * FeedbackController::updateRules() (Head Staff only, password
+     * re-checked). Returns the freshly saved values.
+     */
     public static function saveFeedbackRules(int $closeAfterHours, int $editWindowMinutes): array
     {
         static::updateOrCreate(
             ['key' => 'feedback_rules'],
-            ['value' => ['close_after_hours' => $closeAfterHours, 'edit_window_minutes' => $editWindowMinutes]]
+            ['value' => [
+                'close_after_hours'   => $closeAfterHours,
+                'edit_window_minutes' => $editWindowMinutes,
+            ]]
         );
 
         return static::feedbackRules();

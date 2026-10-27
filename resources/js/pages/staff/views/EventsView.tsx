@@ -2126,7 +2126,7 @@ export function EventsView({
                         const initials = f.user ? `${f.user.first_name?.charAt(0) ?? ""}${f.user.last_name?.charAt(0) ?? ""}` : "?";
                         return (
                           <div key={f.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                            <FeedbackComment
+                            {/* <FeedbackComment
                               role="staff"
                               kind="rating"
                               item={f}
@@ -2139,6 +2139,12 @@ export function EventsView({
                                   ))}
                                 </span>
                               }
+                              onChange={(patch) => setEventFeedback((prev) => prev.map((x) => (x.id === f.id ? { ...x, ...patch } : x)))}
+                            /> */}
+                            <FeedbackComment
+                              entry={f}
+                              role="staff"
+                              member={f.user ?? null}
                               onChange={(patch) => setEventFeedback((prev) => prev.map((x) => (x.id === f.id ? { ...x, ...patch } : x)))}
                             />
                           </div>
@@ -2203,13 +2209,19 @@ export function EventsView({
                             const initials = r.user ? `${r.user.first_name?.charAt(0) ?? ""}${r.user.last_name?.charAt(0) ?? ""}` : "?";
                             return (
                               <div key={r.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                                <FeedbackComment
+                                {/* <FeedbackComment
                                   role="staff"
                                   kind="absence"
                                   item={r}
                                   author={r.user ?? null}
                                   comment={r.comment}
                                   header={<span className="inline-block rounded-full border border-gold-400/30 bg-gold-400/10 px-3 py-0.5 text-xs font-semibold text-gold-300">{t(`absReason_${r.reason}`)}</span>}
+                                  onChange={(patch) => setEventAbsences((prev) => prev.map((x) => (x.id === r.id ? { ...x, ...patch } : x)))}
+                                /> */}
+                                <FeedbackComment
+                                  entry={r}
+                                  role="staff"
+                                  member={r.user ?? null}
                                   onChange={(patch) => setEventAbsences((prev) => prev.map((x) => (x.id === r.id ? { ...x, ...patch } : x)))}
                                 />
                               </div>
