@@ -1,0 +1,18 @@
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # 1. FIX STORAGE: Reroute /storage/ to the actual storage folder.
+    # This replaces the missing symlink for /public/storage/validation_ids.
+    RewriteRule ^storage/(.*)$ storage/app/public/$1 [END]
+
+    # 2. SAFETY CHECK: If the request is already pointing to a real file 
+    # or directory, stop processing immediately so it doesn't loop.
+    RewriteCond %{REQUEST_FILENAME} -d [OR]
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+
+    # 3. REROUTE TO PUBLIC: Send everything else into the public folder
+    # ONLY if it hasn't already been rewritten there.
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>

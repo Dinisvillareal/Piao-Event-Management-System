@@ -1,0 +1,47 @@
+name: Deploy Laravel React TS App
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  web-deploy:
+    name: Build and Automate Upload
+    runs-on: ubuntu-latest
+    steps:
+    - name: Get latest repository code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js Environment
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Frontend Dependencies & Build React TS
+      run: |
+        npm install
+        npm run build
+
+    - name: Setup PHP Environment
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2'
+
+    - name: Install Laravel Dependencies (Production Optimized)
+      run: |
+        composer install --no-dev --optimize-autoloader
+
+    - name: Sync Code via FTP (Excluding node_modules and git)
+      uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+      with:
+        server: ${{ secrets.FTP_SERVER }}
+        username: ${{ secrets.FTP_USERNAME }}
+        password: ${{ secrets.FTP_PASSWORD }}
+        local-dir: ./
+        server-dir: ./htdocs/
+        filter: |
+          **
+          !node_modules/**
+          !.git/**
+          !.env
