@@ -76,7 +76,6 @@ app/
       MembershipResidentController.php
       NameSuffixController.php
       NotificationController.php
-      ReportController-1.php
       ReportController.php
       ResidentExportController.php
       StaffAccountController.php
@@ -115,6 +114,7 @@ app/
     Household.php
     IntegrationSetting.php
     InventoryItem.php
+    InventoryUnitLog.php
     Membership.php
     MembershipResident.php
     NameSuffix.php
@@ -133,6 +133,7 @@ app/
     SmsService.php
   Support/
     BarangayOfficials.php
+    Paged.php
     PhotoSet.php
     Totp.php
 bootstrap/
@@ -141,8 +142,6 @@ bootstrap/
   app.php
   providers.php
 Claude outputs/
-  ~$aoConnect-Papers-updated.docx
-  ~$aoConnect-Papers.docx
   2026_09_29_000001_create_event_inventory_releases_table.php
   attendance_test.pdf
   EventInventoryRelease.php
@@ -159,8 +158,6 @@ Claude outputs/
   piao-flaws-to-fix.md
   piao-process-and-scope-gaps.md
   PiaoConnect-ERD.png
-  PiaoConnect-Papers-updated.docx
-  PiaoConnect-Papers-v3.docx
   PiaoConnect-Papers.docx
   PiaoConnect-UseCase.png
   PiaoConnectRevised-1-6-preview.pdf
@@ -245,10 +242,19 @@ database/
     2026_10_20_000002_add_condition_quantities_to_event_inventory_tables.php
     2026_10_25_000001_add_account_security.php
     2026_10_26_000001_add_absence_reasons_and_staff_responses.php
+    2026_10_26_090215_add_feedback_window_columns.php
+    2026_10_27_000001_add_lost_units_to_event_inventory_releases_table.php
     2026_10_27_000001_create_app_settings_table.php
     2026_10_27_000002_create_feedback_edits_table.php
+    2026_10_27_000002_drop_lost_units_from_event_inventory_releases_table.php
+    2026_10_27_000003_create_inventory_unit_logs_table.php
+    2026_10_27_000004_add_photos_to_inventory_unit_logs_table.php
     2026_10_28_000001_add_member_like_on_staff_reply.php
     2026_10_29_000001_create_generated_reports_table.php
+    2026_10_30_000001_add_category_to_current_statuses_table.php
+    2026_11_02_000001_drop_condition_from_inventory_items_table.php
+    2026_11_03_000001_drop_extra_photo_paths_from_inventory_items_table.php
+    2026_11_03_000002_add_unit_sum_checks_to_inventory_tables.php
   seeders/
     ActivityLogSeeder.php
     AgeBracketSeeder.php
@@ -293,6 +299,8 @@ resources/
         PasswordField.tsx
       budget/
         EventBudgetWorkspace.tsx
+      inventory/
+        UnitsModal.tsx
       layout/
         Sidebar.tsx
         TopHeader.tsx
@@ -350,12 +358,14 @@ resources/
       useFilterSwitching.ts
       useOnlineStatus.ts
       usePager.ts
+      useServerMatchIds.ts
     i18n/
       locales/
         auth.ts
         dashboard.ts
         feedbackExtras.ts
         filters.ts
+        lostFound.ts
         operations.ts
         reports.ts
         reportsPro.ts
@@ -379,8 +389,10 @@ resources/
       memberRoutes.ts
       offlineQueue.ts
       passwordPolicy.ts
+      reportExcelExport.ts
       reportMessage.ts
       residentsExport.ts
+      responsiveTables.ts
       scrollToList.ts
       search.ts
       staffAlertsStore.ts
@@ -488,6 +500,7 @@ tests/
 .env.example
 .gitattributes
 .gitignore
+.tmp_run.ts
 artisan
 components.json
 composer.json
@@ -2370,775 +2383,6 @@ $this->createLog('Delete Suffix', 'User', "Removed name suffix '{$name}' from th
 return response()->json(['message' => 'Suffix removed.']);
 ````
 
-## File: app/Http/Controllers/ReportController-1.php
-````php
-namespace App\Http\Controllers;
-⋮----
-use App\Models\Event;
-use App\Models\EventAttendance;
-use App\Models\EventExpense;
-use App\Models\Feedback;
-use App\Models\InventoryItem;
-use App\Models\Membership;
-use Barryvdh\DomPDF\Facade\Pdf;
-use Illuminate\Http\Request;
-use Illuminate\Support\Str;
-use PhpOffice\PhpWord\PhpWord;
-use PhpOffice\PhpWord\Settings as PhpWordSettings;
-⋮----
-class ReportController extends Controller
-⋮----
-/**
-     * Adviser recommendation: "Filtering (First) Data Analytics — Date,
-     * Summary — Attendance, Percentage" + "What Events usually happen per
-     * year / attendees" + "Profiling (Filter for Age)".
-     *
-     * Also fulfils UC-10 (Generate Printable Reports) — the frontend Reports
-     * view renders this as charts/cards and offers a print button.
-     *
-     * Query params: date_from, date_to, membership_id, age_group
-     */
-public function attendanceSummary(Request $request)
-⋮----
-if (!$this->isStaff()) {
-return response()->json(['message' => 'Unauthorized'], 403);
-⋮----
-return response()->json($this->buildAttendanceData($request));
-⋮----
-/**
-     * Data-only version of attendanceSummary() -- extracted so the JSON
-     * endpoint above (used by the on-screen Reports view) and the Word/PDF
-     * export endpoints below (see exportPdf/exportWord) share exactly one
-     * source of truth for "what an attendance report contains" instead of
-     * two copies of the same query logic drifting apart over time.
-     */
-private function buildAttendanceData(Request $request): array
-⋮----
-$dateFrom = $request->filled('date_from') ? $request->date_from : null;
-$dateTo = $request->filled('date_to') ? $request->date_to : null;
-$membershipId = $request->filled('membership_id') ? (int) $request->membership_id : null;
-$ageGroup = $request->filled('age_group') ? strtolower($request->age_group) : null;
-⋮----
-$eventsQuery = Event::withoutTrashed();
-if ($dateFrom) $eventsQuery->whereDate('event_start', '>=', $dateFrom);
-if ($dateTo) $eventsQuery->whereDate('event_start', '<=', $dateTo);
-if ($membershipId) $eventsQuery->whereJsonContains('membership_ids', $membershipId);
-⋮----
-$events = $eventsQuery->orderBy('event_start')->get();
-$eventIds = $events->pluck('id');
-⋮----
-$attendanceQuery = EventAttendance::whereIn('event_id', $eventIds)->with('user');
-⋮----
-$attendanceQuery->whereHas('user', function ($q) use ($min, $max) {
-$q->whereNotNull('birth_date')
-->whereRaw('TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN ? AND ?', [$min, $max]);
-⋮----
-$attendances = $attendanceQuery->get();
-⋮----
-$totalEligible += $event->attendances()->count();
-⋮----
-$attendedCount = $attendances->filter(fn ($a) => $a->time_in)->count();
-⋮----
-// Optional attendee lists (the "Event Attendance Records" section):
-// only built when asked for, and only for the requested events, so
-// the on-screen summary stays light.
-$includeAttendees = $request->boolean('include_attendees');
-$eventIdFilter = $this->parseIdList($request->input('event_ids'));
-$attendeeFilter = in_array($request->input('attendee_filter'), ['present', 'absent'], true)
-? $request->input('attendee_filter')
-⋮----
-$perEvent = $events->map(function ($event) use ($attendances, $includeAttendees, $eventIdFilter, $attendeeFilter) {
-$eventAttendances = $attendances->where('event_id', $event->id);
-$eligible = $event->attendances()->count();
-$attended = $eventAttendances->filter(fn ($a) => $a->time_in)->count();
-$status = $this->eventStatusLabel($event);
-⋮----
-'date' => optional($event->event_start)->format('Y-m-d'),
-'start_time' => optional($event->event_start)->format('g:i A'),
-'end_time' => optional($event->event_end)->format('g:i A'),
-⋮----
-'memberships' => $event->memberships->pluck('name')->values(),
-⋮----
-->filter(function ($a) use ($attendeeFilter) {
-⋮----
-->sortBy(fn ($a) => mb_strtolower(($a->user->last_name ?? '') . ' ' . ($a->user->first_name ?? '')))
-->values()
-->map(function ($a) use ($status) {
-⋮----
-'time_in' => $a->time_in ? \Carbon\Carbon::parse($a->time_in)->format('g:i A') : null,
-'time_out' => $a->time_out ? \Carbon\Carbon::parse($a->time_out)->format('g:i A') : null,
-⋮----
-->all();
-⋮----
-})->values();
-⋮----
-// "What Events usually happen per year" — event count grouped by month across all years present
-$perMonth = $events->groupBy(fn ($e) => optional($e->event_start)->format('Y-m'))
-->map(fn ($group, $key) => ['month' => $key, 'events' => $group->count()])
-->sortKeys()
-->values();
-⋮----
-$ageBreakdown = collect($ageRanges)->map(function ($range, $label) use ($eventIds) {
-⋮----
-$count = EventAttendance::whereIn('event_id', $eventIds)
-->whereNotNull('time_in')
-->whereHas('user', function ($q) use ($min, $max) {
-⋮----
-})->count();
-⋮----
-$avgRating = Feedback::whereIn('event_id', $eventIds)->avg('rating');
-⋮----
-'total_events' => $events->count(),
-⋮----
-/** Upcoming / Ongoing / Past -- same rule the Events page and Budget page use. */
-private function eventStatusLabel(Event $event): string
-⋮----
-$end = $event->event_end ?? $event->call_time_end ?? $start->copy()->endOfDay();
-if ($now->lt($start)) return 'Upcoming';
-if ($now->gt($end)) return 'Past';
-⋮----
-/** "1,2,3" or [1,2,3] -> [1,2,3]; null when nothing was sent. */
-private function parseIdList($value): ?array
-⋮----
-/**
-     * UC-10 report type "membership" — how many residents belong to each
-     * membership, plus each membership's eligibility rules (age bracket /
-     * civil status / gender), so staff can see enrollment at a glance.
-     *
-     * Query params: membership_id (optional, narrows to a single membership)
-     */
-public function membershipSummary(Request $request)
-⋮----
-return response()->json($this->buildMembershipData($request));
-⋮----
-private function buildMembershipData(Request $request): array
-⋮----
-$query = Membership::withoutTrashed()
-->where('is_active', true)
-->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
-->withCount('users');
-⋮----
-$query->where('id', $membershipId);
-⋮----
-$memberships = $query->orderBy('name')->get();
-⋮----
-$perMembership = $memberships->map(function ($m) {
-⋮----
-'total_memberships' => $memberships->count(),
-'total_assignments' => $memberships->sum('users_count'),
-⋮----
-/**
-     * UC-10 report type "budget" — approved budget vs. actual expenses per
-     * event, so staff can see which events are over budget at a glance.
-     *
-     * Query params: date_from, date_to (filters by the event's start date),
-     * event_id (narrows to a single event -- takes priority over the date
-     * range, since picking one specific event answers a different question
-     * than picking a range)
-     */
-public function budgetSummary(Request $request)
-⋮----
-return response()->json($this->buildBudgetData($request));
-⋮----
-private function buildBudgetData(Request $request): array
-⋮----
-$eventId = $request->filled('event_id') ? (int) $request->event_id : null;
-⋮----
-$eventsQuery->where('id', $eventId);
-⋮----
-$allEvents = $eventsQuery->orderBy('event_start')->get();
-$events = $allEvents->filter(fn ($e) => $e->approved_budget !== null)->values();
-$unbudgetedEvents = $allEvents->filter(fn ($e) => $e->approved_budget === null)->values();
-$eventIds = $allEvents->pluck('id');
-⋮----
-// Every expense entry for these events, grouped by event, with the
-// recorder's name resolved from their user code.
-$expenseRows = EventExpense::whereIn('event_id', $eventIds)
-->orderBy('created_at')
-->orderBy('id')
-->get()
-->groupBy('event_id');
-$codes = $expenseRows->flatten(1)->pluck('recorded_by')->filter()->unique()->values();
-$people = \App\Models\User::whereIn('user_code', $codes)->get(['user_code', 'first_name', 'last_name'])->keyBy('user_code');
-⋮----
-return ($expenseRows->get($event->id) ?? collect())->map(function ($x) use ($people) {
-$who = $x->recorded_by ? $people->get($x->recorded_by) : null;
-⋮----
-'date' => optional($x->created_at)->format('Y-m-d'),
-⋮----
-})->values()->all();
-⋮----
-$perEvent = $events->map(function ($event) use ($expensesFor) {
-⋮----
-$expenses = $expensesFor($event);
-⋮----
-'event_status' => $this->eventStatusLabel($event),
-⋮----
-$overBudget = $perEvent->where('is_over_budget', true)->sortByDesc('over_by')->values();
-⋮----
-$unbudgeted = $unbudgetedEvents->map(function ($event) use ($expensesFor) {
-⋮----
-$topExpenses = EventExpense::whereIn('event_id', $eventIds)
-->orderByDesc('amount')
-->limit(10)
-->get(['event_id', 'item', 'amount'])
-->map(fn ($e) => [
-'event_name' => optional($allEvents->firstWhere('id', $e->event_id))->name,
-⋮----
-$totalApproved = round($events->sum('approved_budget'), 2);
-$totalSpent = round($perEvent->sum('total_expenses'), 2);
-⋮----
-'total_remaining' => round($perEvent->sum('remaining'), 2),
-'events_over_budget' => $overBudget->count(),
-'total_over_amount' => round($overBudget->sum('over_by'), 2),
-'events_near_limit' => $perEvent->where('budget_status', 'Near limit')->count(),
-⋮----
-'total_expense_entries' => $perEvent->sum('expense_count') + $unbudgeted->sum('expense_count'),
-'events_without_budget' => $unbudgeted->count(),
-'unbudgeted_spent' => round($unbudgeted->sum('total_expenses'), 2),
-⋮----
-/**
-     * UC-10 report type "inventory" — barangay asset counts grouped by
-     * condition, plus the full item list for the printable report.
-     *
-     * Query params: condition (optional, narrows to one condition)
-     */
-public function inventorySummary(Request $request)
-⋮----
-return response()->json($this->buildInventoryData($request));
-⋮----
-private function buildInventoryData(Request $request): array
-⋮----
-$condition = $request->filled('condition') ? $request->condition : null;
-⋮----
-$query = InventoryItem::query();
-if ($condition) \App\Http\Controllers\InventoryController::applyConditionFilter($query, $condition);
-⋮----
-$items = $query->orderBy('name')->get();
-⋮----
-$byCondition = $items->groupBy('condition')
-->map(fn ($group, $label) => ['condition' => $label, 'count' => $group->count(), 'quantity' => $group->sum('quantity')])
-⋮----
-'total_items' => $items->count(),
-'total_quantity' => $items->sum('quantity'),
-⋮----
-'items' => $items->map(fn ($i) => [
-⋮----
-])->values(),
-⋮----
-/**
-     * UC-10 / official-record downloads (Word + PDF).
-     *
-     * Deliberately independent of the frontend's language switcher: an
-     * official printed/exported barangay record must always read in
-     * English no matter which language a staff member currently has the
-     * on-screen UI set to -- other screens (like the Dashboard) are free to
-     * stay translated, but these two endpoints never touch that system at
-     * all. Every label below is a plain hardcoded English string.
-     */
-public function exportPdf(Request $request)
-⋮----
-$payload = $this->buildExportPayload($request);
-⋮----
-$pdf = Pdf::loadView('reports.export', $payload)->setPaper('a4', 'portrait');
-⋮----
-// "Page X of Y" the same way a browser's own print dialog stamps
-// one on -- dompdf only fills in {PAGE_NUM}/{PAGE_COUNT} through
-// this canvas call (the plain text placeholder in the Blade view
-// is never substituted on its own), so the page has to already be
-// rendered before this runs, and Pdf::download()/output() below
-// are written to skip re-rendering once that's done.
-$pdf->render();
-$canvas = $pdf->getCanvas();
-$fontMetrics = $pdf->getFontMetrics();
-$font = $fontMetrics->getFont('DejaVu Sans');
-⋮----
-// Bottom-right, right edge lined up with the page's right margin
-// (12mm, the same @page margin as export.blade.php and the browser
-// print view). The text is right-aligned by measuring a same-width
-// stand-in ("Page 00 of 12") because dompdf only substitutes the
-// real numbers at draw time; digits are the same width in DejaVu
-// Sans, so the stand-in is exact for every page of a given count.
-$pageCount = (string) $canvas->get_page_count();
-$footerWidth = $fontMetrics->getTextWidth(
-⋮----
-$canvas->page_text(
-$canvas->get_width() - (12 * 72 / 25.4) - $footerWidth,
-$canvas->get_height() - 34,
-⋮----
-return $pdf->download(Str::slug($payload['reportTitle']) . '.pdf');
-⋮----
-public function exportWord(Request $request)
-⋮----
-// PhpWord defaults to PHP's native `ZipArchive` class to write the
-// .docx (a .docx *is* a zip archive) -- on a PHP build without the
-// `zip` extension enabled (common on a fresh Windows/XAMPP/Laragon
-// install) that throws "Class ZipArchive not found" the moment
-// save() runs. PhpWord actually ships its own pure-PHP zip writer
-// (PCLZip) for exactly this case; switching to it here means this
-// export works regardless of whether the server's PHP build has the
-// zip extension compiled in, with no php.ini change or restart
-// needed.
-PhpWordSettings::setZipClass(PhpWordSettings::PCLZIP);
-⋮----
-$phpWord = $this->buildWordDocument($payload);
-⋮----
-$fileName = Str::slug($payload['reportTitle']) . '.docx';
-⋮----
-$phpWord->save($tempPath, 'Word2007');
-⋮----
-return response()->download($tempPath, $fileName, [
-⋮----
-])->deleteFileAfterSend(true);
-⋮----
-/**
-     * Shared data + English-only copy for both export formats -- mirrors
-     * what ReportsView.tsx's own printFilterSummary computes for the
-     * on-screen letterhead, just hardcoded to English since there is no
-     * language switcher on this code path.
-     */
-private function buildExportPayload(Request $request): array
-⋮----
-$type = in_array($request->query('type'), ['attendance', 'membership', 'budget', 'inventory'], true)
-? $request->query('type')
-⋮----
-// Which sections to include (print/export options). null = everything (except the long attendee lists, which are opt-in).
-⋮----
-if ($request->filled('sections')) {
-$picked = is_array($request->query('sections')) ? $request->query('sections') : explode(',', (string) $request->query('sections'));
-⋮----
-// The attendee lists only exist when that section was explicitly picked.
-⋮----
-$request->merge(['include_attendees' => 1]);
-⋮----
-'membership' => $this->buildMembershipData($request),
-'budget' => $this->buildBudgetData($request),
-'inventory' => $this->buildInventoryData($request),
-default => $this->buildAttendanceData($request),
-⋮----
-'filterSummary' => $this->buildFilterSummaryLine($type, $request),
-'printedOn' => now()->format('F j, Y'),
-⋮----
-private function buildFilterSummaryLine(string $type, Request $request): string
-⋮----
-if ($type === 'budget' && $request->filled('event_id')) {
-$event = Event::find((int) $request->event_id);
-⋮----
-$from = $request->filled('date_from') ? $request->date_from : null;
-$to = $request->filled('date_to') ? $request->date_to : null;
-⋮----
-if ($request->filled('membership_id')) {
-$m = Membership::find((int) $request->membership_id);
-⋮----
-// inventory
-return $request->filled('condition') ? "Condition: {$request->condition}" : 'All Conditions';
-⋮----
-/**
-     * Builds the .docx equivalent of resources/views/reports/export.blade.php
-     * (the PDF / print layout): same A4 page and margins, same letterhead
-     * (seal + address left, system name and date right, heavy teal rule, title
-     * row), same colored stat tiles, same framed chart cards, same two-up
-     * record cards, same ruled tables, and the same signature + footer. Charts
-     * and progress meters are drawn as small PNGs (GD) so they look like the
-     * PDF's; on a PHP build without GD they fall back to shaded table cells.
-     */
-private function buildWordDocument(array $payload): PhpWord
-⋮----
-$phpWord->setDefaultFontName('Calibri');
-$phpWord->setDefaultFontSize(10);
-$phpWord->setDefaultParagraphStyle(['spaceAfter' => 40, 'spaceBefore' => 0]);
-$phpWord->getDocInfo()->setTitle($payload['reportTitle'])->setCreator('Piao Connect')->setCompany('Barangay Piao');
-⋮----
-$section = $phpWord->addSection([
-⋮----
-$this->addWordFooter($phpWord, $section);
-$this->addLetterhead($section, $payload);
-⋮----
-if ($show('summary')) {
-$this->addStatTiles($section, [
-⋮----
-// "Events per Month" (2/3) and "Overall Attendance" (1/3) side by side, like the PDF.
-if ($show('charts')) {
-$this->addCardRow($section, [
-⋮----
-$this->addCardHeading($cell, 'Events per Month', 'What events usually happen, and when — across all years in range.');
-$this->addVerticalBarChart($cell, $data['per_month'], 'events', 'month', '4FBEB0', $inner);
-⋮----
-$this->addCardHeading($cell, 'Overall Attendance');
-$this->addProgressSummary($cell, (float) $s['attendance_percentage'], $s['total_attended'] . ' of ' . $s['total_eligible'] . ' eligible residents', '4FBEB0', $inner);
-⋮----
-if ($show('age')) {
-$this->addCardRow($section, [[100, function ($cell, $inner) use ($data) {
-$this->addCardHeading($cell, 'Attendance by Age Group', 'Adviser recommendation: resident profiling filtered by age.');
-$this->addVerticalBarChart($cell, $data['age_breakdown'], 'attended', 'group', 'E8B84A', $inner);
-⋮----
-if ($show('events')) {
-$this->addPagedCardGrid($section, 'Per-Event Breakdown', null, $data['per_event'], function ($c, $ev, $in) {
-$c->addText($ev['name'], ['bold' => true, 'size' => 9.5, 'color' => '005F63'], ['spaceAfter' => 0]);
-$c->addText($ev['date'] ?? '—', ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 30]);
-$this->addMiniProgressBar($c, (float) $ev['percentage'], '4FBEB0', $in);
-$c->addText($ev['attended'] . ' / ' . $ev['eligible'] . ' attended', ['size' => 8.5, 'color' => '667777'], ['spaceAfter' => 0]);
-⋮----
-$c->addText('Budget: ₱' . number_format($ev['approved_budget'], 2) . ' · Spent: ₱' . number_format($ev['total_expenses'], 2), ['size' => 8.5, 'color' => '667777'], ['spaceAfter' => 0]);
-⋮----
-$section->addPageBreak();
-⋮----
-$this->addSectionHeading($section, 'Event Attendance Records', 'Every event in the period with the residents who were eligible to attend and whether each one signed in.');
-$events = collect($data['per_event'])->filter(fn ($e) => array_key_exists('attendees', $e))->values();
-if ($events->isEmpty()) {
-$this->addEmptyNote($section, 'No events to list for this period.');
-⋮----
-$this->addRecordHead($section, $ev['name'], implode('  ·  ', $meta), [
-⋮----
-$this->addEmptyNote($section, 'No attendees to list for this event.');
-⋮----
-$this->addDataTable($section, ['#', 'Name', 'ID', 'Age', 'Gender', 'Status', 'Time In', 'Time Out'], [24, 230, 62, 30, 46, 54, 54, 54], $rows, ['size' => 8.5]);
-$section->addTextBreak(1, ['size' => 6]);
-⋮----
-if ($show('memberships')) {
-$this->addPagedCardGrid($section, 'Enrollment by Membership', null, $data['per_membership'], function ($c, $m, $in) {
-⋮----
-$c->addText($m['name'], ['bold' => true, 'size' => 9.5, 'color' => '005F63'], ['spaceAfter' => 0]);
-$c->addText((string) $m['member_count'], ['bold' => true, 'size' => 18, 'color' => '333333'], ['spaceAfter' => 0]);
-$c->addText('members', ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 40]);
-⋮----
-$c->addText(' Requires: ' . $reqs . ' ', ['size' => 8, 'bold' => true, 'color' => '0F766E', 'bgColor' => 'E6F5F3'], ['spaceAfter' => 0]);
-⋮----
-[$peso($s['total_approved_budget']), 'Total Approved Budget', '456F68'],
-[$peso($s['total_expenses']), 'Total Expenses', 'C6953C'],
-[$peso($s['total_remaining']), 'Remaining Budget', '2A423E'],
-⋮----
-[$peso($s['total_over_amount']), 'Total Over Budget', '9A4A38'],
-⋮----
-if ($show('overBudget')) {
-$this->addSectionHeading($section, 'Over-Budget Events', 'Events whose recorded expenses are higher than the approved budget, largest overspend first.');
-⋮----
-$this->addEmptyNote($section, 'No events are over budget for this period.', '0F766E');
-⋮----
-$rows[] = [$ev['name'], $ev['date'] ?? '—', $peso($ev['approved_budget']), $peso($ev['total_expenses']), ['t' => $peso($ev['over_by']), 'color' => 'DC2626', 'bold' => true], $ev['utilization'] . '%'];
-⋮----
-$this->addDataTable($section, ['Event', 'Date', 'Approved', 'Spent', 'Over By', 'Used'], [250, 80, 100, 100, 100, 55], $rows, [], [2, 3, 4, 5]);
-⋮----
-if ($show('perEvent')) {
-$this->addPagedCardGrid($section, 'Budget per Event', 'Approved budget, spending and how much of the budget has been used, for every event.', $data['per_event'], function ($c, $ev, $in) use ($peso) {
-⋮----
-$c->addText(($ev['date'] ?? '—') . ' · ' . $ev['event_status'] . ' · ' . $ev['budget_status'], ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 30]);
-$c->addText('Budget: ' . $peso($ev['approved_budget']) . ' · Spent: ' . $peso($ev['total_expenses']), ['size' => 8.5, 'color' => '667777'], ['spaceAfter' => 0]);
-$c->addText($ev['utilization'] . '% used · ' . $ev['expense_count'] . ' ' . ($ev['expense_count'] === 1 ? 'entry' : 'entries'), ['size' => 8.5, 'color' => '667777'], ['spaceAfter' => 0]);
-$c->addText(($ev['is_over_budget'] ? 'Over budget by ' : 'Remaining ') . $peso(abs($ev['remaining'])), ['bold' => true, 'size' => 8.5, 'color' => $ev['is_over_budget'] ? 'DC2626' : '0F766E'], ['spaceAfter' => 0]);
-⋮----
-if ($show('expenses')) {
-$withItems = collect($data['per_event'])->concat($data['unbudgeted'] ?? [])->filter(fn ($ev) => !empty($ev['expenses']))->values();
-if ($withItems->isNotEmpty()) {
-⋮----
-$this->addSectionHeading($section, 'Itemized Expenses per Event', 'Every expense entry recorded against each event.');
-⋮----
-? [['Budget: ', null], [$peso($ev['approved_budget']), ['bold' => true]], ['     Spent: ', null], [$peso($ev['total_expenses']), ['bold' => true]], ['     ', null],
-$over ? ['Over by ' . $peso($ev['over_by']), ['bold' => true, 'color' => 'DC2626']] : ['Remaining: ' . $peso($ev['remaining']), ['bold' => true, 'color' => '0F766E']]]
-: [['No approved budget', ['bold' => true]], ['     Spent: ', null], [$peso($ev['total_expenses']), ['bold' => true]]];
-$this->addRecordHead($section, $ev['name'], ($ev['date'] ?? '—') . '  ·  ' . $ev['event_status'], $stats, $over);
-⋮----
-$rows[] = [(string) ($i + 1), $x['item'], $peso($x['amount']), $x['notes'] ?: '—', $x['recorded_by'] ?: '—', $x['date'] ?? '—'];
-⋮----
-$this->addDataTable($section, ['#', 'Item', 'Amount', 'Notes', 'Recorded By', 'Date'], [22, 190, 80, 190, 100, 80], $rows, ['size' => 8.5], [2], ['', 'Total', $peso($ev['total_expenses']), '', '', '']);
-⋮----
-if ($show('topExpenses') && !empty($data['top_expenses'])) {
-$this->addSectionHeading($section, 'Top Expenses');
-⋮----
-$rows[] = [$ex['item'], $ex['event_name'] ?? '—', $peso($ex['amount'])];
-⋮----
-$this->addDataTable($section, ['Item', 'Event', 'Amount'], [300, 340, 100], $rows, [], [2]);
-⋮----
-if ($show('noBudget') && !empty($data['unbudgeted'])) {
-$this->addSectionHeading($section, 'Events Without an Approved Budget', 'Events in this period that have no approved budget set, so they are not counted in the totals above.');
-⋮----
-$rows[] = [$ev['name'], $ev['date'] ?? '—', $ev['event_status'], (string) $ev['expense_count'], $peso($ev['total_expenses'])];
-⋮----
-$this->addDataTable($section, ['Event', 'Date', 'Status', 'Entries', 'Spent'], [300, 85, 70, 50, 100], $rows, [], [3, 4]);
-⋮----
-default: // inventory
-⋮----
-if ($show('condition')) {
-⋮----
-$this->addCardHeading($cell, 'By Condition');
-$run = $cell->addTextRun(['spaceAfter' => 0, 'spaceBefore' => 40]);
-⋮----
-[$bg, $fg] = $this->conditionColors($c['condition']);
-$run->addText(' ' . $c['condition'] . ': ' . $c['count'] . ' items (' . $c['quantity'] . ' units) ', ['size' => 8.5, 'bold' => true, 'color' => $fg, 'bgColor' => $bg]);
-$run->addText('   ', ['size' => 8.5]);
-⋮----
-$this->addEmptyNote($cell, 'No items found.');
-⋮----
-if ($show('items')) {
-$this->addPagedCardGrid($section, 'Inventory Items', null, $data['items'], function ($c, $item, $in) {
-[$bg, $fg] = $this->conditionColors($item['condition']);
-$c->addText($item['name'], ['bold' => true, 'size' => 9.5, 'color' => '005F63'], ['spaceAfter' => 0]);
-$c->addText($item['storage_location'] ?? '—', ['size' => 7.5, 'color' => '999999'], ['spaceAfter' => 40]);
-$run = $c->addTextRun(['spaceAfter' => 0, 'tabs' => [new \PhpOffice\PhpWord\Style\Tab('right', $in)]]);
-$run->addText(' ' . $item['condition'] . ' ', ['size' => 8, 'bold' => true, 'color' => $fg, 'bgColor' => $bg]);
-$run->addText("\t×" . $item['quantity'], ['size' => 10, 'bold' => true, 'color' => '005F63']);
-⋮----
-// Signature block + footer line -- kept together, like the PDF's .sig-wrap.
-$section->addTextBreak(1, ['size' => 14]);
-$sig = $section->addTable($this->noBorderTableStyle(['width' => $W, 'unit' => 'dxa', 'layout' => 'fixed']));
-$sig->addRow(560, ['cantSplit' => true, 'exactHeight' => false]);
-⋮----
-$sig->addCell($w)->addText('', [], ['keepNext' => true, 'spaceAfter' => 0]);
-⋮----
-$sig->addRow(null, ['cantSplit' => true]);
-⋮----
-$sig->addCell(4600, $line)->addText('Prepared by', ['size' => 9.5, 'color' => '444444'], ['alignment' => 'center', 'keepNext' => true]);
-$sig->addCell(1346)->addText('', [], ['spaceAfter' => 0]);
-$sig->addCell(4600, $line)->addText('Barangay Captain', ['size' => 9.5, 'color' => '444444'], ['alignment' => 'center', 'keepNext' => true]);
-$section->addText(
-⋮----
-/** Usable page width in twips: A4 (11906) minus 2 x 680 side margins. */
-⋮----
-/** Style for a purely structural table: real (white) borders so Word never shows its editing grid. */
-private function noBorderTableStyle(array $extra = []): array
-⋮----
-/** Border + fill for a framed card cell (the PDF's .card / .mini-cell). */
-private function frameStyle(string $border = 'DDD5CA', string $bg = 'FFFFFF'): array
-⋮----
-/** Letterhead: seal + address on the left, system name + date on the right, heavy teal rule, title row. */
-private function addLetterhead($section, array $payload): void
-⋮----
-$head = $section->addTable($this->noBorderTableStyle(['width' => $W, 'unit' => 'dxa', 'layout' => 'fixed']));
-$head->addRow(null, ['cantSplit' => true]);
-⋮----
-$logoCell = $head->addCell(1400, ['valign' => 'center']);
-⋮----
-$logoCell->addImage($logoPath, ['width' => 62, 'height' => 62]);
-⋮----
-$text = $head->addCell($W - 1400 - 2300, ['valign' => 'center']);
-$text->addText('REPUBLIC OF THE PHILIPPINES', ['size' => 7.5, 'color' => '667777', 'spacing' => 20], $tight);
-$text->addText('Province of Zamboanga del Norte · Municipality of President Manuel A. Roxas', $muted, ['spaceAfter' => 20]);
-$text->addText('BARANGAY PIAO', ['bold' => true, 'size' => 20, 'color' => '005F63'], ['spaceAfter' => 20]);
-$text->addText('Piao Barangay Hall, Purok Uno, Barangay Piao, 7102', $muted, $tight);
-⋮----
-$right = $head->addCell(2300, ['valign' => 'top']);
-$right->addText('PIAO CONNECT', ['bold' => true, 'size' => 9.5, 'color' => '4FBEB0', 'spacing' => 30], ['alignment' => 'right', 'spaceAfter' => 80]);
-$right->addText('Generated on', $muted, ['alignment' => 'right', 'spaceAfter' => 0]);
-$right->addText($payload['printedOn'], ['bold' => true, 'size' => 9, 'color' => '005F63'], ['alignment' => 'right', 'spaceAfter' => 0]);
-⋮----
-// Heavy teal rule (3pt).
-$section->addText('', ['size' => 2], ['spaceAfter' => 80, 'borderBottomSize' => 24, 'borderBottomColor' => '005F63']);
-⋮----
-$title = $section->addTable($this->noBorderTableStyle(['width' => $W, 'unit' => 'dxa', 'layout' => 'fixed']));
-$title->addRow(null, ['cantSplit' => true]);
-$title->addCell(6300, ['valign' => 'bottom'])->addText(strtoupper($payload['reportTitle']), ['bold' => true, 'size' => 15, 'color' => '005F63'], $tight);
-$title->addCell($W - 6300, ['valign' => 'bottom'])->addText($payload['filterSummary'], $muted, ['alignment' => 'right', 'spaceAfter' => 20]);
-⋮----
-// Thin rule + breathing room.
-$section->addText('', ['size' => 2], ['spaceAfter' => 120, 'borderBottomSize' => 6, 'borderBottomColor' => 'DDD5CA']);
-⋮----
-/** Footer: system line on the left, "Page X of Y" (real Word fields) on the right, hairline above. */
-private function addWordFooter(PhpWord $phpWord, $section): void
-⋮----
-$footer = $section->addFooter();
-// A paragraph style that carries the font itself: the PAGE / NUMPAGES field results inherit it
-// (a per-run font on the field code alone is ignored by some viewers, which then show the digits larger).
-$phpWord->addFontStyle('ReportFooterRight', ['size' => 8, 'color' => '999999'], ['alignment' => 'right', 'spaceBefore' => 40, 'spaceAfter' => 0]);
-$table = $footer->addTable($this->noBorderTableStyle(['width' => self::WORD_WIDTH, 'unit' => 'dxa', 'layout' => 'fixed']));
-$table->addRow(null, ['cantSplit' => true]);
-⋮----
-$table->addCell(7600, $rule)->addText('Barangay Piao · Piao Connect — Barangay Information Management System', $font, ['spaceBefore' => 40, 'spaceAfter' => 0]);
-$run = $table->addCell(self::WORD_WIDTH - 7600, $rule)->addTextRun('ReportFooterRight');
-$run->addText('Page ', $font);
-$run->addField('PAGE', [], [], null, $font);
-$run->addText(' of ', $font);
-$run->addField('NUMPAGES', [], [], null, $font);
-⋮----
-/** Colored stat tiles in one row -- the PDF's .stat-box strip. */
-private function addStatTiles($section, array $tiles): void
-⋮----
-$table = $section->addTable($this->noBorderTableStyle([
-⋮----
-$table->addCell($gap)->addText('', ['size' => 2], ['spaceAfter' => 0]);
-⋮----
-$cell = $table->addCell($w, ['bgColor' => $color]);
-$cell->addText($value, ['bold' => true, 'size' => 19, 'color' => 'FFFFFF'], ['spaceAfter' => 10]);
-$cell->addText(strtoupper($label), ['bold' => true, 'size' => 7.5, 'color' => 'FFFFFF', 'spacing' => 10], ['spaceAfter' => 0]);
-⋮----
-$section->addTextBreak(1, ['size' => 5]);
-⋮----
-/** One row of framed cards side by side (weights in %); each callback gets (cell, innerWidthTwips). */
-private function addCardRow($section, array $cards, bool $allowSplit = false): void
-⋮----
-$table->addRow(null, ['cantSplit' => !$allowSplit]);
-⋮----
-$cell = $table->addCell($w, $this->frameStyle());
-$fill($cell, $w - 2 * $margin);
-⋮----
-private function addCardHeading($container, string $title, ?string $desc = null): void
-⋮----
-$container->addText($title, ['bold' => true, 'size' => 12, 'color' => '005F63'], ['spaceAfter' => $desc === null ? 60 : 0, 'keepNext' => true]);
-⋮----
-$container->addText($desc, ['size' => 8, 'color' => '8A8F8F'], ['spaceAfter' => 80, 'keepNext' => true]);
-⋮----
-/** Heading for a section whose content is a flat table (no frame). */
-private function addSectionHeading($section, string $title, ?string $desc = null): void
-⋮----
-$section->addText($title, ['bold' => true, 'size' => 13, 'color' => '005F63'], ['spaceBefore' => 160, 'spaceAfter' => $desc === null ? 80 : 0, 'keepNext' => true]);
-⋮----
-$section->addText($desc, ['size' => 8, 'color' => '8A8F8F'], ['spaceAfter' => 100, 'keepNext' => true]);
-⋮----
-private function addEmptyNote($container, string $text, string $color = 'AAAAAA'): void
-⋮----
-$container->addText($text, ['italic' => true, 'size' => 9, 'color' => $color], ['spaceBefore' => 40, 'spaceAfter' => 100]);
-⋮----
-/** Tinted event banner above a table (the PDF's .rec-head). $statRuns: [[text, fontOrNull], ...]. */
-private function addRecordHead($section, string $name, string $meta, array $statRuns, bool $warn = false): void
-⋮----
-$cell = $table->addCell(self::WORD_WIDTH, $warn ? $this->frameStyle('FECACA', 'FEF2F2') : $this->frameStyle('DCEAE5', 'EEF4F1'));
-⋮----
-$cell->addText($name, ['bold' => true, 'size' => 11, 'color' => '005F63'], $keep);
-$cell->addText($meta, ['size' => 8.5, 'color' => '667777'], $keep);
-$run = $cell->addTextRun(['keepNext' => true, 'spaceAfter' => 0, 'spaceBefore' => 20]);
-⋮----
-$run->addText($text, array_merge(['size' => 9, 'color' => '333333'], $font ?? []));
-⋮----
-// A paragraph between the two tables: without it Word/LibreOffice fuse them into one table,
-// which also stops the data table's header row from repeating on later pages.
-$section->addText('', ['size' => 1], ['spaceAfter' => 0, 'spaceBefore' => 0, 'keepNext' => true]);
-⋮----
-/**
-     * Ruled table with the report's teal header row (repeats on every page),
-     * zebra striping and optional right-aligned columns / total row.
-     * $weights are relative column widths scaled to the page width; a cell
-     * value is a string or ['t' => text, 'color' => hex, 'bold' => bool].
-     */
-private function addDataTable($section, array $headers, array $weights, array $rows, array $opts = [], array $rightCols = [], ?array $totalRow = null): void
-⋮----
-$table = $section->addTable([
-⋮----
-$table->addRow(null, ['cantSplit' => true, 'tblHeader' => true]);
-⋮----
-$table->addCell($widths[$i], ['bgColor' => '005F63'])
-->addText($h, ['bold' => true, 'color' => 'FFFFFF', 'size' => $size], $align($i));
-⋮----
-$table->addCell($widths[$i], $bg)->addText((string) $val, $font, $align($i));
-⋮----
-$table->addCell($widths[$i], ['bgColor' => 'EEF4F1'])->addText((string) $val, ['bold' => true, 'size' => $size], $align($i));
-⋮----
-/**
-     * Two-up grid of mini cards (the PDF's .mini-grid) built as one table with
-     * spacer column/rows. $fillCell receives (cell, item, innerWidthTwips);
-     * $styleFor may return [bg, border] for a highlighted card.
-     */
-private function addCardGrid($container, $items, callable $fillCell, ?callable $styleFor = null, ?int $availWidth = null): void
-⋮----
-$items = collect($items)->values();
-if ($items->isEmpty()) {
-$this->addEmptyNote($container, 'No records found.');
-⋮----
-$table = $container->addTable($this->noBorderTableStyle([
-⋮----
-$rows = $items->chunk(2);
-⋮----
-$table->addRow(90, ['exactHeight' => true, 'cantSplit' => true]);
-⋮----
-$table->addCell($w)->addText('', ['size' => 2], ['spaceAfter' => 0]);
-⋮----
-$table->addCell($cw)->addText('', ['size' => 2], ['spaceAfter' => 0]);
-⋮----
-[$bg, $border] = ($styleFor ? $styleFor($item) : null) ?? ['FAFAF7', 'EEE2D3'];
-$fillCell($table->addCell($cw, $this->frameStyle($border, $bg)), $item, $cw - 2 * $margin);
-⋮----
-/**
-     * Record-list card split into page-sized cards ("(continued)" heading), like
-     * the PDF -- $caps = [rows that fit on the page the list starts on, rows per
-     * later page], one row being a 2-up pair.
-     */
-private function addPagedCardGrid($section, string $title, ?string $desc, $items, callable $fill, ?callable $styleFor, array $caps): void
-⋮----
-$list = array_values(collect($items)->all());
-⋮----
-$this->addCardRow($section, [[100, function ($cell) use ($title, $desc) {
-$this->addCardHeading($cell, $title, $desc);
-$this->addEmptyNote($cell, 'No records found.');
-⋮----
-$this->addCardRow($section, [[100, function ($cell, $inner) use ($heading, $desc, $group, $chunk, $fill, $styleFor) {
-$this->addCardHeading($cell, $heading, $group === 0 ? $desc : null);
-$this->addCardGrid($cell, $chunk, $fill, $styleFor, $inner);
-⋮----
-/** Vertical bar chart: value row, one PNG for all the bars, label row (table fallback without GD). */
-private function addVerticalBarChart($container, $items, string $valueKey, string $labelKey, string $color, int $innerWidth): void
-⋮----
-$this->addEmptyNote($container, 'No data for the selected filters.');
-⋮----
-$count = $items->count();
-⋮----
-$table = $container->addTable($this->noBorderTableStyle(['width' => $colW * $count, 'unit' => 'dxa', 'layout' => 'fixed', 'cellMargin' => 0]));
-⋮----
-$table->addCell($colW)->addText((string) $item[$valueKey], ['bold' => true, 'size' => 8.5, 'color' => '333333'], ['alignment' => 'center', 'spaceAfter' => 20, 'keepNext' => true]);
-⋮----
-$body = $table->addCell($colW * $count, ['gridSpan' => $count]);
-// PhpWord image sizes are in points (twips / 20); the PNG itself is drawn at 2x for crispness.
-⋮----
-$png = $this->canDrawImages() ? $this->pngBars($values, $color, $wPt * 2, 150) : null;
-⋮----
-$body->addTextRun(['spaceAfter' => 0, 'keepNext' => true])->addImage($png, ['width' => $wPt, 'height' => 75]);
-⋮----
-// (no GD) a simple proportional text bar keeps the numbers readable
-$body->addText(str_repeat('█', (int) round($v / $max * 12)), ['size' => 6, 'color' => $color], ['spaceAfter' => 0]);
-⋮----
-$table->addCell($colW)->addText((string) ($item[$labelKey] ?? ''), ['size' => 8, 'color' => '8A8F8F'], ['alignment' => 'center', 'spaceAfter' => 0]);
-⋮----
-/** Thin rounded progress meter followed by the percentage (inside a card cell). */
-private function addMiniProgressBar($cell, float $percentage, string $color, int $innerWidth): void
-⋮----
-$run = $cell->addTextRun(['spaceAfter' => 30, 'spaceBefore' => 20]);
-⋮----
-$png = $this->canDrawImages() ? $this->pngPill($percentage, $barPt * 3, 18, $color) : null;
-⋮----
-$run->addImage($png, ['width' => $barPt, 'height' => 6]);
-$run->addText('  ' . $label, ['bold' => true, 'size' => 9, 'color' => '005F63']);
-⋮----
-$run->addText($label, ['bold' => true, 'size' => 9, 'color' => '005F63']);
-⋮----
-/** Big percentage + proportional pill + caption -- the PDF's "Overall Attendance" card body. */
-private function addProgressSummary($container, float $percentage, string $caption, string $color, int $innerWidth): void
-⋮----
-$container->addText(round($percentage) . '%', ['bold' => true, 'size' => 28, 'color' => $color], ['alignment' => 'center', 'spaceBefore' => 100, 'spaceAfter' => 40]);
-⋮----
-$png = $this->canDrawImages() ? $this->pngPill($percentage, $pillPt * 3, 24, $color) : null;
-⋮----
-$container->addTextRun(['alignment' => 'center', 'spaceAfter' => 60])->addImage($png, ['width' => $pillPt, 'height' => 8]);
-⋮----
-$container->addText($caption, ['size' => 8.5, 'color' => '8A8F8F'], $center);
-⋮----
-private function canDrawImages(): bool
-⋮----
-/** @return array{0:int,1:int,2:int} */
-private function hexRgb(string $hex): array
-⋮----
-/** Filled rectangle with rounded top corners (supersampled canvas coordinates). */
-private function gdRoundedTop($im, float $x0, float $y0, float $x1, float $y1, float $r, $col): void
-⋮----
-/** Bar-chart PNG (rounded bars on a faint grid) -- returns raw PNG bytes. */
-private function pngBars(array $values, string $hex, int $wPx, int $hPx): ?string
-⋮----
-[$r, $g, $b] = $this->hexRgb($hex);
-⋮----
-$this->gdRoundedTop($im, $x0, $base - $h, $x0 + $barW, $base, 5 * $s, $col);
-⋮----
-/** Rounded progress "pill" PNG: grey track with a colored fill to $pct percent. */
-private function pngPill(float $pct, int $wPx, int $hPx, string $hex): ?string
-⋮----
-$round($W, imagecolorallocate($im, 238, 242, 242));
-⋮----
-$round($W * $pct / 100, imagecolorallocate($im, $r, $g, $b));
-⋮----
-/**
-     * Same condition → color mapping as ReportsView.tsx's conditionColor
-     * object and the PDF Blade view, as plain hex pairs.
-     *
-     * @return array{0: string, 1: string} [bgColor, textColor]
-     */
-private function conditionColors(string $condition): array
-````
-
 ## File: app/Http/Controllers/ResidentExportController.php
 ````php
 namespace App\Http\Controllers;
@@ -3195,371 +2439,6 @@ $canvas->get_width() - (12 * 72 / 25.4) - $width,
 $canvas->get_height() - 28,
 ⋮----
 return $pdf->download('residents-master-list.pdf');
-````
-
-## File: app/Http/Controllers/StaffAccountController.php
-````php
-namespace App\Http\Controllers;
-⋮----
-use App\Models\ActivityLog;
-use App\Models\HeadStaffTransfer;
-use App\Models\SecurityAlert;
-use App\Models\StaffRecoveryCode;
-use App\Models\User;
-use App\Rules\StrongPassword;
-use App\Services\SecurityService;
-use App\Support\Totp;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\RateLimiter;
-⋮----
-/**
- * Staff account management and account-security features.
- *
- * Routes are guarded in routes/web.php:
- *   - Head Staff only: list / promote / demote / suspend / reset password /
- *     transfer / recovery codes.
- *   - Any Staff: own alerts, own two-step login, accepting a Head Staff
- *     transfer addressed to them, the keep-alive ping.
- * Every sensitive action also re-asks for the caller's own password.
- */
-class StaffAccountController extends Controller
-⋮----
-protected $logModule = 'Staff Accounts';
-⋮----
-public function __construct(private SecurityService $security)
-⋮----
-// ------------------------------------------------------------------
-// Helpers
-⋮----
-private function fullName(User $u): string
-⋮----
-private function staffTarget($id): User
-⋮----
-return User::where('role', 'Staff')->findOrFail($id);
-⋮----
-private function pendingTransfer(): ?HeadStaffTransfer
-⋮----
-HeadStaffTransfer::where('status', 'pending')->where('expires_at', '<=', now())->update(['status' => 'expired']);
-return HeadStaffTransfer::where('status', 'pending')->with(['from', 'to'])->latest('id')->first();
-⋮----
-private function row(User $u): array
-⋮----
-'name' => $this->fullName($u),
-⋮----
-'active_sessions' => $this->security->activeSessionCount($u),
-⋮----
-// Head Staff: overview
-⋮----
-public function index()
-⋮----
-$staff = User::where('role', 'Staff')
-->orderByDesc('is_head_staff')->orderBy('first_name')->get()
-->map(fn ($u) => $this->row($u))->values();
-⋮----
-$transfer = $this->pendingTransfer();
-⋮----
-return response()->json([
-⋮----
-'to_name' => $transfer->to ? $this->fullName($transfer->to) : null,
-⋮----
-'recovery_codes_remaining' => StaffRecoveryCode::where('user_id', auth()->id())->whereNull('used_at')->count(),
-⋮----
-/** Residents who could be promoted (must already have a portal account). */
-public function candidates(Request $request)
-⋮----
-$term = trim((string) $request->query('search', ''));
-⋮----
-$q = User::where('role', 'Resident')->where('has_account', 1)->whereNull('suspended_at');
-⋮----
-$q->where(fn ($w) => $w->where('first_name', 'like', $like)
-->orWhere('last_name', 'like', $like)
-->orWhere('user_code', 'like', $like));
-⋮----
-return response()->json(
-$q->orderBy('first_name')->limit(15)->get()->map(fn ($u) => [
-⋮----
-])->values()
-⋮----
-// Head Staff: promote / demote / suspend / sign out / reset password
-⋮----
-public function promote(Request $request)
-⋮----
-$request->validate(['user_id' => 'required|integer', 'password' => 'required|string']);
-$me = $request->user();
-$this->security->requirePassword($me, $request->password);
-⋮----
-$target = User::where('role', 'Resident')->where('has_account', 1)->findOrFail($request->user_id);
-⋮----
-$target->save();
-⋮----
-$this->createLog('Promote Staff', "Granted Staff access to {$target->user_code}");
-$this->security->alertAllStaff('staff_promoted', 'New staff member',
-"{$this->fullName($target)} ({$target->user_code}) was given Staff access by the Head Staff.");
-$this->security->alert($target, 'staff_promoted', 'You are now Staff',
-⋮----
-return response()->json(['message' => 'Staff access granted.', 'staff' => $this->row($target)]);
-⋮----
-public function demote(Request $request, $id)
-⋮----
-$request->validate(['password' => 'required|string']);
-⋮----
-$target = $this->staffTarget($id);
-⋮----
-return response()->json(['message' => 'The Head Staff cannot be removed. Transfer the role first.'], 422);
-⋮----
-DB::transaction(function () use ($target) {
-⋮----
-$this->security->revokeSessions($target);
-⋮----
-$this->createLog('Remove Staff', "Removed Staff access from {$target->user_code}");
-$this->security->alertAllStaff('staff_removed', 'Staff access removed',
-"{$this->fullName($target)} ({$target->user_code}) no longer has Staff access.", $target->id);
-⋮----
-return response()->json(['message' => 'Staff access removed.']);
-⋮----
-public function suspend(Request $request, $id)
-⋮----
-return response()->json(['message' => 'The Head Staff cannot be suspended.'], 422);
-⋮----
-$this->createLog('Suspend Staff', "Suspended {$target->user_code}");
-$this->security->alertAllStaff('staff_suspended', 'Account suspended',
-"{$this->fullName($target)} ({$target->user_code}) was suspended and signed out.", $target->id);
-⋮----
-return response()->json(['message' => 'Account suspended.']);
-⋮----
-public function unsuspend(Request $request, $id)
-⋮----
-$this->security->requirePassword($request->user(), $request->password);
-⋮----
-$this->createLog('Unsuspend Staff', "Reactivated {$target->user_code}");
-$this->security->alertAllStaff('staff_unsuspended', 'Account reactivated',
-"{$this->fullName($target)} ({$target->user_code}) was reactivated.", $target->id);
-⋮----
-return response()->json(['message' => 'Account reactivated.']);
-⋮----
-public function signOut(Request $request, $id)
-⋮----
-$keep = $target->id === $request->user()->id ? $request->session()->getId() : null;
-$this->security->revokeSessions($target, $keep);
-⋮----
-$this->createLog('Sign Out Staff', "Signed {$target->user_code} out of all devices");
-if ($target->id !== $request->user()->id) {
-$this->security->alert($target, 'signed_out', 'Signed out everywhere',
-⋮----
-return response()->json(['message' => 'Signed out of all devices.']);
-⋮----
-public function resetPassword(Request $request, $id)
-⋮----
-return response()->json(['message' => 'Change your own password from My Account.'], 422);
-⋮----
-$temporary = $this->security->temporaryPassword();
-$target->password = Hash::make($temporary);
-⋮----
-$this->createLog('Reset Staff Password', "Reset the password of {$target->user_code} (temporary password issued)");
-$this->security->alert($target, 'password_reset', 'Password reset',
-⋮----
-$this->security->alertAllStaff('password_reset', 'Staff password reset',
-"The password of {$this->fullName($target)} ({$target->user_code}) was reset by the Head Staff.", $target->id);
-⋮----
-// Shown to the Head Staff exactly once.
-return response()->json(['message' => 'Temporary password created.', 'temporary_password' => $temporary]);
-⋮----
-// Head Staff transfer
-⋮----
-public function startTransfer(Request $request)
-⋮----
-$request->validate(['to_user_id' => 'required|integer', 'password' => 'required|string']);
-⋮----
-$target = $this->staffTarget($request->to_user_id);
-⋮----
-return response()->json(['message' => 'Choose another active staff member.'], 422);
-⋮----
-HeadStaffTransfer::where('status', 'pending')->update(['status' => 'cancelled']);
-$transfer = HeadStaffTransfer::create([
-⋮----
-'expires_at' => now()->addHours(self::TRANSFER_HOURS),
-⋮----
-$this->createLog('Head Staff Transfer', "Offered the Head Staff role to {$target->user_code}");
-$this->security->alert($target, 'transfer_offered', 'Head Staff transfer waiting',
-⋮----
-$this->security->alertAllStaff('transfer_offered', 'Head Staff transfer started',
-"The Head Staff offered the role to {$this->fullName($target)} ({$target->user_code}).", $target->id);
-⋮----
-return response()->json(['message' => 'Transfer offered.', 'id' => $transfer->id]);
-⋮----
-public function cancelTransfer(Request $request)
-⋮----
-$updated = HeadStaffTransfer::where('status', 'pending')->update(['status' => 'cancelled']);
-⋮----
-$this->createLog('Head Staff Transfer', 'Cancelled the pending Head Staff transfer');
-⋮----
-return response()->json(['message' => 'Transfer cancelled.']);
-⋮----
-/** Any staff member: is there a transfer offered to ME? */
-public function myTransfer(Request $request)
-⋮----
-$t = $this->pendingTransfer();
-if (!$t || $t->to_user_id !== $request->user()->id) {
-return response()->json(['transfer' => null]);
-⋮----
-return response()->json(['transfer' => [
-⋮----
-'from_name' => $t->from ? $this->fullName($t->from) : null,
-⋮----
-public function acceptTransfer(Request $request)
-⋮----
-return response()->json(['message' => 'There is no transfer waiting for you.'], 404);
-⋮----
-$from = User::where('role', 'Staff')->whereNull('suspended_at')->find($transfer->from_user_id);
-⋮----
-$transfer->update(['status' => 'cancelled']);
-return response()->json(['message' => 'This transfer is no longer valid.'], 422);
-⋮----
-DB::transaction(function () use ($from, $me, $transfer) {
-⋮----
-$from->save();
-⋮----
-$me->save();
-$transfer->update(['status' => 'accepted']);
-⋮----
-$this->security->revokeSessions($from);
-⋮----
-$this->createLog('Head Staff Transfer', "{$me->user_code} accepted the Head Staff role from {$from->user_code}");
-$this->security->alertAllStaff('head_changed', 'New Head Staff',
-"{$this->fullName($me)} ({$me->user_code}) is now the Head Staff.");
-⋮----
-return response()->json(['message' => 'You are now the Head Staff.']);
-⋮----
-// Recovery codes (Head Staff)
-⋮----
-public function regenerateRecoveryCodes(Request $request)
-⋮----
-DB::transaction(function () use ($me, $alphabet, &$codes) {
-StaffRecoveryCode::where('user_id', $me->id)->delete();
-⋮----
-StaffRecoveryCode::create(['user_id' => $me->id, 'code_hash' => Hash::make($raw)]);
-⋮----
-$this->createLog('Recovery Codes', 'Generated new recovery codes for the Head Staff account');
-$this->security->alert($me, 'recovery_codes', 'New recovery codes created',
-⋮----
-// The ONLY time the codes are ever shown.
-return response()->json(['codes' => $codes]);
-⋮----
-/**
-     * PUBLIC (login page): use a recovery code to reset the Head Staff
-     * password. Heavily rate-limited; every failure looks the same.
-     */
-public function recoverHeadAccess(Request $request)
-⋮----
-$request->validate([
-⋮----
-$fail = fn () => response()->json(['message' => 'Those recovery details are not valid.'], 422);
-⋮----
-$key = 'recover:' . $request->ip();
-if (RateLimiter::tooManyAttempts($key, 5)) {
-return response()->json(['message' => 'Too many attempts. Please wait 15 minutes and try again.'], 429);
-⋮----
-RateLimiter::hit($key, 900);
-⋮----
-$head = User::where('user_code', trim($request->user_code))
-->where('role', 'Staff')->where('is_head_staff', true)->whereNull('suspended_at')->first();
-⋮----
-foreach (StaffRecoveryCode::where('user_id', $head->id)->whereNull('used_at')->get() as $code) {
-if (Hash::check($normalized, $code->code_hash)) {
-⋮----
-Hash::check($normalized, Hash::make('timing-pad')); // keep timing similar
-⋮----
-return $fail();
-⋮----
-DB::transaction(function () use ($head, $match) {
-$match->update(['used_at' => now()]);
-$head->password = Hash::make(request('new_password'));
-⋮----
-// Using the break-glass code also resets the authenticator, in case
-// the phone was lost together with the password.
-⋮----
-$head->save();
-⋮----
-$this->security->revokeSessions($head);
-RateLimiter::clear($key);
-⋮----
-$left = StaffRecoveryCode::where('user_id', $head->id)->whereNull('used_at')->count();
-ActivityLog::create([
-⋮----
-$this->security->alertAllStaff('recovery_used', 'Recovery code used',
-⋮----
-return response()->json(['message' => 'Password reset. You can sign in now.']);
-⋮----
-// Two-step login (any staff member, for their own account)
-⋮----
-public function twoFactorSetup(Request $request)
-⋮----
-return response()->json(['message' => 'Two-step login is already on.'], 422);
-⋮----
-$secret = Totp::generateSecret();
-$me->two_factor_secret = Crypt::encryptString($secret);
-⋮----
-'uri' => Totp::uri($secret, $me->user_code),
-⋮----
-public function twoFactorConfirm(Request $request)
-⋮----
-$request->validate(['code' => 'required|string|max:12']);
-⋮----
-return response()->json(['message' => 'Start the setup first.'], 422);
-⋮----
-if (RateLimiter::tooManyAttempts($key, 8)) {
-return response()->json(['message' => 'Too many attempts. Please wait a few minutes.'], 429);
-⋮----
-if (Totp::verify(Crypt::decryptString($me->two_factor_secret), $request->code) === null) {
-RateLimiter::hit($key, 600);
-return response()->json(['errors' => ['code' => ['That code is not valid. Check the time on your phone and try again.']]], 422);
-⋮----
-$this->createLog('Two-Step Login', "{$me->user_code} turned on two-step login");
-$this->security->alert($me, 'two_factor_on', 'Two-step login is on',
-⋮----
-return response()->json(['message' => 'Two-step login is on.']);
-⋮----
-public function twoFactorDisable(Request $request)
-⋮----
-$request->validate(['password' => 'required|string', 'code' => 'required|string|max:12']);
-⋮----
-return response()->json(['message' => 'Two-step login is not on.'], 422);
-⋮----
-return response()->json(['errors' => ['code' => ['That code is not valid.']]], 422);
-⋮----
-$this->createLog('Two-Step Login', "{$me->user_code} turned off two-step login");
-$this->security->alert($me, 'two_factor_off', 'Two-step login turned off',
-⋮----
-$this->security->alertHead('two_factor_off', 'Two-step login turned off',
-⋮----
-return response()->json(['message' => 'Two-step login is off.']);
-⋮----
-// Own security alerts + keep-alive
-⋮----
-public function alerts(Request $request)
-⋮----
-$base = SecurityAlert::where('user_id', $request->user()->id);
-⋮----
-'unread_count' => (clone $base)->where('read', false)->count(),
-'data' => (clone $base)->orderByDesc('id')->limit(50)->get(),
-⋮----
-public function markAlertRead(Request $request, $id)
-⋮----
-SecurityAlert::where('user_id', $request->user()->id)->where('id', $id)->update(['read' => true]);
-return response()->json(['message' => 'ok']);
-⋮----
-public function markAllAlertsRead(Request $request)
-⋮----
-SecurityAlert::where('user_id', $request->user()->id)->where('read', false)->update(['read' => true]);
-⋮----
-/** The page pings this while someone is really using it (see SessionGuard). */
-public function keepAlive()
-⋮----
-return response()->json(['ok' => true]);
 ````
 
 ## File: app/Http/Middleware/EnsureHeadStaff.php
@@ -3774,38 +2653,6 @@ public function edits()
 return $this->hasMany(FeedbackEdit::class, 'item_id')->where('kind', 'absence');
 ````
 
-## File: app/Models/AppSetting.php
-````php
-namespace App\Models;
-⋮----
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Schema;
-⋮----
-// Admin-editable rules stored as key => JSON value.
-class AppSetting extends Model
-⋮----
-protected $fillable = ['key', 'value'];
-⋮----
-protected $casts = ['value' => 'array'];
-⋮----
-// Members can send feedback from the moment an event ends until this many hours later.
-⋮----
-// After the first submit a member may change it for this many minutes (0 = no edits).
-⋮----
-public static function feedbackRules(): array
-⋮----
-if (Schema::hasTable('app_settings')) {
-$stored = static::where('key', 'feedback_rules')->value('value') ?? [];
-⋮----
-// Table not migrated yet -- fall back to the defaults.
-⋮----
-public static function saveFeedbackRules(int $closeAfterHours, int $editWindowMinutes): array
-⋮----
-static::updateOrCreate(
-⋮----
-return static::feedbackRules();
-````
-
 ## File: app/Models/ContentTranslation.php
 ````php
 namespace App\Models;
@@ -3908,6 +2755,35 @@ class IntegrationSetting extends Model
 protected $fillable = [
 ⋮----
 protected $casts = [
+````
+
+## File: app/Models/InventoryUnitLog.php
+````php
+namespace App\Models;
+⋮----
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
+⋮----
+/**
+ * A lost / found / disposed / restored report on an inventory item.
+ * `event_id` is set only for units lost while out on an event's loan.
+ */
+class InventoryUnitLog extends Model
+⋮----
+protected $fillable = [
+⋮----
+protected $casts = [
+⋮----
+protected $appends = ['photo_url', 'photo_urls'];
+⋮----
+public function getPhotoUrlAttribute(): ?string
+⋮----
+return $this->photo_path ? Storage::disk('public')->url($this->photo_path) : null;
+⋮----
+/** Public URLs of every evidence photo, cover first. */
+public function getPhotoUrlsAttribute(): array
+⋮----
+fn ($p) => Storage::disk('public')->url($p),
 ````
 
 ## File: app/Models/NameSuffix.php
@@ -4209,6 +3085,44 @@ $current = User::where('barangay_position', $position)
 ->first();
 ⋮----
 $current->save();
+````
+
+## File: app/Support/Paged.php
+````php
+namespace App\Support;
+⋮----
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Http\Request;
+⋮----
+/**
+ * Small helpers shared by every list screen that filters, sorts and pages in
+ * the database (instead of downloading everything and filtering in the
+ * browser): page size, forgiving word-by-word search, and one response shape
+ * -- { data, meta: { total, page, per_page, last_page }, ...extra }.
+ */
+class Paged
+⋮----
+public static function perPage(Request $request, int $default = 10, int $max = 100): int
+⋮----
+return max(1, min($max, (int) $request->input('per_page', $default)));
+⋮----
+public static function page(Request $request): int
+⋮----
+return max(1, (int) $request->input('page', 1));
+⋮----
+/** Search words (lower-cased, whitespace-split), like the browser's matchesSearch(). */
+public static function tokens(?string $query): array
+⋮----
+/** "%word%" with LIKE wildcards in the word escaped. */
+public static function like(string $word): string
+⋮----
+/** Standard JSON body for a paginated list. */
+public static function body(LengthAwarePaginator $paginator, $rows, array $extra = []): array
+⋮----
+'total' => $paginator->total(),
+'page' => $paginator->currentPage(),
+'per_page' => $paginator->perPage(),
+'last_page' => $paginator->lastPage(),
 ````
 
 ## File: app/Support/PhotoSet.php
@@ -6748,6 +5662,56 @@ $table->dropConstrainedForeignId('staff_replied_by');
 $table->dropColumn(['staff_liked_at', 'staff_reply', 'staff_replied_at']);
 ````
 
+## File: database/migrations/2026_10_26_090215_add_feedback_window_columns.php
+````php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+⋮----
+public function up(): void
+⋮----
+Schema::table('feedback', function (Blueprint $table) {
+$table->unsignedSmallInteger('close_after_hours')
+->default(12)
+->after('comment');
+⋮----
+$table->unsignedSmallInteger('edit_window_minutes')
+->default(20)
+->after('close_after_hours');
+⋮----
+$table->softDeletes();
+$table->string('deleted_by', 50)->nullable()->after('deleted_at');
+⋮----
+public function down(): void
+⋮----
+$table->dropSoftDeletes();
+$table->dropColumn(['close_after_hours', 'edit_window_minutes', 'deleted_by']);
+````
+
+## File: database/migrations/2026_10_27_000001_add_lost_units_to_event_inventory_releases_table.php
+````php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+⋮----
+/**
+     * Units that never came back can be reported right in the Return dialog,
+     * so the release remembers them: how many were lost, which conditions
+     * they were borrowed in, and how many of them were already counted as
+     * "lost pending" on the item (so Undo can put everything back exactly).
+     */
+public function up(): void
+⋮----
+Schema::table('event_inventory_releases', function (Blueprint $table) {
+$table->unsignedInteger('lost_quantity')->default(0)->after('quantity');
+$table->unsignedInteger('lost_from_pending')->default(0)->after('lost_quantity');
+$table->json('lost_units')->nullable()->after('lost_from_pending');
+⋮----
+public function down(): void
+⋮----
+$table->dropColumn(['lost_quantity', 'lost_from_pending', 'lost_units']);
+````
+
 ## File: database/migrations/2026_10_27_000001_create_app_settings_table.php
 ````php
 use Illuminate\Database\Migrations\Migration;
@@ -6792,6 +5756,90 @@ $table->index(['kind', 'item_id']);
 public function down(): void
 ⋮----
 Schema::dropIfExists('feedback_edits');
+````
+
+## File: database/migrations/2026_10_27_000002_drop_lost_units_from_event_inventory_releases_table.php
+````php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+⋮----
+/**
+     * Lost units are no longer logged on a release (they are reported
+     * separately from the loan and live on the inventory item), so the
+     * columns added by the previous migration are removed again.
+     */
+public function up(): void
+⋮----
+// Loss-only entries (nothing returned) were stored as empty releases.
+// They are not returns, so they are removed; the item's lost count stays.
+if (Schema::hasColumn('event_inventory_releases', 'lost_quantity')) {
+DB::table('event_inventory_releases')->where('quantity', 0)->where('lost_quantity', '>', 0)->delete();
+⋮----
+if (Schema::hasColumn('event_inventory_releases', $column)) {
+Schema::table('event_inventory_releases', function (Blueprint $table) use ($column) {
+$table->dropColumn($column);
+⋮----
+public function down(): void
+⋮----
+// Nothing to restore: the columns are no longer used.
+````
+
+## File: database/migrations/2026_10_27_000003_create_inventory_unit_logs_table.php
+````php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+⋮----
+/**
+     * One row per lost / found / disposed / restored report on an inventory
+     * item: how many units (and which conditions), who recorded it, an optional
+     * reason and photo, and -- for units lost while out on a loan -- the event
+     * they were lost from (shown in Pending Returns).
+     */
+public function up(): void
+⋮----
+Schema::create('inventory_unit_logs', function (Blueprint $table) {
+$table->id();
+$table->unsignedBigInteger('inventory_item_id')->index();
+$table->unsignedBigInteger('event_id')->nullable()->index();
+$table->string('action', 16); // lost | found | disposed | restored
+$table->unsignedInteger('quantity');
+$table->json('units')->nullable();
+$table->string('reason', 255)->nullable();
+$table->string('photo_path')->nullable();
+$table->string('user_code')->nullable();
+$table->timestamps();
+⋮----
+public function down(): void
+⋮----
+Schema::dropIfExists('inventory_unit_logs');
+````
+
+## File: database/migrations/2026_10_27_000004_add_photos_to_inventory_unit_logs_table.php
+````php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+⋮----
+/**
+     * Disposed / restored / found reports carry up to 5 evidence photos
+     * (first one in photo_path, the rest in extra_photo_paths -- same pattern
+     * as inventory items). The free-text reason is no longer used.
+     */
+public function up(): void
+⋮----
+Schema::table('inventory_unit_logs', function (Blueprint $table) {
+$table->json('extra_photo_paths')->nullable()->after('photo_path');
+⋮----
+if (Schema::hasColumn('inventory_unit_logs', 'reason')) {
+⋮----
+$table->dropColumn('reason');
+⋮----
+public function down(): void
+⋮----
+$table->dropColumn('extra_photo_paths');
 ````
 
 ## File: database/migrations/2026_10_28_000001_add_member_like_on_staff_reply.php
@@ -6839,6 +5887,144 @@ public function down(): void
 Schema::dropIfExists('generated_reports');
 ````
 
+## File: database/migrations/2026_10_30_000001_add_category_to_current_statuses_table.php
+````php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+⋮----
+/**
+     * Groups the staff-managed current statuses so the resident form can
+     * show them in labelled sections (and treat "employment" as pick-one)
+     * instead of one flat checkbox list. Option ids are untouched, so
+     * membership eligibility rules and recorded statuses keep working.
+     * Unrecognised / staff-added options start as "other" until staff set
+     * a category in Settings.
+     */
+public function up(): void
+⋮----
+Schema::table('current_statuses', function (Blueprint $table) {
+$table->string('category', 20)->default('other')->after('label');
+⋮----
+DB::table('current_statuses')->whereIn('label', $labels)->update(['category' => $category]);
+⋮----
+// Common options a barangay profile expects but the old list lacked
+// (employment / school only had Student, Unemployed, Out-of-School
+// Youth). Added only when missing; staff can rename or archive them.
+⋮----
+$next = (int) DB::table('current_statuses')->max('sort_order');
+⋮----
+$exists = DB::table('current_statuses')->whereRaw('LOWER(TRIM(label)) = ?', [mb_strtolower($label)])->exists();
+⋮----
+DB::table('current_statuses')->insert([
+⋮----
+public function down(): void
+⋮----
+$table->dropColumn('category');
+````
+
+## File: database/migrations/2026_11_02_000001_drop_condition_from_inventory_items_table.php
+````php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+⋮----
+/**
+     * An item's units are stored per condition (new_/good_/fair_/poor_quantity),
+     * so a separate single "condition" column only repeated one of them and could
+     * disagree with the counts. The item's main condition is now worked out from
+     * the counts (InventoryItem::getConditionAttribute); nothing needs the column.
+     */
+public function up(): void
+⋮----
+if (Schema::hasColumn('inventory_items', 'condition')) {
+Schema::table('inventory_items', function (Blueprint $table) {
+$table->dropColumn('condition');
+⋮----
+public function down(): void
+⋮----
+if (! Schema::hasColumn('inventory_items', 'condition')) {
+⋮----
+$table->enum('condition', ['New', 'Good', 'Fair', 'Poor'])->default('Good')->after('quantity');
+⋮----
+// Largest group wins; ties go to the worse condition (same rule as the model).
+DB::statement("UPDATE inventory_items SET `condition` = CASE
+````
+
+## File: database/migrations/2026_11_03_000001_drop_extra_photo_paths_from_inventory_items_table.php
+````php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+⋮----
+/**
+ * An inventory item keeps exactly one photo (photo_path), so the
+ * extra_photo_paths JSON column was never needed. Evidence photos for unit
+ * corrections and returns live in their own tables and are not affected.
+ */
+⋮----
+public function up(): void
+⋮----
+if (Schema::hasColumn('inventory_items', 'extra_photo_paths')) {
+Schema::table('inventory_items', function (Blueprint $table) {
+$table->dropColumn('extra_photo_paths');
+⋮----
+public function down(): void
+⋮----
+if (! Schema::hasColumn('inventory_items', 'extra_photo_paths')) {
+⋮----
+$table->json('extra_photo_paths')->nullable()->after('photo_path');
+````
+
+## File: database/migrations/2026_11_03_000002_add_unit_sum_checks_to_inventory_tables.php
+````php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+⋮----
+/**
+ * Keeps every row's total `quantity` equal to the sum of its four condition
+ * counts (new + good + fair + poor), enforced by the database itself.
+ *
+ * Step 1 repairs rows that predate the split (counts all 0, or short of the
+ * total): the missing units are put into the item's main condition, exactly
+ * how the application already reads them. If a row's counts ever exceeded its
+ * total, the total is raised to match the counts.
+ * Step 2 adds a CHECK constraint per table so it can't drift again.
+ */
+⋮----
+/** Column holding the most units (ties go to the worse condition); Good when empty. */
+private function mainColumn(array $counts): string
+⋮----
+public function up(): void
+⋮----
+foreach (DB::table('inventory_items')->get(['id', ...self::COLS]) as $i) {
+⋮----
+DB::table($table)
+->whereRaw("quantity <> ({$sum})")
+->orderBy('id')
+->get(['id', 'quantity', ...self::COLS, ...($table === 'inventory_items' ? [] : ['inventory_item_id'])])
+->each(function ($row) use ($table, $itemCounts) {
+⋮----
+$counts[$this->mainColumn($own)] += $rest;
+⋮----
+// rest < 0: the counts are the truth, so the total follows them.
+⋮----
+DB::table($table)->where('id', $row->id)->update($counts + ['quantity' => array_sum($counts)]);
+⋮----
+if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+return; // SQLite (tests) can't add a CHECK to an existing table.
+⋮----
+DB::statement("ALTER TABLE `{$table}` ADD CONSTRAINT `{$name}` CHECK (`quantity` = `new_quantity` + `good_quantity` + `fair_quantity` + `poor_quantity`)");
+⋮----
+public function down(): void
+⋮----
+DB::statement("ALTER TABLE `{$table}` DROP CONSTRAINT `{$name}`");
+⋮----
+DB::statement("ALTER TABLE `{$table}` DROP CHECK `{$name}`"); // older MySQL syntax
+````
+
 ## File: database/seeders/AgeBracketSeeder.php
 ````php
 namespace Database\Seeders;
@@ -6858,28 +6044,6 @@ class AgeBracketSeeder extends Seeder
 public function run(): void
 ⋮----
 AgeBracket::updateOrCreate(['label' => $bracket['label']], $bracket);
-````
-
-## File: database/seeders/CurrentStatusSeeder.php
-````php
-namespace Database\Seeders;
-⋮----
-use App\Models\CurrentStatus;
-use Illuminate\Database\Seeder;
-⋮----
-/**
- * Staff-configurable "current status" list (Settings -> Age & Status
- * Categories) -- independent life-situation / social-welfare categories
- * (Solo Parent, PWD, indigent, etc.), kept separate from marital/civil
- * status since a resident can carry more than one of these at once.
- * updateOrCreate() keeps this safe to re-run alongside the migration's
- * own default insert.
- */
-class CurrentStatusSeeder extends Seeder
-⋮----
-public function run(): void
-⋮----
-CurrentStatus::updateOrCreate(['label' => $status['label']], $status);
 ````
 
 ## File: database/seeders/EventInventoryConditionSeeder.php
@@ -7076,25 +6240,6 @@ async function cacheFirstAsset(request)
 // when offline so the app's existing error handling can react.
 ````
 
-## File: resources/js/components/auth/ChangePasswordForm.tsx
-````typescript
-import { useState } from "react";
-import { Check, Circle } from "lucide-react";
-import api, { apiErrorMessage } from "../../lib/api";
-import { useLanguage } from "../../i18n/LanguageContext";
-import { checkPassword, PASSWORD_MAX } from "../../lib/passwordPolicy";
-import PasswordField from "./PasswordField";
-import SaveButton from "../ui/SaveButton";
-⋮----
-// Change your OWN password: current password + new password twice, with a
-// live checklist. Used by My Account and by the forced "choose a new
-// password" screen. `minLength` is 12 for the Head Staff account.
-⋮----
-/** Wide layout: fields on the left, rules + button on the right (from lg up). */
-⋮----
-const submit = async (e: React.FormEvent) =>
-````
-
 ## File: resources/js/components/auth/ForcedPasswordChange.tsx
 ````typescript
 import { ShieldAlert } from "lucide-react";
@@ -7121,6 +6266,110 @@ import { useLanguage } from "../../i18n/LanguageContext";
 // they all look and behave the same.
 ⋮----
 aria-label=
+````
+
+## File: resources/js/components/inventory/UnitsModal.tsx
+````typescript
+import { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, Eye, Trash2, RotateCcw } from "lucide-react";
+import FormDrawer, { FormSection } from "../ui/FormDrawer";
+import SaveButton from "../ui/SaveButton";
+import ConfirmDialog from "../ui/ConfirmDialog";
+import NumberStepper from "../ui/NumberStepper";
+import SimplePager from "../ui/SimplePager";
+import PhotoGallery, { type PhotoItem } from "../ui/PhotoGallery";
+import api, { apiErrorMessage } from "../../lib/api";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { tc } from "../../lib/contentTranslations";
+⋮----
+// One place for every unit-level correction on an inventory item:
+//  Lost      units missing from stock          -> leave stock, join the lost count
+//  Found     lost units that turned up         -> back into stock (also fixes a loss marked by mistake)
+//  Disposed  unusable units                    -> leave stock, join the disposed count
+//  Restore   disposed units usable again       -> back into stock
+// Staff pick the units per condition, so nothing is ever chosen at random.
+⋮----
+type Action = "lost" | "found" | "disposed" | "restored";
+// History also lists stock changes made from the Add / Edit form.
+type LogAction = Action | "added" | "adjusted";
+⋮----
+export interface UnitsItem {
+  id: number;
+  name: string;
+  quantity: number;
+  new_quantity: number;
+  good_quantity: number;
+  fair_quantity: number;
+  poor_quantity: number;
+  lost_quantity: number;
+  lost_pending: number;
+  disposed_quantity: number;
+}
+⋮----
+interface UnitLog {
+  id: number;
+  action: LogAction;
+  quantity: number;
+  units: Record<string, number> | null;
+  photo_urls: string[];
+  event_name: string | null;
+  by: string;
+  at: string | null;
+}
+⋮----
+const zero = (): Record<string, number> => (
+const sum = (u: Record<string, number>)
+⋮----
+/** Opens the app's photo viewer (with Next/Previous when there are several). */
+⋮----
+const stock = (label: string) => Number((item as any)[`$
+⋮----
+// "Are you sure?" before saving, and before throwing away picked units.
+⋮----
+// What was disposed, per condition (from the ledger). `unknown` = disposed
+// before the ledger existed, so its condition can't be known.
+⋮----
+const loadLogs = ()
+⋮----
+useEffect(() => { loadLogs(); }, [item.id]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+useEffect(() => () => { photos.forEach((p) => { if (p.file) URL.revokeObjectURL(p.url); }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+// If the current tab stops being possible after a save (e.g. nothing left
+// to restore), move to the first tab that still is.
+⋮----
+}, [tabKey]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+const toStockFor = (qty: number)
+const switchTo = (next: Action) =>
+⋮----
+// Evidence photos are required for dispose / restore / found.
+⋮----
+// Restore only what was disposed, in the condition it was disposed in.
+// Units disposed before the ledger existed (`unknown`) may go to any condition.
+const restoreCap = (label: string): number =>
+⋮----
+// Cap for one condition: lost / disposed from that condition's stock; a
+// restore only the disposed condition; found up to the units that go to stock.
+const capFor = (label: string): number =>
+const setUnit = (label: string, value: number)
+const changeFoundQty = (value: number) =>
+⋮----
+const submit = async () =>
+⋮----
+// Stay in the drawer: clear the form, refresh the activity list, and let
+// the parent refresh the stock numbers (the tabs follow the new counts).
+⋮----
+const requestClose = () =>
+const when = (iso: string | null) =>
+⋮----
+subtitle=
+⋮----
+<FormSection title=
+⋮----
+<NumberStepper min=
+⋮----
+<SimplePager page=
 ````
 
 ## File: resources/js/components/ui/AnimatedNumber.tsx
@@ -7302,69 +6551,6 @@ interface FakeQRProps {
 }
 ⋮----
 export default function FakeQR(
-````
-
-## File: resources/js/components/ui/FeedbackComment.tsx
-````typescript
-import { useState } from "react";
-import { BadgeCheck, Heart, Send } from "lucide-react";
-import api, { apiErrorMessage } from "../../lib/api";
-import { useLanguage } from "../../i18n/LanguageContext";
-import EditHistory from "./EditHistory";
-⋮----
-export type ResponseFields = {
-  id: number;
-  created_at?: string | null;
-  updated_at?: string | null;
-  edits_count?: number;
-  staff_liked_at?: string | null;
-  staff_reply?: string | null;
-  staff_replied_at?: string | null;
-  member_liked_reply_at?: string | null;
-  replied_by?: { first_name: string; last_name: string } | null;
-  repliedBy?: { first_name: string; last_name: string } | null;
-};
-⋮----
-type Person = { first_name?: string | null; last_name?: string | null };
-⋮----
-const initialsOf = (p?: Person | null) => `$
-⋮----
-// Short, comment-style age: "now", "5m", "3h", "2d", then a date.
-function timeAgo(iso: string | null | undefined, locale: string, nowLabel: string): string
-const fullTime = (iso: string | null | undefined, locale: string)
-⋮----
-{logo ? <img src="/logo-removebg-preview.png" alt="" className="h-full w-full object-contain p-1" /> : <span style={{ fontSize: size * 0.34 }}>{initials}</span>}
-    </div>
-  );
-⋮----
-// Facebook-style reaction badge that sits on the corner of a bubble.
-⋮----
-/**
- * One member rating / reason and the conversation under it, laid out like a
- * comment thread: the member's bubble, a heart badge when staff liked it, a
- * nested staff reply with the barangay avatar, and a heart the member can
- * give back. `role` decides which actions are shown.
- */
-⋮----
-/** Member view: Edit / locked controls, shown in the action row. */
-⋮----
-const toggleStaffLike = async () =>
-⋮----
-onChange({ staff_liked_at: staffLiked ? null : new Date().toISOString() }); // optimistic
-⋮----
-const toggleReplyLike = async () =>
-⋮----
-const saveReply = async (value: string) =>
-⋮----
-const startReply = () =>
-⋮----
-<Avatar initials=
-⋮----
-{/* The member's comment */}
-⋮----
-{/* Staff reply, nested like a comment reply */}
-⋮----
-<button type="button" onClick=
 ````
 
 ## File: resources/js/components/ui/FilterBar.tsx
@@ -7598,97 +6784,6 @@ const onVis = () =>
 // Toasts leave on their own after TOAST_MS.
 ⋮----
 const label = (a: ReplyAlert)
-⋮----
-onClick=
-````
-
-## File: resources/js/components/ui/NumberStepper.tsx
-````typescript
-import React from "react";
-import { ChevronUp, ChevronDown } from "lucide-react";
-⋮----
-interface NumberStepperProps {
-  /** Kept as a string, like a normal controlled <input>, so this works for
-      both integer quantities and free-typed decimal amounts without this
-      component owning any parsing opinions beyond its own +/- buttons. */
-  value: string;
-  onChange: (value: string) => void;
-  min?: number;
-  max?: number;
-  step?: number;
-  disabled?: boolean;
-  required?: boolean;
-  placeholder?: string;
-  /** Classes for the input itself -- sizing, colors, border, focus ring.
-      This component adds the padding needed to clear its own buttons. */
-  className?: string;
-  /** True makes the whole control (input + buttons) stretch to fill its
-      parent's width -- pass this, and put `w-full` on `className` too,
-      wherever the field used to be a plain `w-full` input in a form
-      layout. Leave false (the default) for a fixed-width field like a
-      small quantity box, so the wrapper hugs the input instead of the
-      buttons drifting away from it. */
-  fullWidth?: boolean;
-}
-⋮----
-/** Kept as a string, like a normal controlled <input>, so this works for
-      both integer quantities and free-typed decimal amounts without this
-      component owning any parsing opinions beyond its own +/- buttons. */
-⋮----
-/** Classes for the input itself -- sizing, colors, border, focus ring.
-      This component adds the padding needed to clear its own buttons. */
-⋮----
-/** True makes the whole control (input + buttons) stretch to fill its
-      parent's width -- pass this, and put `w-full` on `className` too,
-      wherever the field used to be a plain `w-full` input in a form
-      layout. Leave false (the default) for a fixed-width field like a
-      small quantity box, so the wrapper hugs the input instead of the
-      buttons drifting away from it. */
-⋮----
-/**
- * A number input with its own up/down buttons, instead of the browser's
- * native <input type="number"> spinner. The native one turned out not to
- * be worth it: its arrow color follows `color-scheme`, which some browsers
- * resolve against the OS's own light/dark setting rather than the page's
- * theme, and there's no reliable, cross-browser way to give it a specific
- * dark-with-visible-arrows look (Firefox doesn't support styling it via
- * `::-webkit-inner-spin-button` at all). Building the two buttons ourselves
- * means their color is just an ordinary Tailwind class, consistent for
- * every visitor regardless of OS or browser.
- *
- * The underlying element is still a real <input type="number"> (so
- * required/min/max/step and native keyboard Up/Down-arrow stepping all
- * keep working); only its native spin buttons are hidden.
- */
-export default function NumberStepper({
-  value,
-  onChange,
-  min,
-  max,
-  step = 1,
-  disabled = false,
-  required = false,
-  placeholder,
-  className = "",
-  fullWidth = false,
-}: NumberStepperProps)
-⋮----
-// How many digits after the decimal point `step` implies -- 0.01 means 2,
-// a plain 1 means none at all. Both the +/- buttons and typed input are
-// held to this, so a money field (step 0.01) can't end up with a third
-// decimal digit from either source.
-⋮----
-const bump = (delta: number) =>
-⋮----
-// Round to the step's own precision so repeated 0.01 bumps don't drift
-// into floating-point noise like 0.1 + 0.2.
-⋮----
-const handleTyped = (raw: string) =>
-⋮----
-// Reject the keystroke outright (don't call onChange) rather than
-// silently truncating after the fact -- for a controlled input, not
-// updating `value` means React just redraws the field back to what it
-// was before that keystroke, so the extra digit never visibly sticks.
 ⋮----
 onClick=
 ````
@@ -8008,27 +7103,6 @@ const copy = (el: HTMLElement, cls: string) =>
 // A copy doesn't carry what was typed into fields -- put the text back so nothing blanks out mid-slide.
 ````
 
-## File: resources/js/components/ui/StatCardSkeleton.tsx
-````typescript
-import { useEffect, useState } from "react";
-import Skeleton from "./Skeleton";
-⋮----
-/**
- * Page-open skeleton for the gradient KPI strips at the top of the staff
- * pages (Budget, Inventory, Returns, Activity Logs, Archive). Same dark
- * card shape as the real cards so nothing jumps when the numbers land.
- */
-export default function StatCardSkeleton()
-⋮----
-/**
- * True from the moment a page opens until its first data load has finished
- * AND a short minimum has passed (so a fast response doesn't flash the
- * skeleton for a single frame). Once it flips to false it stays false --
- * later background refreshes or polls never bring the skeleton back.
- */
-export function usePageOpenSkeleton(dataLoading: boolean, minMs = 450): boolean
-````
-
 ## File: resources/js/components/ui/SuffixSelect.tsx
 ````typescript
 import React, { useEffect, useMemo, useState } from "react";
@@ -8159,20 +7233,6 @@ export function useEntered(): boolean
 // eslint-disable-next-line react-hooks/exhaustive-deps
 ````
 
-## File: resources/js/hooks/useFilterSwitching.ts
-````typescript
-import { useEffect, useRef, useState } from "react";
-⋮----
-/**
- * True for a short moment after any of `deps` (filters, search text, date
- * pickers...) changes -- never on first mount. Views OR it into their
- * existing `pageSwitching` flag so a filter change flashes the same skeleton
- * a page change does. While someone is still typing, the timer keeps
- * restarting, so the skeleton stays up until ~350ms after the last change.
- */
-export default function useFilterSwitching(deps: unknown[], ms = 350): boolean
-````
-
 ## File: resources/js/hooks/useOnlineStatus.ts
 ````typescript
 import { useEffect, useState } from "react";
@@ -8203,11 +7263,17 @@ export default function usePager<T>(items: T[], pageSize: number, ms = 350, rese
 // A new filter / search / sort starts again from page 1.
 ````
 
-## File: resources/js/i18n/locales/feedbackExtras.ts
+## File: resources/js/hooks/useServerMatchIds.ts
 ````typescript
-import type { Dict } from "../translations";
+import { useEffect, useState } from "react";
+import api from "../lib/api";
 ⋮----
-// Non-attendance reasons + staff heart/reply (UC-16 alternate flow).
+/**
+ * Lets a small in-memory pick list use the server's search: while `query` is empty it returns
+ * null (show everything); otherwise it asks `endpoint` (a paged list route) which records match
+ * and returns their ids, so the list can be narrowed to those. Debounced; stale answers ignored.
+ */
+export default function useServerMatchIds(endpoint: string, query: string, params: Record<string, unknown> =
 ````
 
 ## File: resources/js/i18n/locales/filters.ts
@@ -8224,31 +7290,21 @@ import type { Dict } from "../translations";
 // Quick tabs
 ````
 
+## File: resources/js/i18n/locales/lostFound.ts
+````typescript
+import type { Dict } from "../translations";
+⋮----
+// Lost / found / disposed / restored units: the Units pop-up in Inventory and
+// the "Report lost" block on Returns.
+⋮----
+// Returns: report lost from a loan
+⋮----
+// Inventory: Units pop-up
+````
+
 ## File: resources/js/i18n/locales/operations.ts
 ````typescript
 import type { Dict } from "../translations";
-````
-
-## File: resources/js/i18n/locales/reportsPro.ts
-````typescript
-import type { Dict } from "../translations";
-⋮----
-// Reports & Analytics page: live status, period presets, comparison, the
-// Generate Report drawer and Report History.
-⋮----
-// Period presets
-⋮----
-// Comparison
-⋮----
-// Empty state
-⋮----
-// Drill-down
-⋮----
-// Generate Report drawer
-⋮----
-// Report History
-⋮----
-// Analytics visuals
 ````
 
 ## File: resources/js/i18n/locales/reportsPro.ts.new
@@ -8512,6 +7568,82 @@ export function checkPassword(pw: string): PasswordCheck[]
 export const isStrongPassword = (pw: string): boolean
 ````
 
+## File: resources/js/lib/reportExcelExport.ts
+````typescript
+import type { Worksheet } from "exceljs";
+⋮----
+/**
+ * Styled `.xlsx` for the Reports & Analytics "CSV / Excel" download. It uses
+ * the same look as the Event Expense Report workbook (expenseReportExport.ts):
+ * seal + barangay letterhead, dark title band with gold text, "I. MESSAGE",
+ * "II. REPORT DETAILS" grid, tinted stat tiles, a zebra table with a TOTAL row
+ * and the signature lines -- for all four report types. The server decides the
+ * columns / rows / tiles (ReportController::buildTabularExport); this file
+ * only draws them.
+ */
+⋮----
+export type ReportColumnFormat = "text" | "int" | "money" | "percent" | "rating";
+⋮----
+export interface ReportExcelPayload {
+  type: string;
+  reportTitle: string;
+  filterSummary: string;
+  printedOn: string;
+  generatedAt: string;
+  message: string[];
+  officials?: { captain?: { name: string } | null; secretary?: { name: string } | null } | null;
+  tiles: { label: string; value: number; format: ReportColumnFormat; tone: "sage" | "gold" | "green" | "red" }[];
+  details: { label: string; value: string }[];
+  columns: { label: string; format: ReportColumnFormat; sum: boolean }[];
+  rows: (string | number | null)[][];
+  totals: (string | number | null)[];
+}
+⋮----
+const argb = (hex: string)
+⋮----
+const thin = (color: string) => (
+const solid = (color: string) => (
+⋮----
+/** Merge c1..c2 on one row, set the value in the first cell and the style on every cell so fills/borders show across the merge. */
+function band(ws: Worksheet, row: number, c1: number, c2: number, value: string | number | null, style: Record<string, any>)
+⋮----
+/** Split columns 1..total into `parts` consecutive [start, end] ranges (any extra columns go to the later parts). */
+function split(total: number, parts: number): [number, number][]
+⋮----
+async function loadSeal(): Promise<ArrayBuffer | null>
+⋮----
+export async function buildReportWorkbookBlob(p: ReportExcelPayload): Promise<Blob>
+⋮----
+// A leading "No." column (13 wide) is the gutter the seal sits in, so the seal lines up with the address block beside it, like the Event Expense Report.
+⋮----
+const W = Math.max(cols.length, 6); // layout width in columns
+⋮----
+// Column widths follow the longest value in each column.
+⋮----
+// ── Letterhead: seal in the gutter, address block left, system name + date right, teal rule under.
+⋮----
+const lh = (row: number, left: string, right: string | null, leftStyle: Record<string, any>, rightStyle: Record<string, any> =
+⋮----
+// ── Title band + scope line
+⋮----
+// ── I. MESSAGE (only when it was included)
+const heading = (text: string, before: number) =>
+⋮----
+// ── Details grid: the scope runs full width, the rest are label/value pairs.
+⋮----
+// ── Stat tiles
+⋮----
+// ── Table
+⋮----
+const isNumeric = (f: ReportColumnFormat)
+⋮----
+// Strings stay plain text in Excel (never a formula), so user-typed names starting with "=" are harmless.
+⋮----
+// ── Signature lines: Prepared by -> Barangay Secretary, Noted -> Barangay Captain.
+⋮----
+// ── Print setup: A4, one page wide, header row repeats, page numbers.
+````
+
 ## File: resources/js/lib/reportMessage.ts
 ````typescript
 // The "Message" that opens a printed report: what the report is, the headline
@@ -8629,6 +7761,19 @@ const sectionHeading = (text: string, before: number) =>
 // Total line
 ⋮----
 // ── Signatures (Prepared by: Secretary / Noted: Captain)
+````
+
+## File: resources/js/lib/responsiveTables.ts
+````typescript
+// Phone layout for data tables: any <table class="rtable"> turns into a stack of
+// cards below 768px (see the .rtable rules in app.css). The cards label each
+// value with its column heading, so this copies every header's text onto the
+// cells under it as data-label. It runs for tables that render later too.
+function label(table: HTMLTableElement)
+⋮----
+function run()
+⋮----
+export function startResponsiveTables()
 ````
 
 ## File: resources/js/lib/scrollToList.ts
@@ -8879,65 +8024,6 @@ onKeyDown=
 <button type="button" onClick=
 ````
 
-## File: resources/js/pages/staff/components/NotificationBell.tsx
-````typescript
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Bell, CheckCheck, Heart, MessageSquareText, Star, Volume2, VolumeX, X } from "lucide-react";
-import api from "../../../lib/api";
-import { absenceKeyFromLabel } from "../../../lib/absence";
-import { playBell } from "../../../lib/alertSound";
-import { useLanguage } from "../../../i18n/LanguageContext";
-import { setStaffAlertsUnread, setSecurityUnread, STAFF_ALERTS_CHANGED } from "../../../lib/staffAlertsStore";
-⋮----
-// Staff bell: shows the feedback members send, live. There is no websocket
-// layer in this app, so it polls a tiny endpoint every few seconds while the
-// tab is visible (and the moment the tab regains focus), keeps the unread
-// badge and the browser-tab title in step, and pops a toast the instant
-// something new arrives -- the same feel as a social-network bell.
-⋮----
-export interface StaffAlert {
-  id: number;
-  event_id: number | null;
-  event_name: string | null;
-  title: string;
-  rating: number | null;
-  absence_reason?: string | null;
-  reply_like?: boolean;
-  kind?: "rating" | "absence";
-  comment: string | null;
-  read: boolean;
-  created_at: string;
-}
-⋮----
-// The bell is an inbox of what still needs attention: only unread, newest few.
-⋮----
-// While toasts are queued, the oldest on screen hands its slot over this often.
-⋮----
-const initialsOf = (title: string) =>
-⋮----
-// Stars for a rating, or the reason chip for a "couldn't attend" alert.
-⋮----
-// Close on outside click / Escape.
-⋮----
-const onDown = (e: MouseEvent) =>
-const onKey = (e: KeyboardEvent) =>
-⋮----
-// Backlog handling: when more toasts are waiting than there are slots, the
-// oldest visible one yields every TOAST_HANDOVER_MS so the next takes over
-// -- a steady cadence instead of making the queue sit out a full timer.
-⋮----
-const openAlert = (a: StaffAlert) =>
-⋮----
-const verb = (a: StaffAlert)
-⋮----
-aria-label=
-⋮----
-
-⋮----
-subject=
-````
-
 ## File: resources/js/pages/staff/views/reports/KpiDelta.tsx
 ````typescript
 import { Minus, TrendingDown, TrendingUp } from "lucide-react";
@@ -9046,161 +8132,6 @@ right=
 // Usable = New / Good / Fair; everything else needs attention.
 ⋮----
 // Units per storage location (largest first; the tail is folded into one corner).
-````
-
-## File: resources/js/pages/staff/views/reports/ReportGenerateDrawer.tsx
-````typescript
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Download, Eye, EyeOff, FileSpreadsheet, FileText, FileType, ListChecks, Printer, Search, Users } from "lucide-react";
-import api from "../../../../lib/api";
-import { matchesSearch } from "../../../../lib/search";
-import FormDrawer, { FormSection } from "../../../../components/ui/FormDrawer";
-import Skeleton from "../../../../components/ui/Skeleton";
-import type { AttendeeFilter, RecordEventOption, SectionDef } from "../ReportOptionsModal";
-⋮----
-export type ReportFormat = "print" | "pdf" | "word" | "csv";
-⋮----
-interface Props {
-  initialFormat?: ReportFormat;
-  reportLabel: string;
-  /** "Period: Oct 1 – Oct 31" etc. -- exactly what the letterhead will say. */
-  scopeText: string;
-  sections: SectionDef[];
-  selected: string[];
-  onSelectedChange: (next: string[]) => void;
-  recordEvents?: RecordEventOption[];
-  recordIds: string[];
-  onRecordIdsChange: (next: string[]) => void;
-  attendeeFilter: AttendeeFilter;
-  onAttendeeFilterChange: (next: AttendeeFilter) => void;
-  /** Query for GET /reports/export/html (type, filters, sections) -- drives the live preview. */
-  previewParams: Record<string, string>;
-  busy: boolean;
-  onClose: () => void;
-  onGenerate: (format: ReportFormat) => void;
-  t: (key: string) => string;
-}
-⋮----
-/** "Period: Oct 1 – Oct 31" etc. -- exactly what the letterhead will say. */
-⋮----
-/** Query for GET /reports/export/html (type, filters, sections) -- drives the live preview. */
-⋮----
-function Box(
-⋮----
-/** The first page of the real report, as it will print, scaled to fit the drawer. */
-⋮----
-const fit = ()
-⋮----
-// Debounced, so ticking several sections in a row makes one request.
-⋮----
-// eslint-disable-next-line react-hooks/exhaustive-deps
-⋮----
-/**
- * "Generate Report" -- the slide-in panel that replaces the old options
- * dialog. One place to pick the format (Print, PDF, Word, CSV), choose which
- * sections go in, see the real first page, and generate.
- */
-⋮----
-const toggleSection = (key: string)
-const toggleEvent = (id: string)
-⋮----
-const sectionButton = (s: SectionDef) =>
-⋮----
-<FormSection title=
-````
-
-## File: resources/js/pages/staff/views/FeedbackRulesView.tsx
-````typescript
-import { useEffect, useState } from "react";
-import { Clock, Lock, ShieldCheck } from "lucide-react";
-import api from "../../../lib/api";
-import { useLanguage } from "../../../i18n/LanguageContext";
-import PasswordConfirmDialog from "../../../components/auth/PasswordConfirmDialog";
-import SaveButton from "../../../components/ui/SaveButton";
-import SectionCard from "../../../components/ui/SectionCard";
-import Skeleton from "../../../components/ui/Skeleton";
-⋮----
-type Rules = { close_after_hours: number; edit_window_minutes: number };
-⋮----
-// Placeholder shaped like one rule card's body: number box + unit, preset chips, hint line.
-⋮----
-// Settings -> Feedback Rules: how long members can send feedback after an
-// event, and how long they can still edit it. Everyone on staff can read the
-// rules; only Head Staff can change them (and must re-enter their password).
-⋮----
-const save = async (password: string) =>
-⋮----
-const chip = (on: boolean)
-⋮----
-<SectionCard icon=
-⋮----
-<form onSubmit=
-⋮----
-<input type="text" inputMode="numeric" value=
-⋮----
-body=
-⋮----
-onClose=
-````
-
-## File: resources/js/pages/staff/views/MyAccountView.tsx
-````typescript
-import { useCallback, useEffect, useRef, useState } from "react";
-import { QRCodeSVG } from "qrcode.react";
-import { KeyRound, ShieldCheck, Smartphone, BellRing, Crown, CheckCircle2 } from "lucide-react";
-import api, { apiErrorMessage } from "../../../lib/api";
-import { useLanguage } from "../../../i18n/LanguageContext";
-import ChangePasswordForm from "../../../components/auth/ChangePasswordForm";
-import PasswordConfirmDialog from "../../../components/auth/PasswordConfirmDialog";
-import SaveButton from "../../../components/ui/SaveButton";
-import SectionCard from "../../../components/ui/SectionCard";
-import Skeleton from "../../../components/ui/Skeleton";
-import SimplePager from "../../../components/ui/SimplePager";
-import usePager from "../../../hooks/usePager";
-import { notifyStaffAlertsChanged, setSecurityUnread } from "../../../lib/staffAlertsStore";
-⋮----
-type Me = {
-  id: number;
-  user_code: string;
-  first_name: string;
-  last_name: string;
-  is_head_staff: boolean;
-  last_login_at: string | null;
-  two_factor_enabled: boolean;
-};
-type SecAlert = { id: number; type: string; title: string; message: string; read: boolean; created_at: string };
-⋮----
-// two-step login
-⋮----
-} catch { /* the api client already handles sign-outs */ }
-⋮----
-// Opening this page counts as reading the alerts -- they stay highlighted
-// while you look, and are marked read when you leave.
-⋮----
-const startSetup = async (password: string) =>
-⋮----
-const confirmSetup = async (e: React.FormEvent) =>
-⋮----
-const turnOff = async (password: string) =>
-⋮----
-const accept = async (password: string) =>
-⋮----
-window.location.reload(); // new role -> reload so the whole page reflects it
-⋮----
-const when = (iso: string | null)
-const pretty = (s: string) => s.replace(/(.
-⋮----
-<button onClick=
-⋮----
-{/* ── Left: who you are + security at a glance ── */}
-⋮----
-{/* ── Right: things you can do (kept at a comfortable reading width) ── */}
-⋮----
-<SectionCard icon=
-⋮----
-title=
-⋮----
-<PasswordConfirmDialog open=
 ````
 
 ## File: resources/js/pages/staff/StaffFakeQR.tsx
@@ -9827,6 +8758,11 @@ Thumbs.db
 _to_delete/
 ````
 
+## File: .tmp_run.ts
+````typescript
+
+````
+
 ## File: tailwind.config.js
 ````javascript
 /** @type {import('tailwindcss').Config} */
@@ -9969,39 +8905,457 @@ Log::info('Facebook webhook payload', $request->all());
 return response()->json(['status' => 'received']);
 ````
 
-## File: app/Models/CurrentStatus.php
+## File: app/Http/Controllers/StaffAccountController.php
+````php
+namespace App\Http\Controllers;
+⋮----
+use App\Models\ActivityLog;
+use App\Models\HeadStaffTransfer;
+use App\Models\SecurityAlert;
+use App\Models\StaffRecoveryCode;
+use App\Models\User;
+use App\Rules\StrongPassword;
+use App\Services\SecurityService;
+use App\Support\Paged;
+use App\Support\Totp;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
+⋮----
+/**
+ * Staff account management and account-security features.
+ *
+ * Routes are guarded in routes/web.php:
+ *   - Head Staff only: list / promote / demote / suspend / reset password /
+ *     transfer / recovery codes.
+ *   - Any Staff: own alerts, own two-step login, accepting a Head Staff
+ *     transfer addressed to them, the keep-alive ping.
+ * Every sensitive action also re-asks for the caller's own password.
+ */
+class StaffAccountController extends Controller
+⋮----
+protected $logModule = 'Staff Accounts';
+⋮----
+public function __construct(private SecurityService $security)
+⋮----
+// ------------------------------------------------------------------
+// Helpers
+⋮----
+private function fullName(User $u): string
+⋮----
+private function staffTarget($id): User
+⋮----
+return User::where('role', 'Staff')->findOrFail($id);
+⋮----
+private function pendingTransfer(): ?HeadStaffTransfer
+⋮----
+HeadStaffTransfer::where('status', 'pending')->where('expires_at', '<=', now())->update(['status' => 'expired']);
+return HeadStaffTransfer::where('status', 'pending')->with(['from', 'to'])->latest('id')->first();
+⋮----
+private function row(User $u): array
+⋮----
+'name' => $this->fullName($u),
+⋮----
+'active_sessions' => $this->security->activeSessionCount($u),
+⋮----
+// Head Staff: overview
+⋮----
+public function index()
+⋮----
+$staff = User::where('role', 'Staff')
+->orderByDesc('is_head_staff')->orderBy('first_name')->get()
+->map(fn ($u) => $this->row($u))->values();
+⋮----
+$transfer = $this->pendingTransfer();
+⋮----
+return response()->json([
+⋮----
+'to_name' => $transfer->to ? $this->fullName($transfer->to) : null,
+⋮----
+'recovery_codes_remaining' => StaffRecoveryCode::where('user_id', auth()->id())->whereNull('used_at')->count(),
+⋮----
+/**
+     * One page of the staff team list, filtered and sorted by the database.
+     * tab: all | active | suspended | no-2fa; search: name or ID; sort: head | name-az | name-za | signin.
+     */
+public function team(Request $request)
+⋮----
+$base = User::where('role', 'Staff');
+foreach (Paged::tokens($request->input('search')) as $word) {
+$like = Paged::like($word);
+$base->where(fn ($q) => $q->whereRaw("LOWER(CONCAT_WS(' ', first_name, middle_name, last_name, suffix)) LIKE ?", [$like])
+->orWhereRaw('LOWER(user_code) LIKE ?', [$like]));
+⋮----
+$q->whereNull('suspended_at');
+⋮----
+$q->whereNotNull('suspended_at');
+⋮----
+$q->whereNull('two_factor_confirmed_at')->whereNull('suspended_at');
+⋮----
+$apply($q, $tab);
+$counts[$key] = $q->count();
+⋮----
+$apply($query, (string) $request->input('tab', 'all'));
+⋮----
+switch ($request->input('sort')) {
+⋮----
+$query->orderByRaw("{$name} ASC");
+⋮----
+$query->orderByRaw("{$name} DESC");
+⋮----
+$query->orderByRaw('last_login_at IS NULL')->orderByDesc('last_login_at');
+⋮----
+$query->orderByDesc('is_head_staff')->orderByRaw("{$name} ASC");
+⋮----
+$paginator = $query->orderBy('id')->paginate(Paged::perPage($request, 5), ['*'], 'page', Paged::page($request));
+⋮----
+return response()->json(Paged::body($paginator, $paginator->getCollection()->map(fn ($u) => $this->row($u))->values(), ['counts' => $counts]));
+⋮----
+/** Residents who could be promoted (must already have a portal account). */
+public function candidates(Request $request)
+⋮----
+$term = trim((string) $request->query('search', ''));
+⋮----
+$q = User::where('role', 'Resident')->where('has_account', 1)->whereNull('suspended_at');
+⋮----
+$q->where(fn ($w) => $w->where('first_name', 'like', $like)
+->orWhere('last_name', 'like', $like)
+->orWhere('user_code', 'like', $like));
+⋮----
+return response()->json(
+$q->orderBy('first_name')->limit(15)->get()->map(fn ($u) => [
+⋮----
+])->values()
+⋮----
+// Head Staff: promote / demote / suspend / sign out / reset password
+⋮----
+public function promote(Request $request)
+⋮----
+$request->validate(['user_id' => 'required|integer', 'password' => 'required|string']);
+$me = $request->user();
+$this->security->requirePassword($me, $request->password);
+⋮----
+$target = User::where('role', 'Resident')->where('has_account', 1)->findOrFail($request->user_id);
+⋮----
+$target->save();
+⋮----
+$this->createLog('Promote Staff', "Granted Staff access to {$target->user_code}");
+$this->security->alertAllStaff('staff_promoted', 'New staff member',
+"{$this->fullName($target)} ({$target->user_code}) was given Staff access by the Head Staff.");
+$this->security->alert($target, 'staff_promoted', 'You are now Staff',
+⋮----
+return response()->json(['message' => 'Staff access granted.', 'staff' => $this->row($target)]);
+⋮----
+public function demote(Request $request, $id)
+⋮----
+$request->validate(['password' => 'required|string']);
+⋮----
+$target = $this->staffTarget($id);
+⋮----
+return response()->json(['message' => 'The Head Staff cannot be removed. Transfer the role first.'], 422);
+⋮----
+DB::transaction(function () use ($target) {
+⋮----
+$this->security->revokeSessions($target);
+⋮----
+$this->createLog('Remove Staff', "Removed Staff access from {$target->user_code}");
+$this->security->alertAllStaff('staff_removed', 'Staff access removed',
+"{$this->fullName($target)} ({$target->user_code}) no longer has Staff access.", $target->id);
+⋮----
+return response()->json(['message' => 'Staff access removed.']);
+⋮----
+public function suspend(Request $request, $id)
+⋮----
+return response()->json(['message' => 'The Head Staff cannot be suspended.'], 422);
+⋮----
+$this->createLog('Suspend Staff', "Suspended {$target->user_code}");
+$this->security->alertAllStaff('staff_suspended', 'Account suspended',
+"{$this->fullName($target)} ({$target->user_code}) was suspended and signed out.", $target->id);
+⋮----
+return response()->json(['message' => 'Account suspended.']);
+⋮----
+public function unsuspend(Request $request, $id)
+⋮----
+$this->security->requirePassword($request->user(), $request->password);
+⋮----
+$this->createLog('Unsuspend Staff', "Reactivated {$target->user_code}");
+$this->security->alertAllStaff('staff_unsuspended', 'Account reactivated',
+"{$this->fullName($target)} ({$target->user_code}) was reactivated.", $target->id);
+⋮----
+return response()->json(['message' => 'Account reactivated.']);
+⋮----
+public function signOut(Request $request, $id)
+⋮----
+$keep = $target->id === $request->user()->id ? $request->session()->getId() : null;
+$this->security->revokeSessions($target, $keep);
+⋮----
+$this->createLog('Sign Out Staff', "Signed {$target->user_code} out of all devices");
+if ($target->id !== $request->user()->id) {
+$this->security->alert($target, 'signed_out', 'Signed out everywhere',
+⋮----
+return response()->json(['message' => 'Signed out of all devices.']);
+⋮----
+public function resetPassword(Request $request, $id)
+⋮----
+return response()->json(['message' => 'Change your own password from My Account.'], 422);
+⋮----
+$temporary = $this->security->temporaryPassword();
+$target->password = Hash::make($temporary);
+⋮----
+$this->createLog('Reset Staff Password', "Reset the password of {$target->user_code} (temporary password issued)");
+$this->security->alert($target, 'password_reset', 'Password reset',
+⋮----
+$this->security->alertAllStaff('password_reset', 'Staff password reset',
+"The password of {$this->fullName($target)} ({$target->user_code}) was reset by the Head Staff.", $target->id);
+⋮----
+// Shown to the Head Staff exactly once.
+return response()->json(['message' => 'Temporary password created.', 'temporary_password' => $temporary]);
+⋮----
+// Head Staff transfer
+⋮----
+public function startTransfer(Request $request)
+⋮----
+$request->validate(['to_user_id' => 'required|integer', 'password' => 'required|string']);
+⋮----
+$target = $this->staffTarget($request->to_user_id);
+⋮----
+return response()->json(['message' => 'Choose another active staff member.'], 422);
+⋮----
+HeadStaffTransfer::where('status', 'pending')->update(['status' => 'cancelled']);
+$transfer = HeadStaffTransfer::create([
+⋮----
+'expires_at' => now()->addHours(self::TRANSFER_HOURS),
+⋮----
+$this->createLog('Head Staff Transfer', "Offered the Head Staff role to {$target->user_code}");
+$this->security->alert($target, 'transfer_offered', 'Head Staff transfer waiting',
+⋮----
+$this->security->alertAllStaff('transfer_offered', 'Head Staff transfer started',
+"The Head Staff offered the role to {$this->fullName($target)} ({$target->user_code}).", $target->id);
+⋮----
+return response()->json(['message' => 'Transfer offered.', 'id' => $transfer->id]);
+⋮----
+public function cancelTransfer(Request $request)
+⋮----
+$updated = HeadStaffTransfer::where('status', 'pending')->update(['status' => 'cancelled']);
+⋮----
+$this->createLog('Head Staff Transfer', 'Cancelled the pending Head Staff transfer');
+⋮----
+return response()->json(['message' => 'Transfer cancelled.']);
+⋮----
+/** Any staff member: is there a transfer offered to ME? */
+public function myTransfer(Request $request)
+⋮----
+$t = $this->pendingTransfer();
+if (!$t || $t->to_user_id !== $request->user()->id) {
+return response()->json(['transfer' => null]);
+⋮----
+return response()->json(['transfer' => [
+⋮----
+'from_name' => $t->from ? $this->fullName($t->from) : null,
+⋮----
+public function acceptTransfer(Request $request)
+⋮----
+return response()->json(['message' => 'There is no transfer waiting for you.'], 404);
+⋮----
+$from = User::where('role', 'Staff')->whereNull('suspended_at')->find($transfer->from_user_id);
+⋮----
+$transfer->update(['status' => 'cancelled']);
+return response()->json(['message' => 'This transfer is no longer valid.'], 422);
+⋮----
+DB::transaction(function () use ($from, $me, $transfer) {
+⋮----
+$from->save();
+⋮----
+$me->save();
+$transfer->update(['status' => 'accepted']);
+⋮----
+$this->security->revokeSessions($from);
+⋮----
+$this->createLog('Head Staff Transfer', "{$me->user_code} accepted the Head Staff role from {$from->user_code}");
+$this->security->alertAllStaff('head_changed', 'New Head Staff',
+"{$this->fullName($me)} ({$me->user_code}) is now the Head Staff.");
+⋮----
+return response()->json(['message' => 'You are now the Head Staff.']);
+⋮----
+// Recovery codes (Head Staff)
+⋮----
+public function regenerateRecoveryCodes(Request $request)
+⋮----
+DB::transaction(function () use ($me, $alphabet, &$codes) {
+StaffRecoveryCode::where('user_id', $me->id)->delete();
+⋮----
+StaffRecoveryCode::create(['user_id' => $me->id, 'code_hash' => Hash::make($raw)]);
+⋮----
+$this->createLog('Recovery Codes', 'Generated new recovery codes for the Head Staff account');
+$this->security->alert($me, 'recovery_codes', 'New recovery codes created',
+⋮----
+// The ONLY time the codes are ever shown.
+return response()->json(['codes' => $codes]);
+⋮----
+/**
+     * PUBLIC (login page): use a recovery code to reset the Head Staff
+     * password. Heavily rate-limited; every failure looks the same.
+     */
+public function recoverHeadAccess(Request $request)
+⋮----
+$request->validate([
+⋮----
+$fail = fn () => response()->json(['message' => 'Those recovery details are not valid.'], 422);
+⋮----
+$key = 'recover:' . $request->ip();
+if (RateLimiter::tooManyAttempts($key, 5)) {
+return response()->json(['message' => 'Too many attempts. Please wait 15 minutes and try again.'], 429);
+⋮----
+RateLimiter::hit($key, 900);
+⋮----
+$head = User::where('user_code', trim($request->user_code))
+->where('role', 'Staff')->where('is_head_staff', true)->whereNull('suspended_at')->first();
+⋮----
+foreach (StaffRecoveryCode::where('user_id', $head->id)->whereNull('used_at')->get() as $code) {
+if (Hash::check($normalized, $code->code_hash)) {
+⋮----
+Hash::check($normalized, Hash::make('timing-pad')); // keep timing similar
+⋮----
+return $fail();
+⋮----
+DB::transaction(function () use ($head, $match) {
+$match->update(['used_at' => now()]);
+$head->password = Hash::make(request('new_password'));
+⋮----
+// Using the break-glass code also resets the authenticator, in case
+// the phone was lost together with the password.
+⋮----
+$head->save();
+⋮----
+$this->security->revokeSessions($head);
+RateLimiter::clear($key);
+⋮----
+$left = StaffRecoveryCode::where('user_id', $head->id)->whereNull('used_at')->count();
+ActivityLog::create([
+⋮----
+$this->security->alertAllStaff('recovery_used', 'Recovery code used',
+⋮----
+return response()->json(['message' => 'Password reset. You can sign in now.']);
+⋮----
+// Two-step login (any staff member, for their own account)
+⋮----
+public function twoFactorSetup(Request $request)
+⋮----
+return response()->json(['message' => 'Two-step login is already on.'], 422);
+⋮----
+$secret = Totp::generateSecret();
+$me->two_factor_secret = Crypt::encryptString($secret);
+⋮----
+'uri' => Totp::uri($secret, $me->user_code),
+⋮----
+public function twoFactorConfirm(Request $request)
+⋮----
+$request->validate(['code' => 'required|string|max:12']);
+⋮----
+return response()->json(['message' => 'Start the setup first.'], 422);
+⋮----
+if (RateLimiter::tooManyAttempts($key, 8)) {
+return response()->json(['message' => 'Too many attempts. Please wait a few minutes.'], 429);
+⋮----
+if (Totp::verify(Crypt::decryptString($me->two_factor_secret), $request->code) === null) {
+RateLimiter::hit($key, 600);
+return response()->json(['errors' => ['code' => ['That code is not valid. Check the time on your phone and try again.']]], 422);
+⋮----
+$this->createLog('Two-Step Login', "{$me->user_code} turned on two-step login");
+$this->security->alert($me, 'two_factor_on', 'Two-step login is on',
+⋮----
+return response()->json(['message' => 'Two-step login is on.']);
+⋮----
+public function twoFactorDisable(Request $request)
+⋮----
+$request->validate(['password' => 'required|string', 'code' => 'required|string|max:12']);
+⋮----
+return response()->json(['message' => 'Two-step login is not on.'], 422);
+⋮----
+return response()->json(['errors' => ['code' => ['That code is not valid.']]], 422);
+⋮----
+$this->createLog('Two-Step Login', "{$me->user_code} turned off two-step login");
+$this->security->alert($me, 'two_factor_off', 'Two-step login turned off',
+⋮----
+$this->security->alertHead('two_factor_off', 'Two-step login turned off',
+⋮----
+return response()->json(['message' => 'Two-step login is off.']);
+⋮----
+// Own security alerts + keep-alive
+⋮----
+public function alerts(Request $request)
+⋮----
+$base = SecurityAlert::where('user_id', $request->user()->id);
+⋮----
+'unread_count' => (clone $base)->where('read', false)->count(),
+'data' => (clone $base)->orderByDesc('id')->limit(50)->get(),
+⋮----
+public function markAlertRead(Request $request, $id)
+⋮----
+SecurityAlert::where('user_id', $request->user()->id)->where('id', $id)->update(['read' => true]);
+return response()->json(['message' => 'ok']);
+⋮----
+public function markAllAlertsRead(Request $request)
+⋮----
+SecurityAlert::where('user_id', $request->user()->id)->where('read', false)->update(['read' => true]);
+⋮----
+/** The page pings this while someone is really using it (see SessionGuard). */
+public function keepAlive()
+⋮----
+return response()->json(['ok' => true]);
+````
+
+## File: app/Models/AppSetting.php
 ````php
 namespace App\Models;
 ⋮----
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Schema;
 ⋮----
-class CurrentStatus extends Model
+class AppSetting extends Model
 ⋮----
-protected $fillable = ['label', 'sort_order', 'deleted_by'];
+protected $fillable = ['key', 'value'];
 ⋮----
-protected $casts = [
+protected $casts = ['value' => 'array'];
 ⋮----
 /**
-     * Plain per-request static cache (NOT Laravel's Cache facade) -- this
-     * project has no `cache` table migration, so Cache::remember() would
-     * throw on the "database" cache store used in .env.
+     * Fallback used ONLY when Settings → Feedback Rules has never been
+     * saved. The running values are always read from AppSetting at
+     * runtime — these constants are never returned to the caller as-is.
      */
-private static ?\Illuminate\Support\Collection $cached = null;
+public const DEFAULT_CLOSE_AFTER_HOURS   = 12;   // 12 hours after event ends
+public const DEFAULT_EDIT_WINDOW_MINUTES = 20;   // 20 minutes after first submit
 ⋮----
-public static function allCached()
+/**
+     * Returns the current feedback rules. Reads from the app_settings
+     * table (key = 'feedback_rules'); falls back to the constants above
+     * when the table doesn't exist yet or nothing was ever saved.
+     *
+     * Existing feedback rows are NOT affected by later changes to these
+     * values — FeedbackController freezes the values onto each record
+     * on first submission (see feedback.close_after_hours /
+     * feedback.edit_window_minutes columns).
+     */
+public static function feedbackRules(): array
 ⋮----
-self::$cached = self::orderBy('label')->get();
+// Fresh installs may run this before `app_settings` is migrated.
+if (!Schema::hasTable('app_settings')) {
 ⋮----
-public static function forgetCache(): void
+$stored = static::where('key', 'feedback_rules')->value('value') ?? [];
 ⋮----
-public function users()
+/**
+     * Persist new feedback rules. Called from
+     * FeedbackController::updateRules() (Head Staff only, password
+     * re-checked). Returns the freshly saved values.
+     */
+public static function saveFeedbackRules(int $closeAfterHours, int $editWindowMinutes): array
 ⋮----
-return $this->belongsToMany(User::class, 'current_status_user');
+static::updateOrCreate(
 ⋮----
-public function memberships()
-⋮----
-return $this->hasMany(Membership::class, 'eligible_current_status_id');
+return static::feedbackRules();
 ````
 
 ## File: app/Models/EventInventoryItem.php
@@ -10026,38 +9380,6 @@ public function inventoryItem()
 // withTrashed -- a borrow record made before an item was later
 // soft-deleted should still show what it was, not go null.
 return $this->belongsTo(InventoryItem::class)->withTrashed();
-````
-
-## File: app/Models/Feedback.php
-````php
-namespace App\Models;
-⋮----
-use Illuminate\Database\Eloquent\Model;
-⋮----
-class Feedback extends Model
-⋮----
-protected $table = 'feedback';
-⋮----
-protected $fillable = [
-⋮----
-protected $casts = [
-⋮----
-public function event()
-⋮----
-return $this->belongsTo(Event::class)->withTrashed();
-⋮----
-public function user()
-⋮----
-return $this->belongsTo(User::class);
-⋮----
-public function repliedBy()
-⋮----
-return $this->belongsTo(User::class, 'staff_replied_by');
-⋮----
-// Earlier versions, saved whenever the member edited this entry.
-public function edits()
-⋮----
-return $this->hasMany(FeedbackEdit::class, 'item_id')->where('kind', 'rating');
 ````
 
 ## File: app/Rules/StrongPassword.php
@@ -10159,6 +9481,28 @@ class CivilStatusSeeder extends Seeder
 public function run(): void
 ⋮----
 CivilStatus::updateOrCreate(['label' => $status['label']], $status);
+````
+
+## File: database/seeders/CurrentStatusSeeder.php
+````php
+namespace Database\Seeders;
+⋮----
+use App\Models\CurrentStatus;
+use Illuminate\Database\Seeder;
+⋮----
+/**
+ * Staff-configurable "current status" list (Settings -> Age & Status
+ * Categories) -- independent life-situation / social-welfare categories
+ * (Solo Parent, PWD, indigent, etc.), kept separate from marital/civil
+ * status since a resident can carry more than one of these at once.
+ * updateOrCreate() keeps this safe to re-run alongside the migration's
+ * own default insert.
+ */
+class CurrentStatusSeeder extends Seeder
+⋮----
+public function run(): void
+⋮----
+CurrentStatus::updateOrCreate(['label' => $status['label']], $status);
 ````
 
 ## File: database/seeders/EventAttendanceSeeder.php
@@ -10521,50 +9865,6 @@ $userMembershipIds = $user->memberships->pluck('id')->toArray();
 // Check if user has at least one required membership
 ````
 
-## File: database/seeders/InventoryItemSeeder.php
-````php
-namespace Database\Seeders;
-⋮----
-use App\Models\InventoryItem;
-use Illuminate\Database\Seeder;
-⋮----
-class InventoryItemSeeder extends Seeder
-⋮----
-/**
-     * Realistic barangay equipment/supplies inventory -- the kind of gear
-     * actually used to run the events seeded by EventSeeder (tables,
-     * chairs, sound system, tents, first-aid kit, etc.), so the Inventory
-     * module doesn't start out empty and disconnected from everything else.
-     *
-     * Lost / disposed gear is recorded the way the app now records it: as
-     * UNIT counts on the item (lost_quantity, lost_pending, disposed_quantity),
-     * never by tagging a whole row Lost/Disposed -- so a few missing or
-     * worn-out units don't take the still-good ones out of Inventory. `quantity`
-     * is always the in-stock count and never includes lost/disposed units.
-     * lost_pending is the part of lost_quantity that was out on loan when it
-     * was reported (settled once that loan closes, see
-     * InventoryItem::settleLostOnLoan).
-     *
-     * Stock levels are sized so EventInventoryItemSeeder can reserve and return
-     * equipment for every event from August through December 2026 without
-     * running out, while a few items (wheelchairs, lockbox, first-aid
-     * kits...) are still deliberately drawn down to show a mix of available
-     * and fully-committed stock.
-     */
-public function run(): void
-⋮----
-// Tied to the newer, dynamically-dated upcoming events in
-// EventSeeder (Barangay Assembly Meeting, Senior Citizen
-// Monthly Pension Release, Solo Parent Wellness Circle, PWD
-// Assistive Devices Distribution, Livelihood Skills Fair) --
-// and giving the Inventory report both condition variety and
-// real lost / disposed unit counts to show.
-⋮----
-// Unit counters default to 0 for anything not listed above.
-⋮----
-InventoryItem::firstOrCreate(
-````
-
 ## File: database/seeders/MembershipSeeder.php
 ````php
 namespace Database\Seeders;
@@ -10774,6 +10074,25 @@ html[data-theme="light"] input[type="password"]::-ms-reveal{filter:none}
 html[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator, html[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator{filter:none}
 ````
 
+## File: resources/js/components/auth/ChangePasswordForm.tsx
+````typescript
+import { useState } from "react";
+import { Check, Circle } from "lucide-react";
+import api, { apiErrorMessage } from "../../lib/api";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { checkPassword, PASSWORD_MAX } from "../../lib/passwordPolicy";
+import PasswordField from "./PasswordField";
+import SaveButton from "../ui/SaveButton";
+⋮----
+// Change your OWN password: current password + new password twice, with a
+// live checklist. Used by My Account and by the forced "choose a new
+// password" screen. `minLength` is 12 for the Head Staff account.
+⋮----
+/** Wide layout: fields on the left, rules + button on the right (from lg up). */
+⋮----
+const submit = async (e: React.FormEvent) =>
+````
+
 ## File: resources/js/components/auth/ForgotPasswordModal.tsx
 ````typescript
 import { useState } from "react";
@@ -10813,6 +10132,132 @@ import Portal from "../ui/Portal";
 const submit = async (e: React.FormEvent) =>
 ````
 
+## File: resources/js/components/ui/NumberStepper.tsx
+````typescript
+import React from "react";
+import { ChevronUp, ChevronDown } from "lucide-react";
+⋮----
+interface NumberStepperProps {
+  /** Kept as a string, like a normal controlled <input>, so this works for
+      both integer quantities and free-typed decimal amounts without this
+      component owning any parsing opinions beyond its own +/- buttons. */
+  value: string;
+  onChange: (value: string) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  disabled?: boolean;
+  required?: boolean;
+  placeholder?: string;
+  /** Classes for the input itself -- sizing, colors, border, focus ring.
+      This component adds the padding needed to clear its own buttons. */
+  className?: string;
+  /** True makes the whole control (input + buttons) stretch to fill its
+      parent's width -- pass this, and put `w-full` on `className` too,
+      wherever the field used to be a plain `w-full` input in a form
+      layout. Leave false (the default) for a fixed-width field like a
+      small quantity box, so the wrapper hugs the input instead of the
+      buttons drifting away from it. */
+  fullWidth?: boolean;
+}
+⋮----
+/** Kept as a string, like a normal controlled <input>, so this works for
+      both integer quantities and free-typed decimal amounts without this
+      component owning any parsing opinions beyond its own +/- buttons. */
+⋮----
+/** Classes for the input itself -- sizing, colors, border, focus ring.
+      This component adds the padding needed to clear its own buttons. */
+⋮----
+/** True makes the whole control (input + buttons) stretch to fill its
+      parent's width -- pass this, and put `w-full` on `className` too,
+      wherever the field used to be a plain `w-full` input in a form
+      layout. Leave false (the default) for a fixed-width field like a
+      small quantity box, so the wrapper hugs the input instead of the
+      buttons drifting away from it. */
+⋮----
+/**
+ * A number input with its own up/down buttons, instead of the browser's
+ * native <input type="number"> spinner. The native one turned out not to
+ * be worth it: its arrow color follows `color-scheme`, which some browsers
+ * resolve against the OS's own light/dark setting rather than the page's
+ * theme, and there's no reliable, cross-browser way to give it a specific
+ * dark-with-visible-arrows look (Firefox doesn't support styling it via
+ * `::-webkit-inner-spin-button` at all). Building the two buttons ourselves
+ * means their color is just an ordinary Tailwind class, consistent for
+ * every visitor regardless of OS or browser.
+ *
+ * The underlying element is still a real <input type="number"> (so
+ * required/min/max/step and native keyboard Up/Down-arrow stepping all
+ * keep working); only its native spin buttons are hidden.
+ */
+export default function NumberStepper({
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  disabled = false,
+  required = false,
+  placeholder,
+  className = "",
+  fullWidth = false,
+}: NumberStepperProps)
+⋮----
+// How many digits after the decimal point `step` implies -- 0.01 means 2,
+// a plain 1 means none at all. Both the +/- buttons and typed input are
+// held to this, so a money field (step 0.01) can't end up with a third
+// decimal digit from either source.
+⋮----
+const bump = (delta: number) =>
+⋮----
+// Round to the step's own precision so repeated 0.01 bumps don't drift
+// into floating-point noise like 0.1 + 0.2.
+⋮----
+const handleTyped = (raw: string) =>
+⋮----
+// Reject the keystroke outright (don't call onChange) rather than
+// silently truncating after the fact -- for a controlled input, not
+// updating `value` means React just redraws the field back to what it
+// was before that keystroke, so the extra digit never visibly sticks.
+⋮----
+onClick=
+````
+
+## File: resources/js/components/ui/StatCardSkeleton.tsx
+````typescript
+import { useEffect, useState } from "react";
+import Skeleton from "./Skeleton";
+⋮----
+/**
+ * Page-open skeleton for the gradient KPI strips at the top of the staff
+ * pages (Budget, Inventory, Returns, Activity Logs, Archive). Same dark
+ * card shape as the real cards so nothing jumps when the numbers land.
+ */
+export default function StatCardSkeleton()
+⋮----
+/**
+ * True from the moment a page opens until its first data load has finished
+ * AND a short minimum has passed (so a fast response doesn't flash the
+ * skeleton for a single frame). Once it flips to false it stays false --
+ * later background refreshes or polls never bring the skeleton back.
+ */
+export function usePageOpenSkeleton(dataLoading: boolean, minMs = 0): boolean
+````
+
+## File: resources/js/hooks/useFilterSwitching.ts
+````typescript
+import { useEffect, useRef, useState } from "react";
+⋮----
+/**
+ * True for a short moment after any of `deps` (filters, search text, date
+ * pickers...) changes -- never on first mount. Views OR it into their
+ * existing `pageSwitching` flag so a filter change flashes the same skeleton
+ * a page change does. While someone is still typing, the timer keeps
+ * restarting, so the skeleton stays up until ~350ms after the last change.
+ */
+export default function useFilterSwitching(deps: unknown[], ms = 0): boolean
+````
+
 ## File: resources/js/i18n/locales/auth.ts
 ````typescript
 import type { Dict } from "../translations";
@@ -10823,15 +10268,129 @@ import type { Dict } from "../translations";
 import type { Dict } from "../translations";
 ````
 
-## File: resources/js/i18n/locales/residents.ts
+## File: resources/js/i18n/locales/feedbackExtras.ts
+````typescript
+// import type { Dict } from "../translations";
+⋮----
+// // Non-attendance reasons + staff heart/reply (UC-16 alternate flow).
+// export const feedbackExtrasTranslations: Dict = {
+//   absTitle: { en: "Why couldn't you attend?", tl: "Bakit hindi ka nakadalo?", ceb: "Nganong wala ka nakaanha?" },
+//   absSubtitle: { en: "This helps the Barangay plan better events. It is not a rating.", tl: "Makakatulong ito sa Barangay para mas mapaganda ang mga event. Hindi ito rating.", ceb: "Makatabang kini sa Barangay aron mas maayo ang mga event. Dili kini rating." },
+//   absTellUs: { en: "Tell us why", tl: "Sabihin kung bakit", ceb: "Sultihi mi kung ngano" },
+//   absYourReason: { en: "Your reason", tl: "Ang iyong dahilan", ceb: "Imong rason" },
+//   absCommentPlaceholder: { en: "Anything else you'd like to add? (optional)", tl: "May gusto ka pang idagdag? (opsyonal)", ceb: "Naa pa bay gusto nimong idugang? (opsyonal)" },
+//   absSubmit: { en: "Send", tl: "Ipadala", ceb: "Ipadala" },
+//   absSent: { en: "Thank you for letting us know.", tl: "Salamat sa pagsabi sa amin.", ceb: "Salamat sa pagsulti namo." },
+//   absFailed: { en: "Could not send your reason. Please try again.", tl: "Hindi naipadala ang iyong dahilan. Subukan muli.", ceb: "Wala mapadala ang imong rason. Sulayi usab." },
+//   absReason_schedule: { en: "Schedule conflict", tl: "Nagkasabay sa iskedyul", ceb: "Nagbangga ang iskedyul" },
+//   absReason_sick: { en: "Sick or unwell", tl: "May sakit", ceb: "Nagsakit" },
+//   absReason_not_informed: { en: "Didn't know about it", tl: "Hindi alam ang event", ceb: "Wala nahibalo sa event" },
+//   absReason_no_transport: { en: "No transportation", tl: "Walang masakyan", ceb: "Walay sakyanan" },
+//   absReason_work_family: { en: "Work or family duties", tl: "Trabaho o pamilya", ceb: "Trabaho o pamilya" },
+//   absReason_not_interested: { en: "Not interested", tl: "Hindi interesado", ceb: "Dili interesado" },
+//   absReason_other: { en: "Other", tl: "Iba pa", ceb: "Uban pa" },
+//   absTabRatings: { en: "Ratings", tl: "Mga rating", ceb: "Mga rating" },
+//   absTabReasons: { en: "Non-attendance", tl: "Hindi dumalo", ceb: "Wala motambong" },
+//   absNoneYet: { en: "No reasons yet. Members who miss this event can tell you why after it ends.", tl: "Wala pang dahilan. Makapagsasabi ang mga miyembrong hindi dumalo pagkatapos ng event.", ceb: "Wala pay rason. Makasulti ang mga miyembro nga wala motambong human sa event." },
+//   alertsAllTypes: { en: "All types", tl: "Lahat ng uri", ceb: "Tanan nga matang" },
+//   memToastReplyFeedback: { en: "Barangay staff replied to your feedback", tl: "Sumagot ang staff ng Barangay sa iyong feedback", ceb: "Mitubag ang staff sa Barangay sa imong feedback" },
+//   memToastLikeFeedback: { en: "Barangay staff liked your feedback", tl: "Na-like ng staff ng Barangay ang iyong feedback", ceb: "Gi-like sa staff sa Barangay ang imong feedback" },
+//   memToastReplyResponse: { en: "Barangay staff replied to your response", tl: "Sumagot ang staff ng Barangay sa iyong sagot", ceb: "Mitubag ang staff sa Barangay sa imong tubag" },
+//   memToastLikeResponse: { en: "Barangay staff liked your response", tl: "Na-like ng staff ng Barangay ang iyong sagot", ceb: "Gi-like sa staff sa Barangay ang imong tubag" },
+//   memToastNewNotification: { en: "New notification", tl: "Bagong notification", ceb: "Bag-ong notification" },
+//   memFeedbackTab: { en: "Feedback", tl: "Feedback", ceb: "Feedback" },
+//   memToastOn: { en: "on", tl: "sa", ceb: "sa" },
+//   memToastView: { en: "Tap to view", tl: "I-tap para tingnan", ceb: "I-tap aron tan-awon" },
+//   memSoundLabel: { en: "Notification sound", tl: "Tunog ng notification", ceb: "Tunog sa notification" },
+//   memSoundOn: { en: "On", tl: "Naka-on", ceb: "Naka-on" },
+//   memSoundOff: { en: "Off", tl: "Naka-off", ceb: "Naka-off" },
+//   feedbackrules: { en: "Feedback Rules", tl: "Mga Patakaran sa Feedback", ceb: "Mga Lagda sa Feedback" },
+//   fbRulesTitle: { en: "Feedback Rules", tl: "Mga Patakaran sa Feedback", ceb: "Mga Lagda sa Feedback" },
+//   fbRulesSubtitle: { en: "Decide how long members can send feedback after an event, and how long they can still edit it.", tl: "Itakda kung gaano katagal makapagpapadala ng feedback ang mga miyembro pagkatapos ng event, at kung gaano katagal nila ito maaaring i-edit.", ceb: "Itakda kung unsa kadugay makapadala ug feedback ang mga miyembro human sa event, ug kung unsa kadugay nila kini ma-edit." },
+//   fbRulesHeadOnly: { en: "Only the Head Staff can change these rules. You can see them here.", tl: "Ang Head Staff lang ang makapagbabago ng mga patakarang ito. Makikita mo sila dito.", ceb: "Ang Head Staff ra ang makabag-o niini nga mga lagda. Makita nimo sila dinhi." },
+//   fbRulesSaved: { en: "Feedback rules saved.", tl: "Na-save ang mga patakaran sa feedback.", ceb: "Na-save ang mga lagda sa feedback." },
+//   fbRuleCloseTitle: { en: "Feedback window", tl: "Palugit ng feedback", ceb: "Palugit sa feedback" },
+//   fbRuleCloseDesc: { en: "Members can send feedback from the moment an event ends until this many hours later.", tl: "Makapagpapadala ng feedback ang mga miyembro mula sa pagtatapos ng event hanggang sa ilang oras pagkatapos nito.", ceb: "Makapadala ug feedback ang mga miyembro gikan sa pagtapos sa event hangtod sa pipila ka oras human niini." },
+//   fbRuleEditTitle: { en: "Edit window", tl: "Palugit sa pag-edit", ceb: "Palugit sa pag-edit" },
+//   fbRuleEditDesc: { en: "After sending, a member can change their feedback for this many minutes. Then it is locked.", tl: "Pagkatapos magpadala, maaaring baguhin ng miyembro ang feedback sa loob ng ilang minuto. Pagkatapos nito, naka-lock na.", ceb: "Human sa pagpadala, mabag-o sa miyembro ang feedback sulod sa pipila ka minuto. Pagkahuman, naka-lock na." },
+//   fbUnitHours: { en: "hours after the event ends", tl: "oras pagkatapos ng event", ceb: "ka oras human sa event" },
+//   fbUnitMinutes: { en: "minutes after first sending", tl: "minuto pagkatapos unang magpadala", ceb: "ka minuto human sa unang pagpadala" },
+//   fbRuleRange: { en: "Allowed: {a} to {b}.", tl: "Pinapayagan: {a} hanggang {b}.", ceb: "Gitugotan: {a} hangtod {b}." },
+//   fbRuleZeroNote: { en: "0 means no edits.", tl: "Ang 0 ay walang pag-edit.", ceb: "Ang 0 nagpasabot nga walay pag-edit." },
+//   fbRuleCloseMin: { en: "Enter at least 1 hour.", tl: "Maglagay ng hindi bababa sa 1 oras.", ceb: "Pagbutang ug labing menos 1 ka oras." },
+//   fbRulePreview: { en: "What members will see", tl: "Ano ang makikita ng mga miyembro", ceb: "Unsay makita sa mga miyembro" },
+//   fbPreviewClose: { en: "Feedback is open for {n} hour(s) after an event ends, then it closes.", tl: "Bukas ang feedback sa loob ng {n} oras pagkatapos ng event, tapos magsasara.", ceb: "Bukas ang feedback sulod sa {n} ka oras human sa event, unya mosira." },
+//   fbPreviewEdit: { en: "After sending, they can edit for {n} minute(s), then it is locked.", tl: "Pagkatapos magpadala, maaari silang mag-edit sa loob ng {n} minuto, tapos naka-lock na.", ceb: "Human sa pagpadala, makapag-edit sila sulod sa {n} ka minuto, unya naka-lock na." },
+//   fbPreviewNoEdit: { en: "Feedback cannot be edited after it is sent.", tl: "Hindi na maaaring i-edit ang feedback pagkatapos ipadala.", ceb: "Dili na ma-edit ang feedback human mapadala." },
+//   fbRulesConfirmTitle: { en: "Save feedback rules?", tl: "I-save ang mga patakaran sa feedback?", ceb: "I-save ang mga lagda sa feedback?" },
+//   fbRulesConfirmBody: { en: "Type your password to confirm. The new rules apply to everyone right away.", tl: "I-type ang iyong password para kumpirmahin. Agad na ipatutupad ang bagong patakaran sa lahat.", ceb: "I-type ang imong password aron makumpirma. Dayon ipadapat ang bag-ong lagda sa tanan." },
+//   fbShortHours: { en: "hrs", tl: "oras", ceb: "oras" },
+//   fbShortMinutes: { en: "min", tl: "min", ceb: "min" },
+//   fbNoEdits: { en: "No edits", tl: "Walang edit", ceb: "Walay edit" },
+//   fbClosedNote: { en: "Feedback closed {n} hour(s) after the event.", tl: "Nagsara ang feedback {n} oras pagkatapos ng event.", ceb: "Nisira ang feedback {n} ka oras human sa event." },
+//   fbOpenUntil: { en: "Open until {time}", tl: "Bukas hanggang {time}", ceb: "Bukas hangtod {time}" },
+//   fbEditUntil: { en: "You can edit until {time}", tl: "Maaari kang mag-edit hanggang {time}", ceb: "Makapag-edit ka hangtod {time}" },
+//   fbLocked: { en: "Locked", tl: "Naka-lock", ceb: "Naka-lock" },
+//   fbLockedHint: { en: "Edits are allowed for {n} minute(s) after sending.", tl: "Pinapayagan ang pag-edit sa loob ng {n} minuto pagkatapos magpadala.", ceb: "Gitugotan ang pag-edit sulod sa {n} ka minuto human sa pagpadala." },
+//   absSummary: { en: "Reasons given", tl: "Mga ibinigay na dahilan", ceb: "Mga gihatag nga rason" },
+//   absAbsentLabel: { en: "Did not attend", tl: "Hindi dumalo", ceb: "Wala motambong" },
+//   respHeart: { en: "Like", tl: "I-like", ceb: "I-like" },
+//   respLiked: { en: "Liked", tl: "Na-like", ceb: "Na-like" },
+//   respReply: { en: "Reply", tl: "Sumagot", ceb: "Tubaga" },
+//   respEditReply: { en: "Edit reply", tl: "I-edit ang sagot", ceb: "I-edit ang tubag" },
+//   respReplyPlaceholder: { en: "Write a reply the member will see…", tl: "Magsulat ng sagot na makikita ng miyembro…", ceb: "Pagsulat ug tubag nga makita sa miyembro…" },
+//   respSendReply: { en: "Send reply", tl: "Ipadala ang sagot", ceb: "Ipadala ang tubag" },
+//   respRemoveReply: { en: "Remove reply", tl: "Alisin ang sagot", ceb: "Tangtanga ang tubag" },
+//   respRepliedBy: { en: "Replied by {name}", tl: "Sinagot ni {name}", ceb: "Gitubag ni {name}" },
+//   respStaffReply: { en: "Barangay staff replied", tl: "Sumagot ang staff ng Barangay", ceb: "Mitubag ang staff sa Barangay" },
+//   respStaffLiked: { en: "Barangay staff liked this", tl: "Na-like ito ng staff ng Barangay", ceb: "Gi-like kini sa staff sa Barangay" },
+//   respFailed: { en: "Could not save. Please try again.", tl: "Hindi nai-save. Subukan muli.", ceb: "Wala ma-save. Sulayi usab." },
+//   alertAbsentVerb: { en: "sent a reason for not attending", tl: "ay nagpadala ng dahilan kung bakit hindi dumalo", ceb: "nagpadala ug rason kung ngano wala motambong" },
+//   fbEdited: { en: "Edited", tl: "Na-edit", ceb: "Gi-edit" },
+//   fbEditHistory: { en: "Edit history", tl: "Kasaysayan ng pag-edit", ceb: "Kasaysayan sa pag-edit" },
+//   fbCurrentVersion: { en: "Current", tl: "Kasalukuyan", ceb: "Karon" },
+//   fbOriginalVersion: { en: "Original", tl: "Orihinal", ceb: "Orihinal" },
+//   fbEarlierVersion: { en: "Earlier version", tl: "Naunang bersyon", ceb: "Naunang bersyon" },
+//   fbNoComment: { en: "No comment", tl: "Walang komento", ceb: "Walay komento" },
+//   fbHistoryFailed: { en: "Could not load the edit history.", tl: "Hindi ma-load ang kasaysayan ng pag-edit.", ceb: "Dili ma-load ang kasaysayan sa pag-edit." },
+//   alertLikedReplyVerb: { en: "liked your reply", tl: "ay nag-like ng iyong sagot", ceb: "nag-like sa imong tubag" },
+//   alertReplyLiked: { en: "Liked your reply", tl: "Na-like ang iyong sagot", ceb: "Gi-like ang imong tubag" },
+//   alertNewReaction: { en: "New reaction", tl: "Bagong reaksyon", ceb: "Bag-ong reaksyon" },
+//   cmtYou: { en: "You", tl: "Ikaw", ceb: "Ikaw" },
+//   cmtNow: { en: "Just now", tl: "Ngayon lang", ceb: "Karon lang" },
+//   cmtStaff: { en: "Staff", tl: "Staff", ceb: "Staff" },
+//   cmtBarangayStaff: { en: "Barangay Staff", tl: "Staff ng Barangay", ceb: "Staff sa Barangay" },
+//   cmtDelete: { en: "Delete", tl: "Burahin", ceb: "Papason" },
+//   cmtLikedByMember: { en: "Liked by the member", tl: "Na-like ng miyembro", ceb: "Gi-like sa miyembro" },
+// };
+⋮----
+import type { Dict } from "../translations";
+⋮----
+// Non-attendance reasons + staff heart/reply (UC-16 alternate flow).
+⋮----
+// ── Feedback edit window (Files 6 & 7) ────────────────────────────────
+````
+
+## File: resources/js/i18n/locales/reportsPro.ts
 ````typescript
 import type { Dict } from "../translations";
 ⋮----
-// Residents master list + profile drawer
+// Reports & Analytics page: live status, period presets, comparison, the
+// Generate Report drawer and Report History.
 ⋮----
-// Add / edit forms
+// Period presets
 ⋮----
-// Membership picker + ID photo
+// Comparison
+⋮----
+// Empty state
+⋮----
+// Drill-down
+⋮----
+// Generate Report drawer
+⋮----
+// Report History
+⋮----
+// Analytics visuals
 ````
 
 ## File: resources/js/i18n/LanguageContext.tsx
@@ -11010,6 +10569,65 @@ export function staffKeyFromPath(pathname: string): string
 export function staffUrlFor(key: string): string
 ````
 
+## File: resources/js/pages/staff/components/NotificationBell.tsx
+````typescript
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Bell, CheckCheck, Heart, MessageSquareText, Star, Volume2, VolumeX, X } from "lucide-react";
+import api from "../../../lib/api";
+import { absenceKeyFromLabel } from "../../../lib/absence";
+import { playBell } from "../../../lib/alertSound";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { setStaffAlertsUnread, setSecurityUnread, STAFF_ALERTS_CHANGED } from "../../../lib/staffAlertsStore";
+⋮----
+// Staff bell: shows the feedback members send, live. There is no websocket
+// layer in this app, so it polls a tiny endpoint every few seconds while the
+// tab is visible (and the moment the tab regains focus), keeps the unread
+// badge and the browser-tab title in step, and pops a toast the instant
+// something new arrives -- the same feel as a social-network bell.
+⋮----
+export interface StaffAlert {
+  id: number;
+  event_id: number | null;
+  event_name: string | null;
+  title: string;
+  rating: number | null;
+  absence_reason?: string | null;
+  reply_like?: boolean;
+  kind?: "rating" | "absence";
+  comment: string | null;
+  read: boolean;
+  created_at: string;
+}
+⋮----
+// The bell is an inbox of what still needs attention: only unread, newest few.
+⋮----
+// While toasts are queued, the oldest on screen hands its slot over this often.
+⋮----
+const initialsOf = (title: string) =>
+⋮----
+// Stars for a rating, or the reason chip for a "couldn't attend" alert.
+⋮----
+// Close on outside click / Escape.
+⋮----
+const onDown = (e: MouseEvent) =>
+const onKey = (e: KeyboardEvent) =>
+⋮----
+// Backlog handling: when more toasts are waiting than there are slots, the
+// oldest visible one yields every TOAST_HANDOVER_MS so the next takes over
+// -- a steady cadence instead of making the queue sit out a full timer.
+⋮----
+const openAlert = (a: StaffAlert) =>
+⋮----
+const verb = (a: StaffAlert)
+⋮----
+aria-label=
+⋮----
+
+⋮----
+subject=
+````
+
 ## File: resources/js/pages/staff/views/reports/EventBreakdownTable.tsx
 ````typescript
 import { useMemo, useState } from "react";
@@ -11036,140 +10654,161 @@ const head = (key: SortKey, label: string, className = "") =>
 <span className="block font-bold text-white print:text-gray-800">
 ````
 
-## File: resources/js/pages/staff/views/reports/ReportHistoryPanel.tsx
+## File: resources/js/pages/staff/views/reports/ReportGenerateDrawer.tsx
 ````typescript
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Award, CalendarDays, FileSpreadsheet, FileText, FileType, History, Package, Printer, RotateCw, Wallet } from "lucide-react";
-import api, { apiErrorMessage } from "../../../../lib/api";
-import FilterBar from "../../../../components/ui/FilterBar";
-import QuickTabs from "../../../../components/ui/QuickTabs";
-import SimplePager from "../../../../components/ui/SimplePager";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Download, Eye, EyeOff, FileSpreadsheet, FileText, FileType, ListChecks, Printer, Search, Users } from "lucide-react";
+import api from "../../../../lib/api";
+import useServerMatchIds from "../../../../hooks/useServerMatchIds";
+import FormDrawer, { FormSection } from "../../../../components/ui/FormDrawer";
 import Skeleton from "../../../../components/ui/Skeleton";
-import { useLanguage } from "../../../../i18n/LanguageContext";
-import type { ReportFormat } from "./ReportGenerateDrawer";
+import type { AttendeeFilter, RecordEventOption, SectionDef } from "../ReportOptionsModal";
 ⋮----
-export interface HistoryItem {
-  id: number;
-  type: "attendance" | "membership" | "budget" | "inventory";
-  format: ReportFormat;
-  title: string;
-  scope_label: string | null;
-  filters: Record<string, string | number>;
-  sections: string[] | null;
-  generated_by: string;
-  generated_at: string | null;
+export type ReportFormat = "print" | "pdf" | "word" | "csv";
+⋮----
+interface Props {
+  initialFormat?: ReportFormat;
+  reportLabel: string;
+  /** "Period: Oct 1 – Oct 31" etc. -- exactly what the letterhead will say. */
+  scopeText: string;
+  sections: SectionDef[];
+  selected: string[];
+  onSelectedChange: (next: string[]) => void;
+  recordEvents?: RecordEventOption[];
+  recordIds: string[];
+  onRecordIdsChange: (next: string[]) => void;
+  attendeeFilter: AttendeeFilter;
+  onAttendeeFilterChange: (next: AttendeeFilter) => void;
+  /** Query for GET /reports/export/html (type, filters, sections) -- drives the live preview. */
+  previewParams: Record<string, string>;
+  busy: boolean;
+  onClose: () => void;
+  onGenerate: (format: ReportFormat) => void;
+  t: (key: string) => string;
 }
 ⋮----
-/** "just now", "5 min ago", "3 hr ago", "2d ago", then a plain date. */
-function relativeTime(iso: string | null, t: (k: string) => string, locale: string): string
+/** "Period: Oct 1 – Oct 31" etc. -- exactly what the letterhead will say. */
 ⋮----
-/**
- * Report History -- every report printed or downloaded from the Reports page.
- * "Open" restores the report's filters and sections on the page; "Generate
- * again" opens the Generate Report drawer with that format ready to go.
- */
+/** Query for GET /reports/export/html (type, filters, sections) -- drives the live preview. */
 ⋮----
-// Back to the top of the list: now (so it feels instant) and again once the
-// new page has loaded (the list swaps to a skeleton and back, which can
-// shift the scroll position).
-const toTop = () =>
+function Box(
 ⋮----
-// A new filter starts again from page 1.
+/** The first page of the real report, as it will print, scaled to fit the drawer. */
+⋮----
+const fit = ()
+⋮----
+// Debounced, so ticking several sections in a row makes one request.
 ⋮----
 // eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
-// Quiet background refresh + a tick so "5 min ago" keeps counting.
+/**
+ * "Generate Report" -- the slide-in panel that replaces the old options
+ * dialog. One place to pick the format (Print, PDF, Word, CSV), choose which
+ * sections go in, see the real first page, and generate.
+ */
 ⋮----
-const formatLabel = (f: string) => (
-const typeLabel = (k: string) => t(`reportType$
+// The event search is matched by the server; the report's events are narrowed to its answer.
 ⋮----
-const goToPage = (next: number) =>
+const toggleSection = (key: string)
+const toggleEvent = (id: string)
+⋮----
+const sectionButton = (s: SectionDef) =>
+⋮----
+<FormSection title=
 ````
 
-## File: resources/js/pages/staff/views/StaffAccountsView.tsx
+## File: resources/js/pages/staff/views/FeedbackRulesView.tsx
 ````typescript
-import KpiCard from "../../../components/ui/KpiCard";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Crown, UserPlus, KeyRound, LogOut, Ban, RotateCcw, UserMinus, ArrowRightLeft, Printer, Copy, Check, FileKey2, Users, X, MoreVertical, ShieldCheck, type LucideIcon } from "lucide-react";
-import api, { apiErrorMessage } from "../../../lib/api";
+import { useEffect, useState } from "react";
+import { Clock, Lock, ShieldCheck } from "lucide-react";
+import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import PasswordConfirmDialog from "../../../components/auth/PasswordConfirmDialog";
-import SearchBar from "../../../components/ui/SearchBar";
-import Skeleton from "../../../components/ui/Skeleton";
-import StatCardSkeleton from "../../../components/ui/StatCardSkeleton";
+import SaveButton from "../../../components/ui/SaveButton";
 import SectionCard from "../../../components/ui/SectionCard";
-import { matchesSearch } from "../../../lib/search";
-import SimplePager from "../../../components/ui/SimplePager";
-import usePager from "../../../hooks/usePager";
-import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
-import QuickTabs from "../../../components/ui/QuickTabs";
-import Portal from "../../../components/ui/Portal";
+import Skeleton from "../../../components/ui/Skeleton";
 ⋮----
-type Staff = {
-  id: number;
-  user_code: string;
-  name: string;
-  barangay_position: string | null;
-  is_head_staff: boolean;
-  suspended_at: string | null;
-  last_login_at: string | null;
-  must_change_password: boolean;
-  two_factor_enabled: boolean;
-  active_sessions: number;
-};
-type Candidate = { id: number; user_code: string; name: string; barangay_position: string | null };
-type Overview = {
-  staff: Staff[];
-  transfer: { id: number; to_user_id: number; to_name: string | null; expires_at: string } | null;
-  recovery_codes_remaining: number;
-  transfer_hours: number;
-};
-type Action =
-  | { kind: "reset" | "suspend" | "unsuspend" | "demote" | "transfer"; staff: Staff }
-  | { kind: "promote"; candidate: Candidate }
-  | { kind: "codes" };
+type Rules = { close_after_hours: number; edit_window_minutes: number };
 ⋮----
-// "⋯" menu for the less-used actions on a staff row, so each row stays calm.
+// Placeholder shaped like one rule card's body: number box + unit, preset chips, hint line.
 ⋮----
-const onDown = (e: MouseEvent) =>
-const onKey = (e: KeyboardEvent) =>
+// Settings -> Feedback Rules: how long members can send feedback after an
+// event, and how long they can still edit it. Everyone on staff can read the
+// rules; only Head Staff can change them (and must re-enter their password).
 ⋮----
-// Candidates to promote -- searched as you type (residents with a portal account).
+const save = async (password: string) =>
 ⋮----
-const flash = (msg: string) =>
-⋮----
-const run = async (password: string) =>
-⋮----
-const signOutAll = async (s: Staff) =>
-⋮----
-const cancelTransfer = async () =>
-⋮----
-const copy = async (text: string) =>
-⋮----
-try { await navigator.clipboard.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 2000); } catch { /* ignore */ }
-⋮----
-const printCodes = () =>
-⋮----
-const when = (iso: string | null)
-const initials = (n: string)
-// Team list: quick tabs (with counts) + search + sort, then 5 per page.
-⋮----
-<KpiCard value=
-⋮----
-{/* ── Left: the team ── */}
-⋮----
-
-⋮----
-<button role="menuitem" className=
-⋮----
-{/* ── Right: add people, hand over, recovery ── */}
+const chip = (on: boolean)
 ⋮----
 <SectionCard icon=
 ⋮----
+<form onSubmit=
+⋮----
+<input type="text" inputMode="numeric" value=
+⋮----
+body=
+⋮----
 onClose=
+````
+
+## File: resources/js/pages/staff/views/MyAccountView.tsx
+````typescript
+import { useCallback, useEffect, useRef, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
+import { KeyRound, ShieldCheck, Smartphone, BellRing, Crown, CheckCircle2 } from "lucide-react";
+import api, { apiErrorMessage } from "../../../lib/api";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import ChangePasswordForm from "../../../components/auth/ChangePasswordForm";
+import PasswordConfirmDialog from "../../../components/auth/PasswordConfirmDialog";
+import SaveButton from "../../../components/ui/SaveButton";
+import SectionCard from "../../../components/ui/SectionCard";
+import Skeleton from "../../../components/ui/Skeleton";
+import SimplePager from "../../../components/ui/SimplePager";
+import usePager from "../../../hooks/usePager";
+import { notifyStaffAlertsChanged, setSecurityUnread } from "../../../lib/staffAlertsStore";
+⋮----
+type Me = {
+  id: number;
+  user_code: string;
+  first_name: string;
+  last_name: string;
+  is_head_staff: boolean;
+  last_login_at: string | null;
+  two_factor_enabled: boolean;
+};
+type SecAlert = { id: number; type: string; title: string; message: string; read: boolean; created_at: string };
+⋮----
+// two-step login
+⋮----
+} catch { /* the api client already handles sign-outs */ }
+⋮----
+// Opening this page counts as reading the alerts -- they stay highlighted
+// while you look, and are marked read when you leave.
+⋮----
+const startSetup = async (password: string) =>
+⋮----
+const confirmSetup = async (e: React.FormEvent) =>
+⋮----
+const turnOff = async (password: string) =>
+⋮----
+const accept = async (password: string) =>
+⋮----
+window.location.reload(); // new role -> reload so the whole page reflects it
+⋮----
+const when = (iso: string | null)
+const pretty = (s: string) => s.replace(/(.
 ⋮----
 <button onClick=
+⋮----
+{/* ── Left: who you are + security at a glance ── */}
+⋮----
+{/* ── Right: things you can do (kept at a comfortable reading width) ── */}
+⋮----
+<SectionCard icon=
+⋮----
+title=
+⋮----
+<PasswordConfirmDialog open=
 ````
 
 ## File: resources/views/app.blade.php
@@ -11308,6 +10947,49 @@ onClose=
 }
 ````
 
+## File: app/Models/CurrentStatus.php
+````php
+namespace App\Models;
+⋮----
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+⋮----
+class CurrentStatus extends Model
+⋮----
+protected $fillable = ['label', 'category', 'sort_order', 'deleted_by'];
+⋮----
+protected $casts = [
+⋮----
+/**
+     * Plain per-request static cache (NOT Laravel's Cache facade) -- this
+     * project has no `cache` table migration, so Cache::remember() would
+     * throw on the "database" cache store used in .env.
+     */
+private static ?\Illuminate\Support\Collection $cached = null;
+⋮----
+public static function allCached()
+⋮----
+self::$cached = self::orderBy('label')->get();
+⋮----
+public static function forgetCache(): void
+⋮----
+/**
+     * Ids of the "employment" group -- the only category where a resident
+     * can hold just one status (Student and Unemployed together make no sense).
+     */
+public static function employmentIds(): array
+⋮----
+return self::where('category', 'employment')->pluck('id')->map(fn ($v) => (int) $v)->all();
+⋮----
+public function users()
+⋮----
+return $this->belongsToMany(User::class, 'current_status_user');
+⋮----
+public function memberships()
+⋮----
+return $this->hasMany(Membership::class, 'eligible_current_status_id');
+````
+
 ## File: app/Models/EventInventoryRelease.php
 ````php
 namespace App\Models;
@@ -11352,6 +11034,104 @@ public function inventoryItem()
 // withTrashed -- a release made before an item was later
 // soft-deleted should still show what it was, not go null.
 return $this->belongsTo(InventoryItem::class)->withTrashed();
+````
+
+## File: app/Models/Feedback.php
+````php
+namespace App\Models;
+⋮----
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Carbon;
+⋮----
+class Feedback extends Model
+⋮----
+protected $table = 'feedback';
+⋮----
+protected $fillable = [
+⋮----
+// Frozen-at-submission window values (see FeedbackController::store()).
+// A change to Settings → Feedback Rules after this row was created
+// never rewrites them, so existing feedback keeps its original window.
+⋮----
+// Staff response layer (heart / reply / member like-reply).
+⋮----
+// Who soft-deleted it (a resident who removed their feedback).
+⋮----
+protected $casts = [
+⋮----
+// ==================================================================
+// RELATIONSHIPS
+⋮----
+public function event()
+⋮----
+return $this->belongsTo(Event::class)->withTrashed();
+⋮----
+public function user()
+⋮----
+return $this->belongsTo(User::class);
+⋮----
+public function repliedBy()
+⋮----
+return $this->belongsTo(User::class, 'staff_replied_by');
+⋮----
+/**
+     * Earlier versions of this feedback, saved whenever the member edits.
+     * (Filtered by kind='rating' so absence-reason edits — which live in
+     * the same feedback_edits table under kind='absence' — never leak in.)
+     */
+public function edits()
+⋮----
+return $this->hasMany(FeedbackEdit::class, 'item_id')->where('kind', 'rating');
+⋮----
+// WINDOW HELPERS (single source of truth for lock state)
+⋮----
+/**
+     * The moment this specific record can no longer be edited or removed.
+     * Uses the row's OWN frozen edit_window_minutes — NOT the current
+     * AppSetting value — so later Settings changes never retroactively
+     * extend or shrink an existing record's window.
+     */
+public function editDeadline(): Carbon
+⋮----
+return $this->created_at->copy()->addMinutes((int) $this->edit_window_minutes);
+⋮----
+public function isEditLocked(): bool
+⋮----
+return now()->greaterThan($this->editDeadline());
+⋮----
+/**
+     * Seconds remaining in the edit window (0 once locked). The controller
+     * uses this to reject edits/removals with 403; the frontend uses the
+     * same value for the "Editable for X more minutes" countdown.
+     */
+public function editSecondsLeft(): int
+⋮----
+if ($this->isEditLocked()) {
+⋮----
+return max(0, (int) floor(now()->diffInSeconds($this->editDeadline(), false)));
+⋮----
+/**
+     * When a resident can no longer submit feedback for this event for the
+     * FIRST time (the 12-hour window). Uses this record's own frozen
+     * close_after_hours value.
+     *
+     * Only meaningful for rows that already exist — a brand-new submission
+     * has no row yet, so the controller computes the submit window from
+     * the CURRENT AppSetting value before the row is created.
+     */
+public function submitClosesAt(): ?Carbon
+⋮----
+$event = $this->relationLoaded('event')
+⋮----
+: $this->event()->first();
+⋮----
+return Carbon::parse($end)->addHours((int) $this->close_after_hours);
+⋮----
+public function isSubmitWindowClosed(): bool
+⋮----
+$closes = $this->submitClosesAt();
+return $closes !== null && now()->greaterThan($closes);
 ````
 
 ## File: app/Models/Household.php
@@ -11710,6 +11490,54 @@ $have = $item->conditionCounts();
 // Nothing split yet on a row (shouldn't happen) -- count it as Good.
 ````
 
+## File: database/seeders/InventoryItemSeeder.php
+````php
+namespace Database\Seeders;
+⋮----
+use App\Models\InventoryItem;
+use Illuminate\Database\Seeder;
+⋮----
+class InventoryItemSeeder extends Seeder
+⋮----
+/**
+     * Realistic barangay equipment/supplies inventory -- the kind of gear
+     * actually used to run the events seeded by EventSeeder (tables,
+     * chairs, sound system, tents, first-aid kit, etc.), so the Inventory
+     * module doesn't start out empty and disconnected from everything else.
+     *
+     * Lost / disposed gear is recorded the way the app now records it: as
+     * UNIT counts on the item (lost_quantity, lost_pending, disposed_quantity),
+     * never by tagging a whole row Lost/Disposed -- so a few missing or
+     * worn-out units don't take the still-good ones out of Inventory. `quantity`
+     * is always the in-stock count and never includes lost/disposed units.
+     * lost_pending is the part of lost_quantity that was out on loan when it
+     * was reported (settled once that loan closes, see
+     * InventoryItem::settleLostOnLoan).
+     *
+     * Stock levels are sized so EventInventoryItemSeeder can reserve and return
+     * equipment for every event from August through December 2026 without
+     * running out, while a few items (wheelchairs, lockbox, first-aid
+     * kits...) are still deliberately drawn down to show a mix of available
+     * and fully-committed stock.
+     */
+public function run(): void
+⋮----
+// Tied to the newer, dynamically-dated upcoming events in
+// EventSeeder (Barangay Assembly Meeting, Senior Citizen
+// Monthly Pension Release, Solo Parent Wellness Circle, PWD
+// Assistive Devices Distribution, Livelihood Skills Fair) --
+// and giving the Inventory report both condition variety and
+// real lost / disposed unit counts to show.
+⋮----
+// Unit counters default to 0 for anything not listed above.
+⋮----
+// The rows above name the condition their stock is in; items store that as
+// per-condition counts (there is no condition column), so all of the stock
+// starts in that one condition. InventoryConditionSeeder splits some of it later.
+⋮----
+InventoryItem::firstOrCreate(
+````
+
 ## File: resources/js/components/ui/Calendar.tsx
 ````typescript
 import React, { useEffect, useState } from "react";
@@ -11768,6 +11596,373 @@ const isDisabled = (d: Date) =>
 const isMonthDisabled = (y: number, m: number) =>
 ⋮----
 title=
+````
+
+## File: resources/js/components/ui/FeedbackComment.tsx
+````typescript
+// import { useState } from "react";
+// import { BadgeCheck, Heart, Send } from "lucide-react";
+// import api, { apiErrorMessage } from "../../lib/api";
+// import { useLanguage } from "../../i18n/LanguageContext";
+// import EditHistory from "./EditHistory";
+⋮----
+// export type ResponseFields = {
+//   id: number;
+//   created_at?: string | null;
+//   updated_at?: string | null;
+//   edits_count?: number;
+//   staff_liked_at?: string | null;
+//   staff_reply?: string | null;
+//   staff_replied_at?: string | null;
+//   member_liked_reply_at?: string | null;
+//   replied_by?: { first_name: string; last_name: string } | null;
+//   repliedBy?: { first_name: string; last_name: string } | null;
+// };
+⋮----
+// type Person = { first_name?: string | null; last_name?: string | null };
+⋮----
+// const initialsOf = (p?: Person | null) => `${p?.first_name?.charAt(0) ?? ""}${p?.last_name?.charAt(0) ?? ""}`.toUpperCase() || "?";
+⋮----
+// // Short, comment-style age: "now", "5m", "3h", "2d", then a date.
+// function timeAgo(iso: string | null | undefined, locale: string, nowLabel: string): string {
+//   if (!iso) return "";
+//   const d = new Date(iso);
+//   if (isNaN(d.getTime())) return "";
+//   const s = Math.max(0, (Date.now() - d.getTime()) / 1000);
+//   if (s < 60) return nowLabel;
+//   if (s < 3600) return `${Math.floor(s / 60)}m`;
+//   if (s < 86400) return `${Math.floor(s / 3600)}h`;
+//   if (s < 86400 * 7) return `${Math.floor(s / 86400)}d`;
+//   return d.toLocaleDateString(locale, { month: "short", day: "numeric", year: d.getFullYear() === new Date().getFullYear() ? undefined : "numeric" });
+// }
+// const fullTime = (iso: string | null | undefined, locale: string) =>
+//   iso ? new Date(iso).toLocaleString(locale, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" }) : undefined;
+⋮----
+// function Avatar({ initials, logo, size = 40 }: { initials?: string; logo?: boolean; size?: number }) {
+//   return (
+//     <div
+//       style={{ width: size, height: size }}
+//       className="flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-[#123A38] text-[#7DD8CB] font-bold"
+//     >
+//       {logo ? <img src="/logo-removebg-preview.png" alt="" className="h-full w-full object-contain p-1" /> : <span style={{ fontSize: size * 0.34 }}>{initials}</span>}
+//     </div>
+//   );
+// }
+⋮----
+// // Facebook-style reaction badge that sits on the corner of a bubble.
+// function HeartBadge({ title }: { title: string }) {
+//   return (
+//     <span title={title} aria-label={title} className="absolute -bottom-2.5 -right-1.5 flex h-[22px] w-[22px] items-center justify-center rounded-full border-2 border-[#0A0E1A] bg-red-500 shadow">
+//       <Heart className="h-3 w-3 fill-white text-white" />
+//     </span>
+//   );
+// }
+⋮----
+// const linkBtn = "font-semibold transition hover:underline disabled:opacity-50";
+⋮----
+// function Composer({
+//   value,
+//   onChange,
+//   onSend,
+//   onCancel,
+//   busy,
+//   sendDisabled,
+//   placeholder,
+// }: {
+//   value: string;
+//   onChange: (v: string) => void;
+//   onSend: () => void;
+//   onCancel: () => void;
+//   busy: boolean;
+//   sendDisabled: boolean;
+//   placeholder: string;
+// }) {
+//   const { t } = useLanguage();
+//   return (
+//     <div className="flex gap-2.5">
+//       <Avatar logo size={28} />
+//       <div className="min-w-0 flex-1">
+//         <div className="rounded-2xl border border-white/15 bg-white/[0.06] px-3.5 pb-2 pt-2.5 focus-within:border-[#4FBEB0]/70 focus-within:ring-2 focus-within:ring-[#4FBEB0]/30">
+//           <textarea
+//             value={value}
+//             onChange={(e) => onChange(e.target.value)}
+//             onKeyDown={(e) => {
+//               if (e.key === "Escape") onCancel();
+//               if (e.key === "Enter" && !e.shiftKey && !sendDisabled) { e.preventDefault(); onSend(); }
+//             }}
+//             maxLength={500}
+//             rows={2}
+//             autoFocus
+//             placeholder={placeholder}
+//             className="w-full resize-none bg-transparent text-sm text-white placeholder-white/40 focus:outline-none"
+//           />
+//           <div className="flex items-center justify-between">
+//             <span className="text-[11px] text-white/35">{value.length}/500</span>
+//             <button
+//               type="button"
+//               onClick={onSend}
+//               disabled={sendDisabled || busy}
+//               aria-label={t("respSendReply")}
+//               className="flex h-7 w-7 items-center justify-center rounded-full text-[#7DD8CB] transition hover:bg-white/10 disabled:opacity-40"
+//             >
+//               <Send className="h-4 w-4" />
+//             </button>
+//           </div>
+//         </div>
+//         <button type="button" onClick={onCancel} disabled={busy} className={`mt-1 px-1 text-xs text-white/50 ${linkBtn}`}>
+//           {t("cancelLabel")}
+//         </button>
+//       </div>
+//     </div>
+//   );
+// }
+⋮----
+// /**
+//  * One member rating / reason and the conversation under it, laid out like a
+//  * comment thread: the member's bubble, a heart badge when staff liked it, a
+//  * nested staff reply with the barangay avatar, and a heart the member can
+//  * give back. `role` decides which actions are shown.
+//  */
+// export default function FeedbackComment({
+//   role,
+//   kind,
+//   item,
+//   author,
+//   header,
+//   comment,
+//   actions,
+//   footer,
+//   onChange,
+// }: {
+//   role: "staff" | "member";
+//   kind: "rating" | "absence";
+//   item: ResponseFields;
+//   author: Person | null;
+//   header: React.ReactNode;
+//   comment?: string | null;
+//   /** Member view: Edit / locked controls, shown in the action row. */
+//   actions?: React.ReactNode;
+//   footer?: React.ReactNode;
+//   onChange: (patch: Partial<ResponseFields>) => void;
+// }) {
+//   const { t, locale } = useLanguage();
+//   const isStaff = role === "staff";
+//   const [composing, setComposing] = useState(false);
+//   const [text, setText] = useState("");
+//   const [busy, setBusy] = useState(false);
+//   const [error, setError] = useState("");
+⋮----
+//   const staffLiked = !!item.staff_liked_at;
+//   const memberLikedReply = !!item.member_liked_reply_at;
+//   const by = item.replied_by ?? item.repliedBy;
+//   const authorName = author ? `${author.first_name ?? ""} ${author.last_name ?? ""}`.trim() : t("unknownItemLabel");
+//   const shownName = isStaff ? authorName : t("cmtYou");
+//   const nowLabel = t("cmtNow");
+⋮----
+//   const toggleStaffLike = async () => {
+//     if (busy) return;
+//     onChange({ staff_liked_at: staffLiked ? null : new Date().toISOString() }); // optimistic
+//     try {
+//       const res = await api.put(`/feedback/${kind}/${item.id}/like`);
+//       onChange({ staff_liked_at: res.data?.staff_liked_at ?? null });
+//     } catch {
+//       onChange({ staff_liked_at: item.staff_liked_at ?? null });
+//       setError(t("respFailed"));
+//     }
+//   };
+⋮----
+//   const toggleReplyLike = async () => {
+//     onChange({ member_liked_reply_at: memberLikedReply ? null : new Date().toISOString() });
+//     try {
+//       const res = await api.put(`/feedback/${kind}/${item.id}/reply-like`);
+//       onChange({ member_liked_reply_at: res.data?.member_liked_reply_at ?? null });
+//     } catch {
+//       onChange({ member_liked_reply_at: item.member_liked_reply_at ?? null });
+//       setError(t("respFailed"));
+//     }
+//   };
+⋮----
+//   const saveReply = async (value: string) => {
+//     setBusy(true);
+//     setError("");
+//     try {
+//       const res = await api.put(`/feedback/${kind}/${item.id}/reply`, { reply: value });
+//       onChange({
+//         staff_reply: res.data?.staff_reply ?? null,
+//         staff_replied_at: res.data?.staff_replied_at ?? null,
+//         replied_by: res.data?.replied_by ?? null,
+//         ...(value.trim() ? {} : { member_liked_reply_at: null }),
+//       });
+//       setComposing(false);
+//       setText("");
+//     } catch (err) {
+//       setError(apiErrorMessage(err, t("respFailed")));
+//     } finally {
+//       setBusy(false);
+//     }
+//   };
+⋮----
+//   const startReply = () => { setText(item.staff_reply ?? ""); setError(""); setComposing(true); };
+//   const when = item.updated_at ?? item.created_at;
+⋮----
+//   return (
+//     <div className="flex items-start gap-2.5">
+//       <Avatar initials={initialsOf(author)} />
+//       <div className="min-w-0 flex-1">
+//         {/* The member's comment */}
+//         <div className="relative inline-block max-w-full">
+//           <div className="rounded-2xl bg-white/[0.07] px-3.5 py-2">
+//             <p className="text-[13px] font-semibold text-white">{shownName}</p>
+//             <div className="mt-1">{header}</div>
+//             {comment && <p className="mt-1 whitespace-pre-wrap break-words text-sm text-white/80">{comment}</p>}
+//           </div>
+//           {staffLiked && <HeartBadge title={t("respStaffLiked")} />}
+//         </div>
+//         <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-white/50 ${staffLiked ? "mt-3" : "mt-1"}`}>
+//           {isStaff && (
+//             <button type="button" onClick={toggleStaffLike} aria-pressed={staffLiked} className={`${linkBtn} ${staffLiked ? "text-red-400" : "text-white/55 hover:text-white"}`}>
+//               {staffLiked ? t("respLiked") : t("respHeart")}
+//             </button>
+//           )}
+//           {isStaff && !item.staff_reply && !composing && (
+//             <button type="button" onClick={startReply} className={`${linkBtn} text-white/55 hover:text-white`}>{t("respReply")}</button>
+//           )}
+//           {!isStaff && actions}
+//           {when && <span title={fullTime(when, locale)}>{timeAgo(when, locale, nowLabel)}</span>}
+//           <EditHistory kind={kind} id={item.id} edits={item.edits_count} />
+//         </div>
+//         {footer}
+⋮----
+//         {/* Staff reply, nested like a comment reply */}
+//         {(item.staff_reply || composing) && (
+//           <div className="mt-3 border-l border-white/10 pl-3">
+//             {composing ? (
+//               <Composer
+//                 value={text}
+//                 onChange={setText}
+//                 onSend={() => saveReply(text)}
+//                 onCancel={() => { setComposing(false); setError(""); }}
+//                 busy={busy}
+//                 sendDisabled={!text.trim() || text.trim() === (item.staff_reply ?? "").trim()}
+//                 placeholder={t("respReplyPlaceholder")}
+//               />
+//             ) : (
+//               <div className="flex items-start gap-2.5">
+//                 <Avatar logo size={28} />
+//                 <div className="min-w-0 flex-1">
+//                   <div className="relative inline-block max-w-full">
+//                     <div className="rounded-2xl bg-[#4FBEB0]/[0.12] px-3.5 py-2">
+//                       <p className="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-white">
+//                         {isStaff && by ? `${by.first_name} ${by.last_name}` : t("cmtBarangayStaff")}
+//                         {isStaff ? (
+//                           <span className="rounded-full bg-[#4FBEB0]/20 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">{t("cmtStaff")}</span>
+//                         ) : (
+//                           <BadgeCheck className="h-3.5 w-3.5 text-[#7DD8CB]" aria-label={t("cmtStaff")} />
+//                         )}
+//                       </p>
+//                       <p className="mt-1 whitespace-pre-wrap break-words text-sm text-white/85">{item.staff_reply}</p>
+//                     </div>
+//                     {memberLikedReply && <HeartBadge title={t("cmtLikedByMember")} />}
+//                   </div>
+//                   <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-xs text-white/50 ${memberLikedReply ? "mt-3" : "mt-1"}`}>
+//                     {!isStaff && (
+//                       <button type="button" onClick={toggleReplyLike} aria-pressed={memberLikedReply} className={`${linkBtn} ${memberLikedReply ? "text-red-400" : "text-white/55 hover:text-white"}`}>
+//                         {memberLikedReply ? t("respLiked") : t("respHeart")}
+//                       </button>
+//                     )}
+//                     {isStaff && (
+//                       <>
+//                         <button type="button" onClick={startReply} className={`${linkBtn} text-white/55 hover:text-white`}>{t("editLabel")}</button>
+//                         <button type="button" onClick={() => saveReply("")} disabled={busy} className={`${linkBtn} text-white/55 hover:text-red-400`}>{t("cmtDelete")}</button>
+//                       </>
+//                     )}
+//                     {item.staff_replied_at && <span title={fullTime(item.staff_replied_at, locale)}>{timeAgo(item.staff_replied_at, locale, nowLabel)}</span>}
+//                   </div>
+//                 </div>
+//               </div>
+//             )}
+//           </div>
+//         )}
+//         {error && <p className="mt-1.5 text-xs text-red-400">{error}</p>}
+//       </div>
+//     </div>
+//   );
+// }
+⋮----
+//LATEST WORKING IMPLEMENTATION KARUN
+import { useEffect, useState } from "react";
+import { BadgeCheck, Heart, Send, Lock, Trash2, Pencil, Star } from "lucide-react";
+import api, { apiErrorMessage } from "../../lib/api";
+import { useLanguage } from "../../i18n/LanguageContext";
+import EditHistory from "./EditHistory";
+⋮----
+export type ResponseFields = {
+  id: number;
+  created_at?: string | null;
+  updated_at?: string | null;
+  edits_count?: number;
+  edit_seconds_left?: number;
+  is_locked?: boolean;
+  staff_liked_at?: string | null;
+  staff_reply?: string | null;
+  staff_replied_at?: string | null;
+  member_liked_reply_at?: string | null;
+  replied_by?: { first_name: string; last_name: string } | null;
+  repliedBy?: { first_name: string; last_name: string } | null;
+};
+⋮----
+type Person = { first_name?: string | null; last_name?: string | null };
+⋮----
+const initialsOf = (p?: Person | null)
+⋮----
+function timeAgo(iso: string | null | undefined, locale: string, nowLabel: string): string
+⋮----
+function Avatar(
+⋮----
+// Staff reply composer state
+⋮----
+// Parent can force-lock from its own local clock
+⋮----
+// Safety guard AFTER hooks
+⋮----
+// ---- Staff heart toggle ----
+const toggleStaffLike = async () =>
+⋮----
+// ---- Member like on staff reply ----
+const toggleReplyLike = async () =>
+⋮----
+// ---- Staff reply save / edit ----
+const saveReply = async (value: string) =>
+⋮----
+const startReply = () =>
+⋮----
+{/* ============================================================
+       *  MEMBER'S ORIGINAL COMMENT / RATING / REASON
+       * ============================================================ */}
+⋮----
+<Avatar initials=
+⋮----
+{/* Show the star rating if this is a rating (not an absence reason) */}
+⋮----
+{/* Show the comment or reason text */}
+⋮----
+{/* ============================================================
+       *  STAFF REPLY (nested like a comment thread)
+       * ============================================================ */}
+⋮----
+
+⋮----
+{/* Member can heart the staff reply */}
+⋮----
+{/* Staff actions (Like indicator + Edit button) */}
+⋮----
+{/* Show the heart if the member liked it */}
+⋮----
+{/* The Edit Reply button */}
+⋮----
+{/* ============================================================
+       *  STAFF REPLY COMPOSER (new reply, or editing an existing one)
+       * ============================================================ */}
 ````
 
 ## File: resources/js/components/ui/FeedbackPrompt.tsx
@@ -11920,84 +12115,21 @@ const removeAll = () =>
 title=
 ````
 
-## File: resources/js/components/ui/TimePicker.tsx
-````typescript
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Clock, X } from "lucide-react";
-import { useLanguage } from "../../i18n/LanguageContext";
-⋮----
-interface TimePickerProps {
-  /** 24-hour "HH:MM" string, or "" for none selected -- same shape a
-      native <input type="time"> used. */
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  clearLabel?: string;
-  /** Extra classes applied to the trigger button -- pass sizing/height to match whatever it's replacing. */
-  className?: string;
-  /** Dark navy styling, matching DatePicker/Calendar -- applies to both
-      the trigger and the dropdown panel. */
-  dark?: boolean;
-  disabled?: boolean;
-  required?: boolean;
-  /** Shows the trigger's border in red, matching the app's other field-level validation errors. */
-  error?: boolean;
-  title?: string;
-  align?: "left" | "right";
-}
-⋮----
-/** 24-hour "HH:MM" string, or "" for none selected -- same shape a
-      native <input type="time"> used. */
-⋮----
-/** Extra classes applied to the trigger button -- pass sizing/height to match whatever it's replacing. */
-⋮----
-/** Dark navy styling, matching DatePicker/Calendar -- applies to both
-      the trigger and the dropdown panel. */
-⋮----
-/** Shows the trigger's border in red, matching the app's other field-level validation errors. */
-⋮----
-function parse(v: string):
-⋮----
-function to24(h12: number, m: number, period: "AM" | "PM"): string
-⋮----
-function formatDisplay(v: string): string | null
-⋮----
-/**
- * Dropdown-triggered time picker, backed by our own hour/minute/AM-PM
- * columns instead of the browser's native <input type="time"> -- that
- * native picker is rendered outside the DOM as OS chrome and, unlike a
- * native <select>'s <option> list, can't be recolored with CSS at all, so
- * it always shows up as a plain white popup no matter how dark the rest
- * of the page is. Drop-in replacement: give it `value`/`onChange` as a
- * 24-hour "HH:MM" string, same shape a native time input used.
- */
-⋮----
-// Portaled to document.body and positioned with `position: fixed` from
-// the trigger's own getBoundingClientRect (same fix as FilterDropdown and
-// DatePicker), instead of a plain `absolute` panel -- a plain absolute
-// panel gets silently clipped by any scrollable/overflow-y-auto ancestor,
-// exactly what a tall Add/Edit form modal is.
-⋮----
-const recompute = () =>
-⋮----
-const handleClick = (e: MouseEvent) =>
-const handleEsc = (e: KeyboardEvent) =>
-⋮----
-// Scroll each column's current value into view when the panel opens,
-// instead of always starting at the top of a 60-row minute list.
-⋮----
-const scrollIntoView = (el: HTMLDivElement | null) =>
-// Run after the panel has painted so scrollHeight is accurate.
-⋮----
-const setPart = (part: Partial<
-⋮----
-const columnButtonClasses = (active: boolean)
-````
-
 ## File: resources/js/i18n/locales/reports.ts
 ````typescript
 import type { Dict } from "../translations";
+````
+
+## File: resources/js/i18n/locales/residents.ts
+````typescript
+import type { Dict } from "../translations";
+⋮----
+// Residents master list + profile drawer
+⋮----
+// Add / edit forms
+⋮----
+// Membership picker + ID photo
+// Current Status groups (resident form + Settings)
 ````
 
 ## File: resources/js/lib/api.ts
@@ -12031,349 +12163,146 @@ import axios from "axios";
 export function apiErrorMessage(err: unknown, fallback = "Something went wrong. Please try again."): string
 ````
 
-## File: resources/js/pages/staff/views/ReportOptionsModal.tsx
+## File: resources/js/pages/staff/views/reports/ReportHistoryPanel.tsx
 ````typescript
-import { matchesSearch } from "../../../lib/search";
-import React, { useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { Check, FileText, FileType, Printer, Search, X, Download, ListChecks, Users } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Award, CalendarDays, FileSpreadsheet, FileText, FileType, History, Package, Printer, RotateCw, Wallet } from "lucide-react";
+import api, { apiErrorMessage } from "../../../../lib/api";
+import FilterBar from "../../../../components/ui/FilterBar";
+import QuickTabs from "../../../../components/ui/QuickTabs";
+import SimplePager from "../../../../components/ui/SimplePager";
+import Skeleton from "../../../../components/ui/Skeleton";
+import { useLanguage } from "../../../../i18n/LanguageContext";
+import type { ReportFormat } from "./ReportGenerateDrawer";
 ⋮----
-export interface SectionDef {
-  key: string;
-  labelKey: string;
-  descKey: string;
-  /** "other" sections are shown in their own "Other options" block under the main list (e.g. the opening message). */
-  group?: "other";
+export interface HistoryItem {
+  id: number;
+  type: "attendance" | "membership" | "budget" | "inventory";
+  format: ReportFormat;
+  title: string;
+  scope_label: string | null;
+  filters: Record<string, string | number>;
+  sections: string[] | null;
+  generated_by: string;
+  generated_at: string | null;
 }
 ⋮----
-/** "other" sections are shown in their own "Other options" block under the main list (e.g. the opening message). */
-⋮----
-export interface RecordEventOption {
-  id: string;
-  name: string;
-  date: string;
-  status: string;
-  eligible: number;
-  attended: number;
-}
-⋮----
-export type AttendeeFilter = "all" | "present" | "absent";
-⋮----
-interface Props {
-  open: boolean;
-  mode: "print" | "download";
-  reportLabel: string;
-  sections: SectionDef[];
-  selected: string[];
-  onSelectedChange: (next: string[]) => void;
-  /** Attendance report only: events that can get a full attendee list. */
-  recordEvents?: RecordEventOption[];
-  recordIds: string[];
-  onRecordIdsChange: (next: string[]) => void;
-  attendeeFilter: AttendeeFilter;
-  onAttendeeFilterChange: (next: AttendeeFilter) => void;
-  busy: boolean;
-  onClose: () => void;
-  onPrint: () => void;
-  onDownload: (format: "pdf" | "word") => void;
-  t: (key: string) => string;
-}
-⋮----
-/** Attendance report only: events that can get a full attendee list. */
-⋮----
-function Box(
+/** "just now", "5 min ago", "3 hr ago", "2d ago", then a plain date. */
+function relativeTime(iso: string | null, t: (k: string) => string, locale: string): string
 ⋮----
 /**
- * "Print & Export Options" -- lets staff pick exactly which parts of the
- * current report go on the printout / PDF / Word file, and (attendance
- * report) which events get a full attendee list.
+ * Report History -- every report printed or downloaded from the Reports page.
+ * "Open" restores the report's filters and sections on the page; "Generate
+ * again" opens the Generate Report drawer with that format ready to go.
  */
 ⋮----
-const toggleSection = (key: string)
-const toggleEvent = (id: string)
+// Back to the top of the list: now (so it feels instant) and again once the
+// new page has loaded (the list swaps to a skeleton and back, which can
+// shift the scroll position).
+const toTop = () =>
 ⋮----
-// The presets only change the main sections -- the "other options" (message) keep whatever was picked.
+// A new filter starts again from page 1.
 ⋮----
-{/* Header */}
+// eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
-{/* Body */}
+// Quiet background refresh + a tick so "5 min ago" keeps counting.
 ⋮----
-{/* Sections */}
+const formatLabel = (f: string) => (
+const typeLabel = (k: string) => t(`reportType$
 ⋮----
-{/* Other options (opening message) */}
-⋮----
-{/* Events + attendee lists */}
-⋮----
-{/* Footer */}
+const goToPage = (next: number) =>
 ````
 
-## File: app/Http/Controllers/CurrentStatusController.php
-````php
-namespace App\Http\Controllers;
+## File: resources/js/pages/staff/views/StaffAccountsView.tsx
+````typescript
+import KpiCard from "../../../components/ui/KpiCard";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Crown, UserPlus, KeyRound, LogOut, Ban, RotateCcw, UserMinus, ArrowRightLeft, Printer, Copy, Check, FileKey2, Users, X, MoreVertical, ShieldCheck, type LucideIcon } from "lucide-react";
+import api, { apiErrorMessage } from "../../../lib/api";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import PasswordConfirmDialog from "../../../components/auth/PasswordConfirmDialog";
+import SearchBar from "../../../components/ui/SearchBar";
+import Skeleton from "../../../components/ui/Skeleton";
+import StatCardSkeleton from "../../../components/ui/StatCardSkeleton";
+import SectionCard from "../../../components/ui/SectionCard";
+import SimplePager from "../../../components/ui/SimplePager";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
+import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
+import QuickTabs from "../../../components/ui/QuickTabs";
+import Portal from "../../../components/ui/Portal";
 ⋮----
-use App\Models\CurrentStatus;
-use App\Models\ActivityLog;
-use Illuminate\Http\Request;
+type Staff = {
+  id: number;
+  user_code: string;
+  name: string;
+  barangay_position: string | null;
+  is_head_staff: boolean;
+  suspended_at: string | null;
+  last_login_at: string | null;
+  must_change_password: boolean;
+  two_factor_enabled: boolean;
+  active_sessions: number;
+};
+type Candidate = { id: number; user_code: string; name: string; barangay_position: string | null };
+type Overview = {
+  staff: Staff[];
+  transfer: { id: number; to_user_id: number; to_name: string | null; expires_at: string } | null;
+  recovery_codes_remaining: number;
+  transfer_hours: number;
+};
+type Action =
+  | { kind: "reset" | "suspend" | "unsuspend" | "demote" | "transfer"; staff: Staff }
+  | { kind: "promote"; candidate: Candidate }
+  | { kind: "codes" };
 ⋮----
-class CurrentStatusController extends Controller
+// "⋯" menu for the less-used actions on a staff row, so each row stays calm.
 ⋮----
-public function index()
+const onDown = (e: MouseEvent) =>
+const onKey = (e: KeyboardEvent) =>
 ⋮----
-return response()->json(CurrentStatus::orderBy('label')->get());
+setTeamTick((n) => n + 1); // the team list below is its own server query -- refresh it too
 ⋮----
-public function store(Request $request)
+// Candidates to promote -- searched as you type (residents with a portal account).
 ⋮----
-if (!$this->isStaff()) {
-return response()->json(['message' => 'Unauthorized'], 403);
+const flash = (msg: string) =>
 ⋮----
-$request->validate([
+const run = async (password: string) =>
 ⋮----
-if (CurrentStatus::whereRaw('LOWER(TRIM(label)) = ?', [mb_strtolower(trim($request->label))])->exists()) {
-return response()->json([
+const signOutAll = async (s: Staff) =>
 ⋮----
-$status = CurrentStatus::create([
+const cancelTransfer = async () =>
 ⋮----
-'sort_order' => $request->sort_order ?? ((int) CurrentStatus::max('sort_order') + 1),
+const copy = async (text: string) =>
 ⋮----
-CurrentStatus::forgetCache();
-$this->createLog('Create Current Status', 'Profiling Settings', "Created current status '{$status->label}'");
+try { await navigator.clipboard.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 2000); } catch { /* ignore */ }
 ⋮----
-return response()->json($status, 201);
+const printCodes = () =>
 ⋮----
-public function update(Request $request, $id)
+const when = (iso: string | null)
+const initials = (n: string)
+// Team list: quick tabs (with counts) + search + sort, then 5 per page.
 ⋮----
-$status = CurrentStatus::findOrFail($id);
+// Tabs, search, sort and paging for the team list are done by the server (StaffAccountController::team).
 ⋮----
-if (CurrentStatus::whereRaw('LOWER(TRIM(label)) = ?', [mb_strtolower(trim($request->label))])->where('id', '!=', $status->id)->exists()) {
+// keep the last list; the overview call reports real errors
 ⋮----
-$status->update([
+// eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
-$this->createLog('Update Current Status', 'Profiling Settings', "Updated current status '{$status->label}'");
+<KpiCard value=
 ⋮----
-return response()->json($status);
+{/* ── Left: the team ── */}
 ⋮----
-public function destroy($id)
-⋮----
-// Guard against silently breaking a resident's recorded current
-// status or a membership's eligibility rule -- mirrors
-// Membership::hasResidentsAssigned() / InventoryController's own
-// "still in use" checks.
-if ($status->users()->exists() || $status->memberships()->exists()) {
-⋮----
-// Record who archived it before soft-deleting -- otherwise the
-// Archive page has nothing to show but "SYSTEM".
-$status->deleted_by = auth()->user()->user_code;
-$status->save();
-$status->delete();
-⋮----
-$this->createLog('Delete Current Status', 'Profiling Settings', "Deleted current status '{$name}'");
-⋮----
-return response()->json(['message' => 'Current status deleted successfully']);
-⋮----
-public function restore($id)
-⋮----
-$status = CurrentStatus::onlyTrashed()->findOrFail($id);
-⋮----
-$status->restore();
-⋮----
-$this->createLog('Restore Current Status', 'Profiling Settings', "Restored current status '{$status->label}'");
-⋮----
-return response()->json(['message' => 'Current status restored successfully']);
-````
 
-## File: app/Http/Controllers/MembershipController.php
-````php
-namespace App\Http\Controllers;
 ⋮----
-use App\Models\Membership;
-use App\Models\ActivityLog;
-use App\Models\AgeBracket;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+<button role="menuitem" className=
 ⋮----
-class MembershipController extends Controller
+{/* ── Right: add people, hand over, recovery ── */}
 ⋮----
-// =========================
-// GET ALL (ACTIVE ONLY)
+<SectionCard icon=
 ⋮----
-public function index()
+onClose=
 ⋮----
-// ✅ ONLY show active (not archived) memberships
-$memberships = Membership::withoutTrashed()
-->where('is_active', true)
-->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
-->get();
-// eligible_gender is a plain enum column (no relation to eager-load)
-⋮----
-return response()->json($memberships);
-⋮----
-// CREATE MEMBERSHIP
-⋮----
-public function store(Request $request)
-⋮----
-if (!$this->isStaff()) {
-return response()->json(['message' => 'Unauthorized'], 403);
-⋮----
-$request->validate([
-⋮----
-DB::beginTransaction();
-⋮----
-$membership = Membership::create([
-⋮----
-'is_active' => true,  // ✅ Explicitly set active
-⋮----
-$this->createLog(
-⋮----
-DB::commit();
-return response()->json($membership, 201);
-⋮----
-DB::rollBack();
-return response()->json([
-⋮----
-'error' => $e->getMessage()
-⋮----
-// SHOW MEMBERSHIP
-⋮----
-public function show($id)
-⋮----
-return response()->json(
-Membership::withoutTrashed()
-⋮----
-->findOrFail($id)
-⋮----
-// UPDATE MEMBERSHIP
-⋮----
-public function update(Request $request, $id)
-⋮----
-$membership = Membership::withoutTrashed()->findOrFail($id);
-⋮----
-$membership->update([
-⋮----
-return response()->json($membership);
-⋮----
-// DELETE → NOW ARCHIVE
-⋮----
-public function destroy($id)
-⋮----
-$residentCount = $membership->users()->count();
-⋮----
-// ✅ Pass the logged-in user's user_code
-$membership->archive(null, auth()->user()?->user_code);
-⋮----
-"Error archiving membership: " . $e->getMessage()
-⋮----
-'message' => 'Failed to archive membership: ' . $e->getMessage()
-⋮----
-// ✅ NEW: Restore archived membership
-public function restore($id)
-⋮----
-$membership = Membership::onlyTrashed()->findOrFail($id);
-⋮----
-$membership->unarchive();
-⋮----
-// PAGINATION (ACTIVE ONLY)
-⋮----
-public function getPaginated(Request $request)
-⋮----
-$perPage = $request->get('per_page', 15);
-⋮----
-// ✅ ONLY active memberships
-⋮----
-->paginate($perPage);
-⋮----
-public function getSimplePaginated()
-⋮----
-->simplePaginate(10)
-⋮----
-public function getCursorPaginated()
-⋮----
-->cursorPaginate(10)
-⋮----
-public function searchPaginated(Request $request)
-⋮----
-$search = $request->get('search');
-$perPage = $request->get('per_page', 10);
-⋮----
-->when($search, function ($query, $search) {
-return $query->where('name', 'like', '%' . $search . '%')
-->orWhere('description', 'like', '%' . $search . '%');
-⋮----
-public function sortPaginated(Request $request)
-⋮----
-$sortBy = $request->get('sort_by', 'id');
-$sortOrder = $request->get('sort_order', 'asc');
-⋮----
-->orderBy($sortBy, $sortOrder)
-->paginate($perPage)
-⋮----
-/**
-     * Residents currently enrolled in this membership who no longer match
-     * its eligibility rule (age bracket / civil status / current status /
-     * gender). Eligibility is only checked when a resident is FIRST
-     * assigned to a gated membership (see UserController::
-     * checkMembershipEligibility) -- nothing re-checks it afterward, so a
-     * resident who ages out of a bracket or whose status changes stays
-     * enrolled indefinitely unless staff notice and remove them by hand.
-     * This lets staff proactively find those cases instead of relying on
-     * noticing by accident.
-     */
-public function ineligibleMembers($id)
-⋮----
-return response()->json(['ineligible' => []]);
-⋮----
-$members = $membership->users()->with('currentStatuses')->get();
-⋮----
-$bracket = AgeBracket::resolveForAge($user->age);
-⋮----
-$currentStatusIds = $user->getRelationValue('currentStatuses')->pluck('id')->map(fn ($v) => (int) $v)->all();
-⋮----
-return response()->json(['ineligible' => $ineligible]);
-````
-
-## File: app/Http/Requests/StoreInventoryItemRequest.php
-````php
-namespace App\Http\Requests;
-⋮----
-use Illuminate\Foundation\Http\FormRequest;
-⋮----
-class StoreInventoryItemRequest extends FormRequest
-⋮----
-public function authorize(): bool
-⋮----
-public function rules(): array
-⋮----
-// Units in stock per condition (e.g. 45 Good + 15 New). When sent,
-// their sum is the item's in-stock quantity.
-⋮----
-// Optional photo -- same conventions as Resident ID photos /
-// expense receipts (image file, up to 5 MB).
-⋮----
-// Several photos per item (first = cover), up to 5 MB each.
-````
-
-## File: app/Http/Requests/UpdateInventoryItemRequest.php
-````php
-namespace App\Http\Requests;
-⋮----
-use Illuminate\Foundation\Http\FormRequest;
-⋮----
-class UpdateInventoryItemRequest extends FormRequest
-⋮----
-public function authorize(): bool
-⋮----
-public function rules(): array
-⋮----
-// Units reported lost (the rest keep their own condition) --
-// see InventoryController::update / InventoryItem::settleLostOnLoan.
-⋮----
-// Units in stock per condition (e.g. 45 Good + 15 New). When sent,
-// their sum is the item's in-stock quantity.
-⋮----
-// Optional photo -- a new file replaces whatever was there
-// before. Remove the photo outright by sending `remove_photo=1`
-// with no new file.
-⋮----
-// Several photos per item (first = cover), up to 5 MB each.
+<button onClick=
 ````
 
 ## File: app/Models/AgeBracket.php
@@ -12737,6 +12666,362 @@ interface SummaryCardProps {
 export default function SummaryCard(
 ````
 
+## File: resources/js/components/ui/TimePicker.tsx
+````typescript
+// import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+// import { createPortal } from "react-dom";
+// import { Clock, X } from "lucide-react";
+// import { useLanguage } from "../../i18n/LanguageContext";
+⋮----
+// interface TimePickerProps {
+//   /** 24-hour "HH:MM" string, or "" for none selected -- same shape a
+//       native <input type="time"> used. */
+//   value: string;
+//   onChange: (value: string) => void;
+//   placeholder?: string;
+//   clearLabel?: string;
+//   /** Extra classes applied to the trigger button -- pass sizing/height to match whatever it's replacing. */
+//   className?: string;
+//   /** Dark navy styling, matching DatePicker/Calendar -- applies to both
+//       the trigger and the dropdown panel. */
+//   dark?: boolean;
+//   disabled?: boolean;
+//   required?: boolean;
+//   /** Shows the trigger's border in red, matching the app's other field-level validation errors. */
+//   error?: boolean;
+//   title?: string;
+//   align?: "left" | "right";
+// }
+⋮----
+// const HOURS_12 = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+// const MINUTES = Array.from({ length: 60 }, (_, i) => i);
+⋮----
+// function parse(v: string): { h12: number; m: number; period: "AM" | "PM" } | null {
+//   if (!v) return null;
+//   const [hStr, mStr] = v.split(":");
+//   const h = Number(hStr);
+//   const m = Number(mStr);
+//   if (Number.isNaN(h) || Number.isNaN(m)) return null;
+//   const period: "AM" | "PM" = h >= 12 ? "PM" : "AM";
+//   let h12 = h % 12;
+//   if (h12 === 0) h12 = 12;
+//   return { h12, m, period };
+// }
+⋮----
+// function to24(h12: number, m: number, period: "AM" | "PM"): string {
+//   let h = h12 % 12;
+//   if (period === "PM") h += 12;
+//   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+// }
+⋮----
+// function formatDisplay(v: string): string | null {
+//   const parsed = parse(v);
+//   if (!parsed) return null;
+//   return `${String(parsed.h12).padStart(2, "0")}:${String(parsed.m).padStart(2, "0")} ${parsed.period.toLowerCase()}`;
+// }
+⋮----
+// /**
+//  * Dropdown-triggered time picker, backed by our own hour/minute/AM-PM
+//  * columns instead of the browser's native <input type="time"> -- that
+//  * native picker is rendered outside the DOM as OS chrome and, unlike a
+//  * native <select>'s <option> list, can't be recolored with CSS at all, so
+//  * it always shows up as a plain white popup no matter how dark the rest
+//  * of the page is. Drop-in replacement: give it `value`/`onChange` as a
+//  * 24-hour "HH:MM" string, same shape a native time input used.
+//  */
+// export default function TimePicker({
+//   value,
+//   onChange,
+//   placeholder = "--:-- --",
+//   clearLabel,
+//   className = "",
+//   dark = false,
+//   disabled = false,
+//   required = false,
+//   error = false,
+//   title,
+//   align = "left",
+// }: TimePickerProps) {
+//   const { t } = useLanguage();
+//   const clearText = clearLabel ?? t("clearLabel");
+//   const [open, setOpen] = useState(false);
+//   const wrapperRef = useRef<HTMLDivElement>(null);
+//   const panelRef = useRef<HTMLDivElement>(null);
+//   const hourListRef = useRef<HTMLDivElement>(null);
+//   const minuteListRef = useRef<HTMLDivElement>(null);
+//   const periodListRef = useRef<HTMLDivElement>(null);
+//   // Portaled to document.body and positioned with `position: fixed` from
+//   // the trigger's own getBoundingClientRect (same fix as FilterDropdown and
+//   // DatePicker), instead of a plain `absolute` panel -- a plain absolute
+//   // panel gets silently clipped by any scrollable/overflow-y-auto ancestor,
+//   // exactly what a tall Add/Edit form modal is.
+//   const [panelPos, setPanelPos] = useState<{ top: number; left: number } | null>(null);
+⋮----
+//   const parsed = parse(value);
+⋮----
+//   useLayoutEffect(() => {
+//     if (!open || !wrapperRef.current) return;
+⋮----
+//     const recompute = () => {
+//       if (!wrapperRef.current) return;
+//       const rect = wrapperRef.current.getBoundingClientRect();
+//       const margin = 8;
+//       const panelWidth = Math.min(window.innerWidth * 0.92, 260);
+//       const panelHeightEstimate = 260;
+⋮----
+//       let left = align === "right" ? rect.right - panelWidth : rect.left;
+//       if (left + panelWidth + margin > window.innerWidth) {
+//         left = window.innerWidth - margin - panelWidth;
+//       }
+//       if (left < margin) left = margin;
+⋮----
+//       const openUp = rect.bottom + panelHeightEstimate > window.innerHeight && rect.top > panelHeightEstimate;
+//       const top = openUp ? rect.top - panelHeightEstimate - 6 : rect.bottom + 6;
+⋮----
+//       setPanelPos({ top, left });
+//     };
+⋮----
+//     recompute();
+//     window.addEventListener("resize", recompute);
+//     window.addEventListener("scroll", recompute, true);
+//     return () => {
+//       window.removeEventListener("resize", recompute);
+//       window.removeEventListener("scroll", recompute, true);
+//     };
+//   }, [open, align]);
+⋮----
+//   useEffect(() => {
+//     if (!open) return;
+//     const handleClick = (e: MouseEvent) => {
+//       const target = e.target as Node;
+//       if (
+//         wrapperRef.current && !wrapperRef.current.contains(target) &&
+//         panelRef.current && !panelRef.current.contains(target)
+//       ) {
+//         setOpen(false);
+//       }
+//     };
+//     const handleEsc = (e: KeyboardEvent) => {
+//       if (e.key === "Escape") setOpen(false);
+//     };
+//     document.addEventListener("mousedown", handleClick);
+//     document.addEventListener("keydown", handleEsc);
+//     return () => {
+//       document.removeEventListener("mousedown", handleClick);
+//       document.removeEventListener("keydown", handleEsc);
+//     };
+//   }, [open]);
+⋮----
+//   // Scroll each column's current value into view when the panel opens,
+//   // instead of always starting at the top of a 60-row minute list.
+//   useEffect(() => {
+//     if (!open) return;
+//     const scrollIntoView = (el: HTMLDivElement | null) => {
+//       if (!el) return;
+//       const selected = el.querySelector('[data-selected="true"]') as HTMLElement | null;
+//       selected?.scrollIntoView({ block: "center" });
+//     };
+//     // Run after the panel has painted so scrollHeight is accurate.
+//     const id = requestAnimationFrame(() => {
+//       scrollIntoView(hourListRef.current);
+//       scrollIntoView(minuteListRef.current);
+//       scrollIntoView(periodListRef.current);
+//     });
+//     return () => cancelAnimationFrame(id);
+//   }, [open]);
+⋮----
+//   const setPart = (part: Partial<{ h12: number; m: number; period: "AM" | "PM" }>) => {
+//     const base = parsed ?? { h12: 12, m: 0, period: "AM" as const };
+//     const next = { ...base, ...part };
+//     onChange(to24(next.h12, next.m, next.period));
+//   };
+⋮----
+//   const columnButtonClasses = (active: boolean) =>
+//     [
+//       "w-full h-9 shrink-0 rounded-full text-sm font-medium transition",
+//       active
+//         ? dark
+//           ? "!bg-[#4FBEB0] !text-[#08130F] font-bold shadow-sm"
+//           : "!bg-[#005f63] !text-white font-bold shadow-sm"
+//         : dark
+//           ? "text-white hover:bg-white/10 cursor-pointer"
+//           : "text-gray-700 hover:bg-teal-50 cursor-pointer",
+//     ].join(" ");
+⋮----
+//   return (
+//     <div className="relative" ref={wrapperRef}>
+//       <button
+//         type="button"
+//         disabled={disabled}
+//         title={title}
+//         onClick={() => !disabled && setOpen((v) => !v)}
+//         className={`w-full inline-flex items-center gap-2 rounded-full border text-left disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none transition ${
+//           dark
+//             ? `text-base bg-white/10 focus:ring-2 focus:ring-[#4FBEB0]/40 ${error ? "border-red-500" : "border-white/25"} ${open ? "ring-2 ring-[#4FBEB0]/40 border-[#4FBEB0]/70" : ""}`
+//             : `text-sm bg-white focus:ring-2 focus:ring-[#005f63]/30 ${error ? "border-red-400" : "border-gray-200"} ${open ? "ring-2 ring-[#005f63]/30 border-[#005f63]/40" : ""}`
+//         } ${className}`}
+//       >
+//         <span className={`flex-1 truncate ${value ? (dark ? "text-white" : "text-gray-800") : (dark ? "text-white/50" : "text-gray-400")}`}>
+//           {formatDisplay(value) ?? placeholder}
+//         </span>
+//         {required && !value && <span className="h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" aria-hidden />}
+//         <Clock className={`shrink-0 ${dark ? "h-5 w-5 text-white/40" : "h-4 w-4 text-gray-400"}`} />
+//       </button>
+⋮----
+//       {open && panelPos &&
+//         createPortal(
+//         <div
+//           ref={panelRef}
+//           style={{ position: "fixed", top: panelPos.top, left: panelPos.left }}
+//           className={`z-[9999] w-[min(92vw,260px)] rounded-[24px] border shadow-xl p-4 ${
+//             dark ? "border-white/10 bg-[#0A0E1A] shadow-2xl" : "border-[#ddd5ca] bg-white"
+//           }`}
+//         >
+//           <div className="grid grid-cols-3 gap-2">
+//             <div>
+//               <p className={`text-center text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>{t("uiHour")}</p>
+//               <div ref={hourListRef} className="max-h-40 overflow-y-auto space-y-0.5 pr-0.5">
+//                 {HOURS_12.map((h) => {
+//                   const active = !!parsed && parsed.h12 === h;
+//                   return (
+//                     <button
+//                       key={h}
+//                       type="button"
+//                       data-selected={active}
+//                       onClick={() => setPart({ h12: h })}
+//                       className={columnButtonClasses(active)}
+//                     >
+//                       {String(h).padStart(2, "0")}
+//                     </button>
+//                   );
+//                 })}
+//               </div>
+//             </div>
+//             <div>
+//               <p className={`text-center text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>{t("uiMin")}</p>
+//               <div ref={minuteListRef} className="max-h-40 overflow-y-auto space-y-0.5 pr-0.5">
+//                 {MINUTES.map((m) => {
+//                   const active = !!parsed && parsed.m === m;
+//                   return (
+//                     <button
+//                       key={m}
+//                       type="button"
+//                       data-selected={active}
+//                       onClick={() => setPart({ m })}
+//                       className={columnButtonClasses(active)}
+//                     >
+//                       {String(m).padStart(2, "0")}
+//                     </button>
+//                   );
+//                 })}
+//               </div>
+//             </div>
+//             <div>
+//               <p className={`text-center text-[10px] font-semibold uppercase tracking-wide mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>&nbsp;</p>
+//               <div ref={periodListRef} className="space-y-0.5 pr-0.5">
+//                 {(["AM", "PM"] as const).map((p) => {
+//                   const active = !!parsed && parsed.period === p;
+//                   return (
+//                     <button
+//                       key={p}
+//                       type="button"
+//                       data-selected={active}
+//                       onClick={() => setPart({ period: p })}
+//                       className={columnButtonClasses(active)}
+//                     >
+//                       {p}
+//                     </button>
+//                   );
+//                 })}
+//               </div>
+//             </div>
+//           </div>
+⋮----
+//           <div className={`flex items-center justify-end mt-3 pt-3 border-t ${dark ? "border-white/10" : "border-gray-100"}`}>
+//             <button
+//               type="button"
+//               onClick={() => {
+//                 onChange("");
+//                 setOpen(false);
+//               }}
+//               className={`inline-flex items-center gap-1 text-xs font-medium transition ${dark ? "text-white/50 hover:text-red-400" : "text-gray-500 hover:text-red-500"}`}
+//             >
+//               <X className="h-3.5 w-3.5" /> {clearText}
+//             </button>
+//           </div>
+//         </div>,
+//         document.body
+//         )}
+//     </div>
+//   );
+// }
+⋮----
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Clock, X } from "lucide-react";
+import { useLanguage } from "../../i18n/LanguageContext";
+⋮----
+interface TimePickerProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  clearLabel?: string;
+  className?: string;
+  dark?: boolean;
+  disabled?: boolean;
+  required?: boolean;
+  error?: boolean;
+  title?: string;
+  align?: "left" | "right";
+}
+⋮----
+function parse(v: string):
+⋮----
+function to24(h12: number, m: number, period: "AM" | "PM"): string
+⋮----
+function formatDisplay(v: string): string | null
+⋮----
+// --- LOCAL DRAFT STATE ---
+// While the panel is open, we hold a working copy of the time here so the
+// user can pick hour → minute → period (or any order) without each partial
+// click immediately firing onChange and getting rejected by the parent.
+// onChange only fires when the user commits (closes the panel with a
+// complete selection, or picks a fresh hour while period/minute are set).
+⋮----
+// The "display" state = draft if we're editing, else the committed value.
+⋮----
+// Seed the draft from the current value when the panel opens.
+⋮----
+const recompute = () =>
+⋮----
+// --- CLOSE-AND-COMMIT ---
+// Any way the panel closes (backdrop click, Escape, hour/min/period click
+// followed by outside click) sends the CURRENT draft to the parent. That
+// way partial picks never reach EventsView, so its validation can't reject
+// mid-selection.
+const closeAndCommit = () =>
+⋮----
+const handleClick = (e: MouseEvent) =>
+const handleEsc = (e: KeyboardEvent) =>
+⋮----
+}, [open, draft]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+// Scroll each column's current value into view when the panel opens,
+// instead of always starting at the top of a 60-row minute list.
+⋮----
+const scrollIntoView = (el: HTMLDivElement | null) =>
+⋮----
+// --- LOCAL setPart ---
+// Only touches the draft; does NOT fire onChange. The commit happens on
+// close (see closeAndCommit above). This is what makes picking hour then
+// period work correctly.
+const setPart = (part: Partial<
+⋮----
+const columnButtonClasses = (active: boolean)
+⋮----
+{/* Show the draft while editing so the picked hour/period appear even before commit */}
+````
+
 ## File: resources/js/lib/expenseReportExport.ts
 ````typescript
 import type { Worksheet } from "exceljs";
@@ -12844,6 +13129,84 @@ ws.getRow(r).height = 48; // room to sign above the lines
 // ── Print setup: A4, one page wide, header row repeats, page numbers.
 ````
 
+## File: resources/js/pages/staff/views/ReportOptionsModal.tsx
+````typescript
+import useServerMatchIds from "../../../hooks/useServerMatchIds";
+import React, { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { Check, FileText, FileType, Printer, Search, X, Download, ListChecks, Users } from "lucide-react";
+⋮----
+export interface SectionDef {
+  key: string;
+  labelKey: string;
+  descKey: string;
+  /** "other" sections are shown in their own "Other options" block under the main list (e.g. the opening message). */
+  group?: "other";
+}
+⋮----
+/** "other" sections are shown in their own "Other options" block under the main list (e.g. the opening message). */
+⋮----
+export interface RecordEventOption {
+  id: string;
+  name: string;
+  date: string;
+  status: string;
+  eligible: number;
+  attended: number;
+}
+⋮----
+export type AttendeeFilter = "all" | "present" | "absent";
+⋮----
+interface Props {
+  open: boolean;
+  mode: "print" | "download";
+  reportLabel: string;
+  sections: SectionDef[];
+  selected: string[];
+  onSelectedChange: (next: string[]) => void;
+  /** Attendance report only: events that can get a full attendee list. */
+  recordEvents?: RecordEventOption[];
+  recordIds: string[];
+  onRecordIdsChange: (next: string[]) => void;
+  attendeeFilter: AttendeeFilter;
+  onAttendeeFilterChange: (next: AttendeeFilter) => void;
+  busy: boolean;
+  onClose: () => void;
+  onPrint: () => void;
+  onDownload: (format: "pdf" | "word") => void;
+  t: (key: string) => string;
+}
+⋮----
+/** Attendance report only: events that can get a full attendee list. */
+⋮----
+function Box(
+⋮----
+/**
+ * "Print & Export Options" -- lets staff pick exactly which parts of the
+ * current report go on the printout / PDF / Word file, and (attendance
+ * report) which events get a full attendee list.
+ */
+⋮----
+// The event search is matched by the server; the report's events are narrowed to its answer.
+⋮----
+const toggleSection = (key: string)
+const toggleEvent = (id: string)
+⋮----
+// The presets only change the main sections -- the "other options" (message) keep whatever was picked.
+⋮----
+{/* Header */}
+⋮----
+{/* Body */}
+⋮----
+{/* Sections */}
+⋮----
+{/* Other options (opening message) */}
+⋮----
+{/* Events + attendee lists */}
+⋮----
+{/* Footer */}
+````
+
 ## File: app/Http/Controllers/AgeBracketController.php
 ````php
 namespace App\Http\Controllers;
@@ -12933,6 +13296,80 @@ $bracket->restore();
 $this->createLog('Restore Age Bracket', 'Profiling Settings', "Restored age bracket '{$bracket->label}'");
 ⋮----
 return response()->json(['message' => 'Age bracket restored successfully']);
+````
+
+## File: app/Http/Controllers/CurrentStatusController.php
+````php
+namespace App\Http\Controllers;
+⋮----
+use App\Models\CurrentStatus;
+use App\Models\ActivityLog;
+use Illuminate\Http\Request;
+⋮----
+class CurrentStatusController extends Controller
+⋮----
+public function index()
+⋮----
+return response()->json(CurrentStatus::orderBy('label')->get());
+⋮----
+public function store(Request $request)
+⋮----
+if (!$this->isStaff()) {
+return response()->json(['message' => 'Unauthorized'], 403);
+⋮----
+$request->validate([
+⋮----
+if (CurrentStatus::whereRaw('LOWER(TRIM(label)) = ?', [mb_strtolower(trim($request->label))])->exists()) {
+return response()->json([
+⋮----
+$status = CurrentStatus::create([
+⋮----
+'sort_order' => $request->sort_order ?? ((int) CurrentStatus::max('sort_order') + 1),
+⋮----
+CurrentStatus::forgetCache();
+$this->createLog('Create Current Status', 'Profiling Settings', "Created current status '{$status->label}'");
+⋮----
+return response()->json($status, 201);
+⋮----
+public function update(Request $request, $id)
+⋮----
+$status = CurrentStatus::findOrFail($id);
+⋮----
+if (CurrentStatus::whereRaw('LOWER(TRIM(label)) = ?', [mb_strtolower(trim($request->label))])->where('id', '!=', $status->id)->exists()) {
+⋮----
+$status->update([
+⋮----
+$this->createLog('Update Current Status', 'Profiling Settings', "Updated current status '{$status->label}'");
+⋮----
+return response()->json($status);
+⋮----
+public function destroy($id)
+⋮----
+// Guard against silently breaking a resident's recorded current
+// status or a membership's eligibility rule -- mirrors
+// Membership::hasResidentsAssigned() / InventoryController's own
+// "still in use" checks.
+if ($status->users()->exists() || $status->memberships()->exists()) {
+⋮----
+// Record who archived it before soft-deleting -- otherwise the
+// Archive page has nothing to show but "SYSTEM".
+$status->deleted_by = auth()->user()->user_code;
+$status->save();
+$status->delete();
+⋮----
+$this->createLog('Delete Current Status', 'Profiling Settings', "Deleted current status '{$name}'");
+⋮----
+return response()->json(['message' => 'Current status deleted successfully']);
+⋮----
+public function restore($id)
+⋮----
+$status = CurrentStatus::onlyTrashed()->findOrFail($id);
+⋮----
+$status->restore();
+⋮----
+$this->createLog('Restore Current Status', 'Profiling Settings', "Restored current status '{$status->label}'");
+⋮----
+return response()->json(['message' => 'Current status restored successfully']);
 ````
 
 ## File: app/Http/Controllers/EventExpenseController.php
@@ -13101,560 +13538,215 @@ $event->save();
 'description' => "Changed approved budget for event: {$event->name} from {$fmt($old)} to {$fmt($new)}" . $this->overBudgetNote($event),
 ````
 
-## File: app/Http/Controllers/FeedbackController.php
+## File: app/Http/Controllers/MembershipController.php
 ````php
 namespace App\Http\Controllers;
 ⋮----
-use App\Models\AbsenceReason;
-use App\Models\AppSetting;
-use App\Services\SecurityService;
-use Illuminate\Support\Carbon;
-use App\Models\Event;
-use App\Models\Feedback;
-use App\Models\FeedbackEdit;
-use App\Models\EventAttendance;
-use App\Models\Notification;
-use App\Models\User;
+use App\Models\Membership;
+use App\Models\ActivityLog;
+use App\Models\AgeBracket;
+use App\Support\Paged;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 ⋮----
-class FeedbackController extends Controller
+class MembershipController extends Controller
 ⋮----
-/**
-     * True once a resident's attendance record can be reviewed: either
-     * they signed in AND out (status 'Complete'), or they signed in and
-     * the event's own end time has already passed. The second branch
-     * covers a resident who genuinely attended the whole event but
-     * forgot to tap out again -- without it they'd be stuck
-     * 'Incomplete' forever and could never leave feedback, even though
-     * the event is long over. Checking status alone (the original bug)
-     * let a resident submit feedback the moment they signed in,
-     * potentially before the event had even started; requiring
-     * 'Complete' alone (an earlier fix) swung too far the other way and
-     * permanently locked out anyone who forgot to sign out. Events with
-     * no event_end configured can't be confirmed as "ended" this way,
-     * so only a true 'Complete' status counts for those.
-     */
-private function attendanceIsReviewable(EventAttendance $attendance): bool
+// =========================
+// GET ALL (ACTIVE ONLY)
 ⋮----
-return $event && $event->event_end && now()->greaterThan($event->event_end);
+public function index(Request $request)
 ⋮----
-// ---------------------------------------------------------------------
-// Feedback rules (set by Head Staff in Settings -> Feedback Rules)
+// ✅ ONLY show active (not archived) memberships
+$query = Membership::withoutTrashed()
+->where('is_active', true)
+->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus']);
 ⋮----
-/** Moment feedback for this event stops being accepted. */
-private function closesAt(Event $event): ?Carbon
+// paged=1 (Memberships screen): search, order and page are done here.
+if ($request->boolean('paged')) {
+// mine=<user id>: only the groups that resident belongs to (own id, or staff).
+if ($request->filled('mine')) {
+$mine = (int) $request->input('mine');
+if ($mine !== (int) auth()->id() && !$this->isStaff()) {
+return response()->json(['message' => 'Unauthorized'], 403);
 ⋮----
-return $end ? Carbon::parse($end)->addHours(AppSetting::feedbackRules()['close_after_hours']) : null;
+$query->whereIn('id', DB::table('membership_residents')->where('user_id', $mine)->select('membership_id'));
 ⋮----
-private function windowClosed(Event $event): bool
+foreach (Paged::tokens($request->input('search')) as $word) {
+$like = Paged::like($word);
+$query->where(fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', [$like])->orWhereRaw("LOWER(COALESCE(description, '')) LIKE ?", [$like]));
 ⋮----
-$closes = $this->closesAt($event);
-return $closes !== null && now()->greaterThan($closes);
+$paginator = $query->orderBy('id')->paginate(Paged::perPage($request, 6), ['*'], 'page', Paged::page($request));
 ⋮----
-/** Edits are allowed for a few minutes after the first submit, then the entry is locked. */
-private function editLocked($row): bool
+return response()->json(Paged::body($paginator, $paginator->getCollection()->values(), [
+'all_total' => Membership::withoutTrashed()->where('is_active', true)->count(),
 ⋮----
-$minutes = AppSetting::feedbackRules()['edit_window_minutes'];
-return $row->created_at->copy()->addMinutes($minutes)->lessThan(now());
+$memberships = $query->get();
+// eligible_gender is a plain enum column (no relation to eager-load)
 ⋮----
-private function secondsLeftToEdit($row): int
+return response()->json($memberships);
 ⋮----
-return max(0, (int) floor(now()->diffInSeconds($row->created_at->copy()->addMinutes($minutes), false)));
+// CREATE MEMBERSHIP
 ⋮----
-public function rules()
+public function store(Request $request)
 ⋮----
-return response()->json(AppSetting::feedbackRules());
-⋮----
-// Head Staff only (route middleware) -- and it re-asks for their password.
-public function updateRules(Request $request)
+if (!$this->isStaff()) {
 ⋮----
 $request->validate([
 ⋮----
-app(SecurityService::class)->requirePassword(auth()->user(), $request->password);
+DB::beginTransaction();
 ⋮----
-$rules = AppSetting::saveFeedbackRules((int) $request->close_after_hours, (int) $request->edit_window_minutes);
+$membership = Membership::create([
+⋮----
+'is_active' => true,  // ✅ Explicitly set active
 ⋮----
 $this->createLog(
 ⋮----
-return response()->json($rules);
+DB::commit();
+return response()->json($membership, 201);
 ⋮----
-/** A member "attended" if the entrance recorded a time-in or a time-out for them. */
-private function attendedScope($query)
+DB::rollBack();
+return response()->json([
 ⋮----
-return $query->where(fn ($q) => $q->whereNotNull('time_in')->orWhereNotNull('time_out'));
+'error' => $e->getMessage()
 ⋮----
-// UC-16: Submit Post-Event Feedback
-public function store(Request $request)
+// SHOW MEMBERSHIP
 ⋮----
-$userId = auth()->id();
-⋮----
-$attendance = $this->attendedScope(
-EventAttendance::with('event')
-->where('event_id', $request->event_id)
-->where('user_id', $userId)
-)->first();
-⋮----
-return response()->json(['message' => 'Only members who attended this event (checked in at the entrance) can leave feedback.'], 403);
-⋮----
-if (!$this->attendanceIsReviewable($attendance)) {
-return response()->json(['message' => 'Feedback is only available after the event has ended.'], 403);
-⋮----
-$rules = AppSetting::feedbackRules();
-$existing = Feedback::where('event_id', $request->event_id)->where('user_id', $userId)->first();
-⋮----
-if ($this->editLocked($existing)) {
-return response()->json(['message' => "You can only edit your feedback within {$rules['edit_window_minutes']} minute(s) after sending it."], 403);
-⋮----
-} elseif ($this->windowClosed($attendance->event)) {
-return response()->json(['message' => "Feedback for this event closed {$rules['close_after_hours']} hour(s) after it ended."], 403);
-⋮----
-// Keep the version being replaced, so the edit history can show it.
-⋮----
-FeedbackEdit::create([
-⋮----
-$feedback = Feedback::updateOrCreate(
-⋮----
-$this->notifyStaff($feedback, $attendance->event, auth()->user());
-⋮----
-return response()->json(['message' => 'Thank you for your feedback!', 'feedback' => $feedback], 201);
-⋮----
-/**
-     * Tells every staff account that a member just sent (or changed) feedback.
-     * One in-app notification per staff user, type "feedback_received", shown
-     * in the staff bell. Never allowed to fail the member's submission.
-     */
-private function notifyStaff(Feedback $feedback, $event, $member): void
-⋮----
-$staffIds = User::where('role', 'Staff')->where('id', '!=', $member->id)->pluck('id');
-if ($staffIds->isEmpty()) {
-⋮----
-Notification::insert($staffIds->map(fn ($id) => [
-⋮----
-])->all());
-⋮----
-// Events the resident attended and can now review but hasn't rated
-// yet (drives the feedback prompt) -- same reviewable rule as store().
-public function pending(Request $request)
-⋮----
-$attended = $this->attendedScope(
-EventAttendance::with('event')->where('user_id', $userId)
-)->get()
-->filter(fn ($a) => $a->event !== null)
-->filter(fn ($a) => $this->attendanceIsReviewable($a))
-->pluck('event')
-->unique('id')
-->reject(fn ($event) => $this->windowClosed($event))
-->values();
-⋮----
-$rated = Feedback::where('user_id', $userId)->pluck('event_id');
-⋮----
-$pending = $attended->reject(fn ($event) => $rated->contains($event->id))->values();
-⋮----
-return response()->json($pending);
-⋮----
-// The resident's own feedback across all events -- drives the
-// "you rated this X stars" / edit-in-place state of the reviews
-// module on the Events page, as opposed to pending() which only
-// covers Complete-status events still awaiting a first rating.
-public function mine(Request $request)
-⋮----
-$feedback = Feedback::withCount('edits')->where('user_id', auth()->id())
-->get(['id', 'event_id', 'rating', 'comment', 'staff_liked_at', 'staff_reply', 'staff_replied_at', 'created_at'])
-->map(fn ($f) => array_merge($f->toArray(), ['edit_seconds_left' => $this->secondsLeftToEdit($f)]))
-⋮----
-return response()->json($feedback);
-⋮----
-public function forEvent($eventId)
-⋮----
-if (!$this->isStaff()) {
-return response()->json(['message' => 'Unauthorized'], 403);
+public function show($id)
 ⋮----
 return response()->json(
-Feedback::withCount('edits')->with(['user:id,first_name,last_name', 'repliedBy:id,first_name,last_name'])
-->where('event_id', $eventId)
-->latest()
-->get()
+Membership::withoutTrashed()
+->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
+->findOrFail($id)
 ⋮----
-// Non-attendance reasons (UC-16 alternate flow)
+// UPDATE MEMBERSHIP
 ⋮----
-/** Past events only: an event with no end time counts as over once its start has passed. */
-private function eventIsOver(Event $event): bool
+public function update(Request $request, $id)
 ⋮----
-return $end && now()->greaterThan($end);
+$membership = Membership::withoutTrashed()->findOrFail($id);
 ⋮----
-// A member who did NOT attend a finished event says why.
-public function storeAbsence(Request $request)
+$membership->update([
 ⋮----
-$event = Event::findOrFail($request->event_id);
+return response()->json($membership);
 ⋮----
-if (!$this->eventIsOver($event)) {
-return response()->json(['message' => 'You can tell us why you could not attend once the event has ended.'], 403);
+// DELETE → NOW ARCHIVE
 ⋮----
-EventAttendance::where('event_id', $event->id)->where('user_id', $userId)
-)->exists();
+public function destroy($id)
 ⋮----
-return response()->json(['message' => 'You attended this event, so you can rate it instead.'], 403);
+$residentCount = $membership->users()->count();
 ⋮----
-$existing = AbsenceReason::where('event_id', $event->id)->where('user_id', $userId)->first();
+// ✅ Pass the logged-in user's user_code
+$membership->archive(null, auth()->user()?->user_code);
 ⋮----
-return response()->json(['message' => "You can only change your answer within {$rules['edit_window_minutes']} minute(s) after sending it."], 403);
+"Error archiving membership: " . $e->getMessage()
 ⋮----
-} elseif ($this->windowClosed($event)) {
-return response()->json(['message' => "This closed {$rules['close_after_hours']} hour(s) after the event ended."], 403);
+'message' => 'Failed to archive membership: ' . $e->getMessage()
 ⋮----
-$row = AbsenceReason::updateOrCreate(
+// ✅ NEW: Restore archived membership
+public function restore($id)
 ⋮----
-$this->notifyStaffAbsence($row, $event, auth()->user());
+$membership = Membership::onlyTrashed()->findOrFail($id);
 ⋮----
-return response()->json(['message' => 'Thank you for letting us know.', 'absence' => $row], 201);
+$membership->unarchive();
 ⋮----
-public function mineAbsences()
+// PAGINATION (ACTIVE ONLY)
 ⋮----
-AbsenceReason::withCount('edits')->where('user_id', auth()->id())
-->get(['id', 'event_id', 'reason', 'comment', 'staff_liked_at', 'staff_reply', 'staff_replied_at', 'created_at'])
-->map(fn ($r) => array_merge($r->toArray(), ['edit_seconds_left' => $this->secondsLeftToEdit($r)]))
-->values()
+public function getPaginated(Request $request)
 ⋮----
-public function absencesForEvent($eventId)
+$perPage = $request->get('per_page', 15);
 ⋮----
-AbsenceReason::withCount('edits')->with(['user:id,first_name,last_name', 'repliedBy:id,first_name,last_name'])
+// ✅ ONLY active memberships
+$memberships = Membership::withoutTrashed()
 ⋮----
-private function notifyStaffAbsence(AbsenceReason $row, Event $event, $member): void
-⋮----
-// Staff responses: a heart (acknowledged) and a reply, on a rating or a reason
-⋮----
-private function findResponseTarget(string $kind, $id)
-⋮----
-? AbsenceReason::with('event')->findOrFail($id)
-: Feedback::with('event')->findOrFail($id);
-⋮----
-private function notifyMember($target, string $title, string $message): void
-⋮----
-Notification::insert([[
-⋮----
-// Toggle the staff heart. The member is told only the first time it is given.
-public function like(string $kind, $id)
-⋮----
-$target = $this->findResponseTarget($kind, $id);
-⋮----
-$target->save();
-⋮----
-if ($liking && $target->wasChanged('staff_liked_at') && !Notification::where('user_id', $target->user_id)
-->where('type', 'feedback_reply')->where('event_id', $target->event_id)
-->where('title', 'Barangay staff liked your ' . ($kind === 'absence' ? 'response' : 'feedback'))->exists()) {
-$this->notifyMember(
-⋮----
-return response()->json(['staff_liked_at' => $target->staff_liked_at]);
-⋮----
-// Write, change or clear (empty text) the staff reply.
-private function notifyReplyLike($target, string $kind): void
-⋮----
-$member = auth()->user();
-⋮----
-$exists = Notification::where('user_id', $target->staff_replied_by)
-->where('type', 'feedback_received')->where('event_id', $target->event_id)
-->where('title', $title)->where('message', $message)->exists();
-⋮----
-// The author heart-reacts to the staff reply under their own rating / reason.
-public function likeReply(string $kind, $id)
-⋮----
-if ((int) $target->user_id !== (int) auth()->id() || $target->staff_reply === null) {
-⋮----
-// Tell the staff member who wrote the reply -- once per reply, not on every toggle.
-⋮----
-$this->notifyReplyLike($target, $kind);
-⋮----
-return response()->json(['member_liked_reply_at' => $target->member_liked_reply_at]);
-⋮----
-public function reply(Request $request, string $kind, $id)
-⋮----
-$request->validate(['reply' => 'nullable|string|max:500']);
-⋮----
-$target->staff_replied_by = auth()->id();
-⋮----
-$target->load('repliedBy:id,first_name,last_name');
-⋮----
-return response()->json([
-⋮----
-// The "Edited" history of one rating / reason: the current version first,
-// then each earlier one, newest to oldest. Visible to staff and to the author.
-public function history(string $kind, $id)
-⋮----
-$row = $kind === 'absence' ? AbsenceReason::findOrFail($id) : Feedback::findOrFail($id);
-⋮----
-if (!$this->isStaff() && (int) $row->user_id !== (int) auth()->id()) {
-⋮----
-$versions = collect([$shape($row, $row->updated_at, true)]);
-FeedbackEdit::where('kind', $kind)->where('item_id', $row->id)->orderByDesc('id')->get()
-->each(fn ($e) => $versions->push($shape($e, $e->written_at ?? $e->created_at, false)));
-⋮----
-return response()->json($versions->values());
-````
-
-## File: app/Http/Controllers/NotificationController.php
-````php
-namespace App\Http\Controllers;
-⋮----
-use App\Models\Notification;
-use App\Models\Membership;
-use App\Models\SmsLog;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-⋮----
-class NotificationController extends Controller
-⋮----
-// Staff-only alerts (a member sent feedback) -- kept out of every resident-facing list.
-⋮----
-// For Residents - their own notifications with event data
-public function index(Request $request)
-⋮----
-// Paginated, unread first. Callers that show the full list ask for more per page
-// (capped); anything that only needs a number should use /notifications/unread-count.
-$perPage = max(1, min(200, (int) $request->query('per_page', 20)));
-⋮----
-$notifications = Notification::where('user_id', Auth::id())
-->where('type', '!=', self::STAFF_ALERT)
-->with('event')  // Load event relationship
-->orderBy('read', 'asc')
-->orderBy('is_updated', 'desc')
-->orderBy('updated_at_notification', 'desc')
-->orderBy('created_at', 'desc')
 ->paginate($perPage);
 ⋮----
-return response()->json($notifications);
+public function getSimplePaginated()
 ⋮----
-// For Staff - grouped by event (one notification per event)
-public function staffNotifications(Request $request)
+->simplePaginate(10)
 ⋮----
-if (!$this->isStaff()) {
-return response()->json(['message' => 'Unauthorized'], 403);
+public function getCursorPaginated()
 ⋮----
-// Get the latest notification ID per event
-$latestIds = Notification::selectRaw('MAX(id) as id')
-->whereNotIn('type', [self::STAFF_ALERT, 'feedback_reply'])
-->whereNotNull('event_id')
-->groupBy('event_id')
-->pluck('id');
+->cursorPaginate(10)
 ⋮----
-$query = Notification::with('event')
-->whereIn('id', $latestIds);
+public function searchPaginated(Request $request)
 ⋮----
-// Filter by date - based on EVENT start date
-if ($request->has('date_filter') && $request->date_filter !== 'all') {
+$search = $request->get('search');
+$perPage = $request->get('per_page', 10);
 ⋮----
-$query->whereHas('event', function($q) use ($now) {
-$q->where('event_start', '>', $now);
+->when($search, function ($query, $search) {
+return $query->where('name', 'like', '%' . $search . '%')
+->orWhere('description', 'like', '%' . $search . '%');
 ⋮----
-$q->where('event_start', '<', $now);
+public function sortPaginated(Request $request)
 ⋮----
-// Filter by target membership
-if ($request->has('target_membership_id') && $request->target_membership_id !== 'all-residents') {
+$sortBy = $request->get('sort_by', 'id');
+$sortOrder = $request->get('sort_order', 'asc');
 ⋮----
-$query->whereHas('event', function($q) use ($targetId) {
-$q->whereJsonContains('membership_ids', $targetId);
-⋮----
-$notifications = $query->orderBy('created_at', 'desc')
-->paginate(20);
-⋮----
-// Get all membership IDs from events
-⋮----
-// Batch load memberships
-$memberships = Membership::whereIn('id', array_unique($allMembershipIds))->get()->keyBy('id');
-⋮----
-// Get recipient count
-$notification->recipient_count = Notification::where('event_id', $notification->event_id)->whereNotIn('type', [self::STAFF_ALERT, 'feedback_reply'])->count();
-⋮----
-// Get target name
-⋮----
-$membership = $memberships->get($membershipIds[0]);
-⋮----
-public function thisWeek()
-⋮----
-->where('created_at', '>=', now()->startOfWeek())
-->where('created_at', '<=', now()->endOfWeek())
-->with('event')
-⋮----
-->get();
-⋮----
-private function replyAlertRow(Notification $n): array
-⋮----
-// like / reply = staff response to feedback; event = any other announcement.
-⋮----
-// "feedback" = their rating, "response" = their reason for not attending.
+->orderBy($sortBy, $sortOrder)
+->paginate($perPage)
 ⋮----
 /**
-     * A member's feedback inbox: hearts and replies from staff on their own
-     * ratings / reasons. Polled a few seconds apart; ?after_id= returns what
-     * arrived since, so the page can pop a toast and chime once per item.
+     * Residents currently enrolled in this membership who no longer match
+     * its eligibility rule (age bracket / civil status / current status /
+     * gender). Eligibility is only checked when a resident is FIRST
+     * assigned to a gated membership (see UserController::
+     * checkMembershipEligibility) -- nothing re-checks it afterward, so a
+     * resident who ages out of a bracket or whose status changes stays
+     * enrolled indefinitely unless staff notice and remove them by hand.
+     * This lets staff proactively find those cases instead of relying on
+     * noticing by accident.
      */
-public function replyAlerts(Request $request)
+public function ineligibleMembers($id)
 ⋮----
-// Everything addressed to this member (announcements, updates, staff
-// replies) so one poll drives the toast + chime; the unread count is
-// for staff replies only (it feeds the Events badge).
-$base = Notification::where('user_id', Auth::id())->where('type', '!=', self::STAFF_ALERT);
-$afterId = (int) $request->query('after_id', 0);
-$since = $request->filled('since') ? (string) $request->query('since') : null;
+return response()->json(['ineligible' => []]);
 ⋮----
-return response()->json([
-'unread_count' => (clone $base)->where('type', 'feedback_reply')->where('read', false)->count(),
-'latest_id' => (int) ((clone $base)->max('id') ?? 0),
-// Brand-new rows, plus unread ones an update touched since the last poll
-// (an edited event re-uses its notification instead of adding a new one).
-'new' => !$request->boolean('init')
-? (clone $base)->with('event:id,name')
-->where(function ($q) use ($afterId, $since) {
-$q->where('id', '>', $afterId);
+$members = $membership->users()->with('currentStatuses')->get();
 ⋮----
-$q->orWhere(fn ($u) => $u->where('read', false)->where('updated_at_notification', '>', $since));
+$bracket = AgeBracket::resolveForAge($user->age);
 ⋮----
-->orderBy('id')->limit(10)->get()
-->map(fn ($n) => $this->replyAlertRow($n))->values()
+$currentStatusIds = $user->getRelationValue('currentStatuses')->pluck('id')->map(fn ($v) => (int) $v)->all();
 ⋮----
-'server_time' => now()->toDateTimeString(),
+return response()->json(['ineligible' => $ineligible]);
+````
+
+## File: app/Http/Requests/StoreInventoryItemRequest.php
+````php
+namespace App\Http\Requests;
 ⋮----
-// Opening the Events page counts as seeing them.
-public function markReplyAlertsRead()
+use Illuminate\Foundation\Http\FormRequest;
 ⋮----
-Notification::where('user_id', Auth::id())->where('type', 'feedback_reply')->where('read', false)->update(['read' => true]);
+class StoreInventoryItemRequest extends FormRequest
 ⋮----
-return response()->json(['message' => 'ok']);
+public function authorize(): bool
 ⋮----
-public function unreadCount()
+public function rules(): array
 ⋮----
-$count = Notification::where('user_id', Auth::id())
+// Units in stock per condition (e.g. 45 Good + 15 New). When sent,
+// their sum is the item's in-stock quantity.
 ⋮----
-->where('read', false)
-->count();
+// Optional photo -- same conventions as Resident ID photos /
+// expense receipts (image file, up to 5 MB).
+````
+
+## File: app/Http/Requests/UpdateInventoryItemRequest.php
+````php
+namespace App\Http\Requests;
 ⋮----
-return response()->json(['count' => $count]);
+use Illuminate\Foundation\Http\FormRequest;
 ⋮----
-public function markAsRead($id)
+class UpdateInventoryItemRequest extends FormRequest
 ⋮----
-$notification = Notification::where('user_id', Auth::id())
-->where('id', $id)
-->firstOrFail();
+public function authorize(): bool
 ⋮----
-$notification->update(['read' => true]);
+public function rules(): array
 ⋮----
-return response()->json(['message' => 'Marked as read']);
+// Units in stock per condition (e.g. 45 Good + 15 New). When sent,
+// their sum is the item's in-stock quantity.
 ⋮----
-public function markAllAsRead()
+// Optional photo -- a new file replaces whatever was there
+// before. Remove the photo outright by sending `remove_photo=1`
+// with no new file.
 ⋮----
-Notification::where('user_id', Auth::id())
-⋮----
-->update(['read' => true]);
-⋮----
-return response()->json(['message' => 'All notifications marked as read']);
-⋮----
-private function alertRow(Notification $n): array
-⋮----
-// Which tab of the event's Feedback this belongs to.
-⋮----
-/**
-     * Staff bell feed: the newest feedback alerts for the signed-in staff
-     * user, the unread total, and the highest id -- the bell polls this a few
-     * seconds apart and passes ?after_id= to learn what arrived since.
-     */
-public function staffAlerts(Request $request)
-⋮----
-$base = Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT);
-⋮----
-$items = (clone $base)->with('event:id,name')->orderByDesc('id')->limit(30)->get();
-⋮----
-'unread_count' => (clone $base)->where('read', false)->count(),
-// Security alerts (staff changes, resets, lockouts...) ride on the same poll.
-'security_unread' => \App\Models\SecurityAlert::where('user_id', Auth::id())->where('read', false)->count(),
-⋮----
-// The bell only lists what still needs attention: unread, newest first.
-'data' => (clone $base)->with('event:id,name')->where('read', false)->orderByDesc('id')->limit(10)->get()
-->map(fn ($n) => $this->alertRow($n))->values(),
-⋮----
-? $items->filter(fn ($n) => $n->id > $afterId)->map(fn ($n) => $this->alertRow($n))->values()
-⋮----
-/**
-     * Full, filterable history for the Notifications page's Feedback tab.
-     * Filters: search (member, event or comment), rating 1-5, unread only.
-     */
-public function staffAlertsAll(Request $request)
-⋮----
-$query = Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT)->with('event:id,name');
-⋮----
-// Ratings and "couldn't attend" reasons are listed separately.
-⋮----
-$isAbsenceQ = fn ($q) => $q->where('title', 'like', $absenceLike)->orWhere('title', 'like', $absenceReplyLike);
-⋮----
-'rating' => (clone $query)->whereNot($isAbsenceQ)->count(),
-'absence' => (clone $query)->where($isAbsenceQ)->count(),
-⋮----
-if ($request->query('kind') === 'absence') {
-$query->where($isAbsenceQ);
-} elseif ($request->query('kind') === 'rating') {
-$query->whereNot($isAbsenceQ);
-⋮----
-if ($request->boolean('unread')) {
-$query->where('read', false);
-⋮----
-if ($request->filled('rating') && (int) $request->rating >= 1 && (int) $request->rating <= 5) {
-$query->where('message', 'like', '% - ' . (int) $request->rating . '/5%');
-⋮----
-if ($request->filled('search')) {
-⋮----
-$query->where(fn ($q) => $q->where('title', 'like', $term)->orWhere('message', 'like', $term));
-⋮----
-$perPage = max(1, min(50, (int) $request->query('per_page', 10)));
-$page = $query->orderByDesc('id')->paginate($perPage);
-⋮----
-'data' => collect($page->items())->map(fn ($n) => $this->alertRow($n))->values(),
-'current_page' => $page->currentPage(),
-'last_page' => $page->lastPage(),
-'total' => $page->total(),
-⋮----
-public function markStaffAlertRead($id)
-⋮----
-Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT)->where('id', $id)->update(['read' => true]);
-⋮----
-public function markAllStaffAlertsRead()
-⋮----
-Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT)->where('read', false)->update(['read' => true]);
-⋮----
-return response()->json(['message' => 'All marked as read']);
-⋮----
-/**
-     * Adviser recommendation: "Notify by household — head of household —
-     * SMS contact number per household". Staff-facing log of what was
-     * actually sent (or simulated) via App\Services\SmsService, so the
-     * in-app notification list has a visible SMS counterpart.
-     */
-public function smsLogs(Request $request)
-⋮----
-$query = SmsLog::with(['user:id,first_name,last_name,is_household_head', 'event:id,name'])
-->latest();
-⋮----
-if ($request->filled('event_id')) {
-$query->where('event_id', $request->event_id);
-⋮----
-// Status filter: only the three values the SMS service ever writes.
-if (in_array($request->get('status'), ['sent', 'failed', 'simulated'], true)) {
-$query->where('status', $request->get('status'));
-⋮----
-// Search by resident name, mobile number or event name. LIKE wildcards
-// typed by the user are escaped so they match literally.
-$term = trim((string) $request->get('search', ''));
-⋮----
-$query->where(function ($q) use ($like) {
-$q->where('to_number', 'like', $like)
-->orWhereHas('user', function ($u) use ($like) {
-$u->where('first_name', 'like', $like)
-->orWhere('last_name', 'like', $like)
-->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", [$like]);
-⋮----
-->orWhereHas('event', fn ($e) => $e->where('name', 'like', $like));
-⋮----
-$perPage = max(1, min(50, (int) $request->get('per_page', 20)));
-⋮----
-return response()->json($query->paginate($perPage));
+// The counts the form was opened with, to detect a concurrent change.
 ````
 
 ## File: app/Models/CivilStatus.php
@@ -13690,135 +13782,6 @@ return $this->hasMany(User::class);
 public function memberships()
 ⋮----
 return $this->hasMany(Membership::class, 'eligible_civil_status_id');
-````
-
-## File: app/Models/InventoryItem.php
-````php
-namespace App\Models;
-⋮----
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Facades\Storage;
-⋮----
-class InventoryItem extends Model
-⋮----
-protected $fillable = [
-⋮----
-/**
-     * In-stock units are split by condition: an item can hold 45 Good and
-     * 15 New at once. The four counts always add up to `quantity`; the old
-     * single `condition` column is kept as the item's main (largest)
-     * condition so filters and reports that only need one label still work.
-     */
-⋮----
-protected $casts = [
-⋮----
-// Same convention as User::validation_id_url and
-// EventExpense::receipt_url -- the stored path is an internal
-// storage/app/public detail, the frontend only ever needs the public
-// URL, so it's appended automatically on every JSON response.
-protected $appends = [
-⋮----
-protected static function booted(): void
-⋮----
-// Keeps `quantity`, the per-condition counts and `condition` in step
-// no matter who changes stock (the inventory form, event loans and
-// returns, lost / disposed units):
-//  - the form sends the per-condition counts -> quantity = their sum;
-//  - anything else changes only `quantity` -> the counts follow it:
-//    units leave the main condition first (then the largest groups)
-//    and returned units go back into the main condition.
-static::saving(function (InventoryItem $item) {
-⋮----
-$counts[$col] = max(0, (int) $item->getAttribute($col));
-⋮----
-$countsEdited = $item->isDirty($columns);
-$quantityEdited = $item->isDirty('quantity') || ! $item->exists;
-$quantity = max(0, (int) $item->getAttribute('quantity'));
-⋮----
-if ($countsEdited && ! $item->isDirty('quantity')) {
-⋮----
-? self::mainColumn($counts, $item->condition)
-⋮----
-$item->setAttribute($col, $n);
-⋮----
-$item->setAttribute('quantity', $quantity);
-⋮----
-// The main condition is re-picked only when the counts themselves
-// were edited; a loan or return keeps it, so returned units go
-// back to where they came from.
-⋮----
-$item->setAttribute('condition', $flip[self::mainColumn($counts, $item->condition)]);
-⋮----
-/** The condition column holding the most units (ties go to the worse condition). */
-private static function mainColumn(array $counts, ?string $fallback): string
-⋮----
-/** In-stock units per condition, e.g. ['New' => 15, 'Good' => 45, 'Fair' => 0, 'Poor' => 0]. */
-public function conditionCounts(): array
-⋮----
-$out[$label] = (int) $this->getAttribute($col);
-⋮----
-/** Puts units back into stock, into exactly the conditions given. */
-public function giveUnits(array $units): void
-⋮----
-$this->moveUnits($units, +1);
-⋮----
-/**
-     * Takes units out of stock, out of exactly the conditions given. Callers
-     * check availableUnits() first; counts never go below 0.
-     */
-public function takeUnits(array $units): void
-⋮----
-$this->moveUnits($units, -1);
-⋮----
-/** Which of the wanted units this item can't cover right now, e.g. ['Good' => 3]. */
-public function shortfall(array $units): array
-⋮----
-$have = $this->conditionCounts();
-⋮----
-private function moveUnits(array $units, int $sign): void
-⋮----
-$this->save();
-⋮----
-public function getPhotoUrlAttribute(): ?string
-⋮----
-? Storage::disk('public')->url($this->photo_path)
-⋮----
-/** Every photo path, cover first (photo_path, then the extras). */
-public function allPhotoPaths(): array
-⋮----
-/** Public URLs of every photo, cover first. */
-public function getPhotoUrlsAttribute(): array
-⋮----
-return array_map(fn ($p) => Storage::disk('public')->url($p), $this->allPhotoPaths());
-⋮----
-// Outstanding "borrowed for an event" rows -- see EventInventoryItem.
-// A row here is deleted (and the quantity restored) once its event is
-// archived, so "has any rows" == "currently lent out to a live event".
-public function borrows()
-⋮----
-return $this->hasMany(EventInventoryItem::class, 'inventory_item_id');
-⋮----
-/**
-     * Lost units are tracked on the item itself, separate from its condition:
-     *  - lost_quantity: every unit reported lost (shown as "N lost").
-     *  - lost_pending:  the part of those that were still out on loan when
-     *    reported, so they couldn't be taken out of stock yet.
-     * In-stock `quantity` never includes lost units, so the units that are
-     * still good keep their condition untouched.
-     *
-     * This settles the pending part once it is knowable: when everything still
-     * out on loan is lost (nothing real left to return), that loan is cleared
-     * instead of lingering in Pending Returns forever. If more is out than was
-     * reported lost, nothing is touched -- there is no telling which loan lost
-     * the unit, so the loans stay until the rest comes back. Any lost units
-     * that were mistakenly returned to stock are taken back out of stock.
-     */
-public function settleLostOnLoan(): void
-⋮----
-$out = (int) $this->borrows()->sum('quantity');
-⋮----
-$this->borrows()->delete();
 ````
 
 ## File: app/Models/User.php
@@ -14704,6 +14667,133 @@ protected function serializeDate(\DateTimeInterface $date)
 return $date->format('Y-m-d H:i:s');
 ````
 
+## File: app/Models/InventoryItem.php
+````php
+namespace App\Models;
+⋮----
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Storage;
+⋮----
+class InventoryItem extends Model
+⋮----
+protected $fillable = [
+⋮----
+/**
+     * In-stock units are split by condition: an item can hold 45 Good and
+     * 15 New at once. The four counts always add up to `quantity`. There is no
+     * stored `condition` column: the item's main (largest) condition, for the
+     * places that only need one label, is worked out from the counts by the
+     * `condition` accessor below.
+     */
+⋮----
+protected $casts = [
+⋮----
+// Same convention as User::validation_id_url and
+// EventExpense::receipt_url -- the stored path is an internal
+// storage/app/public detail, the frontend only ever needs the public
+// URL, so it's appended automatically on every JSON response.
+protected $appends = [
+⋮----
+protected static function booted(): void
+⋮----
+// Keeps `quantity`, the per-condition counts and `condition` in step
+// no matter who changes stock (the inventory form, event loans and
+// returns, lost / disposed units):
+//  - the form sends the per-condition counts -> quantity = their sum;
+//  - anything else changes only `quantity` -> the counts follow it:
+//    units leave the main condition first (then the largest groups)
+//    and returned units go back into the main condition.
+static::saving(function (InventoryItem $item) {
+⋮----
+$counts[$col] = max(0, (int) $item->getAttribute($col));
+⋮----
+$countsEdited = $item->isDirty($columns);
+$quantityEdited = $item->isDirty('quantity') || ! $item->exists;
+$quantity = max(0, (int) $item->getAttribute('quantity'));
+⋮----
+if ($countsEdited && ! $item->isDirty('quantity')) {
+⋮----
+$main = self::mainColumn($counts, 'Good');
+⋮----
+$item->setAttribute($col, $n);
+⋮----
+$item->setAttribute('quantity', $quantity);
+⋮----
+/** The condition column holding the most units (ties go to the worse condition). */
+private static function mainColumn(array $counts, ?string $fallback): string
+⋮----
+/**
+     * The item's main condition: the one holding the most in-stock units (ties go to
+     * the worse condition). Derived from the counts, never stored; an item with no
+     * units in stock reads as Good.
+     */
+public function getConditionAttribute(): string
+⋮----
+$counts[$col] = max(0, (int) $this->getAttribute($col));
+⋮----
+return array_flip(self::CONDITION_COLUMNS)[self::mainColumn($counts, 'Good')];
+⋮----
+/** In-stock units per condition, e.g. ['New' => 15, 'Good' => 45, 'Fair' => 0, 'Poor' => 0]. */
+public function conditionCounts(): array
+⋮----
+$out[$label] = (int) $this->getAttribute($col);
+⋮----
+/** Puts units back into stock, into exactly the conditions given. */
+public function giveUnits(array $units): void
+⋮----
+$this->moveUnits($units, +1);
+⋮----
+/**
+     * Takes units out of stock, out of exactly the conditions given. Callers
+     * check availableUnits() first; counts never go below 0.
+     */
+public function takeUnits(array $units): void
+⋮----
+$this->moveUnits($units, -1);
+⋮----
+/** Which of the wanted units this item can't cover right now, e.g. ['Good' => 3]. */
+public function shortfall(array $units): array
+⋮----
+$have = $this->conditionCounts();
+⋮----
+private function moveUnits(array $units, int $sign): void
+⋮----
+$this->save();
+⋮----
+public function getPhotoUrlAttribute(): ?string
+⋮----
+? Storage::disk('public')->url($this->photo_path)
+⋮----
+// Outstanding "borrowed for an event" rows -- see EventInventoryItem.
+// A row here is deleted (and the quantity restored) once its event is
+// archived, so "has any rows" == "currently lent out to a live event".
+public function borrows()
+⋮----
+return $this->hasMany(EventInventoryItem::class, 'inventory_item_id');
+⋮----
+/**
+     * Lost units are tracked on the item itself, separate from its condition:
+     *  - lost_quantity: every unit reported lost (shown as "N lost").
+     *  - lost_pending:  the part of those that were still out on loan when
+     *    reported, so they couldn't be taken out of stock yet.
+     * In-stock `quantity` never includes lost units, so the units that are
+     * still good keep their condition untouched.
+     *
+     * This settles the pending part once it is knowable: when everything still
+     * out on loan is lost (nothing real left to return), that loan is cleared
+     * instead of lingering in Pending Returns forever. If more is out than was
+     * reported lost, nothing is touched -- there is no telling which loan lost
+     * the unit, so the loans stay until the rest comes back. Any lost units
+     * that were mistakenly returned to stock are taken back out of stock.
+     */
+public function settleLostOnLoan(): void
+⋮----
+$out = (int) $this->borrows()->sum('quantity');
+⋮----
+$this->borrows()->delete();
+````
+
 ## File: app/Services/SmsService.php
 ````php
 namespace App\Services;
@@ -14892,6 +14982,404 @@ $this->call([
 // trail referencing them.
 ````
 
+## File: resources/js/components/ui/SearchableSelect.tsx
+````typescript
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Search, ChevronDown, Plus } from "lucide-react";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { matchesSearch } from "../../lib/search";
+⋮----
+export interface SearchableSelectOption {
+  value: string;
+  label: string;
+  /** Secondary text shown after the label, e.g. "(12 available)" -- also searchable. */
+  hint?: string;
+}
+⋮----
+/** Secondary text shown after the label, e.g. "(12 available)" -- also searchable. */
+⋮----
+interface SearchableSelectProps {
+  options: SearchableSelectOption[];
+  onSelect: (value: string) => void;
+  placeholder: string;
+  noResultsLabel: string;
+  disabled?: boolean;
+  className?: string;
+  /** Optional sticky row pinned to the bottom of the dropdown, e.g. "+ Add new household". */
+  footerLabel?: string;
+  onFooterClick?: () => void;
+  /** Dark navy styling for the Add/Edit Resident and Add/Edit Event forms
+      -- applies to both the trigger and the results dropdown panel. */
+  dark?: boolean;
+}
+⋮----
+/** Optional sticky row pinned to the bottom of the dropdown, e.g. "+ Add new household". */
+⋮----
+/** Dark navy styling for the Add/Edit Resident and Add/Edit Event forms
+      -- applies to both the trigger and the results dropdown panel. */
+⋮----
+// A type-to-filter combobox for long option lists (inventory items, etc.)
+// where a plain <select> forces the user to scroll through everything.
+// Deliberately stateless about "the current value" -- callers that use this
+// as an "add one more from a list" picker (the common case here) just want
+// onSelect fired and the query cleared afterwards, not a persisted selection
+// sitting in the box.
+⋮----
+// Portaled to document.body and positioned with `position: fixed` from
+// the trigger's own getBoundingClientRect (same fix as FilterDropdown,
+// DatePicker and TimePicker), instead of a plain `absolute` panel living
+// inside the trigger's own DOM subtree. A plain absolute panel gets
+// silently clipped by any scrollable/overflow-y-auto ancestor -- exactly
+// what a tall Add/Edit form modal is, which is where this component is
+// used most (picking a household/resident/item from a long list).
+⋮----
+const recompute = () =>
+⋮----
+const handleClickOutside = (e: MouseEvent) =>
+⋮----
+const choose = (opt: SearchableSelectOption) =>
+⋮----
+const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) =>
+⋮----
+onClick=
+onMouseEnter=
+⋮----
+setIsOpen(false);
+inputRef.current?.blur();
+onFooterClick();
+````
+
+## File: app/Http/Controllers/NotificationController.php
+````php
+namespace App\Http\Controllers;
+⋮----
+use App\Support\Paged;
+use App\Models\Notification;
+use App\Models\Membership;
+use App\Models\SmsLog;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+⋮----
+class NotificationController extends Controller
+⋮----
+// Staff-only alerts (a member sent feedback) -- kept out of every resident-facing list.
+⋮----
+// For Residents - their own notifications with event data
+public function index(Request $request)
+⋮----
+// Paginated, unread first. Callers that show the full list ask for more per page
+// (capped); anything that only needs a number should use /notifications/unread-count.
+$perPage = max(1, min(200, (int) $request->query('per_page', 20)));
+⋮----
+// paged=1 (the member's Notifications screen): tab, search, event, status, event timing
+// and day are filtered by the database; the response also carries the tab badges and
+// the list of events that have notifications in this tab.
+if ($request->boolean('paged')) {
+return $this->pagedMemberNotifications($request);
+⋮----
+$notifications = Notification::where('user_id', Auth::id())
+->where('type', '!=', self::STAFF_ALERT)
+->with('event')  // Load event relationship
+->orderBy('read', 'asc')
+->orderBy('is_updated', 'desc')
+->orderBy('updated_at_notification', 'desc')
+->orderBy('created_at', 'desc')
+->paginate($perPage);
+⋮----
+return response()->json($notifications);
+⋮----
+private function pagedMemberNotifications(Request $request)
+⋮----
+$mine = fn () => Notification::where('user_id', Auth::id())->where('type', '!=', self::STAFF_ALERT);
+$feedbackTab = $request->input('tab') === 'feedback';
+$inTab = fn ($q) => $feedbackTab ? $q->where('type', 'feedback_reply') : $q->where('type', '!=', 'feedback_reply');
+⋮----
+$query = $inTab($mine())->with('event');
+⋮----
+foreach (Paged::tokens($request->input('search')) as $word) {
+$like = Paged::like($word);
+$query->where(fn ($q) => $q->whereRaw('LOWER(title) LIKE ?', [$like])->orWhereRaw('LOWER(message) LIKE ?', [$like]));
+⋮----
+$now = now()->toDateTimeString();
+$timing = (string) $request->input('date_filter', 'all');
+⋮----
+$query->whereHas('event', fn ($e) => $e->where('event_start', '>', $now));
+⋮----
+$query->whereHas('event', fn ($e) => $e->where('event_start', '<=', $now)->whereRaw('COALESCE(event_end, event_start) >= ?', [$now]));
+⋮----
+$query->whereHas('event', fn ($e) => $e->whereRaw('COALESCE(event_end, event_start) < ?', [$now]));
+⋮----
+if ($request->filled('event') && $request->input('event') !== 'all') {
+$query->where('event_id', (int) $request->input('event'));
+⋮----
+if ($request->input('status') === 'unread') {
+$query->where('read', false);
+} elseif ($request->input('status') === 'read') {
+$query->where('read', true);
+⋮----
+if ($request->filled('date')) {
+$query->whereDate('created_at', (string) $request->input('date'));
+⋮----
+->paginate(Paged::perPage($request, 10, 200), ['*'], 'page', Paged::page($request));
+⋮----
+// Events that have at least one notification in this tab (for the event filter), A-Z.
+$eventIds = $inTab($mine())->whereNotNull('event_id')->distinct()->pluck('event_id');
+$eventOptions = \App\Models\Event::withoutTrashed()->whereIn('id', $eventIds)->orderBy('name')->get(['id', 'name'])
+->map(fn ($e) => ['value' => (string) $e->id, 'label' => $e->name])->values();
+⋮----
+return response()->json(array_merge($paginator->toArray(), [
+⋮----
+'events' => $mine()->where('type', '!=', 'feedback_reply')->count(),
+'feedback_unread' => $mine()->where('type', 'feedback_reply')->where('read', false)->count(),
+⋮----
+// For Staff - grouped by event (one notification per event)
+public function staffNotifications(Request $request)
+⋮----
+if (!$this->isStaff()) {
+return response()->json(['message' => 'Unauthorized'], 403);
+⋮----
+// Get the latest notification ID per event
+$latestIds = Notification::selectRaw('MAX(id) as id')
+->whereNotIn('type', [self::STAFF_ALERT, 'feedback_reply'])
+->whereNotNull('event_id')
+->groupBy('event_id')
+->pluck('id');
+⋮----
+$query = Notification::with('event')
+->whereIn('id', $latestIds);
+⋮----
+// Filter by date - based on EVENT start date
+if ($request->has('date_filter') && $request->date_filter !== 'all') {
+⋮----
+$query->whereHas('event', function($q) use ($now) {
+$q->where('event_start', '>', $now);
+⋮----
+$q->where('event_start', '<', $now);
+⋮----
+// Filter by target membership
+if ($request->has('target_membership_id') && $request->target_membership_id !== 'all-residents') {
+⋮----
+$query->whereHas('event', function($q) use ($targetId) {
+$q->where(fn ($m) => $m->whereJsonContains('membership_ids', $targetId)->orWhereJsonContains('membership_ids', (string) $targetId));
+⋮----
+// Search: every word must appear in the title, the message or the event's name.
+⋮----
+$query->where(function ($q) use ($like) {
+$q->whereRaw('LOWER(title) LIKE ?', [$like])
+->orWhereRaw('LOWER(message) LIKE ?', [$like])
+->orWhereHas('event', fn ($e) => $e->whereRaw('LOWER(name) LIKE ?', [$like]));
+⋮----
+$notifications = $query->orderBy('created_at', 'desc')
+->paginate(Paged::perPage($request, 10), ['*'], 'page', Paged::page($request));
+⋮----
+// Get all membership IDs from events
+⋮----
+// Batch load memberships
+$memberships = Membership::whereIn('id', array_unique($allMembershipIds))->get()->keyBy('id');
+⋮----
+// Get recipient count
+$notification->recipient_count = Notification::where('event_id', $notification->event_id)->whereNotIn('type', [self::STAFF_ALERT, 'feedback_reply'])->count();
+⋮----
+// Get target name
+⋮----
+$membership = $memberships->get($membershipIds[0]);
+⋮----
+// `all_total`: the size of the whole list, whatever the filters say (the tab badge).
+return response()->json(array_merge($notifications->toArray(), ['all_total' => $latestIds->count()]));
+⋮----
+public function thisWeek()
+⋮----
+->where('created_at', '>=', now()->startOfWeek())
+->where('created_at', '<=', now()->endOfWeek())
+->with('event')
+⋮----
+->get();
+⋮----
+private function replyAlertRow(Notification $n): array
+⋮----
+// like / reply = staff response to feedback; event = any other announcement.
+⋮----
+// "feedback" = their rating, "response" = their reason for not attending.
+⋮----
+/**
+     * A member's feedback inbox: hearts and replies from staff on their own
+     * ratings / reasons. Polled a few seconds apart; ?after_id= returns what
+     * arrived since, so the page can pop a toast and chime once per item.
+     */
+public function replyAlerts(Request $request)
+⋮----
+// Everything addressed to this member (announcements, updates, staff
+// replies) so one poll drives the toast + chime; the unread count is
+// for staff replies only (it feeds the Events badge).
+$base = Notification::where('user_id', Auth::id())->where('type', '!=', self::STAFF_ALERT);
+$afterId = (int) $request->query('after_id', 0);
+$since = $request->filled('since') ? (string) $request->query('since') : null;
+⋮----
+return response()->json([
+'unread_count' => (clone $base)->where('type', 'feedback_reply')->where('read', false)->count(),
+'latest_id' => (int) ((clone $base)->max('id') ?? 0),
+// Brand-new rows, plus unread ones an update touched since the last poll
+// (an edited event re-uses its notification instead of adding a new one).
+'new' => !$request->boolean('init')
+? (clone $base)->with('event:id,name')
+->where(function ($q) use ($afterId, $since) {
+$q->where('id', '>', $afterId);
+⋮----
+$q->orWhere(fn ($u) => $u->where('read', false)->where('updated_at_notification', '>', $since));
+⋮----
+->orderBy('id')->limit(10)->get()
+->map(fn ($n) => $this->replyAlertRow($n))->values()
+⋮----
+'server_time' => now()->toDateTimeString(),
+⋮----
+// Opening the Events page counts as seeing them.
+public function markReplyAlertsRead()
+⋮----
+Notification::where('user_id', Auth::id())->where('type', 'feedback_reply')->where('read', false)->update(['read' => true]);
+⋮----
+return response()->json(['message' => 'ok']);
+⋮----
+public function unreadCount()
+⋮----
+$count = Notification::where('user_id', Auth::id())
+⋮----
+->where('read', false)
+->count();
+⋮----
+return response()->json(['count' => $count]);
+⋮----
+public function markAsRead($id)
+⋮----
+$notification = Notification::where('user_id', Auth::id())
+->where('id', $id)
+->firstOrFail();
+⋮----
+$notification->update(['read' => true]);
+⋮----
+return response()->json(['message' => 'Marked as read']);
+⋮----
+public function markAllAsRead()
+⋮----
+Notification::where('user_id', Auth::id())
+⋮----
+->update(['read' => true]);
+⋮----
+return response()->json(['message' => 'All notifications marked as read']);
+⋮----
+private function alertRow(Notification $n): array
+⋮----
+# $replyLike = str_contains((string) $n->title, 'liked your reply on their ');
+⋮----
+// Which tab of the event's Feedback this belongs to.
+⋮----
+/**
+     * Staff bell feed: the newest feedback alerts for the signed-in staff
+     * user, the unread total, and the highest id -- the bell polls this a few
+     * seconds apart and passes ?after_id= to learn what arrived since.
+     */
+public function staffAlerts(Request $request)
+⋮----
+# $base = Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT);
+$base = Notification::where('user_id', Auth::id())->whereIn('type', [self::STAFF_ALERT, 'reply_liked']);
+⋮----
+$items = (clone $base)->with('event:id,name')->orderByDesc('id')->limit(30)->get();
+⋮----
+'unread_count' => (clone $base)->where('read', false)->count(),
+// Security alerts (staff changes, resets, lockouts...) ride on the same poll.
+'security_unread' => \App\Models\SecurityAlert::where('user_id', Auth::id())->where('read', false)->count(),
+⋮----
+// The bell only lists what still needs attention: unread, newest first.
+'data' => (clone $base)->with('event:id,name')->where('read', false)->orderByDesc('id')->limit(10)->get()
+->map(fn ($n) => $this->alertRow($n))->values(),
+⋮----
+? $items->filter(fn ($n) => $n->id > $afterId)->map(fn ($n) => $this->alertRow($n))->values()
+⋮----
+/**
+     * Full, filterable history for the Notifications page's Feedback tab.
+     * Filters: search (member, event or comment), rating 1-5, unread only.
+     */
+public function staffAlertsAll(Request $request)
+⋮----
+$query = Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT)->with('event:id,name');
+⋮----
+// Ratings and "couldn't attend" reasons are listed separately.
+⋮----
+$isAbsenceQ = fn ($q) => $q->where('title', 'like', $absenceLike)->orWhere('title', 'like', $absenceReplyLike);
+⋮----
+'rating' => (clone $query)->whereNot($isAbsenceQ)->count(),
+'absence' => (clone $query)->where($isAbsenceQ)->count(),
+⋮----
+if ($request->query('kind') === 'absence') {
+$query->where($isAbsenceQ);
+} elseif ($request->query('kind') === 'rating') {
+$query->whereNot($isAbsenceQ);
+⋮----
+if ($request->boolean('unread')) {
+⋮----
+if ($request->filled('rating') && (int) $request->rating >= 1 && (int) $request->rating <= 5) {
+$query->where('message', 'like', '% - ' . (int) $request->rating . '/5%');
+⋮----
+if ($request->filled('search')) {
+⋮----
+$query->where(fn ($q) => $q->where('title', 'like', $term)->orWhere('message', 'like', $term));
+⋮----
+$perPage = max(1, min(50, (int) $request->query('per_page', 10)));
+$page = $query->orderByDesc('id')->paginate($perPage);
+⋮----
+'data' => collect($page->items())->map(fn ($n) => $this->alertRow($n))->values(),
+'current_page' => $page->currentPage(),
+'last_page' => $page->lastPage(),
+'total' => $page->total(),
+⋮----
+public function markStaffAlertRead($id)
+⋮----
+# Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT)->where('id', $id)->update(['read' => true]);
+⋮----
+->whereIn('type', [self::STAFF_ALERT, 'reply_liked'])
+⋮----
+public function markAllStaffAlertsRead()
+⋮----
+# Notification::where('user_id', Auth::id())->where('type', self::STAFF_ALERT)->where('read', false)->update(['read' => true]);
+⋮----
+return response()->json(['message' => 'All marked as read']);
+⋮----
+/**
+     * Adviser recommendation: "Notify by household — head of household —
+     * SMS contact number per household". Staff-facing log of what was
+     * actually sent (or simulated) via App\Services\SmsService, so the
+     * in-app notification list has a visible SMS counterpart.
+     */
+public function smsLogs(Request $request)
+⋮----
+$query = SmsLog::with(['user:id,first_name,last_name,is_household_head', 'event:id,name'])
+->latest();
+⋮----
+if ($request->filled('event_id')) {
+$query->where('event_id', $request->event_id);
+⋮----
+// Status filter: only the three values the SMS service ever writes.
+if (in_array($request->get('status'), ['sent', 'failed', 'simulated'], true)) {
+$query->where('status', $request->get('status'));
+⋮----
+// Search by resident name, mobile number or event name. LIKE wildcards
+// typed by the user are escaped so they match literally.
+$term = trim((string) $request->get('search', ''));
+⋮----
+$q->where('to_number', 'like', $like)
+->orWhereHas('user', function ($u) use ($like) {
+$u->where('first_name', 'like', $like)
+->orWhere('last_name', 'like', $like)
+->orWhereRaw("CONCAT(first_name, ' ', last_name) LIKE ?", [$like]);
+⋮----
+->orWhereHas('event', fn ($e) => $e->where('name', 'like', $like));
+⋮----
+$perPage = max(1, min(50, (int) $request->get('per_page', 20)));
+⋮----
+return response()->json($query->paginate($perPage));
+````
+
 ## File: resources/css/app.css
 ````css
 @tailwind base;
@@ -15017,74 +15505,49 @@ html[data-theme="light"] .dash-shortcut{transition:border-color .15s,background-
 html[data-theme="light"] .dash-shortcut:hover{border-color:rgba(46,142,130,.55) !important;background-color:#E6F5F2 !important;box-shadow:0 2px 10px rgba(46,142,130,.14)}
 html[data-theme="light"] .dash-shortcut:hover .dash-shortcut-icon{background-color:rgba(79,190,176,.28) !important}
 html[data-theme="light"] .dash-shortcut:hover .dash-shortcut-label{color:#0F172A !important}
-````
-
-## File: resources/js/components/ui/SearchableSelect.tsx
-````typescript
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { Search, ChevronDown, Plus } from "lucide-react";
-import { useLanguage } from "../../i18n/LanguageContext";
-import { matchesSearch } from "../../lib/search";
 ⋮----
-export interface SearchableSelectOption {
-  value: string;
-  label: string;
-  /** Secondary text shown after the label, e.g. "(12 available)" -- also searchable. */
-  hint?: string;
-}
+/* Card colours for the phone/tablet table layout: the dark theme needs real white lines (the old
+   "currentColor" border was dark-on-dark and vanished); the light theme keeps a soft slate line. */
+:root { --rcard-line: rgba(255, 255, 255, .20); --rcard-bg: rgba(255, 255, 255, .035); --rcard-field-line: rgba(255, 255, 255, .09); }
+html[data-theme="light"] { --rcard-line: rgba(15, 23, 42, .16); --rcard-bg: #ffffff; --rcard-field-line: rgba(15, 23, 42, .08); }
+html[data-theme="light"] table.rtable tbody > tr { box-shadow: 0 1px 2px rgba(15, 23, 42, .06); }
 ⋮----
-/** Secondary text shown after the label, e.g. "(12 available)" -- also searchable. */
+/* Phone and tablet layout for tables marked class="rtable": every row becomes a card and each value
+   is labelled with its column heading (labels are filled in by lib/responsiveTables.ts). Phones stack
+   the cards; tablets lay them out two across. */
 ⋮----
-interface SearchableSelectProps {
-  options: SearchableSelectOption[];
-  onSelect: (value: string) => void;
-  placeholder: string;
-  noResultsLabel: string;
-  disabled?: boolean;
-  className?: string;
-  /** Optional sticky row pinned to the bottom of the dropdown, e.g. "+ Add new household". */
-  footerLabel?: string;
-  onFooterClick?: () => void;
-  /** Dark navy styling for the Add/Edit Resident and Add/Edit Event forms
-      -- applies to both the trigger and the results dropdown panel. */
-  dark?: boolean;
-}
+table.rtable { display: block; width: 100%; min-width: 0 !important; }
+table.rtable thead { display: none; }
+table.rtable tbody { display: block; padding: .5rem; }
+table.rtable tbody > tr {
+/* A hairline between the fields of one card, so each value reads as its own row. */
+table.rtable tbody > tr > td + td { border-top: 1px solid var(--rcard-field-line) !important; }
+table.rtable tbody > tr > td {
+table.rtable tbody > tr > td::before {
+table.rtable tbody > tr > td:first-child { justify-content: flex-start; text-align: left; }
+table.rtable tbody > tr > td:first-child::before,
+table.rtable tbody > tr > td[data-label=""] { justify-content: flex-start; }
 ⋮----
-/** Optional sticky row pinned to the bottom of the dropdown, e.g. "+ Add new household". */
+table.rtable tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+table.rtable tbody > tr { margin: 0; }
+table.rtable tbody > tr:has(> td[colspan]) { grid-column: 1 / -1; }
 ⋮----
-/** Dark navy styling for the Add/Edit Resident and Add/Edit Event forms
-      -- applies to both the trigger and the results dropdown panel. */
+/* Dark theme, phone and tablet: the faintest dividers (6 percent white) disappear on the navy
+   background, so they are lifted to a visible line. Light theme has its own mapping, untouched. */
+html:not([data-theme="light"]) [class~="divide-white/[0.06]"] > :not([hidden]) ~ :not([hidden]) { border-color: rgba(255, 255, 255, .13); }
+html:not([data-theme="light"]) [class~="border-white/[0.06]"] { border-color: rgba(255, 255, 255, .13); }
 ⋮----
-// A type-to-filter combobox for long option lists (inventory items, etc.)
-// where a plain <select> forces the user to scroll through everything.
-// Deliberately stateless about "the current value" -- callers that use this
-// as an "add one more from a list" picker (the common case here) just want
-// onSelect fired and the query cleared afterwards, not a persisted selection
-// sitting in the box.
+html:not([data-theme="light"]) [class~="border-white/10"]:not(:hover) { border-color: rgba(255, 255, 255, .16); }
 ⋮----
-// Portaled to document.body and positioned with `position: fixed` from
-// the trigger's own getBoundingClientRect (same fix as FilterDropdown,
-// DatePicker and TimePicker), instead of a plain `absolute` panel living
-// inside the trigger's own DOM subtree. A plain absolute panel gets
-// silently clipped by any scrollable/overflow-y-auto ancestor -- exactly
-// what a tall Add/Edit form modal is, which is where this component is
-// used most (picking a household/resident/item from a long list).
-⋮----
-const recompute = () =>
-⋮----
-const handleClickOutside = (e: MouseEvent) =>
-⋮----
-const choose = (opt: SearchableSelectOption) =>
-⋮----
-const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) =>
-⋮----
-onClick=
-onMouseEnter=
-⋮----
-setIsOpen(false);
-inputRef.current?.blur();
-onFooterClick();
+/* Dark theme: default text colour.
+   The app root (Staff.tsx / Members.tsx) sets a dark text colour (text-gray-900) and the base rule above is
+   #1A1A1A, so any text that has no colour class of its own -- table cells, labels, values -- inherited
+   dark-on-dark and vanished on the navy pages. Every dark surface now sets a light default for what it
+   contains; light surfaces inside it (white cards, pickers, light modals) put the dark default back.
+   :where() keeps these rules at zero specificity, so any explicit text-* class still wins. */
+:where(html:not([data-theme="light"]) body) { color: #E8ECF4; }
+:where(html:not([data-theme="light"]) [class~="bg-[#0A0E1A]"]),
+:where(html:not([data-theme="light"]) [class~="bg-white"]),
 ````
 
 ## File: app/Http/Controllers/ArchiveController.php
@@ -15102,12 +15565,13 @@ use App\Models\CurrentStatus;
 use App\Models\InventoryItem;
 use App\Models\EventExpense;
 use App\Models\Household;
+use App\Support\Paged;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 ⋮----
 class ArchiveController extends Controller
 ⋮----
-public function index()
+public function index(Request $request)
 ⋮----
 if (auth()->user()?->role !== 'Staff') {
 return response()->json(['message' => 'Unauthorized'], 403);
@@ -15156,7 +15620,41 @@ $inventoryItems->toArray(),
 $expenses->toArray(),
 $households->toArray()
 ⋮----
+// paged=1: the Archive screen asks for one page, already filtered (type,
+// search) and sorted here, plus the figures of the whole archive.
+if ($request->boolean('paged')) {
+return $this->pagedArchive($request, collect($archivedItems));
+⋮----
 return response()->json($archivedItems);
+⋮----
+private function pagedArchive(Request $request, \Illuminate\Support\Collection $all)
+⋮----
+$stamps = $all->map(fn ($i) => strtotime($i['deletedAt'] ?? '') ?: null)->filter();
+⋮----
+'total' => $all->count(),
+'distinct_types' => $all->pluck('type')->unique()->count(),
+'newest_at' => $stamps->isNotEmpty() ? date('c', $stamps->max()) : null,
+'oldest_days' => $stamps->isNotEmpty() ? (int) floor((time() - $stamps->min()) / 86400) : 0,
+⋮----
+if ($request->filled('type') && $request->input('type') !== 'all') {
+$rows = $rows->where('type', $request->input('type'));
+⋮----
+foreach (Paged::tokens($request->input('search')) as $word) {
+$rows = $rows->filter(fn ($i) => str_contains(mb_strtolower(($i['name'] ?? '') . ' ' . ($i['type'] ?? '') . ' ' . ($i['deletedBy'] ?? '')), $word));
+⋮----
+$rows = match ($request->input('sort')) {
+'oldest' => $rows->sortBy(fn ($i) => (string) $i['deletedAt']),
+'name-az' => $rows->sortBy(fn ($i) => mb_strtolower((string) $i['name'])),
+default => $rows->sortByDesc(fn ($i) => (string) $i['deletedAt']),
+⋮----
+$perPage = Paged::perPage($request, 20);
+$paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+$rows->forPage(Paged::page($request), $perPage)->values(),
+$rows->count(),
+⋮----
+Paged::page($request)
+⋮----
+return response()->json(Paged::body($paginator, $paginator->getCollection()->values(), ['stats' => $stats]));
 ⋮----
 public function restore(Request $request)
 ⋮----
@@ -15242,6 +15740,7 @@ use App\Models\EventAttendance;
 use App\Models\Event;
 use App\Models\User;
 use App\Models\ActivityLog;
+use App\Support\Paged;
 ⋮----
 class EventAttendanceController extends Controller
 ⋮----
@@ -15355,7 +15854,7 @@ return response()->json(['message' => 'Time-out failed', 'error' => $e->getMessa
 ⋮----
 // EVENT ATTENDEES
 ⋮----
-public function getEventAttendees($eventId)
+public function getEventAttendees(Request $request, $eventId)
 ⋮----
 // Attendee lists carry other residents' personal details -- staff only.
 ⋮----
@@ -15365,16 +15864,26 @@ $event = Event::find($eventId);
 ⋮----
 $event->addMissingAttendanceRecords();
 ⋮----
+// paged=1 (the event's Attendance tab): the roster -- everyone eligible plus anyone who
+// scanned -- filtered by name / ID / status and cut into pages by the database.
+if ($request->boolean('paged') && $event) {
+return $this->pagedRoster($request, $event);
+⋮----
 return response()->json(
 EventAttendance::with('user:id,first_name,last_name,user_code')
 ->where('event_id', $eventId)
 ->orderBy('time_in', 'desc')
 ->get()
 ⋮----
-public function getMemberHistory($userId)
+public function getMemberHistory(Request $request, $userId)
 ⋮----
 // A resident may only read their own attendance history; staff can read anyone's.
 if ((int) auth()->id() !== (int) $userId && !$this->isStaff()) {
+⋮----
+// paged=1 (the member's Attendance screen): finished records only, filtered by
+// status / membership / date / search, "this week first" order, one page at a time.
+if ($request->boolean('paged')) {
+return $this->pagedMemberHistory($request, (int) $userId);
 ⋮----
 $attendances = EventAttendance::where('user_id', $userId)
 ->with('event')  // ✅ ADD THIS - LOADS THE EVENT RELATIONSHIP
@@ -15382,6 +15891,105 @@ $attendances = EventAttendance::where('user_id', $userId)
 ->map(function ($attendance) {
 ⋮----
 return response()->json($attendances);
+⋮----
+/**
+     * Mirrors the browser's attendanceStatus(): time in/out recorded -> complete or
+     * incomplete; otherwise upcoming / ongoing / missed from the event's own window.
+     */
+private function pagedMemberHistory(Request $request, int $userId)
+⋮----
+$now = now()->toDateTimeString();
+⋮----
+$base = EventAttendance::query()
+->leftJoin('events', fn ($j) => $j->on('events.id', '=', 'attendances.event_id')->whereNull('events.deleted_at'))
+->where('attendances.user_id', $userId)
+->select('attendances.*');
+$allTotal = (clone $base)->count();
+⋮----
+$base->whereRaw("({$statusExpr}) IN ('complete', 'incomplete', 'missed')", [$now, $now]);
+⋮----
+if ($request->filled('membership')) {
+$id = (int) $request->input('membership');
+$base->where(fn ($q) => $q->whereJsonContains('events.membership_ids', $id)->orWhereJsonContains('events.membership_ids', (string) $id));
+⋮----
+if ($request->filled('date')) {
+$base->whereRaw('DATE(events.event_start) = ?', [(string) $request->input('date')]);
+⋮----
+foreach (Paged::tokens($request->input('search')) as $word) {
+$like = Paged::like($word);
+$base->where(function ($q) use ($like) {
+$q->whereRaw("LOWER(COALESCE(events.name, '')) LIKE ?", [$like])
+->orWhereRaw("LOWER(COALESCE(events.location, '')) LIKE ?", [$like])
+->orWhereRaw("CAST(events.event_start AS CHAR) LIKE ?", [$like])
+->orWhereRaw("CAST(attendances.time_in AS CHAR) LIKE ?", [$like])
+->orWhereRaw("CAST(attendances.time_out AS CHAR) LIKE ?", [$like]);
+⋮----
+// Size of each status choice under the other filters (so the dropdown counts add up).
+$counts = ['all' => (clone $base)->count()];
+⋮----
+$counts[$key] = (clone $base)->whereRaw("({$statusExpr}) = ?", [$now, $now, $key])->count();
+⋮----
+$status = (string) $request->input('status', 'all');
+⋮----
+$query->whereRaw("({$statusExpr}) = ?", [$now, $now, $status]);
+⋮----
+// "This week first" (Sunday-start week): what's still to come this week, then what
+// already finished, then later events soonest-first, then older ones latest-first.
+$weekStart = now()->copy()->startOfDay()->subDays(now()->dayOfWeek);
+$weekEnd = $weekStart->copy()->addDays(6)->endOfDay();
+⋮----
+$bindings = [$weekStart->toDateTimeString(), $weekEnd->toDateTimeString(), $now, $weekEnd->toDateTimeString()];
+$query->orderByRaw("({$bucket})", $bindings)
+->orderByRaw("CASE WHEN ({$bucket}) IN (0, 2) THEN COALESCE(UNIX_TIMESTAMP(events.event_start), 0) ELSE -COALESCE(UNIX_TIMESTAMP(events.event_start), 0) END", $bindings)
+->orderBy('attendances.id', 'desc');
+⋮----
+$paginator = $query->with('event')->paginate(Paged::perPage($request, 10), ['*'], 'page', Paged::page($request));
+$rows = $paginator->getCollection()->map(function ($attendance) {
+⋮----
+})->values();
+⋮----
+return response()->json(Paged::body($paginator, $rows, ['counts' => $counts, 'all_total' => $allTotal]));
+⋮----
+/** Event roster page. status: all | complete | incomplete | upcoming | ongoing | missed (the last three = no scan yet). */
+private function pagedRoster(Request $request, Event $event)
+⋮----
+$base = User::query()
+->leftJoin('attendances', fn ($j) => $j->on('attendances.user_id', '=', 'users.id')->where('attendances.event_id', $event->id))
+->where(function ($q) use ($membershipIds) {
+$q->whereNotNull('attendances.id')
+->orWhere(function ($e) use ($membershipIds) {
+$e->whereIn('users.role', ['Resident', 'Staff']);
+⋮----
+$e->whereExists(fn ($m) => $m->select(DB::raw(1))->from('membership_residents')
+->whereColumn('membership_residents.user_id', 'users.id')
+->whereIn('membership_residents.membership_id', $membershipIds));
+⋮----
+->select('users.id', 'users.first_name', 'users.last_name', 'users.user_code', 'attendances.time_in', 'attendances.time_out');
+⋮----
+$base->where(fn ($q) => $q->whereRaw("LOWER(CONCAT_WS(' ', users.first_name, users.last_name)) LIKE ?", [$like])
+->orWhereRaw('LOWER(COALESCE(users.user_code, \'\')) LIKE ?', [$like]));
+⋮----
+'all' => (clone $base)->count(),
+'complete' => (clone $base)->whereRaw($complete)->count(),
+'incomplete' => (clone $base)->whereRaw($incomplete)->count(),
+'none' => (clone $base)->whereRaw($none)->count(),
+⋮----
+$query->whereRaw($complete);
+⋮----
+$query->whereRaw($incomplete);
+⋮----
+$query->whereRaw($none);
+⋮----
+// Who actually attended first (complete, incomplete, then no scan), then last name A-Z.
+$query->orderByRaw("CASE WHEN {$complete} THEN 0 WHEN {$incomplete} THEN 1 ELSE 2 END")
+->orderByRaw('LOWER(users.last_name)')->orderByRaw('LOWER(users.first_name)')->orderBy('users.id');
+⋮----
+$paginator = $query->paginate(Paged::perPage($request, 10), ['*'], 'page', Paged::page($request));
+$rows = $paginator->getCollection()->map(fn ($u) => [
+⋮----
+])->values();
+⋮----
+return response()->json(Paged::body($paginator, $rows, ['counts' => $counts]));
 ````
 
 ## File: app/Http/Controllers/MembershipResidentController.php
@@ -15392,6 +16000,8 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\MembershipResident;
+use App\Models\AgeBracket;
+use App\Support\Paged;
 ⋮----
 class MembershipResidentController extends Controller
 ⋮----
@@ -15418,12 +16028,121 @@ return auth()->id() == $id;
 // single-user lookup, which deliberately DOES include soft-deleted
 // users via a raw, unscoped query.
 ⋮----
-public function index()
+public function index(Request $request)
+⋮----
+// Every row carries other residents' personal details (contact number, address,
+// birth date, ID photo) -- staff only. A resident reads their own record through
+// show() instead.
+if (!$this->isStaff()) {
+return response()->json(['message' => 'Unauthorized'], 403);
+⋮----
+// paged=1   -> one page of the Residents list, filtered and sorted here.
+// filtered=1 -> every row matching the same filters (used by the export).
+// neither   -> everyone, as before (Scan, pickers, lookups).
+if ($request->boolean('paged') || $request->boolean('filtered')) {
+return $this->filteredResponse($request);
 ⋮----
 $users = User::with('memberships', 'household', 'currentStatuses')->get();
 ⋮----
-return response()->json(
-$users->map(function ($user) {
+return response()->json($users->map(fn ($user) => $this->row($user)));
+⋮----
+/** The Residents screen's filters, as one database query. */
+private function filteredQuery(Request $request)
+⋮----
+$query = User::query()->with('memberships', 'household', 'currentStatuses');
+⋮----
+// Quick tab: has at least one membership / has none yet.
+$scope = $request->input('scope');
+⋮----
+$query->whereHas('memberships');
+⋮----
+$query->whereDoesntHave('memberships');
+⋮----
+if ($request->filled('gender')) {
+$query->where('gender', $request->input('gender'));
+⋮----
+if ($request->filled('civil')) {
+$query->where('civil_status_id', (int) $request->input('civil'));
+⋮----
+if ($request->filled('current')) {
+$statusId = (int) $request->input('current');
+$query->whereHas('currentStatuses', fn ($q) => $q->where('current_statuses.id', $statusId));
+⋮----
+if ($request->filled('membership')) {
+$name = (string) $request->input('membership');
+$query->whereHas('memberships', fn ($q) => $q->where('memberships.name', $name));
+⋮----
+if ($request->filled('age')) {
+$this->applyAgeGroup($query, (string) $request->input('age'));
+⋮----
+// Search: every word must be found in the name, ID, contact, role, position or a membership.
+⋮----
+foreach (Paged::tokens($request->input('search')) as $word) {
+$like = Paged::like($word);
+$query->where(function ($q) use ($like, $word, $positions) {
+$q->whereRaw("LOWER(CONCAT_WS(' ', user_code, first_name, middle_name, last_name, suffix, contact_number, role)) LIKE ?", [$like])
+->orWhereHas('memberships', fn ($m) => $m->whereRaw('LOWER(memberships.name) LIKE ?', [$like]));
+⋮----
+$q->orWhereIn('barangay_position', $matched);
+⋮----
+/** Age group = one of the staff-set age brackets (or the old fixed bands), as a birth-date range. */
+private function applyAgeGroup($query, string $label): void
+⋮----
+$brackets = AgeBracket::allCached();
+⋮----
+// age >= min  <=>  born on or before today minus min years; age <= max  <=>  born after today minus (max + 1) years.
+$q->whereNotNull('birth_date')->where('birth_date', '<=', now()->subYears($min ?? 0)->toDateString());
+⋮----
+$q->where('birth_date', '>', now()->subYears($max + 1)->toDateString());
+⋮----
+$target = $brackets->firstWhere('label', $label);
+⋮----
+$query->where(function ($q) use ($brackets, $target, $inRange) {
+$inRange($q, $target->min_age, $target->max_age);
+// A person who fits an earlier bracket belongs to that one (see AgeBracket::resolveForAge).
+⋮----
+$q->whereNot(fn ($n) => $inRange($n, $earlier->min_age, $earlier->max_age));
+⋮----
+if ($brackets->isEmpty()) {
+⋮----
+$query->where(fn ($q) => $inRange($q, $bands[$label][0], $bands[$label][1]));
+⋮----
+$query->whereRaw('1 = 0'); // an unknown group matches nobody
+⋮----
+private function applySort($query, ?string $sort): void
+⋮----
+$query->orderBy('last_name')->orderBy('first_name');
+⋮----
+$query->orderBy('last_name', 'desc')->orderBy('first_name', 'desc');
+⋮----
+$query->orderByRaw('birth_date IS NULL')->orderBy('birth_date', 'desc')->orderBy('last_name');
+⋮----
+$query->orderByRaw('birth_date IS NULL')->orderBy('birth_date')->orderBy('last_name');
+⋮----
+$query->orderBy('id');
+⋮----
+default: // recently added
+$query->orderBy('id', 'desc');
+⋮----
+private function filteredResponse(Request $request)
+⋮----
+$query = $this->filteredQuery($request);
+$this->applySort($query, $request->input('sort'));
+⋮----
+if ($request->boolean('filtered')) {
+return response()->json($query->get()->map(fn ($user) => $this->row($user)));
+⋮----
+$paginator = $query->paginate(Paged::perPage($request), ['*'], 'page', Paged::page($request));
+⋮----
+// Sizes of the quick tabs (all active residents, not narrowed by the other filters).
+$members = User::whereHas('memberships')->count();
+$all = User::count();
+⋮----
+return response()->json(Paged::body(
+⋮----
+$paginator->getCollection()->map(fn ($user) => $this->row($user))->values(),
+⋮----
+private function row(User $user): array
 ⋮----
 // Always null in practice -- see note above the index()
 // signature; the query already excludes trashed rows.
@@ -15472,8 +16191,6 @@ $first = $data->first();
 ⋮----
 public function store(Request $request)
 ⋮----
-if (!$this->isStaff()) {
-⋮----
 $request->validate([
 ⋮----
 MembershipResident::create([
@@ -15513,276 +16230,6 @@ $memberships = $query->paginate($perPage);
 'last_page' => $memberships->lastPage(),
 'total' => $memberships->total(),
 'per_page' => $memberships->perPage(),
-````
-
-## File: app/Http/Controllers/InventoryController.php
-````php
-namespace App\Http\Controllers;
-⋮----
-use App\Models\InventoryItem;
-use App\Support\PhotoSet;
-use App\Models\ActivityLog;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use App\Http\Requests\StoreInventoryItemRequest;
-use App\Http\Requests\UpdateInventoryItemRequest;
-⋮----
-class InventoryController extends Controller
-⋮----
-protected $logModule = 'Inventory';
-⋮----
-// Same upload convention as UserController::localUpload/localDelete
-// (Resident ID photo) and EventExpenseController::localUpload/localDelete
-// (expense receipt) -- the photo is optional proof/visual reference for
-// an inventory item, stored on the public disk so it can be shown via
-// photo_url (see InventoryItem::getPhotoUrlAttribute).
-private function localUpload($file): string
-⋮----
-$original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-$ext      = $file->getClientOriginalExtension();
-⋮----
-$path = $file->storeAs('inventory_photos', $filename, 'public');
-⋮----
-throw new \Exception('File upload failed');
-⋮----
-private function localDelete(?string $path): void
-⋮----
-Storage::disk('public')->delete($path);
-⋮----
-\Log::warning($e->getMessage());
-⋮----
-// UC-9: Manage Barangay Inventory
-/**
-     * Condition filter shared by the grid and the reports. An item's condition
-     * is New / Good / Fair / Poor; Lost and Disposed are not conditions but
-     * unit counters (lost_quantity, lost_pending, disposed_quantity), so those
-     * two filters match items that have at least one such unit.
-     */
-public static function applyConditionFilter($query, string $condition): void
-⋮----
-$query->where(function ($q) {
-$q->where('lost_quantity', '>', 0)
-->orWhere('lost_pending', '>', 0);
-⋮----
-$query->where('disposed_quantity', '>', 0);
-⋮----
-// Items hold units in several conditions at once, so match any
-// item with at least one unit in this condition (or an empty
-// item whose main condition it is).
-⋮----
-$query->where(function ($q) use ($column, $condition) {
-$q->where($column, '>', 0)
-->orWhere(function ($empty) use ($condition) {
-$empty->where('condition', $condition)
-->where('new_quantity', 0)->where('good_quantity', 0)
-->where('fair_quantity', 0)->where('poor_quantity', 0);
-⋮----
-$query->where('condition', $condition);
-⋮----
-/**
-     * When the form sends per-condition counts, the in-stock quantity is
-     * their sum (the model keeps the two in step on save).
-     */
-private function conditionData(Request $request, array $data): array
-⋮----
-if (! $request->hasAny($cols)) {
-⋮----
-if ($request->has($col)) {
-$data[$col] = max(0, (int) $request->input($col));
-⋮----
-public function index(Request $request)
-⋮----
-if (!$this->isStaff()) {
-return response()->json(['message' => 'Unauthorized'], 403);
-⋮----
-$query = InventoryItem::query();
-⋮----
-if ($request->filled('search')) {
-⋮----
-$query->where(function ($q) use ($search) {
-$q->where('name', 'like', "%$search%")
-->orWhere('storage_location', 'like', "%$search%");
-⋮----
-if ($request->filled('condition')) {
-$this->applyConditionFilter($query, $request->condition);
-⋮----
-// borrowed_quantity: how many units are currently lent out to a
-// still-active event (see InventoryItem::borrows()) -- the grid
-// uses this to grey out Delete on an item that's out on loan.
-// borrows.event is also loaded so we can flag a borrow whose event
-// has already ended -- staff have no other way to notice an item
-// is stuck on loan to a past event nobody archived yet.
-$items = $query->withSum('borrows as borrowed_quantity', 'quantity')
-->with(['borrows.event:id,name,event_start,event_end'])
-->orderBy('name')
-->get();
-⋮----
-$items->each(function ($item) {
-⋮----
-// The earliest-ended event still holding this item, if any --
-// "ended" means event_end (or event_start when no end is set)
-// is in the past. Only set when the item is actually overdue,
-// so the frontend can tell a normal current loan apart from a
-// stale one that needs someone to go archive that event.
-⋮----
-->filter(fn ($b) => $b->event)
-->map(fn ($b) => $b->event)
-->filter(fn ($event) => ($event->event_end ?? $event->event_start) < now())
-->sortBy(fn ($event) => $event->event_end ?? $event->event_start)
-->first();
-⋮----
-return response()->json($items);
-⋮----
-// Items selectable when borrowing inventory for an Event (Create/Edit
-// Event form). Lost and disposed units are already taken out of the
-// in-stock quantity, so the borrow picker only needs the stock count.
-public function borrowable(Request $request)
-⋮----
-$items = InventoryItem::orderBy('name')
-->get(['id', 'name', 'quantity', 'new_quantity', 'good_quantity', 'fair_quantity', 'poor_quantity', 'condition', 'storage_location']);
-⋮----
-public function store(StoreInventoryItemRequest $request)
-⋮----
-$data = $request->only(['name', 'quantity', 'condition', 'storage_location', 'notes']);
-$data = $this->conditionData($request, $data);
-⋮----
-if ($request->hasFile('photos')) {
-$res = PhotoSet::resolve([], $request, fn ($f) => $this->localUpload($f));
-⋮----
-} elseif ($request->hasFile('photo')) {
-$data['photo_path'] = $this->localUpload($request->file('photo'));
-⋮----
-$item = InventoryItem::create($data);
-$this->createLog('Create', "Added inventory item: {$item->name}");
-⋮----
-return response()->json(['message' => 'Item added', 'item' => $item], 201);
-⋮----
-public function update(UpdateInventoryItemRequest $request, $id)
-⋮----
-$item = InventoryItem::findOrFail($id);
-⋮----
-// Lost / disposed are tracked as UNIT counts (see below), never by
-// archiving the item -- a few lost or worn-out units must not take the
-// still-good ones out of Inventory or touch the loans in any way.
-⋮----
-// Per-condition counts (when sent) decide the base in-stock quantity;
-// lost / disposed below then come out of it.
-⋮----
-// Lost units -- reported per unit count, not by tagging the whole item.
-// They come out of the in-stock count right away; if the item is out on
-// loan and stock can't cover them, the rest is recorded as pending and
-// settled when the loan closes (InventoryItem::settleLostOnLoan).
-// Lowering the number ("found it") puts units back. The condition of
-// the units that are still good is never touched.
-⋮----
-if ($request->has('lost_quantity')) {
-$newLost = (int) $request->input('lost_quantity');
-⋮----
-$outNow = (int) $item->borrows()->sum('quantity');
-⋮----
-return response()->json([
-⋮----
-// Disposed units -- worn-out/used-up units taken out of service. Only
-// units sitting in stock can be disposed of; lowering the number puts
-// them back. Same rule as lost units: the rest keep their condition.
-⋮----
-if ($request->has('disposed_quantity')) {
-$newDisposed = (int) $request->input('disposed_quantity');
-⋮----
-// Photo handling:
-//   - New file picked  -> delete old file, save new one
-//   - remove_photo=1   -> delete old file, null the column
-//   - Neither          -> leave photo_path untouched
-//   - photos_sync=1    -> keep_photos[] (indexes to keep) + photos[]
-//                         (new files) describe the whole photo list;
-//                         first one is the cover, max 5.
-⋮----
-if ($request->boolean('photos_sync')) {
-$res = PhotoSet::resolve($item->allPhotoPaths(), $request, fn ($f) => $this->localUpload($f));
-⋮----
-$this->localDelete($item->photo_path);
-⋮----
-} elseif ($request->boolean('remove_photo') && $item->photo_path) {
-⋮----
-$item->update($data);
-⋮----
-$this->localDelete($gone);
-⋮----
-$item->settleLostOnLoan();
-$this->createLog('Update', "Updated lost units for {$item->name}: {$item->lost_quantity} lost");
-⋮----
-$this->createLog('Update', "Updated disposed units for {$item->name}: {$item->disposed_quantity} disposed");
-⋮----
-$this->createLog('Update', "Updated inventory item: {$item->name}");
-⋮----
-return response()->json(['message' => 'Item updated', 'item' => $item]);
-⋮----
-public function destroy($id)
-⋮----
-// Block deleting an item that's currently lent out to a live event.
-// InventoryItem only soft-deletes, so nothing here would actually
-// cascade-remove the outstanding event_inventory_items row -- the
-// event would keep pointing at a "deleted" item, and returning it
-// later (event archived/edited) would silently add its quantity
-// back onto a record no one can see or manage anymore. Staff need
-// to return the item to Inventory first (edit or archive the
-// event) before it can be removed.
-if ($item->borrows()->exists()) {
-⋮----
-$item->deleted_by = auth()->user()->user_code;
-$item->save();
-$item->delete();
-$this->createLog('Delete', "Removed inventory item: {$item->name}");
-⋮----
-return response()->json(['message' => 'Item removed']);
-````
-
-## File: resources/js/components/ui/ConfirmDialog.tsx
-````typescript
-import React from "react";
-import { useLanguage } from "../../i18n/LanguageContext";
-import Portal from "./Portal";
-⋮----
-type Tone = "brand" | "danger";
-⋮----
-interface ConfirmDialogProps {
-  open: boolean;
-  icon: React.ReactNode;
-  title: string;
-  body: React.ReactNode;
-  /** Defaults to the translated "Cancel" / "Confirm" when omitted. */
-  cancelLabel?: string;
-  confirmLabel?: string;
-  onCancel: () => void;
-  onConfirm: () => void;
-  tone?: Tone;
-  /** z-index bump for confirm dialogs opened on top of an already-open form modal. */
-  z?: number;
-  /** Dark navy styling matching the app's dark page background. Both
-      portals are dark-themed now, so this defaults to true; pass
-      dark={false} only for a caller still on a light surface. */
-  dark?: boolean;
-  /** Optional override for the confirm button's color classes, e.g. to match
-      a page's primary action color (sage "Camera Scan" / "Sign In" buttons). */
-  confirmClassName?: string;
-}
-⋮----
-/** Defaults to the translated "Cancel" / "Confirm" when omitted. */
-⋮----
-/** z-index bump for confirm dialogs opened on top of an already-open form modal. */
-⋮----
-/** Dark navy styling matching the app's dark page background. Both
-      portals are dark-themed now, so this defaults to true; pass
-      dark={false} only for a caller still on a light surface. */
-⋮----
-/** Optional override for the confirm button's color classes, e.g. to match
-      a page's primary action color (sage "Camera Scan" / "Sign In" buttons). */
-⋮----
-/**
- * Shared "are you sure?" step used in front of add/edit/delete actions
- * across the staff views, so every module asks the same way instead of
- * each screen growing its own bespoke confirm popup.
- */
 ````
 
 ## File: resources/js/components/ui/FilterDropdown.tsx
@@ -15948,6 +16395,847 @@ onClick=
           open/mounted on the same page at once. */}
 ````
 
+## File: resources/views/reports/export.blade.php
+````php
+
+````
+
+## File: app/Http/Controllers/FeedbackController.php
+````php
+namespace App\Http\Controllers;
+⋮----
+use App\Models\AbsenceReason;
+use App\Models\AppSetting;
+use App\Models\Event;
+use App\Models\Feedback;
+use App\Models\FeedbackEdit;
+use App\Models\EventAttendance;
+use App\Models\Notification;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+⋮----
+class FeedbackController extends Controller
+⋮----
+// ------------------------------------------------------------------
+// Window helpers
+⋮----
+private function attendanceIsReviewable(EventAttendance $attendance): bool
+⋮----
+return $event && $event->event_end && now()->greaterThan($event->event_end);
+⋮----
+private function attendedScope($query)
+⋮----
+return $query->where(fn ($q) => $q->whereNotNull('time_in')->orWhereNotNull('time_out'));
+⋮----
+private function submitClosesAtFor(Event $event): ?Carbon
+⋮----
+$rules = AppSetting::feedbackRules();
+⋮----
+return Carbon::parse($end)->addHours((int) $rules['close_after_hours']);
+⋮----
+// Settings
+⋮----
+public function rules()
+⋮----
+return response()->json(AppSetting::feedbackRules());
+⋮----
+public function updateRules(Request $request)
+⋮----
+$request->validate([
+⋮----
+->requirePassword(auth()->user(), $request->password);
+⋮----
+$rules = AppSetting::saveFeedbackRules(
+⋮----
+$this->createLog(
+⋮----
+return response()->json($rules);
+⋮----
+// Submit / edit / remove (Resident)
+⋮----
+public function store(Request $request)
+⋮----
+$userId = auth()->id();
+⋮----
+$attendance = $this->attendedScope(
+EventAttendance::with('event')
+->where('event_id', $request->event_id)
+->where('user_id', $userId)
+)->first();
+⋮----
+return response()->json([
+⋮----
+if (!$this->attendanceIsReviewable($attendance)) {
+⋮----
+$existing = Feedback::withTrashed()
+⋮----
+->first();
+⋮----
+// ---------- Edit path ----------
+if ($existing && !$existing->trashed()) {
+if ($existing->isEditLocked()) {
+⋮----
+FeedbackEdit::create([
+⋮----
+$existing->update([
+⋮----
+$this->notifyStaff($existing, $event, auth()->user());
+⋮----
+'feedback' => $this->shapeRow($existing->fresh()),
+⋮----
+// ---------- First-submit path ----------
+$closes = $this->submitClosesAtFor($event);
+if ($closes && now()->greaterThan($closes)) {
+⋮----
+$feedback = Feedback::create([
+⋮----
+$this->notifyStaff($feedback, $event, auth()->user());
+⋮----
+'feedback' => $this->shapeRow($feedback->fresh()),
+⋮----
+public function destroy($id)
+⋮----
+$feedback = Feedback::with('event')->findOrFail($id);
+⋮----
+return response()->json(['message' => 'You can only remove your own feedback.'], 403);
+⋮----
+if ($feedback->isEditLocked()) {
+⋮----
+$feedback->deleted_by = auth()->user()->user_code;
+$feedback->save();
+$feedback->delete();
+⋮----
+$this->createLog('Delete', 'Feedback', "Removed feedback for event '{$eventName}'");
+⋮----
+return response()->json(['message' => 'Feedback removed.']);
+⋮----
+private function shapeRow(Feedback $f): array
+⋮----
+return array_merge($f->toArray(), [
+'edit_seconds_left'   => $f->editSecondsLeft(),
+⋮----
+'is_locked'           => $f->isEditLocked(),
+⋮----
+// Member reads
+⋮----
+public function mine()
+⋮----
+$feedback = Feedback::withCount('edits')
+->where('user_id', auth()->id())
+->get([
+⋮----
+->map(fn ($f) => array_merge($f->toArray(), [
+'edit_seconds_left' => max(0, (int) floor(now()->diffInSeconds(
+$f->created_at->copy()->addMinutes((int) $f->edit_window_minutes), false
+⋮----
+'is_locked' => now()->greaterThan(
+$f->created_at->copy()->addMinutes((int) $f->edit_window_minutes)
+⋮----
+return response()->json($feedback);
+⋮----
+public function pending()
+⋮----
+$attended = $this->attendedScope(
+EventAttendance::with('event')->where('user_id', $userId)
+)->get()
+->filter(fn ($a) => $a->event !== null)
+->filter(fn ($a) => $this->attendanceIsReviewable($a))
+->pluck('event')
+->unique('id')
+->reject(function ($event) {
+⋮----
+return $closes && now()->greaterThan($closes);
+⋮----
+->values();
+⋮----
+$rated = Feedback::withTrashed()->where('user_id', $userId)->pluck('event_id');
+$pending = $attended->reject(fn ($event) => $rated->contains($event->id))->values();
+⋮----
+return response()->json($pending);
+⋮----
+public function forEvent($eventId)
+⋮----
+if (!$this->isStaff()) {
+return response()->json(['message' => 'Unauthorized'], 403);
+⋮----
+return response()->json(
+Feedback::withCount('edits')
+->with(['user:id,first_name,last_name', 'repliedBy:id,first_name,last_name'])
+->where('event_id', $eventId)
+->latest()
+->get()
+⋮----
+// Absence reasons
+⋮----
+// private function eventIsOver(Event $event): bool
+// {
+//     $end = $event->event_end ?? $event->event_start;
+//     return $end && now()->greaterThan($end);
+// }
+⋮----
+private function eventIsOver(Event $event): bool
+⋮----
+?? optional($event->event_start)->copy()->endOfDay();
+⋮----
+return $end && now()->greaterThan($end);
+⋮----
+// public function storeAbsence(Request $request)
+⋮----
+//     $request->validate([
+//         'event_id' => 'required|integer|exists:events,id',
+//         'reason'   => 'required|string|max:40',
+//         'comment'  => 'nullable|string|max:1000',
+//     ]);
+⋮----
+//     $userId = auth()->id();
+//     $event  = Event::findOrFail($request->event_id);
+⋮----
+//     if (!$this->eventIsOver($event)) {
+//         return response()->json(['message' => 'You can tell us why you could not attend once the event has ended.'], 403);
+//     }
+⋮----
+//     $attended = $this->attendedScope(
+//         EventAttendance::where('event_id', $event->id)->where('user_id', $userId)
+//     )->exists();
+⋮----
+//     if ($attended) {
+//         return response()->json(['message' => 'You attended this event, so you can rate it instead.'], 403);
+⋮----
+//     $existing = AbsenceReason::where('event_id', $event->id)->where('user_id', $userId)->first();
+//     $rules = AppSetting::feedbackRules();
+⋮----
+//     if ($existing) {
+//         $locked = $existing->created_at->copy()->addMinutes((int) $rules['edit_window_minutes']);
+//         if (now()->greaterThan($locked)) {
+//             return response()->json([
+//                 'message' => "You can only change your answer within {$rules['edit_window_minutes']} minute(s) after sending it.",
+//             ], 403);
+//         }
+//     } else {
+//         $closes = $event->event_end
+//             ? Carbon::parse($event->event_end)->addHours((int) $rules['close_after_hours'])
+//             : null;
+//         if ($closes && now()->greaterThan($closes)) {
+⋮----
+//                 'message' => "This closed {$rules['close_after_hours']} hour(s) after the event ended.",
+⋮----
+//     $row = AbsenceReason::updateOrCreate(
+//         ['event_id' => $event->id, 'user_id' => $userId],
+//         ['reason' => $request->reason, 'comment' => $request->comment],
+//     );
+⋮----
+//     $this->createLog(
+//         $existing ? 'Update' : 'Create',
+//         'Feedback',
+//         ($existing ? 'Edited' : 'Submitted') . " non-attendance reason for event '{$event->name}' ({$request->reason})"
+⋮----
+//     $this->notifyStaffAbsence($row, $event, auth()->user());
+⋮----
+//     return response()->json(['message' => 'Thank you for letting us know.', 'absence' => $row], 201);
+⋮----
+public function storeAbsence(Request $request)
+⋮----
+$event = Event::findOrFail($request->event_id);
+⋮----
+if (!$this->eventIsOver($event)) {
+return response()->json(['message' => 'You can tell us why you could not attend once the event has ended.'], 403);
+⋮----
+$alreadyAttended = $this->attendedScope(
+EventAttendance::where('event_id', $event->id)->where('user_id', $userId)
+)->exists();
+⋮----
+return response()->json(['message' => 'You attended this event, so you can rate it instead.'], 403);
+⋮----
+$existing = AbsenceReason::where('event_id', $event->id)->where('user_id', $userId)->first();
+⋮----
+// if ($existing && $this->editLocked($existing)) {
+⋮----
+//     return response()->json(['message' => "You can only change your answer within {$rules['edit_window_minutes']} minute(s) after sending it."], 403);
+⋮----
+$row = AbsenceReason::updateOrCreate(
+⋮----
+// keep the pre-edit version for the edit history, same as the rating path
+⋮----
+$this->notifyStaffAbsence($row, $event, auth()->user());
+⋮----
+return response()->json(['message' => 'Thank you for letting us know.', 'absence' => $row], 201);
+⋮----
+// public function mineAbsences()
+⋮----
+//     return response()->json(
+//         AbsenceReason::withCount('edits')
+//             ->where('user_id', auth()->id())
+//             ->get([
+//                 'id', 'event_id', 'reason', 'comment',
+//                 'staff_liked_at', 'staff_reply', 'staff_replied_at',
+//                 'member_liked_reply_at', 'created_at',
+//             ])
+//             ->map(fn ($r) => array_merge($r->toArray(), [
+//                 'edit_seconds_left' => max(0, (int) floor(now()->diffInSeconds(
+//                     $r->created_at->copy()->addMinutes((int) $rules['edit_window_minutes']), false
+//                 ))),
+//             ]))
+//             ->values()
+⋮----
+public function mineAbsences()
+⋮----
+AbsenceReason::withCount('edits')
+⋮----
+->values()
+⋮----
+public function absencesForEvent($eventId)
+⋮----
+// Staff responses (heart / reply / member like-reply / history)
+⋮----
+private function findResponseTarget(string $kind, $id)
+⋮----
+? AbsenceReason::with('event')->findOrFail($id)
+: Feedback::with('event')->findOrFail($id);
+⋮----
+private function notifyMember($target, string $title, string $message): void
+⋮----
+Notification::insert([[
+⋮----
+public function like(string $kind, $id)
+⋮----
+$target = $this->findResponseTarget($kind, $id);
+⋮----
+$target->save();
+⋮----
+if ($liking && $target->wasChanged('staff_liked_at')) {
+$this->notifyMember(
+⋮----
+// LOG: Staff likes feedback
+⋮----
+$this->createLog($action, 'Feedback', "Staff {$action} for event '{$eventName}'");
+⋮----
+return response()->json(['staff_liked_at' => $target->staff_liked_at]);
+⋮----
+public function likeReply(string $kind, $id)
+⋮----
+if ((int) $target->user_id !== (int) auth()->id() || $target->staff_reply === null) {
+⋮----
+$this->notifyReplyLike($target, $kind);
+⋮----
+// LOG: Resident likes staff reply
+⋮----
+$this->createLog($action, 'Feedback', "Resident {$action} on staff reply for event '{$eventName}'");
+⋮----
+return response()->json(['member_liked_reply_at' => $target->member_liked_reply_at]);
+⋮----
+private function notifyReplyLike($target, string $kind): void
+⋮----
+$member = auth()->user();
+⋮----
+$exists = Notification::where('user_id', $target->staff_replied_by)
+# ->where('type', 'feedback_received')
+->where('type', 'reply_liked')
+->where('event_id', $target->event_id)
+->where('title', $title)
+->where('message', $message)
+->exists();
+⋮----
+# 'type'       => 'feedback_received',
+⋮----
+public function reply(Request $request, string $kind, $id)
+⋮----
+$request->validate(['reply' => 'nullable|string|max:500']);
+⋮----
+$target->staff_replied_by = $text !== '' ? auth()->id() : null;
+⋮----
+// LOG: Staff reply actions
+⋮----
+$this->createLog('Delete Reply', 'Feedback', "Staff removed their reply on feedback for event '{$eventName}'");
+⋮----
+$this->createLog('Reply', 'Feedback', "Staff replied to feedback for event '{$eventName}'");
+⋮----
+$this->createLog('Update Reply', 'Feedback', "Staff edited their reply on feedback for event '{$eventName}'");
+⋮----
+$target->load('repliedBy:id,first_name,last_name');
+⋮----
+public function history(string $kind, $id)
+⋮----
+$row = $kind === 'absence' ? AbsenceReason::findOrFail($id) : Feedback::withTrashed()->findOrFail($id);
+⋮----
+if (!$this->isStaff() && (int) $row->user_id !== (int) auth()->id()) {
+⋮----
+'at'      => optional($when)->toIso8601String(),
+⋮----
+$versions = collect([$shape($row, $row->updated_at, true)]);
+FeedbackEdit::where('kind', $kind)->where('item_id', $row->id)->orderByDesc('id')->get()
+->each(fn ($e) => $versions->push($shape($e, $e->written_at ?? $e->created_at, false)));
+⋮----
+return response()->json($versions->values());
+⋮----
+// Staff notifications
+⋮----
+private function notifyStaff(Feedback $feedback, $event, $member): void
+⋮----
+$staffIds = User::where('role', 'Staff')->where('id', '!=', $member->id)->pluck('id');
+if ($staffIds->isEmpty()) {
+⋮----
+Notification::insert($staffIds->map(fn ($id) => [
+⋮----
+])->all());
+⋮----
+\Log::warning('notifyStaff failed: ' . $e->getMessage());
+⋮----
+private function notifyStaffAbsence(AbsenceReason $row, Event $event, $member): void
+⋮----
+\Log::warning('notifyStaffAbsence failed: ' . $e->getMessage());
+````
+
+## File: app/Http/Controllers/InventoryController.php
+````php
+namespace App\Http\Controllers;
+⋮----
+use App\Models\InventoryItem;
+use App\Models\InventoryUnitLog;
+use App\Support\PhotoSet;
+use App\Models\ActivityLog;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use App\Http\Requests\StoreInventoryItemRequest;
+use App\Http\Requests\UpdateInventoryItemRequest;
+⋮----
+class InventoryController extends Controller
+⋮----
+protected $logModule = 'Inventory';
+⋮----
+// Same upload convention as UserController::localUpload/localDelete
+// (Resident ID photo) and EventExpenseController::localUpload/localDelete
+// (expense receipt) -- the photo is optional proof/visual reference for
+// an inventory item, stored on the public disk so it can be shown via
+// photo_url (see InventoryItem::getPhotoUrlAttribute).
+private function localUpload($file, string $dir = 'inventory_photos'): string
+⋮----
+$original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+$ext      = $file->getClientOriginalExtension();
+⋮----
+$filename = time() . '_' . \Illuminate\Support\Str::random(6) . '_' . $clean . '.' . $ext;
+⋮----
+$path = $file->storeAs($dir, $filename, 'public');
+⋮----
+throw new \Exception('File upload failed');
+⋮----
+private function localDelete(?string $path): void
+⋮----
+Storage::disk('public')->delete($path);
+⋮----
+\Log::warning($e->getMessage());
+⋮----
+// UC-9: Manage Barangay Inventory
+/**
+     * Condition filter shared by the grid and the reports. An item's condition
+     * is New / Good / Fair / Poor; Lost and Disposed are not conditions but
+     * unit counters (lost_quantity, lost_pending, disposed_quantity), so those
+     * two filters match items that have at least one such unit.
+     */
+public static function applyConditionFilter($query, string $condition): void
+⋮----
+$query->where(function ($q) {
+$q->where('lost_quantity', '>', 0)
+->orWhere('lost_pending', '>', 0);
+⋮----
+$query->where('disposed_quantity', '>', 0);
+⋮----
+// Items hold units in several conditions at once, so match any
+// item with at least one unit in this condition.
+$query->where(InventoryItem::CONDITION_COLUMNS[$condition], '>', 0);
+⋮----
+/** An item with this few units in stock counts as "low stock" (no reorder level exists). */
+⋮----
+/**
+     * Quick tabs of the Inventory list, done in the database so counts, paging
+     * and the shown rows all agree: all | on-loan | low | lost-pending | attention.
+     */
+private function applyInventoryTab($query, string $tab): void
+⋮----
+$query->whereHas('borrows', fn ($b) => $b->where('quantity', '>', 0));
+⋮----
+$query->where('quantity', '<=', self::LOW_STOCK_AT);
+⋮----
+$query->where('lost_pending', '>', 0);
+⋮----
+$q->where('poor_quantity', '>', 0)
+->orWhere('lost_quantity', '>', 0)
+// Out on loan to an event that has already ended.
+->orWhereHas('borrows.event', fn ($e) => $e->whereRaw('COALESCE(event_end, event_start) < ?', [now()]));
+⋮----
+/**
+     * When the form sends per-condition counts, the in-stock quantity is
+     * their sum (the model keeps the two in step on save).
+     */
+private function conditionData(Request $request, array $data): array
+⋮----
+if (! $request->hasAny($cols)) {
+⋮----
+if ($request->has($col)) {
+$data[$col] = max(0, (int) $request->input($col));
+⋮----
+public function index(Request $request)
+⋮----
+if (!$this->isStaff()) {
+return response()->json(['message' => 'Unauthorized'], 403);
+⋮----
+$query = InventoryItem::query();
+⋮----
+if ($request->filled('search')) {
+⋮----
+$query->where(function ($q) use ($search) {
+$q->where('name', 'like', "%$search%")
+->orWhere('storage_location', 'like', "%$search%");
+⋮----
+if ($request->filled('condition')) {
+$this->applyConditionFilter($query, $request->condition);
+⋮----
+// paged=1: the Inventory screen asks for one page at a time, already
+// filtered (search, condition, quick tab) and sorted by the database,
+// plus the size of every tab. Without it, the full list comes back as
+// before (other screens use it for pickers and totals).
+$paged = $request->boolean('paged');
+⋮----
+$this->applyInventoryTab($tabQuery, $tabKey);
+$counts[$tabKey] = $tabQuery->count();
+⋮----
+$this->applyInventoryTab($query, (string) $request->input('tab', 'all'));
+switch ($request->input('sort')) {
+case 'name-za': $query->orderBy('name', 'desc'); break;
+case 'qty-high': $query->orderBy('quantity', 'desc')->orderBy('name'); break;
+case 'qty-low': $query->orderBy('quantity')->orderBy('name'); break;
+case 'recent': $query->orderBy('id', 'desc'); break;
+default: $query->orderBy('name');
+⋮----
+$query->orderBy('name');
+⋮----
+// borrowed_quantity: how many units are currently lent out to a
+// still-active event (see InventoryItem::borrows()) -- the grid
+// uses this to grey out Delete on an item that's out on loan.
+// borrows.event is also loaded so we can flag a borrow whose event
+// has already ended -- staff have no other way to notice an item
+// is stuck on loan to a past event nobody archived yet.
+$query->withSum('borrows as borrowed_quantity', 'quantity')
+->with(['borrows.event:id,name,event_start,event_end']);
+⋮----
+$perPage = max(1, min(100, (int) $request->input('per_page', 10)));
+$paginator = $query->paginate($perPage, ['*'], 'page', max(1, (int) $request->input('page', 1)));
+$items = $paginator->getCollection();
+⋮----
+$items = $query->get();
+⋮----
+$items->each(function ($item) {
+⋮----
+// The earliest-ended event still holding this item, if any --
+// "ended" means event_end (or event_start when no end is set)
+// is in the past. Only set when the item is actually overdue,
+// so the frontend can tell a normal current loan apart from a
+// stale one that needs someone to go archive that event.
+⋮----
+->filter(fn ($b) => $b->event)
+->map(fn ($b) => $b->event)
+->filter(fn ($event) => ($event->event_end ?? $event->event_start) < now())
+->sortBy(fn ($event) => $event->event_end ?? $event->event_start)
+->first();
+⋮----
+return response()->json([
+'data' => $items->values(),
+⋮----
+'total' => $paginator->total(),
+'page' => $paginator->currentPage(),
+'per_page' => $paginator->perPage(),
+'last_page' => $paginator->lastPage(),
+⋮----
+return response()->json($items);
+⋮----
+// Items selectable when borrowing inventory for an Event (Create/Edit
+// Event form). Lost and disposed units are already taken out of the
+// in-stock quantity, so the borrow picker only needs the stock count.
+public function borrowable(Request $request)
+⋮----
+$items = InventoryItem::orderBy('name')
+->get(['id', 'name', 'quantity', 'new_quantity', 'good_quantity', 'fair_quantity', 'poor_quantity', 'storage_location']);
+⋮----
+public function store(StoreInventoryItemRequest $request)
+⋮----
+$data = $request->only(['name', 'quantity', 'storage_location', 'notes']);
+$data = $this->conditionData($request, $data);
+⋮----
+if ($request->hasFile('photo')) {
+$data['photo_path'] = $this->localUpload($request->file('photo'));
+⋮----
+$item = InventoryItem::create($data);
+⋮----
+// Initial stock goes into the item's history too, so every count in
+// stock can be traced back to a record. The item photo (required on
+// the Add form) is the evidence for it.
+⋮----
+InventoryUnitLog::create([
+⋮----
+'units' => $item->conditionCounts(),
+'user_code' => auth()->user()?->user_code,
+⋮----
+$this->createLog('Create', "Added inventory item: {$item->name}");
+⋮----
+return response()->json(['message' => 'Item added', 'item' => $item], 201);
+⋮----
+public function update(UpdateInventoryItemRequest $request, $id)
+⋮----
+$labels = InventoryItem::CONDITION_COLUMNS; // label => column
+⋮----
+// One transaction on a locked row, like adjustUnits(): the new counts and
+// the history entry see the same numbers, so two staff can't overwrite
+// each other unnoticed.
+\DB::transaction(function () use ($request, $id, $labels, &$removedPhotos, &$deltas, &$item) {
+$item = InventoryItem::lockForUpdate()->findOrFail($id);
+$reject = fn (string $message, int $status = 422) => throw new \Illuminate\Http\Exceptions\HttpResponseException(
+response()->json(['message' => $message], $status)
+⋮----
+// Lost / found / disposed units are never edited here -- they are
+// reported per condition with adjustUnits(), so the stock counts below
+// are only what is physically in stock.
+⋮----
+// Per-condition counts (when sent) decide the in-stock quantity.
+⋮----
+// The form sends the counts it was opened with (base_*). If the stock
+// has moved since (someone reported a loss, a release came back...),
+// saving would silently undo that, so ask to reopen instead.
+$before = $item->conditionCounts();
+⋮----
+if ($request->has("base_{$col}") && (int) $request->input("base_{$col}") !== $before[$label]) {
+return $reject("This item's stock changed while you were editing. Close this form, reopen the item and try again.", 409);
+⋮----
+// What this save changes in stock, per condition (+ added, - removed).
+// It is written to the item's history (who, when, how much) without a
+// photo: the item photo is the record, and evidence photos belong to
+// the lost / found / disposed / restored and release / return events.
+⋮----
+// Photo handling:
+//   - New file picked  -> delete old file, save new one
+//   - remove_photo=1   -> delete old file, null the column
+//   - Neither          -> leave photo_path untouched
+⋮----
+} elseif ($request->boolean('remove_photo') && $item->photo_path) {
+⋮----
+$item->update($data);
+⋮----
+$this->localDelete($gone);
+⋮----
+$this->createLog('Update', "Updated inventory item: {$item->name}" . ($change ? ' (stock ' . implode(', ', $change) . ')' : ''));
+⋮----
+return response()->json(['message' => 'Item updated', 'item' => $item->refresh()]);
+⋮----
+/**
+     * Lost / found / disposed / restored units, all in one place. Staff pick
+     * exactly which units, per condition (3 Good + 2 Fair), so nothing is
+     * chosen at random.
+     *  - lost:     units missing from stock leave stock and join the lost count
+     *              (units lost on a loan are reported from Returns instead);
+     *  - found:    lost units that turned up. Units still counted on an open
+     *              loan (lost_pending) simply stop being lost; the rest go into
+     *              stock under the conditions given. Also the fix for a unit
+     *              marked lost by mistake -- it returns to stock, not to the loan;
+     *  - disposed: unusable units leave stock and join the disposed count;
+     *  - restored: disposed units that are usable again go back into stock.
+     * Disposed / restored / found need 1-5 evidence photos. Every report is
+     * kept in inventory_unit_logs and the activity log.
+     */
+public function adjustUnits(Request $request, $id)
+⋮----
+$request->validate([
+⋮----
+// found only: how many of the lost units were found.
+⋮----
+// Evidence photos (up to 5): required for disposed / restored / found.
+⋮----
+$action = $request->input('action');
+⋮----
+$units[$label] = max(0, (int) $request->input("units.{$label}", 0));
+⋮----
+// Evidence is required for disposed / restored / found -- checked up front so nothing is locked or uploaded without it.
+⋮----
+&& count(array_filter((array) $request->file('photos', []))) < 1) {
+return response()->json(['message' => 'Attach at least one evidence photo.'], 422);
+⋮----
+// Something that fails the checks below must answer 422 and roll everything back.
+$fail = fn (string $message) => throw new \Illuminate\Http\Exceptions\HttpResponseException(
+response()->json(['message' => $message], 422)
+⋮----
+// One transaction on a locked row: the checks and the writes see the same
+// numbers, so two staff acting on the same item at once can't both pass
+// the checks (e.g. restore the same disposed units twice). The ledger row
+// is written in the same transaction, so counts and history never disagree.
+\DB::transaction(function () use ($id, $request, $action, $units, $total, &$quantity, &$photos, &$item, $fail) {
+⋮----
+return $fail('Enter how many units to report.');
+⋮----
+$have = $item->conditionCounts();
+⋮----
+return $fail("Can't take {$n} {$label} unit(s) -- only {$have[$label]} {$label} in stock.");
+⋮----
+return $fail('Enter how many units to put back.');
+⋮----
+return $fail("Can't restore {$total} -- only {$item->disposed_quantity} are recorded as disposed.");
+⋮----
+// Only units of the condition they were disposed in can be restored
+// (4 Good disposed -> only Good comes back). Units disposed before
+// conditions were recorded can go back into any condition.
+$b = $this->disposedBreakdown($item);
+⋮----
+return $fail("Those units weren't disposed in that condition. Disposed: " . ($parts ? implode(', ', $parts) : 'unknown condition') . '.');
+⋮----
+$quantity = (int) $request->input('quantity', 0);
+⋮----
+return $fail($lostNow > 0 ? "Can't mark {$quantity} as found -- only {$lostNow} are recorded as lost." : 'No units are recorded as lost for this item.');
+⋮----
+return $fail($toStock > 0
+⋮----
+$photos = PhotoSet::resolve([], $request, fn ($f) => $this->localUpload($f, 'inventory_unit_photos'))['final'];
+⋮----
+$item->takeUnits($units);
+⋮----
+$item->giveUnits($units);
+⋮----
+$total > 0 ? $item->giveUnits($units) : $item->save();
+⋮----
+// Don't leave evidence files behind when the save didn't go through.
+⋮----
+$this->localDelete($path);
+⋮----
+$this->createLog('Update', "{$quantity} unit(s) of {$item->name} {$verb}" . ($parts ? ' (' . implode(', ', $parts) . ')' : ' (still on loan)'));
+⋮----
+return response()->json(['message' => 'Units updated.', 'item' => $item->refresh()]);
+⋮----
+/** The recent lost / found / disposed / restored reports for one item, newest first. */
+public function unitLogs($id)
+⋮----
+$item = InventoryItem::withTrashed()->findOrFail($id);
+$logs = InventoryUnitLog::where('inventory_item_id', $item->id)->latest('id')->limit(100)->get();
+$people = \App\Models\User::whereIn('user_code', $logs->pluck('user_code')->filter()->unique())
+->get(['user_code', 'first_name', 'last_name'])->keyBy('user_code');
+$events = \App\Models\Event::withTrashed()->whereIn('id', $logs->pluck('event_id')->filter()->unique())->pluck('name', 'id');
+⋮----
+// Which conditions the disposed units were in -- the Restore tab only offers those.
+'disposed' => $this->disposedBreakdown($item),
+'logs' => $logs->map(fn ($l) => [
+⋮----
+'by' => ($p = $people->get($l->user_code)) ? trim($p->first_name . ' ' . $p->last_name) : ($l->user_code ?: 'System'),
+⋮----
+])->values(),
+⋮----
+/**
+     * Disposed units per condition, from the disposed / restored reports, plus
+     * how many disposed units have no recorded condition (disposed before
+     * conditions were tracked).
+     *
+     * @return array{known: array<string,int>, unknown: int}
+     */
+private function disposedBreakdown(InventoryItem $item): array
+⋮----
+$logs = InventoryUnitLog::where('inventory_item_id', $item->id)->whereIn('action', ['disposed', 'restored'])->get();
+⋮----
+public function destroy($id)
+⋮----
+$item = InventoryItem::findOrFail($id);
+⋮----
+// Block deleting an item that's currently lent out to a live event.
+// InventoryItem only soft-deletes, so nothing here would actually
+// cascade-remove the outstanding event_inventory_items row -- the
+// event would keep pointing at a "deleted" item, and returning it
+// later (event archived/edited) would silently add its quantity
+// back onto a record no one can see or manage anymore. Staff need
+// to return the item to Inventory first (edit or archive the
+// event) before it can be removed.
+if ($item->borrows()->exists()) {
+⋮----
+$item->deleted_by = auth()->user()->user_code;
+$item->save();
+$item->delete();
+$this->createLog('Delete', "Removed inventory item: {$item->name}");
+⋮----
+return response()->json(['message' => 'Item removed']);
+````
+
+## File: resources/js/components/layout/TopHeader.tsx
+````typescript
+import { useEffect, useRef, useState } from "react";
+import { SquareMenu, Menu, Settings, LogOut, ChevronDown, Volume2, VolumeX } from "lucide-react";
+import { getSoundPref, setSoundPref, MEMBER_SOUND_KEY, SOUND_CHANGED_EVENT } from "../../lib/alertSound";
+import LanguageSwitcher from "../ui/LanguageSwitcher";
+import ThemeToggle from "../ui/ThemeToggle";
+import DefaultAvatar from "../ui/DefaultAvatar";
+import { useLanguage } from "../../i18n/LanguageContext";
+⋮----
+interface TopHeaderProps {
+  memberName: string;
+  onMenuClick?: () => void;
+  userId?: string | number;
+  onNavigate?: (key: string) => void;
+}
+⋮----
+// Same navy/gold/teal treatment as the staff portal's TopHeader
+// (pages/staff/components/TopHeader.tsx), plus the initials avatar it
+// already shows next to "Signed in as" -- the member header was missing
+// that touch, which is what made it read as the less-finished of the two.
+⋮----
+const sync = ()
+⋮----
+const onDown = (e: MouseEvent) =>
+const onKey = (e: KeyboardEvent) =>
+⋮----
+<button role="menuitem" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-white/85 transition hover:bg-white/10" onClick=
+⋮----
+<button role="menuitem" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-400 transition hover:bg-red-500/10" onClick=
+````
+
+## File: resources/js/components/ui/ConfirmDialog.tsx
+````typescript
+import React from "react";
+import { useLanguage } from "../../i18n/LanguageContext";
+import Portal from "./Portal";
+⋮----
+type Tone = "brand" | "danger" | "warning";
+⋮----
+interface ConfirmDialogProps {
+  open: boolean;
+  icon: React.ReactNode;
+  title: string;
+  body: React.ReactNode;
+  /** Defaults to the translated "Cancel" / "Confirm" when omitted. */
+  cancelLabel?: string;
+  confirmLabel?: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+  tone?: Tone;
+  /** z-index bump for confirm dialogs opened on top of an already-open form modal. */
+  z?: number;
+  /** Dark navy styling matching the app's dark page background. Both
+      portals are dark-themed now, so this defaults to true; pass
+      dark={false} only for a caller still on a light surface. */
+  dark?: boolean;
+  /** Optional override for the confirm button's color classes, e.g. to match
+      a page's primary action color (sage "Camera Scan" / "Sign In" buttons). */
+  confirmClassName?: string;
+}
+⋮----
+/** Defaults to the translated "Cancel" / "Confirm" when omitted. */
+⋮----
+/** z-index bump for confirm dialogs opened on top of an already-open form modal. */
+⋮----
+/** Dark navy styling matching the app's dark page background. Both
+      portals are dark-themed now, so this defaults to true; pass
+      dark={false} only for a caller still on a light surface. */
+⋮----
+/** Optional override for the confirm button's color classes, e.g. to match
+      a page's primary action color (sage "Camera Scan" / "Sign In" buttons). */
+⋮----
+/**
+ * Shared "are you sure?" step used in front of add/edit/delete actions
+ * across the staff views, so every module asks the same way instead of
+ * each screen growing its own bespoke confirm popup.
+ */
+````
+
 ## File: resources/js/app.tsx
 ````typescript
 // import React, { useEffect, useState } from "react";
@@ -15993,6 +17281,7 @@ import SplashScreen from "./components/ui/SplashScreen";
 import ForcedPasswordChange from "./components/auth/ForcedPasswordChange";
 import { LanguageProvider } from "./i18n/LanguageContext";
 import { loadContentTranslations } from "./lib/contentTranslations";
+import { startResponsiveTables } from "./lib/responsiveTables";
 ⋮----
 // Fire-and-forget; components will show English until it resolves.
 ⋮----
@@ -16093,11 +17382,6 @@ const handleSwitch = (e: Event) =>
 // Default for Staff: Staff dashboard.
 ````
 
-## File: resources/views/reports/export.blade.php
-````php
-
-````
-
 ## File: app/Http/Controllers/HouseholdController.php
 ````php
 namespace App\Http\Controllers;
@@ -16105,6 +17389,7 @@ namespace App\Http\Controllers;
 use App\Models\Household;
 use App\Models\User;
 use App\Models\ActivityLog;
+use App\Support\Paged;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 ⋮----
@@ -16317,18 +17602,31 @@ private function isHeadConflict(\Throwable $e): bool
      * Residents not currently linked to any household -- used by the
      * frontend's "add member" picker.
      */
-public function unassigned()
+public function unassigned(Request $request)
 ⋮----
 // Both Residents and Staff can belong to a household -- a barangay
 // staff member may live with a resident family and still needs to
 // show up in that household's member list.
-$residents = User::whereNull('household_id')
+$query = User::whereNull('household_id')
 ⋮----
 ->select($this->memberFields())
-->orderBy('last_name')
-->get();
+->orderBy('last_name');
 ⋮----
-return response()->json($residents);
+// paged=1 (the resident pickers): the typed search is matched by the database and
+// only the first matches come back, with the size of the whole pool.
+if ($request->boolean('paged')) {
+$total = (clone $query)->count();
+if ($request->filled('exclude')) {
+$query->where('id', '!=', (int) $request->input('exclude'));
+⋮----
+foreach (Paged::tokens($request->input('search')) as $word) {
+$like = Paged::like($word);
+$query->where(fn ($q) => $q->whereRaw("LOWER(CONCAT_WS(' ', first_name, middle_name, last_name)) LIKE ?", [$like])
+->orWhereRaw('LOWER(COALESCE(user_code, \'\')) LIKE ?', [$like]));
+⋮----
+return response()->json(['data' => $query->limit(Paged::perPage($request, 30, 100))->get(), 'total' => $total]);
+⋮----
+return response()->json($query->get());
 ⋮----
 /**
      * Households that currently have no head of household. Computed live
@@ -16355,38 +17653,6 @@ return response()->json($households);
 public function options()
 ⋮----
 Household::orderBy('code')->get(['id', 'code', 'address'])
-````
-
-## File: resources/js/components/layout/TopHeader.tsx
-````typescript
-import { useEffect, useRef, useState } from "react";
-import { SquareMenu, Menu, Settings, LogOut, ChevronDown, Volume2, VolumeX } from "lucide-react";
-import { getSoundPref, setSoundPref, MEMBER_SOUND_KEY, SOUND_CHANGED_EVENT } from "../../lib/alertSound";
-import LanguageSwitcher from "../ui/LanguageSwitcher";
-import ThemeToggle from "../ui/ThemeToggle";
-import DefaultAvatar from "../ui/DefaultAvatar";
-import { useLanguage } from "../../i18n/LanguageContext";
-⋮----
-interface TopHeaderProps {
-  memberName: string;
-  onMenuClick?: () => void;
-  userId?: string | number;
-  onNavigate?: (key: string) => void;
-}
-⋮----
-// Same navy/gold/teal treatment as the staff portal's TopHeader
-// (pages/staff/components/TopHeader.tsx), plus the initials avatar it
-// already shows next to "Signed in as" -- the member header was missing
-// that touch, which is what made it read as the less-finished of the two.
-⋮----
-const sync = ()
-⋮----
-const onDown = (e: MouseEvent) =>
-const onKey = (e: KeyboardEvent) =>
-⋮----
-<button role="menuitem" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-white/85 transition hover:bg-white/10" onClick=
-⋮----
-<button role="menuitem" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-400 transition hover:bg-red-500/10" onClick=
 ````
 
 ## File: resources/js/pages/staff/components/TopHeader.tsx
@@ -16416,6 +17682,66 @@ const onKey = (e: KeyboardEvent) =>
 const go = (key: string) =>
 ⋮----
 <button role="menuitem" className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-400 transition hover:bg-red-500/10" onClick=
+````
+
+## File: resources/js/components/layout/Sidebar.tsx
+````typescript
+import {
+  Bell,
+  CalendarDays,
+  ClipboardCheck,
+  LayoutDashboard,
+  LogOut,
+  QrCode,
+  Settings,
+  X as XIcon,
+} from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { useLanguage } from "../../i18n/LanguageContext";
+⋮----
+interface SidebarProps {
+  active: string;
+  setActive: (page: string) => void;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
+  userName?: string;
+  userRole?: string;
+  /** Optional per-nav-key count shown as a badge (e.g. { notify: 3 } for unread notifications). */
+  badges?: Record<string, number>;
+}
+⋮----
+/** Optional per-nav-key count shown as a badge (e.g. { notify: 3 } for unread notifications). */
+⋮----
+// Same navy/gold/teal system, fixed width, and behavior as the staff
+// portal's own Sidebar (pages/staff/components/Sidebar.tsx) -- same 340px
+// width, header block, nav styling, and logout confirm. No quick-jump
+// search box here: this portal's nav list is short enough (6 items) that a
+// search input isn't needed the way it is for staff's larger, grouped nav.
+⋮----
+// The profile menu in the top bar asks for sign-out through this event.
+⋮----
+const open = ()
+⋮----
+const handleNavClick = (page: string) =>
+⋮----
+const handleLogout = async () =>
+⋮----
+// Clear ALL storage (safe because user is logging out)
+⋮----
+// Redirect to login page
+⋮----
+// Same active/inactive nav classes as the staff Sidebar, so a highlighted
+// nav item looks identical in both portals.
+⋮----
+{/* Sidebar Header -- same block as the staff Sidebar's own. */}
+⋮----
+{/* Navigation Menu */}
+⋮----
+{/* Same dark "are you sure" confirm used by the staff Sidebar's own
+          logout -- ending the session gets a deliberate, prominent step
+          instead of the light peripheral-alert treatment. */}
+⋮----
+<button onClick=
 ````
 
 ## File: resources/js/pages/members/views/DashboardView.tsx
@@ -16546,66 +17872,6 @@ onClick=
 {/* Upcoming Events Card */}
 ````
 
-## File: resources/js/components/layout/Sidebar.tsx
-````typescript
-import {
-  Bell,
-  CalendarDays,
-  ClipboardCheck,
-  LayoutDashboard,
-  LogOut,
-  QrCode,
-  Settings,
-  X as XIcon,
-} from "lucide-react";
-import React, { useEffect, useState } from "react";
-import { useLanguage } from "../../i18n/LanguageContext";
-⋮----
-interface SidebarProps {
-  active: string;
-  setActive: (page: string) => void;
-  mobileOpen?: boolean;
-  onCloseMobile?: () => void;
-  userName?: string;
-  userRole?: string;
-  /** Optional per-nav-key count shown as a badge (e.g. { notify: 3 } for unread notifications). */
-  badges?: Record<string, number>;
-}
-⋮----
-/** Optional per-nav-key count shown as a badge (e.g. { notify: 3 } for unread notifications). */
-⋮----
-// Same navy/gold/teal system, fixed width, and behavior as the staff
-// portal's own Sidebar (pages/staff/components/Sidebar.tsx) -- same 340px
-// width, header block, nav styling, and logout confirm. No quick-jump
-// search box here: this portal's nav list is short enough (6 items) that a
-// search input isn't needed the way it is for staff's larger, grouped nav.
-⋮----
-// The profile menu in the top bar asks for sign-out through this event.
-⋮----
-const open = ()
-⋮----
-const handleNavClick = (page: string) =>
-⋮----
-const handleLogout = async () =>
-⋮----
-// Clear ALL storage (safe because user is logging out)
-⋮----
-// Redirect to login page
-⋮----
-// Same active/inactive nav classes as the staff Sidebar, so a highlighted
-// nav item looks identical in both portals.
-⋮----
-{/* Sidebar Header -- same block as the staff Sidebar's own. */}
-⋮----
-{/* Navigation Menu */}
-⋮----
-{/* Same dark "are you sure" confirm used by the staff Sidebar's own
-          logout -- ending the session gets a deliberate, prominent step
-          instead of the light peripheral-alert treatment. */}
-⋮----
-<button onClick=
-````
-
 ## File: resources/js/pages/members/views/SettingsView.tsx
 ````typescript
 import { useState, useEffect, useRef } from "react";
@@ -16681,9 +17947,62 @@ cancelLabel=
 onCancel=
 ````
 
+## File: resources/js/pages/staff/views/IntegrationsView.tsx
+````typescript
+import React, { useEffect, useRef, useState } from "react";
+import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink } from "lucide-react";
+import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
+import api, { apiErrorMessage } from "../../../lib/api";
+import SectionCard from "../../../components/ui/SectionCard";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
+import { useLanguage } from "../../../i18n/LanguageContext";
+⋮----
+/**
+ * Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)
+ * + Text/physical QR ID". This screen owns the Facebook Page connection;
+ * the physical/manual ID check-in half of "2 in 1" lives in the QR
+ * Scanner's "Manual / Physical ID" tab (ScanView) since that's where staff
+ * actually use it during an event.
+ */
+⋮----
+// Section switcher -- same pill-tab pattern as the other Settings-style
+// pages: one focused card at a time, with a brief skeleton flash on switch.
+type IntegrationTab = "facebook" | "qr";
+⋮----
+const switchTab = (next: IntegrationTab) =>
+⋮----
+const load = async () =>
+⋮----
+const handleConnect = (e: React.FormEvent) =>
+⋮----
+const performConnect = async () =>
+⋮----
+const handleDisconnect = async () =>
+⋮----
+const tabCls = (on: boolean)
+⋮----
+/* Dark-navy full-bleed page + pill tabs, same "moduling" as the Age &
+       Status Categories settings page, instead of the old light paper cards. */
+⋮----
+<button type="button" onClick=
+⋮----
+<SectionCard icon=
+⋮----
+aria-label=
+⋮----
+title=
+⋮----
+cancelLabel=
+⋮----
+onCancel=
+⋮----
+{/* Shared StatusModal -- same dark success/error popups as every other page. */}
+````
+
 ## File: resources/js/pages/staff/views/ScanView.tsx
 ````typescript
-import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
@@ -16793,7 +18112,16 @@ const startResultCountdown = () =>
 ⋮----
 const rosterKey = (rec:
 ⋮----
-// Brief skeleton flash whenever the roster page, search or event changes.
+// The roster is one server query per page (EventAttendanceController::getEventAttendees, paged=1):
+// name / ID search and paging happen in the database.
+⋮----
+const fetchRosterPage = async (silent = false) =>
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// A scan just landed (or the live refresh brought new rows): refresh the page quietly.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
 // Events selectable in the "Select Event" combobox: alphabetically
 // ascending, and with events whose attendance window is fully over
@@ -16820,6 +18148,9 @@ const getSortDate = (e: any): Date | null =>
 const rank = (e: any)
 ⋮----
 // eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// The event picker's search is matched by the server (the events list endpoint); the scannable
+// events are then narrowed to the ids it returns.
 ⋮----
 const getStatus = (timeIn: string | null, timeOut: string | null): AttendanceEntry['status'] =>
 ⋮----
@@ -17040,6 +18371,17 @@ Storage::disk('public')->delete($path);
      * whose age bracket / civil status doesn't match what the membership
      * requires (configured under Settings -> Profiling).
      */
+/**
+     * A resident can hold only one "employment" status (Student, Unemployed,
+     * Out-of-School Youth...) -- they describe what the person is doing now,
+     * so combining them is contradictory. Other categories stay multi-select.
+     */
+private function employmentConflict(array $statusIds): ?string
+⋮----
+$picked = array_values(array_intersect($statusIds, \App\Models\CurrentStatus::employmentIds()));
+⋮----
+$labels = \App\Models\CurrentStatus::whereIn('id', $picked)->pluck('label')->implode(', ');
+⋮----
 private function checkMembershipEligibility(array $membershipIds, ?string $birthDate, ?int $civilStatusId, ?string $gender = null, array $currentStatusIds = []): ?array
 ⋮----
 $memberships = Membership::withoutTrashed()
@@ -17080,6 +18422,9 @@ $exists = User::whereRaw('LOWER(TRIM(first_name)) = ?', [mb_strtolower(trim($req
 // Adviser example (Senior Citizen) -- block assigning an eligibility-gated
 // membership (Youth / Senior Citizen / Solo Parent, etc.) to a resident
 // who doesn't match its required age bracket / civil status.
+⋮----
+if ($error = $this->employmentConflict($incomingCurrentStatusIds)) {
+return response()->json(['errors' => ['current_status_ids' => [$error]]], 422);
 ⋮----
 $violations = $this->checkMembershipEligibility(
 ⋮----
@@ -17265,6 +18610,10 @@ User::withTrashed()->with('memberships', 'household')->findOrFail($id)
 ⋮----
 public function update(UpdateUserRequest $request, $id)
 ⋮----
+if ($request->has('current_status_ids')) {
+⋮----
+if ($error = $this->employmentConflict($ids)) {
+⋮----
 // ✅ DUPLICATE NAME CHECK (UPDATE)
 ⋮----
 ->where('id', '!=', $id)
@@ -17359,8 +18708,6 @@ $user->validation_id = $this->localUpload($request->file('validation_id'));
 // already have its own value for (see backfillFromHead()).
 ⋮----
 $user->memberships()->detach();
-⋮----
-if ($request->has('current_status_ids')) {
 ⋮----
 $user->currentStatuses()->sync($statusIds);
 ⋮----
@@ -17498,6 +18845,116 @@ $users->map(function ($user) {
 'memberships' => $user->memberships->map(function ($membership) {
 ⋮----
 \Log::error('getAllForMemberships error: ' . $e->getMessage());
+````
+
+## File: resources/js/pages/staff/Staff.tsx
+````typescript
+import { highlightMatches } from "../../lib/highlight";
+import React, { useEffect, useMemo, useState } from "react";
+⋮----
+// --- LAYOUT IMPORTS ---
+import Sidebar from "./components/Sidebar";
+import TopHeader from "./components/TopHeader";
+⋮----
+// --- VIEW IMPORTS ---
+import DashboardView from "./views/DashboardView";
+import ScanView from "./views/ScanView";
+import ResidentsView from "./views/ResidentsView";
+import HouseholdsView from "./views/HouseholdsView";
+import QRCodesView from "./views/QRCodesView";
+import { EventsView } from "./views/EventsView";
+import NotificationsView from "./views/NotificationsView";
+import ActivityLogsView from "./views/ActivityLogsView";
+import ArchiveView from "./views/ArchiveView";
+import ReportsView from "./views/ReportsView";
+import InventoryView from "./views/InventoryView";
+import ReturnsView from "./views/ReturnsView";
+import BudgetView from "./views/BudgetView";
+import IntegrationsView from "./views/IntegrationsView";
+import FeedbackRulesView from "./views/FeedbackRulesView";
+import ProfilingSettingsView from "./views/ProfilingSettingsView";
+import MyAccountView from "./views/MyAccountView";
+import StaffAccountsView from "./views/StaffAccountsView";
+import OfflineBanner from "../../components/ui/OfflineBanner";
+import api from "../../lib/api";
+import { useLanguage } from "../../i18n/LanguageContext";
+import { useThemeScope } from "../../lib/theme";
+import { staffKeyFromPath, staffUrlFor } from "../../lib/staffRoutes";
+⋮----
+// --- TYPES & MOCK DATA ---
+export type Resident = { id: string; name: string; age: number; address: string; contact: string; };
+export type Membership = { id: string; name: string; description: string; codeId?: string; note?: string; verified?: boolean; memberIds: string[]; };
+export type Notification = { id: number; title: string; body: string; sentAt: string; };
+export type AttendanceRecord = { id: number; eventTitle: string; eventDate: string; location: string; timeIn: string; timeOut: string; status: string; };
+export type TrashedItem = {
+  id: string | number;
+  type: 'event' | 'resident' | 'membership' | 'notification';
+  name: string;
+  deletedAt: string;
+  deletedBy: string;
+};
+⋮----
+export const highlightText = (text: string, query: string)
+⋮----
+// --------------------------
+// MAIN COMPONENT
+// --------------------------
+⋮----
+const getInitialActive = ()
+⋮----
+// A bell notification asks to open an event on a given tab (e.g. its Feedback).
+⋮----
+// State for refreshing events
+⋮----
+// ✅ ADD THIS - State for current logged-in user
+⋮----
+const setActive = (page: string, path?: string) =>
+⋮----
+const handlePopState = () =>
+⋮----
+const onOpen = (e: Event) =>
+const onNotify = (e: Event) =>
+⋮----
+const getMembershipName = (id: string | number | null | undefined) =>
+⋮----
+const fetchEventsCount = async () =>
+⋮----
+// Keep-alive: while the person is really using the page (clicking, typing,
+// scrolling) tell the server, at most every 2 minutes. Background polling
+// doesn't count, so an unattended screen still signs out after the idle limit.
+⋮----
+const ping = () =>
+⋮----
+// ✅ ADD THIS - Fetch current logged-in user
+⋮----
+const fetchCurrentUser = async () =>
+⋮----
+const fetchMemberships = async () =>
+⋮----
+const fetchRealResidents = async () =>
+⋮----
+// Listen for refreshEvents from Archive
+⋮----
+const handleRefreshEvents = () =>
+⋮----
+// Modified - Added refreshEventsTrigger to dependencies
+⋮----
+const fetchRealEvents = async () =>
+⋮----
+membershipIds = [dbEvent.membership_id]; // Fallback to your old column
+⋮----
+// Previously dropped here -- ScanView's "is this event still
+// scannable" check (and the Events page's Upcoming/Ongoing/
+// Past status) both need the event's real end and call-time
+// window, not just its start.
+⋮----
+// EventsView already shows its own confirm dialog before calling this,
+// and its own success/error popups after -- this just does the request
+// and lets EventsView's confirmDelete() catch failures, so there's no
+// second (native, jarring) confirm()/alert() stacked on top of it.
+const handleDeleteEvent = async (id: string | number) =>
+⋮----
+// ✅ Get the display name from currentUser or fallback to staff.name
 ````
 
 ## File: resources/js/pages/members/Members.tsx
@@ -17958,6 +19415,7 @@ import { useLanguage } from "../../i18n/LanguageContext";
 //   );
 // }
 ⋮----
+//LAST WORKING IMPLEMENTATION
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "../../components/layout/Sidebar";
 import TopHeader from "../../components/layout/TopHeader";
@@ -18046,53 +19504,511 @@ const highlightText = (text: string, query: string) =>
 ⋮----
 onAbsenceSubmitted=
 ⋮----
+// onFeedbackSubmitted={(entry) =>
+//   setMyFeedback((prev) => {
+//     const rest = prev.filter((f) => f.event_id !== entry.event_id);
+//     return [...rest, entry];
+//   })
+// }
+⋮----
 onFeedbackSubmitted=
 ````
 
-## File: resources/js/pages/staff/views/IntegrationsView.tsx
+## File: resources/js/pages/staff/views/ActivityLogsView.tsx
 ````typescript
-import React, { useEffect, useRef, useState } from "react";
-import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink } from "lucide-react";
-import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
+import KpiCard from "../../../components/ui/KpiCard";
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import { highlightMatches } from "../../../lib/highlight";
+import {
+  Search,
+  Filter,
+  Activity as ActivityIcon,
+  Eye,
+  Clock,
+  ShieldAlert,
+  Calendar,
+  User,
+  Users,
+  Bell,
+  QrCode,
+  ArrowUpDown,
+} from "lucide-react";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
+import DatePicker from "../../../components/ui/DatePicker";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+⋮----
+type Activity = {
+  id: number;
+  action: string;
+  module: string;
+  description: string;
+  user_code: string;
+  created_at: string;
+  type?: "event" | "resident" | "membership" | "notification" | "scan" | "system";
+};
+⋮----
+// Dark-palette badge colors per module type -- teal for routine records,
+// gold for scans/notifications (worth a glance), rust for auth/system
+// events (the ones staff most want to be able to spot at a glance), same
+// semantic mapping the light version used, just recolored for the dark
+// navy/gold/teal system used everywhere else.
+⋮----
+// Same palette, applied to each feed item's icon roundel instead of a
+// table badge -- keeps type recognizable at a glance in a scannable feed.
+⋮----
+// Page-open skeleton for the KPI strip (first load only -- never returns on polls).
+⋮----
+// Anchor at the very top of the page -- scrolled into view on every
+// pagination click so switching pages always lands the user back at the
+// top of the feed instead of leaving them wherever they'd scrolled to
+// on the previous page.
+⋮----
+const goToPage = (updater: number | ((p: number) => number)) =>
+⋮----
+// Real-time refresh -- other staff generate activity constantly, so this
+// polls quietly in the background rather than relying on a manual
+// refresh. `background` skips the loading skeleton so the table doesn't
+// flash/reset scroll position every 20s; it's only shown on first load
+// or when a filter changes.
+⋮----
+// =========================
+// MAP MODULE TO TYPE
+// =========================
+const mapType = (module: string): Activity["type"] =>
+⋮----
+// =========================
+// ✅ FETCH — send ALL filters to backend
+// =========================
+// Tags every fetch with an ever-increasing id so a slower, older
+// request can never overwrite what a newer one already returned. This
+// app fires more than one fetch per user action -- a filter/sort change
+// triggers this effect AND (when not already on page 1) a follow-up
+// page-reset re-fetch, and the 20-second background poll can already be
+// in flight when the user changes something -- so without this guard,
+// whichever response's network round-trip happens to land last wins,
+// even when it was the OLDER, now-stale request (e.g. switching to
+// "Oldest First" appearing to do nothing because a leftover
+// "Newest First" response for the previous selection lands afterward).
+⋮----
+const fetchActivities = async (page = 1, background = false) =>
+⋮----
+// Build query params with all filters
+⋮----
+if (requestId !== fetchRequestIdRef.current) return; // superseded by a newer request
+⋮----
+setTotalPages(json.last_page || 1); // ✅ Now reflects filtered total
+⋮----
+if (requestId !== fetchRequestIdRef.current) return; // superseded by a newer request
+⋮----
+// Fetch when page, search, filter, or date changes
+⋮----
+// Reset to page 1 when any filter changes
+⋮----
+// Quiet background poll -- keeps the log fresh without disturbing
+// whatever the staff member is currently reading or typing.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// =========================
+// ✅ NOW: NO client-side filtering — backend does it
+// =========================
+⋮----
+// At-a-glance stats for the page currently in view -- the log itself is
+// paginated server-side, so "shown" describes this page while "total"
+// uses the server-reported grand total.
+⋮----
+const relativeTimeLabel = (dateString?: string) =>
+⋮----
+// Groups the current page's activities into day buckets (Today /
+// Yesterday / a formatted date) in their existing (newest-first) order,
+// so the feed reads like a real activity stream instead of a flat list.
+⋮----
+const SkeletonItem = () => (
+    <div className="relative pl-11 pb-6 last:pb-0">
+      <span className="absolute left-[15px] top-9 bottom-0 w-px bg-white/10" />
+      <span className="absolute left-0 top-0 h-8 w-8 rounded-full bg-white/10 animate-pulse" />
+      <div className="h-3.5 bg-white/10 rounded w-1/2 animate-pulse" />
+      <div className="h-3 bg-white/10 rounded w-2/3 mt-2 animate-pulse" />
+      <div className="h-3 bg-white/10 rounded w-1/3 mt-2 animate-pulse" />
+    </div>
+  );
+⋮----
+// Total count across all day-groups so the very last row in the feed
+// (and only that one) skips the connecting timeline line beneath it.
+⋮----
+{/* Full-bleed dark navy page -- same technique and palette as the
+        Dashboard/Residents/Households/Memberships/Events/Budget/Returns
+        pages, so Activity Logs reads as part of the same system instead
+        of the old light "paper" page. This page has no add/edit modal of
+        its own, just the feed below. */}
+⋮----
+onClick=
+````
+
+## File: resources/js/pages/staff/views/ReturnsView.tsx
+````typescript
+import KpiCard from "../../../components/ui/KpiCard";
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import SaveButton from "../../../components/ui/SaveButton";
+import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
+import { highlightMatches } from "../../../lib/highlight";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Undo2, CheckCircle2, PackageX, X, RotateCcw, Pencil, Search, Package, Clock, History, Camera, Eye, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { createPortal } from "react-dom";
 import api, { apiErrorMessage } from "../../../lib/api";
-import SectionCard from "../../../components/ui/SectionCard";
+import DatePicker from "../../../components/ui/DatePicker";
+import FilterBar from "../../../components/ui/FilterBar";
+import NumberStepper from "../../../components/ui/NumberStepper";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import PhotoGallery, { PhotoItem, photoItemsFromUrls, appendPhotoFields, photoItemsChanged } from "../../../components/ui/PhotoGallery";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 ⋮----
-/**
- * Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)
- * + Text/physical QR ID". This screen owns the Facebook Page connection;
- * the physical/manual ID check-in half of "2 in 1" lives in the QR
- * Scanner's "Manual / Physical ID" tab (ScanView) since that's where staff
- * actually use it during an event.
- */
+import { tc } from "../../../lib/contentTranslations";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+interface OverdueEventItem {
+  id: number;
+  name: string;
+  quantity: number;
+  // Units already reported lost from this event's loan.
+  lost_quantity?: number;
+  // Units still out, per condition (New / Good / Fair / Poor).
+  units?: Record<string, number>;
+}
 ⋮----
-// Section switcher -- same pill-tab pattern as the other Settings-style
-// pages: one focused card at a time, with a brief skeleton flash on switch.
-type IntegrationTab = "facebook" | "qr";
+// Units already reported lost from this event's loan.
 ⋮----
-const switchTab = (next: IntegrationTab) =>
+// Units still out, per condition (New / Good / Fair / Poor).
 ⋮----
-const load = async () =>
+// Conditions a returned unit can come back in -- staff pick how many of each.
 ⋮----
-const handleConnect = (e: React.FormEvent) =>
+const sumUnits = (u: Record<string, number>)
 ⋮----
-const performConnect = async () =>
+// What is still out after `returned` came back: the same conditions first,
+// then the largest remaining one -- mirrors HasConditionUnits::takeOutMatching.
+const remainingAfterReturn = (out: Record<string, number>, returned: Record<string, number>): Record<string, number> =>
 ⋮----
-const handleDisconnect = async () =>
+interface OverdueEvent {
+  id: number;
+  name: string;
+  ended_at: string;
+  items: OverdueEventItem[];
+}
 ⋮----
-const tabCls = (on: boolean)
+interface RecentRelease {
+  id: number;
+  event_id: number;
+  event_name: string;
+  item_name: string;
+  quantity: number;
+  // Condition each returned unit came back in.
+  units?: Record<string, number>;
+  // Most this release can be raised to: already released + still borrowed.
+  max_quantity: number;
+  // Most of each condition this return can hold: already returned + still out.
+  max_units?: Record<string, number>;
+  released_by: string | null;
+  released_at: string;
+  evidence_photo_url: string | null;
+  // Every evidence photo, cover first.
+  evidence_photo_urls: string[];
+}
 ⋮----
-/* Dark-navy full-bleed page + pill tabs, same "moduling" as the Age &
-       Status Categories settings page, instead of the old light paper cards. */
+// Condition each returned unit came back in.
 ⋮----
-<button type="button" onClick=
+// Most this release can be raised to: already released + still borrowed.
 ⋮----
-<SectionCard icon=
+// Most of each condition this return can hold: already returned + still out.
 ⋮----
-aria-label=
+// Every evidence photo, cover first.
+⋮----
+// Events that have already ended but still hold borrowed inventory --
+// nothing in the system releases these on its own (see
+// EventController::overdueBorrows / releaseBorrowedItem). This page is
+// the dedicated home for that queue; the Dashboard only shows a short
+// summary that links back here.
+⋮----
+// One page of the Pending Returns queue (search, ended date and paging are done by the server).
+⋮----
+// Page-open skeleton for the KPI strip (first load only -- never returns on polls).
+⋮----
+// Brief skeleton flash on every page switch, same as Activity Logs --
+// this table paginates client-side so there's nothing to actually wait
+// on, but the flash keeps page switches feeling consistent app-wide.
+⋮----
+const goToPage = (updater: number | ((p: number) => number)) =>
+⋮----
+// Which of the two panels is showing. They are two stages of ONE flow:
+// Pending Returns (borrowed items still out) -> Release (with evidence
+// photo) -> Recently Released (logged as returned to Inventory). A wrong entry
+// is fixed right there with Edit (quantity / replace photo); lowering the
+// quantity sends the difference straight back to Pending.
+⋮----
+// Switching panels flashes the skeleton briefly, same as a page switch.
+const switchTab = (tab: "pending" | "released") =>
+⋮----
+// Load the panel being opened for real (not a fake delay): its table shows the
+// skeleton until fresh rows arrive, so Pending <-> Recently Released never shows
+// stale rows or an empty frame.
+⋮----
+// Highlights for the "where did it go?" moment after a release / undo:
+// newly logged releases glow in Recently Released, and the event that
+// just received items back glows in Pending Returns.
+⋮----
+// Result popup shown after a release / edit, with a one-click jump to the
+// other half of the flow.
+⋮----
+// Where the extra button jumps to; none when there is nothing to show there (e.g. lost units).
+⋮----
+// How many units to release per item, keyed by borrow-record id --
+// staff can give back fewer than the full borrowed quantity.
+// Per item: how many units come back in each condition (starts from what
+// was borrowed, so a plain return gives everything back as it went out).
+⋮----
+// Bulk release -- a checkbox per item (checked by default) plus one
+// "Release Selected" action, instead of making staff click "Release"
+// once per line for an event with many borrowed item types. Unchecking
+// an item leaves it out of the batch entirely (still borrowed, released
+// individually later) rather than forcing an all-or-nothing release.
+⋮----
+// Lost units are reported on their own (not part of a release): per item,
+// how many of each condition never came back. No photo, not logged as a return.
+⋮----
+// Evidence photo attached per borrowed item before it can be released --
+// required proof the item physically came back, same "required photo"
+// rule as Inventory items. Keyed by borrow-record id so Release Selected
+// (which releases several items in one batch) still needs one photo per
+// item, not one shared photo for the whole batch.
+// Evidence photos per borrowed item (up to 5 each), keyed by borrow row id.
+⋮----
+// Full-size view of a photo -- either a freshly-chosen evidence photo or
+// an already-saved one from a past release/undo -- same modal (and same
+// "VIEW PHOTO" badge + card + gold Close button) as Inventory's own photo
+// viewer, for a consistent look across the app.
+⋮----
+// Prev/next through a record's photos (wraps around) + ←/→ keys, Esc closes.
+const stepViewingPhoto = (dir: 1 | -1) =>
+⋮----
+const onKey = (e: KeyboardEvent) =>
+⋮----
+// Recent releases -- lets staff catch and fix a mis-entered quantity
+// ("I meant to release 2, not 3") without touching Inventory's raw
+// stock count by hand. See EventController::recentReleases()/undoRelease().
+⋮----
+// The release being edited in the Edit Return modal -- fix the quantity
+// and/or replace the saved evidence photo in place.
+⋮----
+// A replacement photo, only when one was picked; otherwise the saved
+// photo is kept as-is (no new photo is ever demanded for an edit).
+⋮----
+// "Move all back to Pending" -- reverses the whole release, no photo.
+⋮----
+// Real-time refresh -- the overdue-borrows queue can change any time
+// another staff member releases an item, so this polls quietly in the
+// background rather than relying on a manual refresh. `background`
+// skips the full-page spinner so the table doesn't flash/reset scroll
+// position every 20s; it's only shown on the very first load.
+⋮----
+// The latest filters/page, read by fetchOverdue so the 20 s poll never uses stale ones.
+⋮----
+const fetchOverdue = async (background = false, focusEventId?: number) =>
+⋮----
+// A page past the end (the last event of a page was just cleared): step back.
+⋮----
+const fetchRecentReleases = async (page = recentReleasesPage, background = false, searchTerm = search, highlightNew = false) =>
+⋮----
+// Silent -- this panel is a convenience, not the page's core data;
+// a failed refresh just leaves the previous list showing.
+⋮----
+// The background poll needs to know, on every tick, whether a modal is
+// currently open (so it can skip refreshing under someone's feet) and
+// which release-panel page is showing -- but reading those directly
+// would mean re-running this whole effect (and its foreground,
+// spinner-showing fetches) every time the modal opens or closes, which
+// is exactly the "loading flashes every time I open/close the modal"
+// annoyance this replaced. A ref sidesteps that: it's kept up to date
+// every render without ever forcing the effect below to re-subscribe.
+⋮----
+// Foreground (spinner-showing) fetch -- intentionally only ever runs
+// once, on mount, not on every modal open/close. The Recently Released
+// panel's own first load is handled by the
+// debounced search effect below (it fires on mount too, since `search`
+// starts out defined).
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// Portfolio-wide KPIs across every overdue event currently queued --
+// gives staff the scale of the backlog before drilling into any one
+// event's line items.
+⋮----
+const daysOverdue = (endedAt: string) =>
+⋮----
+// Search / ended date / page changes reload the queue from the server (the first load is the mount effect).
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// The same search box also searches Recently Released
+// (by event or item name), same as it does for the table above --
+// debounced so typing doesn't fire a request per keystroke, and since
+// that panel is fetched page-by-page from the server (unlike the
+// table's in-memory filter), a new search always jumps back to page 1.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// After items move back to Pending, bring the event that just got its items back into view
+// (it may sit on another page of Pending Returns) -- the server tells which page that is.
+⋮----
+// Highlights only start fading once the person is actually looking at
+// the tab they point to.
+⋮----
+const goToToastTarget = () =>
+⋮----
+// From a Recently Released row: jump to that event's remaining items.
+const focusEventInPending = (eventId: number) =>
+⋮----
+const defaultUnits = (item: OverdueEventItem): Record<string, number>
+const unitsFor = (item: OverdueEventItem)
+const qtyFor = (item: OverdueEventItem)
+⋮----
+// Each condition is capped so the total never exceeds what is still out.
+const setUnitFor = (item: OverdueEventItem, label: string, value: number) =>
+⋮----
+// Nothing is ticked when the dialog opens -- staff choose what to release
+// (or press Select All) so a bulk release is always deliberate.
+// A single-item event is ticked automatically -- there is nothing to choose.
+const isItemSelected = (item: OverdueEventItem)
+// Fresh, unticked list every time a release dialog opens or closes.
+⋮----
+const toggleItemSelected = (item: OverdueEventItem) =>
+⋮----
+// Every selected item needs its own evidence photo before a bulk release
+// can go through -- see the evidence photo strip on each row below.
+⋮----
+const toggleSelectAll = () =>
+⋮----
+const setReleasePhotosFor = (itemId: number, items: PhotoItem[])
+⋮----
+// Clears an item's evidence photos once its release went through.
+const removeReleasePhoto = (itemId: number) =>
+⋮----
+const lostDraftFor = (item: OverdueEventItem): Record<string, number> => lostDraft[item.id] ??
+const lostTotalFor = (item: OverdueEventItem)
+// Each condition is capped by how many of that condition are out on this loan.
+const setLostDraftUnit = (item: OverdueEventItem, label: string, value: number) =>
+⋮----
+const reportLostItem = async (eventId: number, item: OverdueEventItem) =>
+⋮----
+const releaseOneItem = async (eventId: number, item: OverdueEventItem, qty: number) =>
+⋮----
+// The new release is always the newest, so it belongs on page 1
+// regardless of which page of the panel was showing before.
+⋮----
+const releaseSelectedItems = async (event: OverdueEvent) =>
+⋮----
+// Snapshot which items are checked, their current Qty-field values, and
+// their attached evidence photo up front -- the in-flight requests
+// below will progressively mutate `events` (and therefore
+// modalEvent.items) as each one resolves. An item missing its photo is
+// left out entirely (the button above is disabled while any selected
+// item lacks one, so this is just a safety net).
+⋮----
+const openEdit = (release: RecentRelease) =>
+⋮----
+const closeEdit = () =>
+⋮----
+// Closing with unsaved edits asks first; closing with none just closes.
+const requestCloseEdit = () =>
+⋮----
+const unitsOfRelease = (release: RecentRelease): Record<string, number>
+⋮----
+const unitsChanged = (release: RecentRelease, units: Record<string, number>) =>
+⋮----
+// Each condition is capped by what that condition can hold, and the total
+// never goes past what the event actually borrowed.
+const setEditUnit = (release: RecentRelease, label: string, value: number) =>
+⋮----
+// Where the change lands, so the hand-off is honest: lowering the quantity
+// sends items back to Pending Returns; anything else stays in the log.
+const saveEdit = async () =>
+⋮----
+// Quantities on both sides may have changed -- refresh both quietly.
+⋮----
+// Full reversal -- the whole release goes back to Pending Returns. No new
+// photo: the release's own evidence stays on record.
+const moveAllBack = async (release: RecentRelease) =>
+⋮----
+const formatEndedAt = (value: string) =>
+⋮----
+const relativeTimeLabel = (dateString?: string) =>
+⋮----
+{/* Full-bleed dark navy page -- same technique and palette as the
+        Dashboard/Residents/Households/Memberships/Events/Budget pages, so
+        Returns reads as part of the same system instead of the old light
+        "paper" page. The Release Items modal is darkened along with the
+        page (it's this page's core action, same treatment as the
+        Households/Inventory/Budget Edit modals); the confirm and success
+        modals further below stay on their original light theme, same
+        scoping used everywhere else. */}
+⋮----
+{/* Flow switcher -- Pending Returns and Recently Released are the two
+          stages of one return process (Pending -> Release -> Released ->
+          Undo -> back to Pending), so both pills always show a live count
+          and an arrow between them makes the direction of travel obvious. */}
+⋮----
+{/* Pending Returns -- its own bordered card with a persistent header
+          (icon + title + hint), only rendered while its pill button above
+          is the active one. */}
+⋮----
+onClick=
+⋮----
+{/* Recently Released -- the return log, and where a mis-entered
+          quantity or wrong photo is corrected (Edit).
+          Shown regardless of whether the source event still has other
+          items outstanding (an event that's fully released drops off the
+          table above entirely, so this can't live nested inside that
+          event's own modal -- it has to stand on its own). Only rendered
+          while its pill button above is the active one, same as Pending
+          Returns, so the two never appear stacked together. */}
+⋮----
+{/* Thumbnail of the evidence photo taken when this item
+                        was released, if one was attached -- click to view
+                        it full-size before deciding whether to edit. */}
+⋮----
+// Same two-layer structure as Inventory's table thumbnail:
+// the circle is just a static photo frame (its own
+// overflow-hidden so the photo doesn't spill past it), and
+// the "view" eye badge is a sibling positioned over its
+// corner, not a clipped child -- nesting it inside the
+// overflow-hidden circle cut the badge in half.
+⋮----
+{/* Release Items modal -- dark navy card, same treatment as the
+          Households/Inventory/Budget core edit modals, since releasing
+          items is this page's main action rather than a peripheral
+          confirm/success alert. */}
+⋮----
+<FormSection title=
+⋮----
+{/* Unchecked items are simply left out of "Release
+                        Selected" below -- the item itself, and its own
+                        Release button, are unaffected either way. */}
+⋮----
+{/* Which condition each returned unit comes back in -- starts
+                    from what was borrowed; change it if something came back
+                    worn or damaged. Goes back into Inventory exactly like this. */}
+⋮----
+{/* Evidence photos for THIS item -- up to 5. */}
+⋮----
+{/* Units that never came back. Reported on their own: no photo,
+                    and not part of "Release Selected". */}
+⋮----
+value=
 ⋮----
 title=
 ⋮----
@@ -18100,7 +20016,14 @@ cancelLabel=
 ⋮----
 onCancel=
 ⋮----
-{/* Shared StatusModal -- same dark success/error popups as every other page. */}
+{/* Edit Return modal -- correct a return right where it's logged:
+          change how many came back, or swap the evidence photo. Nothing is
+          undone and no second photo is required; lowering the quantity just
+          sends the difference back to Pending Returns. */}
+⋮----
+// Same sizing and card style as the Release Items modal, so both
+// return dialogs feel like one family.
+⋮----
 ````
 
 ## File: app/Http/Controllers/ReportController.php
@@ -18403,11 +20326,10 @@ $items = $query->orderBy('name')->get();
 ⋮----
 // An item can hold units in several conditions at once (e.g. 45 Good
 // + 15 New), so each condition counts the items that have units in it
-// and sums those units. An item with nothing in stock is counted
-// under its main condition.
+// and sums those units.
 ⋮----
 ->map(function ($column, $label) use ($items) {
-$has = $items->filter(fn ($i) => (int) $i->{$column} > 0
+$has = $items->filter(fn ($i) => (int) $i->{$column} > 0);
 ⋮----
 return ['condition' => $label, 'count' => $has->count(), 'quantity' => (int) $items->sum($column)];
 ⋮----
@@ -19113,14 +21035,20 @@ return response()->json([
 ⋮----
 'at' => now()->toIso8601String(),
 ⋮----
-/** CSV export (opens in Excel / Google Sheets) -- follows the same filters as the report on screen. */
+/**
+     * Excel / CSV export. With ?as=json it returns the structured report
+     * (letterhead data, message, details, tiles, table, totals) that the
+     * browser turns into the styled workbook (see reportExcelExport.ts); without
+     * it, it falls back to a plain CSV file. Both log one Report History row.
+     */
 public function exportCsv(Request $request)
 ⋮----
 $this->recordGeneration($request, $payload, 'csv');
+$table = $this->buildTabularExport($payload);
 ⋮----
-collect($e['memberships'])->implode('; '), $e['eligible'], $e['attended'], $e['absent'], $e['percentage'],
+if ($request->query('as') === 'json') {
 ⋮----
-collect($i['condition_units'])->map(fn ($c) => "{$c['units']} {$c['condition']}")->implode('; '),
+'generatedAt' => now()->format('F j, Y g:i A'),
 ⋮----
 $fileName = Str::slug($payload['reportTitle']) . '-' . now()->format('Ymd') . '.csv';
 ⋮----
@@ -19131,6 +21059,59 @@ fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads accents and the peso s
 fputcsv($out, [$payload['filterSummary'], 'Generated ' . now()->format('F j, Y g:i A')]);
 ⋮----
 // Guard against spreadsheet formula injection from user-typed names.
+⋮----
+/**
+     * The one table each report type exports, plus the headline tiles, the
+     * details grid and a totals row. Column formats: text, int, money,
+     * percent, rating. A column with 'sum' => true is added up in the totals row.
+     *
+     * @return array{columns: array, rows: array, totals: array, tiles: array, details: array}
+     */
+private function buildTabularExport(array $payload): array
+⋮----
+$col('Event'), $col('Date'), $col('Start'), $col('End'), $col('Location'), $col('Status'), $col('Memberships'),
+$col('Registered', 'int', true), $col('Present', 'int', true), $col('Absent', 'int', true), $col('Attendance %', 'percent'),
+$col('Average rating', 'rating'), $col('Approved budget', 'money', true), $col('Expenses', 'money', true),
+⋮----
+collect($e['memberships'])->implode('; '), $e['eligible'], $e['attended'], $e['absent'], $e['percentage'],
+⋮----
+$detail('Scope', $scope),
+$detail('Events', ($s['total_events'] ?? 0) . ' listed'),
+$detail('Registered', number_format((float) ($s['total_eligible'] ?? 0))),
+$detail('Present', number_format((float) ($s['total_attended'] ?? 0))),
+$detail('Attendance Rate', ($s['attendance_percentage'] ?? 0) . '%'),
+$detail('Average Rating', isset($s['average_feedback_rating']) ? $s['average_feedback_rating'] . ' / 5' : 'No ratings yet'),
+⋮----
+$col('Membership'), $col('Members', 'int', true), $col('Age bracket'), $col('Civil status'), $col('Current status'), $col('Gender'),
+⋮----
+$detail('Memberships', $s['total_memberships'] ?? 0),
+$detail('Enrolled Residents', $s['total_assignments'] ?? 0),
+$detail('Generated', $payload['printedOn']),
+⋮----
+$col('Event'), $col('Date'), $col('Event status'), $col('Approved budget', 'money', true), $col('Spent', 'money', true),
+$col('Remaining', 'money', true), $col('Over by', 'money', true), $col('Used %', 'percent'), $col('Budget status'), $col('Expense entries', 'int', true),
+⋮----
+$detail('Events', ($s['total_events'] ?? 0) . ' with a budget'),
+$detail('Budget Used', ($s['utilization_percentage'] ?? 0) . '%'),
+$detail('Over Budget', ($s['events_over_budget'] ?? 0) . ' event(s)'),
+$detail('Near Limit', ($s['events_near_limit'] ?? 0) . ' event(s)'),
+$detail('Without Budget', ($s['events_without_budget'] ?? 0) . ' event(s)'),
+$detail('Expense Entries', $s['total_expense_entries'] ?? 0),
+$detail('Spent Without Budget', '₱' . number_format((float) ($s['unbudgeted_spent'] ?? 0), 2)),
+⋮----
+$col('Item'), $col('Quantity', 'int', true), $col('Main condition'), $col('Condition breakdown'),
+$col('Storage location'), $col('Lost / pending', 'int', true), $col('Disposed', 'int', true),
+⋮----
+collect($i['condition_units'])->map(fn ($c) => "{$c['units']} {$c['condition']}")->implode('; '),
+⋮----
+$detail('Items', $s['total_items'] ?? 0),
+$detail('Total Units', $s['total_quantity'] ?? 0),
+$detail('Lost Units', $s['lost_units'] ?? 0),
+$detail('Disposed Units', $s['disposed_units'] ?? 0),
+⋮----
+// Totals row: "TOTAL" in the first column, sums for the columns marked 'sum'.
+⋮----
+$totals[] = round(collect($rows)->sum(fn ($r) => is_numeric($r[$idx] ?? null) ? (float) $r[$idx] : 0), 2);
 ⋮----
 /** Report History -- who generated what, newest first. Query: type, format, search, page, per_page. */
 public function history(Request $request)
@@ -19245,599 +21226,6 @@ $key = $keyFor($d);
 $add($points[$key], $i);
 ````
 
-## File: resources/js/pages/staff/views/ActivityLogsView.tsx
-````typescript
-import KpiCard from "../../../components/ui/KpiCard";
-import { scrollListIntoView } from "../../../lib/scrollToList";
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import { highlightMatches } from "../../../lib/highlight";
-import {
-  Search,
-  Filter,
-  Activity as ActivityIcon,
-  Eye,
-  Clock,
-  ShieldAlert,
-  Calendar,
-  User,
-  Users,
-  Bell,
-  QrCode,
-  ArrowUpDown,
-} from "lucide-react";
-import { useLanguage } from "../../../i18n/LanguageContext";
-import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
-import DatePicker from "../../../components/ui/DatePicker";
-import FilterDropdown from "../../../components/ui/FilterDropdown";
-import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
-⋮----
-type Activity = {
-  id: number;
-  action: string;
-  module: string;
-  description: string;
-  user_code: string;
-  created_at: string;
-  type?: "event" | "resident" | "membership" | "notification" | "scan" | "system";
-};
-⋮----
-// Dark-palette badge colors per module type -- teal for routine records,
-// gold for scans/notifications (worth a glance), rust for auth/system
-// events (the ones staff most want to be able to spot at a glance), same
-// semantic mapping the light version used, just recolored for the dark
-// navy/gold/teal system used everywhere else.
-⋮----
-// Same palette, applied to each feed item's icon roundel instead of a
-// table badge -- keeps type recognizable at a glance in a scannable feed.
-⋮----
-// Page-open skeleton for the KPI strip (first load only -- never returns on polls).
-⋮----
-// Anchor at the very top of the page -- scrolled into view on every
-// pagination click so switching pages always lands the user back at the
-// top of the feed instead of leaving them wherever they'd scrolled to
-// on the previous page.
-⋮----
-const goToPage = (updater: number | ((p: number) => number)) =>
-⋮----
-// Real-time refresh -- other staff generate activity constantly, so this
-// polls quietly in the background rather than relying on a manual
-// refresh. `background` skips the loading skeleton so the table doesn't
-// flash/reset scroll position every 20s; it's only shown on first load
-// or when a filter changes.
-⋮----
-// =========================
-// MAP MODULE TO TYPE
-// =========================
-const mapType = (module: string): Activity["type"] =>
-⋮----
-// =========================
-// ✅ FETCH — send ALL filters to backend
-// =========================
-// Tags every fetch with an ever-increasing id so a slower, older
-// request can never overwrite what a newer one already returned. This
-// app fires more than one fetch per user action -- a filter/sort change
-// triggers this effect AND (when not already on page 1) a follow-up
-// page-reset re-fetch, and the 20-second background poll can already be
-// in flight when the user changes something -- so without this guard,
-// whichever response's network round-trip happens to land last wins,
-// even when it was the OLDER, now-stale request (e.g. switching to
-// "Oldest First" appearing to do nothing because a leftover
-// "Newest First" response for the previous selection lands afterward).
-⋮----
-const fetchActivities = async (page = 1, background = false) =>
-⋮----
-// Build query params with all filters
-⋮----
-if (requestId !== fetchRequestIdRef.current) return; // superseded by a newer request
-⋮----
-setTotalPages(json.last_page || 1); // ✅ Now reflects filtered total
-⋮----
-if (requestId !== fetchRequestIdRef.current) return; // superseded by a newer request
-⋮----
-// Fetch when page, search, filter, or date changes
-⋮----
-// Reset to page 1 when any filter changes
-⋮----
-// Quiet background poll -- keeps the log fresh without disturbing
-// whatever the staff member is currently reading or typing.
-⋮----
-// eslint-disable-next-line react-hooks/exhaustive-deps
-⋮----
-// =========================
-// ✅ NOW: NO client-side filtering — backend does it
-// =========================
-⋮----
-// At-a-glance stats for the page currently in view -- the log itself is
-// paginated server-side, so "shown" describes this page while "total"
-// uses the server-reported grand total.
-⋮----
-const relativeTimeLabel = (dateString?: string) =>
-⋮----
-// Groups the current page's activities into day buckets (Today /
-// Yesterday / a formatted date) in their existing (newest-first) order,
-// so the feed reads like a real activity stream instead of a flat list.
-⋮----
-const SkeletonItem = () => (
-    <div className="relative pl-11 pb-6 last:pb-0">
-      <span className="absolute left-[15px] top-9 bottom-0 w-px bg-white/10" />
-      <span className="absolute left-0 top-0 h-8 w-8 rounded-full bg-white/10 animate-pulse" />
-      <div className="h-3.5 bg-white/10 rounded w-1/2 animate-pulse" />
-      <div className="h-3 bg-white/10 rounded w-2/3 mt-2 animate-pulse" />
-      <div className="h-3 bg-white/10 rounded w-1/3 mt-2 animate-pulse" />
-    </div>
-  );
-⋮----
-// Total count across all day-groups so the very last row in the feed
-// (and only that one) skips the connecting timeline line beneath it.
-⋮----
-{/* Full-bleed dark navy page -- same technique and palette as the
-        Dashboard/Residents/Households/Memberships/Events/Budget/Returns
-        pages, so Activity Logs reads as part of the same system instead
-        of the old light "paper" page. This page has no add/edit modal of
-        its own, just the feed below. */}
-⋮----
-onClick=
-````
-
-## File: resources/js/pages/staff/views/ReturnsView.tsx
-````typescript
-import KpiCard from "../../../components/ui/KpiCard";
-import { scrollListIntoView } from "../../../lib/scrollToList";
-import SaveButton from "../../../components/ui/SaveButton";
-import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
-import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import { matchesSearch } from "../../../lib/search";
-import { highlightMatches } from "../../../lib/highlight";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Undo2, CheckCircle2, PackageX, X, RotateCcw, Pencil, Search, Package, Clock, History, Camera, Eye, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
-import { createPortal } from "react-dom";
-import api, { apiErrorMessage } from "../../../lib/api";
-import DatePicker from "../../../components/ui/DatePicker";
-import FilterBar from "../../../components/ui/FilterBar";
-import NumberStepper from "../../../components/ui/NumberStepper";
-import ConfirmDialog from "../../../components/ui/ConfirmDialog";
-import PhotoGallery, { PhotoItem, photoItemsFromUrls, appendPhotoFields, photoItemsChanged } from "../../../components/ui/PhotoGallery";
-import StatusModal from "../../../components/ui/StatusModal";
-import Skeleton from "../../../components/ui/Skeleton";
-import { useLanguage } from "../../../i18n/LanguageContext";
-import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
-⋮----
-import { tc } from "../../../lib/contentTranslations";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
-interface OverdueEventItem {
-  id: number;
-  name: string;
-  quantity: number;
-  // Units still out, per condition (New / Good / Fair / Poor).
-  units?: Record<string, number>;
-}
-⋮----
-// Units still out, per condition (New / Good / Fair / Poor).
-⋮----
-// Conditions a returned unit can come back in -- staff pick how many of each.
-⋮----
-const sumUnits = (u: Record<string, number>)
-⋮----
-// What is still out after `returned` came back: the same conditions first,
-// then the largest remaining one -- mirrors HasConditionUnits::takeOutMatching.
-const remainingAfterReturn = (out: Record<string, number>, returned: Record<string, number>): Record<string, number> =>
-⋮----
-interface OverdueEvent {
-  id: number;
-  name: string;
-  ended_at: string;
-  items: OverdueEventItem[];
-}
-⋮----
-interface RecentRelease {
-  id: number;
-  event_id: number;
-  event_name: string;
-  item_name: string;
-  quantity: number;
-  // Condition each returned unit came back in.
-  units?: Record<string, number>;
-  // Most this release can be raised to: already released + still borrowed.
-  max_quantity: number;
-  // Most of each condition this return can hold: already returned + still out.
-  max_units?: Record<string, number>;
-  released_by: string | null;
-  released_at: string;
-  evidence_photo_url: string | null;
-  // Every evidence photo, cover first.
-  evidence_photo_urls: string[];
-}
-⋮----
-// Condition each returned unit came back in.
-⋮----
-// Most this release can be raised to: already released + still borrowed.
-⋮----
-// Most of each condition this return can hold: already returned + still out.
-⋮----
-// Every evidence photo, cover first.
-⋮----
-// Events that have already ended but still hold borrowed inventory --
-// nothing in the system releases these on its own (see
-// EventController::overdueBorrows / releaseBorrowedItem). This page is
-// the dedicated home for that queue; the Dashboard only shows a short
-// summary that links back here.
-⋮----
-// Page-open skeleton for the KPI strip (first load only -- never returns on polls).
-⋮----
-// Brief skeleton flash on every page switch, same as Activity Logs --
-// this table paginates client-side so there's nothing to actually wait
-// on, but the flash keeps page switches feeling consistent app-wide.
-⋮----
-const goToPage = (updater: number | ((p: number) => number)) =>
-⋮----
-// Which of the two panels is showing. They are two stages of ONE flow:
-// Pending Returns (borrowed items still out) -> Release (with evidence
-// photo) -> Recently Released (logged as returned to Inventory). A wrong entry
-// is fixed right there with Edit (quantity / replace photo); lowering the
-// quantity sends the difference straight back to Pending.
-⋮----
-// Switching panels flashes the skeleton briefly, same as a page switch.
-const switchTab = (tab: "pending" | "released") =>
-// Highlights for the "where did it go?" moment after a release / undo:
-// newly logged releases glow in Recently Released, and the event that
-// just received items back glows in Pending Returns.
-⋮----
-// Result popup shown after a release / edit, with a one-click jump to the
-// other half of the flow.
-⋮----
-// How many units to release per item, keyed by borrow-record id --
-// staff can give back fewer than the full borrowed quantity.
-// Per item: how many units come back in each condition (starts from what
-// was borrowed, so a plain return gives everything back as it went out).
-⋮----
-// Bulk release -- a checkbox per item (checked by default) plus one
-// "Release Selected" action, instead of making staff click "Release"
-// once per line for an event with many borrowed item types. Unchecking
-// an item leaves it out of the batch entirely (still borrowed, released
-// individually later) rather than forcing an all-or-nothing release.
-⋮----
-// Evidence photo attached per borrowed item before it can be released --
-// required proof the item physically came back, same "required photo"
-// rule as Inventory items. Keyed by borrow-record id so Release Selected
-// (which releases several items in one batch) still needs one photo per
-// item, not one shared photo for the whole batch.
-// Evidence photos per borrowed item (up to 5 each), keyed by borrow row id.
-⋮----
-// Full-size view of a photo -- either a freshly-chosen evidence photo or
-// an already-saved one from a past release/undo -- same modal (and same
-// "VIEW PHOTO" badge + card + gold Close button) as Inventory's own photo
-// viewer, for a consistent look across the app.
-⋮----
-// Prev/next through a record's photos (wraps around) + ←/→ keys, Esc closes.
-const stepViewingPhoto = (dir: 1 | -1) =>
-⋮----
-const onKey = (e: KeyboardEvent) =>
-⋮----
-// Recent releases -- lets staff catch and fix a mis-entered quantity
-// ("I meant to release 2, not 3") without touching Inventory's raw
-// stock count by hand. See EventController::recentReleases()/undoRelease().
-⋮----
-// The release being edited in the Edit Return modal -- fix the quantity
-// and/or replace the saved evidence photo in place.
-⋮----
-// A replacement photo, only when one was picked; otherwise the saved
-// photo is kept as-is (no new photo is ever demanded for an edit).
-⋮----
-// "Move all back to Pending" -- reverses the whole release, no photo.
-⋮----
-// Real-time refresh -- the overdue-borrows queue can change any time
-// another staff member releases an item, so this polls quietly in the
-// background rather than relying on a manual refresh. `background`
-// skips the full-page spinner so the table doesn't flash/reset scroll
-// position every 20s; it's only shown on the very first load.
-⋮----
-const fetchOverdue = async (background = false) =>
-⋮----
-const fetchRecentReleases = async (page = recentReleasesPage, background = false, searchTerm = search, highlightNew = false) =>
-⋮----
-// Silent -- this panel is a convenience, not the page's core data;
-// a failed refresh just leaves the previous list showing.
-⋮----
-// The background poll needs to know, on every tick, whether a modal is
-// currently open (so it can skip refreshing under someone's feet) and
-// which release-panel page is showing -- but reading those directly
-// would mean re-running this whole effect (and its foreground,
-// spinner-showing fetches) every time the modal opens or closes, which
-// is exactly the "loading flashes every time I open/close the modal"
-// annoyance this replaced. A ref sidesteps that: it's kept up to date
-// every render without ever forcing the effect below to re-subscribe.
-⋮----
-// Foreground (spinner-showing) fetch -- intentionally only ever runs
-// once, on mount, not on every modal open/close. The Recently Released
-// panel's own first load is handled by the
-// debounced search effect below (it fires on mount too, since `search`
-// starts out defined).
-⋮----
-// eslint-disable-next-line react-hooks/exhaustive-deps
-⋮----
-// Portfolio-wide KPIs across every overdue event currently queued --
-// gives staff the scale of the backlog before drilling into any one
-// event's line items.
-⋮----
-const daysOverdue = (endedAt: string) =>
-⋮----
-// Ended-date range filter -- comparing plain "yyyy-mm-dd" slices keeps
-// this independent of time-of-day/timezone formatting.
-⋮----
-// The same search box also searches Recently Released
-// (by event or item name), same as it does for the table above --
-// debounced so typing doesn't fire a request per keystroke, and since
-// that panel is fetched page-by-page from the server (unlike the
-// table's in-memory filter), a new search always jumps back to page 1.
-⋮----
-// eslint-disable-next-line react-hooks/exhaustive-deps
-⋮----
-// After items move back to Pending, bring the event that just got its items back into view
-// (it may sit on another page of Pending Returns).
-⋮----
-// Highlights only start fading once the person is actually looking at
-// the tab they point to.
-⋮----
-const goToToastTarget = () =>
-⋮----
-// From a Recently Released row: jump to that event's remaining items.
-const focusEventInPending = (eventId: number) =>
-⋮----
-const defaultUnits = (item: OverdueEventItem): Record<string, number>
-const unitsFor = (item: OverdueEventItem)
-const qtyFor = (item: OverdueEventItem)
-⋮----
-// Each condition is capped so the total never exceeds what is still out.
-const setUnitFor = (item: OverdueEventItem, label: string, value: number) =>
-⋮----
-// Nothing is ticked when the dialog opens -- staff choose what to release
-// (or press Select All) so a bulk release is always deliberate.
-// A single-item event is ticked automatically -- there is nothing to choose.
-const isItemSelected = (item: OverdueEventItem)
-// Fresh, unticked list every time a release dialog opens or closes.
-⋮----
-const toggleItemSelected = (item: OverdueEventItem) =>
-⋮----
-// Every selected item needs its own evidence photo before a bulk release
-// can go through -- see the evidence photo strip on each row below.
-⋮----
-const toggleSelectAll = () =>
-⋮----
-const setReleasePhotosFor = (itemId: number, items: PhotoItem[])
-⋮----
-// Clears an item's evidence photos once its release went through.
-const removeReleasePhoto = (itemId: number) =>
-⋮----
-const releaseOneItem = async (eventId: number, item: OverdueEventItem, qty: number) =>
-⋮----
-// The new release is always the newest, so it belongs on page 1
-// regardless of which page of the panel was showing before.
-⋮----
-const releaseSelectedItems = async (event: OverdueEvent) =>
-⋮----
-// Snapshot which items are checked, their current Qty-field values, and
-// their attached evidence photo up front -- the in-flight requests
-// below will progressively mutate `events` (and therefore
-// modalEvent.items) as each one resolves. An item missing its photo is
-// left out entirely (the button above is disabled while any selected
-// item lacks one, so this is just a safety net).
-⋮----
-const openEdit = (release: RecentRelease) =>
-⋮----
-const closeEdit = () =>
-⋮----
-// Closing with unsaved edits asks first; closing with none just closes.
-const requestCloseEdit = () =>
-⋮----
-const unitsOfRelease = (release: RecentRelease): Record<string, number>
-⋮----
-const unitsChanged = (release: RecentRelease, units: Record<string, number>) =>
-⋮----
-// Each condition is capped by what that condition can hold, and the total
-// never goes past what the event actually borrowed.
-const setEditUnit = (release: RecentRelease, label: string, value: number) =>
-⋮----
-// Where the change lands, so the hand-off is honest: lowering the quantity
-// sends items back to Pending Returns; anything else stays in the log.
-const saveEdit = async () =>
-⋮----
-// Quantities on both sides may have changed -- refresh both quietly.
-⋮----
-// Full reversal -- the whole release goes back to Pending Returns. No new
-// photo: the release's own evidence stays on record.
-const moveAllBack = async (release: RecentRelease) =>
-⋮----
-const formatEndedAt = (value: string) =>
-⋮----
-const relativeTimeLabel = (dateString?: string) =>
-⋮----
-{/* Full-bleed dark navy page -- same technique and palette as the
-        Dashboard/Residents/Households/Memberships/Events/Budget pages, so
-        Returns reads as part of the same system instead of the old light
-        "paper" page. The Release Items modal is darkened along with the
-        page (it's this page's core action, same treatment as the
-        Households/Inventory/Budget Edit modals); the confirm and success
-        modals further below stay on their original light theme, same
-        scoping used everywhere else. */}
-⋮----
-{/* Flow switcher -- Pending Returns and Recently Released are the two
-          stages of one return process (Pending -> Release -> Released ->
-          Undo -> back to Pending), so both pills always show a live count
-          and an arrow between them makes the direction of travel obvious. */}
-⋮----
-{/* Pending Returns -- its own bordered card with a persistent header
-          (icon + title + hint), only rendered while its pill button above
-          is the active one. */}
-⋮----
-onClick=
-⋮----
-{/* Recently Released -- the return log, and where a mis-entered
-          quantity or wrong photo is corrected (Edit).
-          Shown regardless of whether the source event still has other
-          items outstanding (an event that's fully released drops off the
-          table above entirely, so this can't live nested inside that
-          event's own modal -- it has to stand on its own). Only rendered
-          while its pill button above is the active one, same as Pending
-          Returns, so the two never appear stacked together. */}
-⋮----
-{/* Thumbnail of the evidence photo taken when this item
-                        was released, if one was attached -- click to view
-                        it full-size before deciding whether to edit. */}
-⋮----
-// Same two-layer structure as Inventory's table thumbnail:
-// the circle is just a static photo frame (its own
-// overflow-hidden so the photo doesn't spill past it), and
-// the "view" eye badge is a sibling positioned over its
-// corner, not a clipped child -- nesting it inside the
-// overflow-hidden circle cut the badge in half.
-⋮----
-{/* Release Items modal -- dark navy card, same treatment as the
-          Households/Inventory/Budget core edit modals, since releasing
-          items is this page's main action rather than a peripheral
-          confirm/success alert. */}
-⋮----
-<FormSection title=
-⋮----
-{/* Unchecked items are simply left out of "Release
-                        Selected" below -- the item itself, and its own
-                        Release button, are unaffected either way. */}
-⋮----
-{/* Which condition each returned unit comes back in -- starts
-                    from what was borrowed; change it if something came back
-                    worn or damaged. Goes back into Inventory exactly like this. */}
-⋮----
-{/* Evidence photos for THIS item -- up to 5. */}
-⋮----
-title=
-⋮----
-cancelLabel=
-⋮----
-onCancel=
-⋮----
-{/* Edit Return modal -- correct a return right where it's logged:
-          change how many came back, or swap the evidence photo. Nothing is
-          undone and no second photo is required; lowering the quantity just
-          sends the difference back to Pending Returns. */}
-⋮----
-// Same sizing and card style as the Release Items modal, so both
-// return dialogs feel like one family.
-⋮----
-
-⋮----
-value=
-````
-
-## File: resources/js/pages/staff/Staff.tsx
-````typescript
-import { highlightMatches } from "../../lib/highlight";
-import React, { useEffect, useMemo, useState } from "react";
-⋮----
-// --- LAYOUT IMPORTS ---
-import Sidebar from "./components/Sidebar";
-import TopHeader from "./components/TopHeader";
-⋮----
-// --- VIEW IMPORTS ---
-import DashboardView from "./views/DashboardView";
-import ScanView from "./views/ScanView";
-import ResidentsView from "./views/ResidentsView";
-import HouseholdsView from "./views/HouseholdsView";
-import QRCodesView from "./views/QRCodesView";
-import { EventsView } from "./views/EventsView";
-import NotificationsView from "./views/NotificationsView";
-import ActivityLogsView from "./views/ActivityLogsView";
-import ArchiveView from "./views/ArchiveView";
-import ReportsView from "./views/ReportsView";
-import InventoryView from "./views/InventoryView";
-import ReturnsView from "./views/ReturnsView";
-import BudgetView from "./views/BudgetView";
-import IntegrationsView from "./views/IntegrationsView";
-import FeedbackRulesView from "./views/FeedbackRulesView";
-import ProfilingSettingsView from "./views/ProfilingSettingsView";
-import MyAccountView from "./views/MyAccountView";
-import StaffAccountsView from "./views/StaffAccountsView";
-import OfflineBanner from "../../components/ui/OfflineBanner";
-import api from "../../lib/api";
-import { useLanguage } from "../../i18n/LanguageContext";
-import { useThemeScope } from "../../lib/theme";
-import { staffKeyFromPath, staffUrlFor } from "../../lib/staffRoutes";
-⋮----
-// --- TYPES & MOCK DATA ---
-export type Resident = { id: string; name: string; age: number; address: string; contact: string; };
-export type Membership = { id: string; name: string; description: string; codeId?: string; note?: string; verified?: boolean; memberIds: string[]; };
-export type Notification = { id: number; title: string; body: string; sentAt: string; };
-export type AttendanceRecord = { id: number; eventTitle: string; eventDate: string; location: string; timeIn: string; timeOut: string; status: string; };
-export type TrashedItem = {
-  id: string | number;
-  type: 'event' | 'resident' | 'membership' | 'notification';
-  name: string;
-  deletedAt: string;
-  deletedBy: string;
-};
-⋮----
-export const highlightText = (text: string, query: string)
-⋮----
-// --------------------------
-// MAIN COMPONENT
-// --------------------------
-⋮----
-const getInitialActive = ()
-⋮----
-// A bell notification asks to open an event on a given tab (e.g. its Feedback).
-⋮----
-// State for refreshing events
-⋮----
-// ✅ ADD THIS - State for current logged-in user
-⋮----
-const setActive = (page: string, path?: string) =>
-⋮----
-const handlePopState = () =>
-⋮----
-const onOpen = (e: Event) =>
-const onNotify = (e: Event) =>
-⋮----
-const getMembershipName = (id: string | number | null | undefined) =>
-⋮----
-const fetchEventsCount = async () =>
-⋮----
-// Keep-alive: while the person is really using the page (clicking, typing,
-// scrolling) tell the server, at most every 2 minutes. Background polling
-// doesn't count, so an unattended screen still signs out after the idle limit.
-⋮----
-const ping = () =>
-⋮----
-// ✅ ADD THIS - Fetch current logged-in user
-⋮----
-const fetchCurrentUser = async () =>
-⋮----
-const fetchMemberships = async () =>
-⋮----
-const fetchRealResidents = async () =>
-⋮----
-// Listen for refreshEvents from Archive
-⋮----
-const handleRefreshEvents = () =>
-⋮----
-// Modified - Added refreshEventsTrigger to dependencies
-⋮----
-const fetchRealEvents = async () =>
-⋮----
-membershipIds = [dbEvent.membership_id]; // Fallback to your old column
-⋮----
-// Previously dropped here -- ScanView's "is this event still
-// scannable" check (and the Events page's Upcoming/Ongoing/
-// Past status) both need the event's real end and call-time
-// window, not just its start.
-⋮----
-// EventsView already shows its own confirm dialog before calling this,
-// and its own success/error popups after -- this just does the request
-// and lets EventsView's confirmDelete() catch failures, so there's no
-// second (native, jarring) confirm()/alert() stacked on top of it.
-const handleDeleteEvent = async (id: string | number) =>
-⋮----
-// ✅ Get the display name from currentUser or fallback to staff.name
-````
-
 ## File: resources/js/pages/login/Login.tsx
 ````typescript
 import { useState, useRef, useEffect } from "react";
@@ -19947,6 +21335,8 @@ const handleClickOutside = (event: MouseEvent) =>
                       one above -- hide the browser's built-in icon so only
                       ours shows. */}
 ⋮----
+// Digits only, six of them: typing or pasting anything else is dropped.
+⋮----
 onChange=
 ⋮----
 
@@ -19966,7 +21356,6 @@ onClick=
 ````typescript
 import { scrollListIntoView } from "../../../lib/scrollToList";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import { matchesSearch } from "../../../lib/search";
 import { useState, useMemo, useEffect, useRef } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
 import DatePicker from "../../../components/ui/DatePicker";
@@ -20003,6 +21392,8 @@ interface NotificationsViewProps {
    highlightText: (text: string, query: string) => React.ReactNode;
 }
 ⋮----
+// Only the current page is held here; search, filters and paging are done by the server.
+⋮----
 // Announcements about events, and staff hearts/replies on the member's own feedback, are kept apart.
 ⋮----
 const [dateFilter, setDateFilter] = useState("all"); // All / Upcoming / Past
@@ -20020,14 +21411,21 @@ const goToPage = (updater: number | ((p: number) => number)) =>
 // polling pattern the staff portal's live dashboards use, so this
 // page keeps itself current instead of only ever loading once.
 ⋮----
+// A new tab / search / filter starts again from page 1; any change reloads from the server.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
 // `silent` skips the full-page spinner -- used by the 20s background poll
 // below, so new notifications simply appear instead of the whole page
 // flashing back to a loading state every 20 seconds.
+⋮----
 const fetchNotifications = async (silent = false) =>
 ⋮----
 const getCsrfToken = () =>
 ⋮----
 const markAsRead = async (id: number) =>
+⋮----
+fetchNotificationsRef.current(true); // refresh the tab badges (and any "Unread" filter)
 ⋮----
 const handleNotificationClick = (notification: Notification) =>
 ⋮----
@@ -20043,26 +21441,11 @@ const formatEventTime = (dateStr: string): string =>
 ⋮----
 const parseMessage = (message: string):
 ⋮----
-// One entry per event that has at least one notification, A-Z.
+// One entry per event that has at least one notification in this tab, A-Z (from the server).
 ⋮----
 // eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
-// Search filter
-⋮----
-// Event filter: All / Ongoing / Upcoming / Past
-⋮----
-const startOf = (n: Notification)
-const endOf = (n: Notification)
-⋮----
-// Event filter: only notifications about one chosen event
-⋮----
-// Status filter: All / Unread
-⋮----
-// Pagination logic
-⋮----
 // The upcoming/past filter only applies to event announcements.
-⋮----
-// Reset to first page when filters change
 ⋮----
 const closeModal = () =>
 ⋮----
@@ -20322,7 +21705,6 @@ performQrDownload();
 ## File: resources/js/pages/staff/views/NotificationsView.tsx
 ````typescript
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import { matchesSearch } from "../../../lib/search";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Filter, Users, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, Smartphone, Home } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
@@ -20379,7 +21761,13 @@ interface NotificationsViewProps {
 ⋮----
 const goToPage = (updater: number | ((p: number) => number)) =>
 ⋮----
-const fetchAllNotifications = async (): Promise<void> =>
+// Search, date, audience and paging are all done by the server (NotificationController::staffNotifications).
+⋮----
+const fetchNotifications = async (): Promise<void> =>
+⋮----
+// A new search / filter starts again from page 1.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
 // Adviser recommendation: "Notify by household — head of household — SMS
 // contact number per household" — a staff-facing view of what was sent.
@@ -20401,10 +21789,6 @@ if (req !== smsReq.current) return; // a newer request superseded this one
 // Typing waits a moment before asking the server; any change goes back to page 1.
 ⋮----
 }, [smsPage, smsSearchApplied, smsStatus]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// Pagination logic
-⋮----
-// Reset to first page when filters change
 ⋮----
 // For card view: DD/MM/YYYY
 const formatDateCard = (dateStr: string): string =>
@@ -20447,395 +21831,6 @@ onClick=
 {/* Message Content */}
 ````
 
-## File: routes/web.php
-````php
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\UserController;
-use App\Http\Controllers\MembershipController;
-use App\Http\Controllers\EventController;
-use App\Http\Controllers\MembershipResidentController;
-use App\Http\Controllers\EventAttendanceController;
-use App\Http\Controllers\ActivityLogController;
-use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\ArchiveController;
-use App\Http\Controllers\ReportController;
-use App\Http\Controllers\FeedbackController;
-use App\Http\Controllers\InventoryController;
-use App\Http\Controllers\EventExpenseController;
-use App\Http\Controllers\IntegrationController;
-use App\Http\Controllers\AgeBracketController;
-use App\Http\Controllers\CivilStatusController;
-use App\Http\Controllers\NameSuffixController;
-use App\Http\Controllers\CurrentStatusController;
-use App\Http\Controllers\HouseholdController;
-use App\Http\Controllers\StaffAccountController;
-use App\Http\Middleware\EnsureHeadStaff;
-use App\Http\Middleware\EnsureStaff;
-use App\Http\Middleware\SecurityHeaders;
-use App\Http\Middleware\SessionGuard;
-⋮----
-/*
-|--------------------------------------------------------------------------
-| FRONTEND / REACT SPA
-|--------------------------------------------------------------------------
-*/
-⋮----
-Route::get('/', function () {
-⋮----
-})->middleware(SecurityHeaders::class);
-⋮----
-/*
-|--------------------------------------------------------------------------
-| PUBLIC ROUTES
-|--------------------------------------------------------------------------
-*/
-⋮----
-// Two layers: a coarse per-IP brake here (the 'login' limiter) and a precise
-// per-account lockout inside UserController::login() (5 wrong tries per
-// account+network in 15 minutes, and 10 per account overall).
-Route::post('/login', [UserController::class, 'login'])->middleware(['throttle:login', SecurityHeaders::class])->name('login');
-⋮----
-// Head Staff break-glass: reset the password with a printed recovery code.
-Route::post('/recover-head-access', [StaffAccountController::class, 'recoverHeadAccess'])->middleware(['throttle:login', SecurityHeaders::class]);
-⋮----
-/*
-|--------------------------------------------------------------------------
-| PUBLIC WEBHOOK (Facebook Page — "2 in 1" adviser recommendation)
-|--------------------------------------------------------------------------
-*/
-Route::get('/integrations/facebook/webhook', [IntegrationController::class, 'webhookVerify']);
-Route::post('/integrations/facebook/webhook', [IntegrationController::class, 'webhookReceive']);
-⋮----
-/*
-|--------------------------------------------------------------------------
-| CONTENT TRANSLATIONS (UC-17) -- PUBLIC on purpose
-|--------------------------------------------------------------------------
-| The React app fetches this once on every page load, including the login
-| screen where nobody is signed in yet. Behind auth it answered 401 to
-| guests, and the API client's 401 handler bounced them back to "/", so the
-| login page reloaded forever behind the splash screen. It only returns the
-| translated label text, nothing user-specific.
-*/
-Route::get('/content-translations', function () {
-⋮----
-$rows = \App\Models\ContentTranslation::all();
-⋮----
-// Table not migrated yet -- the app simply falls back to English.
-return response()->json((object) []);
-⋮----
-return response()->json((object) $map);
-⋮----
-/*
-|--------------------------------------------------------------------------
-| PROTECTED ROUTES
-|--------------------------------------------------------------------------
-*/
-⋮----
-Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(function () {
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | AUTH
-    |--------------------------------------------------------------------------
-    */
-Route::post('/logout', [UserController::class, 'logout']);
-Route::get('/me', [UserController::class, 'me']);
-Route::get('/barangay-officials', [\App\Http\Controllers\BarangayOfficialController::class, 'index']);
-Route::patch('/users/{id}/change-password', [UserController::class, 'changePassword'])->middleware('throttle:sensitive');
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | USERS
-    |--------------------------------------------------------------------------
-    */
-Route::get('/users', [UserController::class, 'index']);
-Route::get('/users/all-for-memberships', [UserController::class, 'getAllForMemberships']);
-Route::get('/users/{id}', [UserController::class, 'show']);
-Route::post('/users', [UserController::class, 'store']);
-Route::put('/users/{id}', [UserController::class, 'update']);
-Route::delete('/users/{id}', [UserController::class, 'destroy']);
-Route::post('/users/{id}/restore', [UserController::class, 'restore']);
-// (permanent delete routes removed on purpose -- records are archived and kept)
-Route::patch('/users/{id}/contact-number', [UserController::class, 'updateContactNumber']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | USER MEMBERSHIPS
-    |--------------------------------------------------------------------------
-    */
-Route::put('/users/{id}/memberships', [UserController::class, 'updateMemberships']);
-Route::delete('/users/{id}/memberships', [UserController::class, 'removeMemberships']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | PROFILING SETTINGS -- Adviser example (Senior Citizen eligibility)
-    | extended to Youth / Solo Parent: Staff-configurable age brackets and
-    | civil/current statuses used to gate membership eligibility.
-    |--------------------------------------------------------------------------
-    */
-Route::get('/age-brackets', [AgeBracketController::class, 'index']);
-Route::post('/age-brackets', [AgeBracketController::class, 'store']);
-Route::put('/age-brackets/{id}', [AgeBracketController::class, 'update']);
-Route::delete('/age-brackets/{id}', [AgeBracketController::class, 'destroy']);
-Route::post('/age-brackets/{id}/restore', [AgeBracketController::class, 'restore']);
-⋮----
-// Name suffixes (Jr., Sr., II ...) offered in the resident forms.
-Route::get('/name-suffixes', [NameSuffixController::class, 'index']);
-Route::post('/name-suffixes', [NameSuffixController::class, 'store']);
-Route::delete('/name-suffixes/{id}', [NameSuffixController::class, 'destroy']);
-⋮----
-Route::get('/civil-statuses', [CivilStatusController::class, 'index']);
-Route::post('/civil-statuses', [CivilStatusController::class, 'store']);
-Route::put('/civil-statuses/{id}', [CivilStatusController::class, 'update']);
-Route::delete('/civil-statuses/{id}', [CivilStatusController::class, 'destroy']);
-Route::post('/civil-statuses/{id}/restore', [CivilStatusController::class, 'restore']);
-⋮----
-Route::get('/current-statuses', [CurrentStatusController::class, 'index']);
-Route::post('/current-statuses', [CurrentStatusController::class, 'store']);
-Route::put('/current-statuses/{id}', [CurrentStatusController::class, 'update']);
-Route::delete('/current-statuses/{id}', [CurrentStatusController::class, 'destroy']);
-Route::post('/current-statuses/{id}/restore', [CurrentStatusController::class, 'restore']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | HOUSEHOLDS -- real relational replacement for the old free-text
-    | household_code string matching on users.
-    |--------------------------------------------------------------------------
-    */
-Route::get('/households', [HouseholdController::class, 'index']);
-Route::get('/households/unassigned', [HouseholdController::class, 'unassigned']);
-Route::get('/households/options', [HouseholdController::class, 'options']);
-Route::get('/households/alerts', [HouseholdController::class, 'alerts']);
-Route::get('/households/{id}', [HouseholdController::class, 'show']);
-Route::post('/households', [HouseholdController::class, 'store']);
-Route::put('/households/{id}', [HouseholdController::class, 'update']);
-Route::delete('/households/{id}', [HouseholdController::class, 'destroy']);
-Route::post('/households/{id}/members', [HouseholdController::class, 'addMember']);
-Route::delete('/households/{id}/members/{userId}', [HouseholdController::class, 'removeMember']);
-Route::put('/households/{id}/head', [HouseholdController::class, 'setHead']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | MEMBERSHIPS
-    |--------------------------------------------------------------------------
-    */
-Route::resource('api/memberships', MembershipController::class);
-Route::get('/memberships/{id}/ineligible-members', [MembershipController::class, 'ineligibleMembers']);
-Route::post('/memberships/{id}/restore', [MembershipController::class, 'restore']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | MEMBERSHIP RESIDENTS
-    |--------------------------------------------------------------------------
-    */
-Route::get('/membership-residents', [MembershipResidentController::class, 'index']);
-Route::post('/membership-residents/export/pdf', [\App\Http\Controllers\ResidentExportController::class, 'pdf']);
-Route::get('/membership-residents/{id}', [MembershipResidentController::class, 'show']);
-Route::post('/membership-residents', [MembershipResidentController::class, 'store']);
-Route::put('/membership-residents/{id}', [MembershipResidentController::class, 'update']);
-Route::delete('/membership-residents/{id}', [MembershipResidentController::class, 'destroy']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | EVENTS (WITH SOFT DELETE SUPPORT)
-    |--------------------------------------------------------------------------
-    */
-Route::get('/events-data', [EventController::class, 'data']);
-Route::get('/events/overdue-borrows', [EventController::class, 'overdueBorrows']);
-// Declared before the /events/{id} routes below (same reason as
-// overdue-borrows above) so "borrowed-items" is never swallowed as an
-// {id} value.
-Route::get('/events/borrowed-items/releases/recent', [EventController::class, 'recentReleases']);
-Route::post('/events/borrowed-items/releases/{releaseId}/undo', [EventController::class, 'undoRelease']);
-Route::post('/events/borrowed-items/releases/{releaseId}/update', [EventController::class, 'updateRelease']);
-Route::get('/events/borrowed-items/undos/recent', [EventController::class, 'recentUndos']);
-Route::post('/events', [EventController::class, 'store']);
-Route::put('/events/{id}', [EventController::class, 'update']);
-Route::delete('/events/{id}', [EventController::class, 'destroy']);  // Now soft deletes
-Route::get('/events/{id}', [EventController::class, 'show']);
-Route::get('/events/{id}/inventory', [EventController::class, 'eventInventory']);
-⋮----
-// 🆕 SOFT DELETE ROUTES (ADDED)
-Route::post('/events/{id}/restore', [EventController::class, 'restore']);        // Restore soft-deleted event
-Route::post('/events/{id}/release-borrowed-items', [EventController::class, 'returnBorrowedItems']);
-Route::post('/events/{eventId}/borrowed-items/{borrowId}/release', [EventController::class, 'releaseBorrowedItem']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | ATTENDANCE
-    |--------------------------------------------------------------------------
-    */
-Route::prefix('attendance')->group(function () {
-Route::post('/time-in', [EventAttendanceController::class, 'timeIn']);
-Route::put('/time-out', [EventAttendanceController::class, 'timeOut']);
-Route::get('/{userId}', [EventAttendanceController::class, 'getMemberHistory']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | DASHBOARD QUERIES
-    |--------------------------------------------------------------------------
-    */
-Route::get('/events/{id}/attendances', [EventAttendanceController::class, 'getEventAttendees']);
-Route::get('/users/{id}/attendances', [EventAttendanceController::class, 'getMemberHistory']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | ACTIVITY LOGS
-    |--------------------------------------------------------------------------
-    */
-Route::get('/activity-logs', [ActivityLogController::class, 'index'])->middleware(EnsureStaff::class);
-Route::get('/activity-logs/today', [ActivityLogController::class, 'today'])->middleware(EnsureStaff::class);
-Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show'])->middleware(EnsureStaff::class);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | NOTIFICATIONS
-    |--------------------------------------------------------------------------
-    */
-Route::get('/notifications', [NotificationController::class, 'index']);
-Route::get('/notifications/staff', [NotificationController::class, 'staffNotifications']);
-Route::get('/staff/alerts', [NotificationController::class, 'staffAlerts']);
-Route::get('/staff/alerts/all', [NotificationController::class, 'staffAlertsAll']);
-Route::put('/staff/alerts/read-all', [NotificationController::class, 'markAllStaffAlertsRead']);
-Route::put('/staff/alerts/{id}/read', [NotificationController::class, 'markStaffAlertRead']);
-Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
-Route::get('/notifications/replies', [NotificationController::class, 'replyAlerts']);
-Route::put('/notifications/replies-read', [NotificationController::class, 'markReplyAlertsRead']);
-Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
-Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
-Route::get('/notifications/this-week', [NotificationController::class, 'thisWeek']);
-Route::get('/notifications/sms-logs', [NotificationController::class, 'smsLogs']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | ARCHIVE / TRASH
-    |--------------------------------------------------------------------------
-    */
-Route::get('/api/archived', [ArchiveController::class, 'index'])->middleware(EnsureStaff::class);
-Route::post('api/archive/restore', [ArchiveController::class, 'restore'])->middleware(EnsureStaff::class);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | REPORTS & ANALYTICS (adviser: "Filtering — Date, Summary — Attendance, %")
-    |--------------------------------------------------------------------------
-    */
-Route::get('/reports/attendance-summary', [ReportController::class, 'attendanceSummary'])->middleware(EnsureStaff::class);
-Route::get('/reports/membership-summary', [ReportController::class, 'membershipSummary'])->middleware(EnsureStaff::class);
-Route::get('/reports/budget-summary', [ReportController::class, 'budgetSummary'])->middleware(EnsureStaff::class);
-Route::get('/reports/inventory-summary', [ReportController::class, 'inventorySummary'])->middleware(EnsureStaff::class);
-// Official-record downloads (always English -- see ReportController::buildExportPayload)
-Route::get('/reports/export/pdf', [ReportController::class, 'exportPdf'])->middleware(EnsureStaff::class);
-Route::get('/reports/export/html', [ReportController::class, 'exportHtml'])->middleware(EnsureStaff::class);
-Route::get('/reports/export/word', [ReportController::class, 'exportWord'])->middleware(EnsureStaff::class);
-Route::get('/reports/export/csv', [ReportController::class, 'exportCsv'])->middleware(EnsureStaff::class);
-// Live page + Report History
-Route::get('/reports/pulse', [ReportController::class, 'pulse'])->middleware(EnsureStaff::class);
-Route::get('/reports/history', [ReportController::class, 'history'])->middleware(EnsureStaff::class);
-Route::post('/reports/history', [ReportController::class, 'recordPrint'])->middleware(EnsureStaff::class);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | FEEDBACK (UC-16)
-    |--------------------------------------------------------------------------
-    */
-Route::post('/feedback', [FeedbackController::class, 'store']);
-Route::get('/feedback/pending', [FeedbackController::class, 'pending']);
-Route::get('/feedback/mine', [FeedbackController::class, 'mine']);
-Route::get('/feedback/event/{eventId}', [FeedbackController::class, 'forEvent']);
-// Feedback rules: everyone reads them, only Head Staff changes them.
-Route::get('/settings/feedback-rules', [FeedbackController::class, 'rules']);
-Route::put('/settings/feedback-rules', [FeedbackController::class, 'updateRules'])->middleware([EnsureHeadStaff::class, 'throttle:sensitive']);
-Route::get('/feedback/{kind}/{id}/history', [FeedbackController::class, 'history'])->whereIn('kind', ['rating', 'absence']);
-// Non-attendance reasons + staff heart/reply (UC-16 alternate flow)
-Route::post('/feedback/absence', [FeedbackController::class, 'storeAbsence'])->middleware('throttle:30,1');
-Route::get('/feedback/absence/mine', [FeedbackController::class, 'mineAbsences']);
-Route::get('/feedback/absence/event/{eventId}', [FeedbackController::class, 'absencesForEvent']);
-Route::put('/feedback/{kind}/{id}/like', [FeedbackController::class, 'like'])->whereIn('kind', ['rating', 'absence'])->middleware(EnsureStaff::class);
-Route::put('/feedback/{kind}/{id}/reply-like', [FeedbackController::class, 'likeReply'])->whereIn('kind', ['rating', 'absence'])->middleware('throttle:60,1');
-Route::put('/feedback/{kind}/{id}/reply', [FeedbackController::class, 'reply'])->whereIn('kind', ['rating', 'absence'])->middleware([EnsureStaff::class, 'throttle:60,1']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | BUDGET & EXPENSES (UC-8)
-    |--------------------------------------------------------------------------
-    */
-Route::get('/events/{eventId}/expenses', [EventExpenseController::class, 'index'])->middleware(EnsureStaff::class);
-Route::post('/events/{eventId}/expenses', [EventExpenseController::class, 'store'])->middleware(EnsureStaff::class);
-Route::put('/events/{eventId}/budget', [EventExpenseController::class, 'updateBudget'])->middleware(EnsureStaff::class);
-Route::put('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'update'])->middleware(EnsureStaff::class);
-Route::delete('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'destroy'])->middleware(EnsureStaff::class);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | INVENTORY (UC-9)
-    |--------------------------------------------------------------------------
-    */
-Route::get('/inventory', [InventoryController::class, 'index'])->middleware(EnsureStaff::class);
-Route::get('/inventory/borrowable', [InventoryController::class, 'borrowable'])->middleware(EnsureStaff::class);
-Route::post('/inventory', [InventoryController::class, 'store'])->middleware(EnsureStaff::class);
-Route::put('/inventory/{id}', [InventoryController::class, 'update'])->middleware(EnsureStaff::class);
-Route::delete('/inventory/{id}', [InventoryController::class, 'destroy'])->middleware(EnsureStaff::class);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | INTEGRATIONS (adviser: "2 in 1 — Facebook Page")
-    |--------------------------------------------------------------------------
-    */
-Route::get('/integrations/facebook', [IntegrationController::class, 'facebookStatus']);
-Route::post('/integrations/facebook', [IntegrationController::class, 'connectFacebook']);
-Route::delete('/integrations/facebook', [IntegrationController::class, 'disconnectFacebook']);
-⋮----
-/*
-    |--------------------------------------------------------------------------
-    | ACCOUNT SECURITY
-    |--------------------------------------------------------------------------
-    */
-// Browser pings this while someone is really using the page (keeps a staff
-// session alive; background polling does not).
-Route::post('/session/keepalive', [StaffAccountController::class, 'keepAlive']);
-⋮----
-// Any staff member: own alerts, own two-step login, accepting a transfer.
-Route::middleware(EnsureStaff::class)->group(function () {
-Route::get('/security/alerts', [StaffAccountController::class, 'alerts']);
-Route::post('/security/alerts/read-all', [StaffAccountController::class, 'markAllAlertsRead']);
-Route::post('/security/alerts/{id}/read', [StaffAccountController::class, 'markAlertRead']);
-⋮----
-Route::middleware('throttle:sensitive')->group(function () {
-Route::post('/two-factor/setup', [StaffAccountController::class, 'twoFactorSetup']);
-Route::post('/two-factor/confirm', [StaffAccountController::class, 'twoFactorConfirm']);
-Route::post('/two-factor/disable', [StaffAccountController::class, 'twoFactorDisable']);
-Route::post('/staff/head-transfer/accept', [StaffAccountController::class, 'acceptTransfer']);
-⋮----
-Route::get('/staff/head-transfer', [StaffAccountController::class, 'myTransfer']);
-⋮----
-// Head Staff only. Each action also re-asks for the caller's password.
-Route::middleware(EnsureHeadStaff::class)->prefix('staff-accounts')->group(function () {
-Route::get('/', [StaffAccountController::class, 'index']);
-Route::get('/candidates', [StaffAccountController::class, 'candidates']);
-⋮----
-// Changes are rate-limited (10/min per person) on top of the password re-check.
-⋮----
-Route::post('/promote', [StaffAccountController::class, 'promote']);
-Route::post('/{id}/demote', [StaffAccountController::class, 'demote']);
-Route::post('/{id}/suspend', [StaffAccountController::class, 'suspend']);
-Route::post('/{id}/unsuspend', [StaffAccountController::class, 'unsuspend']);
-Route::post('/{id}/sign-out', [StaffAccountController::class, 'signOut']);
-Route::post('/{id}/reset-password', [StaffAccountController::class, 'resetPassword']);
-Route::post('/transfer', [StaffAccountController::class, 'startTransfer']);
-Route::post('/transfer/cancel', [StaffAccountController::class, 'cancelTransfer']);
-Route::post('/recovery-codes', [StaffAccountController::class, 'regenerateRecoveryCodes']);
-⋮----
-/*
-|--------------------------------------------------------------------------
-| REACT SPA FALLBACK - IMPORTANT FOR REACT ROUTING
-|--------------------------------------------------------------------------
-*/
-⋮----
-Route::get('/{path?}', function () {
-⋮----
-})->where('path', '^(?!api).*$');
-````
-
 ## File: resources/js/pages/members/views/QRCodesView.tsx
 ````typescript
 // LAST WORKING IMPLEMENTATION
@@ -20861,7 +21856,7 @@ Route::get('/{path?}', function () {
 //     setCurrentPage(updater as any);
 //     setPageSwitching(true);
 //     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
 //   };
 //   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
 //   const [allMemberships, setAllMemberships] = useState<any[]>([]);
@@ -21290,7 +22285,7 @@ Route::get('/{path?}', function () {
 //     setCurrentPage(updater as any);
 //     setPageSwitching(true);
 //     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
 //   };
 //   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
 //   const [allMemberships, setAllMemberships] = useState<any[]>([]);
@@ -21713,7 +22708,6 @@ import { tc } from "../../../lib/contentTranslations";
 import { renderMemberIdCard, renderMemberIdCardSides } from "../../../lib/memberIdCard";
 import IdCardFlip from "../../../components/ui/IdCardFlip";
 import { useBarangayOfficials } from "../../../lib/barangayOfficials";
-import { matchesSearch } from "../../../lib/search";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 ⋮----
 // Barangay Captain printed on the back of the ID card (set under Residents -> Barangay Position).
@@ -21722,7 +22716,15 @@ const goToPage = (updater: number | ((p: number) => number)) =>
 ⋮----
 // Member's own contact number -- printed on the back of the ID card.
 ⋮----
+// The member's own contact number (printed on the ID card's back) loads once.
+⋮----
+// Search and paging of the member's groups are done by the server (MembershipController::index, mine=<id>).
+⋮----
 const fetchMemberships = async () =>
+⋮----
+// A new search starts again from page 1.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
 // Only a confirmed download closes the card popup; Cancel leaves it open.
 ⋮----
@@ -21784,10 +22786,435 @@ cancelLabel=
 onCancel=
 ````
 
+## File: routes/web.php
+````php
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\MembershipController;
+use App\Http\Controllers\EventController;
+use App\Http\Controllers\MembershipResidentController;
+use App\Http\Controllers\EventAttendanceController;
+use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ArchiveController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\FeedbackController;
+use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\EventExpenseController;
+use App\Http\Controllers\IntegrationController;
+use App\Http\Controllers\AgeBracketController;
+use App\Http\Controllers\CivilStatusController;
+use App\Http\Controllers\NameSuffixController;
+use App\Http\Controllers\CurrentStatusController;
+use App\Http\Controllers\HouseholdController;
+use App\Http\Controllers\StaffAccountController;
+use App\Http\Middleware\EnsureHeadStaff;
+use App\Http\Middleware\EnsureStaff;
+use App\Http\Middleware\SecurityHeaders;
+use App\Http\Middleware\SessionGuard;
+⋮----
+/*
+|--------------------------------------------------------------------------
+| FRONTEND / REACT SPA
+|--------------------------------------------------------------------------
+*/
+⋮----
+Route::get('/', function () {
+⋮----
+})->middleware(SecurityHeaders::class);
+⋮----
+/*
+|--------------------------------------------------------------------------
+| PUBLIC ROUTES
+|--------------------------------------------------------------------------
+*/
+⋮----
+// Two layers: a coarse per-IP brake here (the 'login' limiter) and a precise
+// per-account lockout inside UserController::login() (5 wrong tries per
+// account+network in 15 minutes, and 10 per account overall).
+Route::post('/login', [UserController::class, 'login'])->middleware(['throttle:login', SecurityHeaders::class])->name('login');
+⋮----
+// Head Staff break-glass: reset the password with a printed recovery code.
+Route::post('/recover-head-access', [StaffAccountController::class, 'recoverHeadAccess'])->middleware(['throttle:login', SecurityHeaders::class]);
+⋮----
+/*
+|--------------------------------------------------------------------------
+| PUBLIC WEBHOOK (Facebook Page — "2 in 1" adviser recommendation)
+|--------------------------------------------------------------------------
+*/
+Route::get('/integrations/facebook/webhook', [IntegrationController::class, 'webhookVerify']);
+Route::post('/integrations/facebook/webhook', [IntegrationController::class, 'webhookReceive']);
+⋮----
+/*
+|--------------------------------------------------------------------------
+| CONTENT TRANSLATIONS (UC-17) -- PUBLIC on purpose
+|--------------------------------------------------------------------------
+| The React app fetches this once on every page load, including the login
+| screen where nobody is signed in yet. Behind auth it answered 401 to
+| guests, and the API client's 401 handler bounced them back to "/", so the
+| login page reloaded forever behind the splash screen. It only returns the
+| translated label text, nothing user-specific.
+*/
+Route::get('/content-translations', function () {
+⋮----
+$rows = \App\Models\ContentTranslation::all();
+⋮----
+// Table not migrated yet -- the app simply falls back to English.
+return response()->json((object) []);
+⋮----
+return response()->json((object) $map);
+⋮----
+/*
+|--------------------------------------------------------------------------
+| PROTECTED ROUTES
+|--------------------------------------------------------------------------
+*/
+⋮----
+Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(function () {
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | AUTH
+    |--------------------------------------------------------------------------
+    */
+Route::post('/logout', [UserController::class, 'logout']);
+Route::get('/me', [UserController::class, 'me']);
+Route::get('/barangay-officials', [\App\Http\Controllers\BarangayOfficialController::class, 'index']);
+Route::patch('/users/{id}/change-password', [UserController::class, 'changePassword'])->middleware('throttle:sensitive');
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | USERS
+    |--------------------------------------------------------------------------
+    */
+Route::get('/users', [UserController::class, 'index']);
+Route::get('/users/all-for-memberships', [UserController::class, 'getAllForMemberships']);
+Route::get('/users/{id}', [UserController::class, 'show']);
+Route::post('/users', [UserController::class, 'store']);
+Route::put('/users/{id}', [UserController::class, 'update']);
+Route::delete('/users/{id}', [UserController::class, 'destroy']);
+Route::post('/users/{id}/restore', [UserController::class, 'restore']);
+// (permanent delete routes removed on purpose -- records are archived and kept)
+Route::patch('/users/{id}/contact-number', [UserController::class, 'updateContactNumber']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | USER MEMBERSHIPS
+    |--------------------------------------------------------------------------
+    */
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | PROFILING SETTINGS -- Adviser example (Senior Citizen eligibility)
+    | extended to Youth / Solo Parent: Staff-configurable age brackets and
+    | civil/current statuses used to gate membership eligibility.
+    |--------------------------------------------------------------------------
+    */
+Route::get('/age-brackets', [AgeBracketController::class, 'index']);
+Route::post('/age-brackets', [AgeBracketController::class, 'store']);
+Route::put('/age-brackets/{id}', [AgeBracketController::class, 'update']);
+Route::delete('/age-brackets/{id}', [AgeBracketController::class, 'destroy']);
+Route::post('/age-brackets/{id}/restore', [AgeBracketController::class, 'restore']);
+⋮----
+// Name suffixes (Jr., Sr., II ...) offered in the resident forms.
+Route::get('/name-suffixes', [NameSuffixController::class, 'index']);
+Route::post('/name-suffixes', [NameSuffixController::class, 'store']);
+Route::delete('/name-suffixes/{id}', [NameSuffixController::class, 'destroy']);
+⋮----
+Route::get('/civil-statuses', [CivilStatusController::class, 'index']);
+Route::post('/civil-statuses', [CivilStatusController::class, 'store']);
+Route::put('/civil-statuses/{id}', [CivilStatusController::class, 'update']);
+Route::delete('/civil-statuses/{id}', [CivilStatusController::class, 'destroy']);
+Route::post('/civil-statuses/{id}/restore', [CivilStatusController::class, 'restore']);
+⋮----
+Route::get('/current-statuses', [CurrentStatusController::class, 'index']);
+Route::post('/current-statuses', [CurrentStatusController::class, 'store']);
+Route::put('/current-statuses/{id}', [CurrentStatusController::class, 'update']);
+Route::delete('/current-statuses/{id}', [CurrentStatusController::class, 'destroy']);
+Route::post('/current-statuses/{id}/restore', [CurrentStatusController::class, 'restore']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | HOUSEHOLDS -- real relational replacement for the old free-text
+    | household_code string matching on users.
+    |--------------------------------------------------------------------------
+    */
+Route::get('/households', [HouseholdController::class, 'index']);
+Route::get('/households/unassigned', [HouseholdController::class, 'unassigned']);
+Route::get('/households/options', [HouseholdController::class, 'options']);
+Route::get('/households/alerts', [HouseholdController::class, 'alerts']);
+Route::get('/households/{id}', [HouseholdController::class, 'show']);
+Route::post('/households', [HouseholdController::class, 'store']);
+Route::put('/households/{id}', [HouseholdController::class, 'update']);
+Route::delete('/households/{id}', [HouseholdController::class, 'destroy']);
+Route::post('/households/{id}/members', [HouseholdController::class, 'addMember']);
+Route::delete('/households/{id}/members/{userId}', [HouseholdController::class, 'removeMember']);
+Route::put('/households/{id}/head', [HouseholdController::class, 'setHead']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | MEMBERSHIPS
+    |--------------------------------------------------------------------------
+    */
+Route::resource('api/memberships', MembershipController::class);
+Route::get('/memberships/{id}/ineligible-members', [MembershipController::class, 'ineligibleMembers']);
+Route::post('/memberships/{id}/restore', [MembershipController::class, 'restore']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | MEMBERSHIP RESIDENTS
+    |--------------------------------------------------------------------------
+    */
+Route::get('/membership-residents', [MembershipResidentController::class, 'index']);
+Route::post('/membership-residents/export/pdf', [\App\Http\Controllers\ResidentExportController::class, 'pdf']);
+Route::get('/membership-residents/{id}', [MembershipResidentController::class, 'show']);
+Route::post('/membership-residents', [MembershipResidentController::class, 'store']);
+Route::put('/membership-residents/{id}', [MembershipResidentController::class, 'update']);
+Route::delete('/membership-residents/{id}', [MembershipResidentController::class, 'destroy']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | EVENTS (WITH SOFT DELETE SUPPORT)
+    |--------------------------------------------------------------------------
+    */
+Route::get('/events-data', [EventController::class, 'data']);
+Route::get('/events/overdue-borrows', [EventController::class, 'overdueBorrows']);
+// Declared before the /events/{id} routes below (same reason as
+// overdue-borrows above) so "borrowed-items" is never swallowed as an
+// {id} value.
+Route::get('/events/borrowed-items/releases/recent', [EventController::class, 'recentReleases']);
+Route::post('/events/borrowed-items/releases/{releaseId}/undo', [EventController::class, 'undoRelease']);
+Route::post('/events/borrowed-items/releases/{releaseId}/update', [EventController::class, 'updateRelease']);
+Route::get('/events/borrowed-items/undos/recent', [EventController::class, 'recentUndos']);
+Route::post('/events', [EventController::class, 'store']);
+Route::put('/events/{id}', [EventController::class, 'update']);
+Route::delete('/events/{id}', [EventController::class, 'destroy']);  // Now soft deletes
+Route::get('/events/{id}', [EventController::class, 'show']);
+Route::get('/events/{id}/inventory', [EventController::class, 'eventInventory']);
+⋮----
+// 🆕 SOFT DELETE ROUTES (ADDED)
+Route::post('/events/{id}/restore', [EventController::class, 'restore']);        // Restore soft-deleted event
+Route::post('/events/{id}/release-borrowed-items', [EventController::class, 'returnBorrowedItems']);
+Route::post('/events/{eventId}/borrowed-items/{borrowId}/release', [EventController::class, 'releaseBorrowedItem']);
+Route::post('/events/{eventId}/borrowed-items/{borrowId}/lost', [EventController::class, 'reportLostBorrowedItem']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | ATTENDANCE
+    |--------------------------------------------------------------------------
+    */
+Route::prefix('attendance')->group(function () {
+Route::post('/time-in', [EventAttendanceController::class, 'timeIn']);
+Route::put('/time-out', [EventAttendanceController::class, 'timeOut']);
+Route::get('/{userId}', [EventAttendanceController::class, 'getMemberHistory']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | DASHBOARD QUERIES
+    |--------------------------------------------------------------------------
+    */
+Route::get('/events/{id}/attendances', [EventAttendanceController::class, 'getEventAttendees']);
+Route::get('/users/{id}/attendances', [EventAttendanceController::class, 'getMemberHistory']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | ACTIVITY LOGS
+    |--------------------------------------------------------------------------
+    */
+Route::get('/activity-logs', [ActivityLogController::class, 'index'])->middleware(EnsureStaff::class);
+Route::get('/activity-logs/today', [ActivityLogController::class, 'today'])->middleware(EnsureStaff::class);
+Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show'])->middleware(EnsureStaff::class);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | NOTIFICATIONS
+    |--------------------------------------------------------------------------
+    */
+Route::get('/notifications', [NotificationController::class, 'index']);
+Route::get('/notifications/staff', [NotificationController::class, 'staffNotifications']);
+Route::get('/staff/alerts', [NotificationController::class, 'staffAlerts']);
+Route::get('/staff/alerts/all', [NotificationController::class, 'staffAlertsAll']);
+Route::put('/staff/alerts/read-all', [NotificationController::class, 'markAllStaffAlertsRead']);
+Route::put('/staff/alerts/{id}/read', [NotificationController::class, 'markStaffAlertRead']);
+Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+Route::get('/notifications/replies', [NotificationController::class, 'replyAlerts']);
+Route::put('/notifications/replies-read', [NotificationController::class, 'markReplyAlertsRead']);
+Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+Route::get('/notifications/this-week', [NotificationController::class, 'thisWeek']);
+Route::get('/notifications/sms-logs', [NotificationController::class, 'smsLogs']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | ARCHIVE / TRASH
+    |--------------------------------------------------------------------------
+    */
+Route::get('/api/archived', [ArchiveController::class, 'index'])->middleware(EnsureStaff::class);
+Route::post('api/archive/restore', [ArchiveController::class, 'restore'])->middleware(EnsureStaff::class);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | REPORTS & ANALYTICS (adviser: "Filtering — Date, Summary — Attendance, %")
+    |--------------------------------------------------------------------------
+    */
+Route::get('/reports/attendance-summary', [ReportController::class, 'attendanceSummary'])->middleware(EnsureStaff::class);
+Route::get('/reports/membership-summary', [ReportController::class, 'membershipSummary'])->middleware(EnsureStaff::class);
+Route::get('/reports/budget-summary', [ReportController::class, 'budgetSummary'])->middleware(EnsureStaff::class);
+Route::get('/reports/inventory-summary', [ReportController::class, 'inventorySummary'])->middleware(EnsureStaff::class);
+// Official-record downloads (always English -- see ReportController::buildExportPayload)
+Route::get('/reports/export/pdf', [ReportController::class, 'exportPdf'])->middleware(EnsureStaff::class);
+Route::get('/reports/export/html', [ReportController::class, 'exportHtml'])->middleware(EnsureStaff::class);
+Route::get('/reports/export/word', [ReportController::class, 'exportWord'])->middleware(EnsureStaff::class);
+Route::get('/reports/export/csv', [ReportController::class, 'exportCsv'])->middleware(EnsureStaff::class);
+// Live page + Report History
+Route::get('/reports/pulse', [ReportController::class, 'pulse'])->middleware(EnsureStaff::class);
+Route::get('/reports/history', [ReportController::class, 'history'])->middleware(EnsureStaff::class);
+Route::post('/reports/history', [ReportController::class, 'recordPrint'])->middleware(EnsureStaff::class);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | FEEDBACK (UC-16)
+    |--------------------------------------------------------------------------
+    */
+⋮----
+// Submit (first time) OR edit (same handler — the controller decides by
+// whether the resident already has a row for that event). Both paths
+// enforce the 12h submit / 20m edit window from the row's FROZEN values
+// (see FeedbackController::store() and Feedback::isEditLocked()).
+Route::post('/feedback', [FeedbackController::class, 'store']);
+⋮----
+// RESTful edit alias — same handler as POST /feedback above. Kept so a
+// PUT /feedback/{id} request from the client doesn't fall through to the
+// SPA catch-all.
+Route::put('/feedback/{id}', [FeedbackController::class, 'store']);
+⋮----
+// Remove the resident's own feedback (soft delete + activity log).
+// Returns 403 with code 'edit_window_closed' once the frozen 20m
+// edit window has passed.
+Route::delete('/feedback/{id}', [FeedbackController::class, 'destroy']);
+⋮----
+// Member reads
+Route::get('/feedback/pending', [FeedbackController::class, 'pending']);
+Route::get('/feedback/mine', [FeedbackController::class, 'mine']);
+Route::get('/feedback/event/{eventId}', [FeedbackController::class, 'forEvent']);
+⋮----
+// Feedback rules: everyone reads them, only Head Staff changes them.
+Route::get('/settings/feedback-rules', [FeedbackController::class, 'rules']);
+Route::put('/settings/feedback-rules', [FeedbackController::class, 'updateRules'])
+->middleware([EnsureHeadStaff::class, 'throttle:sensitive']);
+⋮----
+// Edit history of one rating / absence reason (staff OR the author).
+Route::get('/feedback/{kind}/{id}/history', [FeedbackController::class, 'history'])
+->whereIn('kind', ['rating', 'absence']);
+⋮----
+// Non-attendance reasons (same 20-minute rule)
+Route::post('/feedback/absence', [FeedbackController::class, 'storeAbsence'])
+->middleware('throttle:30,1');
+Route::get('/feedback/absence/mine', [FeedbackController::class, 'mineAbsences']);
+Route::get('/feedback/absence/event/{eventId}', [FeedbackController::class, 'absencesForEvent']);
+⋮----
+// Staff response layer (heart / reply / member like-reply) — does NOT
+// touch the resident's rating/comment; only the reply columns.
+Route::put('/feedback/{kind}/{id}/like', [FeedbackController::class, 'like'])
+->whereIn('kind', ['rating', 'absence'])
+->middleware(EnsureStaff::class);
+Route::put('/feedback/{kind}/{id}/reply-like', [FeedbackController::class, 'likeReply'])
+⋮----
+->middleware('throttle:60,1');
+Route::put('/feedback/{kind}/{id}/reply', [FeedbackController::class, 'reply'])
+⋮----
+->middleware([EnsureStaff::class, 'throttle:60,1']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | BUDGET & EXPENSES (UC-8)
+    |--------------------------------------------------------------------------
+    */
+Route::get('/events/{eventId}/expenses', [EventExpenseController::class, 'index'])->middleware(EnsureStaff::class);
+Route::post('/events/{eventId}/expenses', [EventExpenseController::class, 'store'])->middleware(EnsureStaff::class);
+Route::put('/events/{eventId}/budget', [EventExpenseController::class, 'updateBudget'])->middleware(EnsureStaff::class);
+Route::put('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'update'])->middleware(EnsureStaff::class);
+Route::delete('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'destroy'])->middleware(EnsureStaff::class);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | INVENTORY (UC-9)
+    |--------------------------------------------------------------------------
+    */
+Route::get('/inventory', [InventoryController::class, 'index'])->middleware(EnsureStaff::class);
+Route::get('/inventory/borrowable', [InventoryController::class, 'borrowable'])->middleware(EnsureStaff::class);
+Route::post('/inventory', [InventoryController::class, 'store'])->middleware(EnsureStaff::class);
+Route::put('/inventory/{id}', [InventoryController::class, 'update'])->middleware(EnsureStaff::class);
+Route::post('/inventory/{id}/units', [InventoryController::class, 'adjustUnits'])->middleware(EnsureStaff::class);
+Route::get('/inventory/{id}/unit-logs', [InventoryController::class, 'unitLogs'])->middleware(EnsureStaff::class);
+Route::delete('/inventory/{id}', [InventoryController::class, 'destroy'])->middleware(EnsureStaff::class);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | INTEGRATIONS (adviser: "2 in 1 — Facebook Page")
+    |--------------------------------------------------------------------------
+    */
+Route::get('/integrations/facebook', [IntegrationController::class, 'facebookStatus']);
+Route::post('/integrations/facebook', [IntegrationController::class, 'connectFacebook']);
+Route::delete('/integrations/facebook', [IntegrationController::class, 'disconnectFacebook']);
+⋮----
+/*
+    |--------------------------------------------------------------------------
+    | ACCOUNT SECURITY
+    |--------------------------------------------------------------------------
+    */
+// Browser pings this while someone is really using the page (keeps a staff
+// session alive; background polling does not).
+Route::post('/session/keepalive', [StaffAccountController::class, 'keepAlive']);
+⋮----
+// Any staff member: own alerts, own two-step login, accepting a transfer.
+Route::middleware(EnsureStaff::class)->group(function () {
+Route::get('/security/alerts', [StaffAccountController::class, 'alerts']);
+Route::post('/security/alerts/read-all', [StaffAccountController::class, 'markAllAlertsRead']);
+Route::post('/security/alerts/{id}/read', [StaffAccountController::class, 'markAlertRead']);
+⋮----
+Route::middleware('throttle:sensitive')->group(function () {
+Route::post('/two-factor/setup', [StaffAccountController::class, 'twoFactorSetup']);
+Route::post('/two-factor/confirm', [StaffAccountController::class, 'twoFactorConfirm']);
+Route::post('/two-factor/disable', [StaffAccountController::class, 'twoFactorDisable']);
+Route::post('/staff/head-transfer/accept', [StaffAccountController::class, 'acceptTransfer']);
+⋮----
+Route::get('/staff/head-transfer', [StaffAccountController::class, 'myTransfer']);
+⋮----
+// Head Staff only. Each action also re-asks for the caller's password.
+Route::middleware(EnsureHeadStaff::class)->prefix('staff-accounts')->group(function () {
+Route::get('/', [StaffAccountController::class, 'index']);
+Route::get('/team', [StaffAccountController::class, 'team']);
+Route::get('/candidates', [StaffAccountController::class, 'candidates']);
+⋮----
+// Changes are rate-limited (10/min per person) on top of the password re-check.
+⋮----
+Route::post('/promote', [StaffAccountController::class, 'promote']);
+Route::post('/{id}/demote', [StaffAccountController::class, 'demote']);
+Route::post('/{id}/suspend', [StaffAccountController::class, 'suspend']);
+Route::post('/{id}/unsuspend', [StaffAccountController::class, 'unsuspend']);
+Route::post('/{id}/sign-out', [StaffAccountController::class, 'signOut']);
+Route::post('/{id}/reset-password', [StaffAccountController::class, 'resetPassword']);
+Route::post('/transfer', [StaffAccountController::class, 'startTransfer']);
+Route::post('/transfer/cancel', [StaffAccountController::class, 'cancelTransfer']);
+Route::post('/recovery-codes', [StaffAccountController::class, 'regenerateRecoveryCodes']);
+⋮----
+/*
+|--------------------------------------------------------------------------
+| REACT SPA FALLBACK - IMPORTANT FOR REACT ROUTING
+|--------------------------------------------------------------------------
+*/
+⋮----
+Route::get('/{path?}', function () {
+⋮----
+})->where('path', '^(?!api).*$');
+````
+
 ## File: app/Http/Controllers/EventController.php
 ````php
 namespace App\Http\Controllers;
 ⋮----
+use App\Support\Paged;
 use Illuminate\Http\Request;
 use App\Models\Event;
 use App\Models\User;
@@ -21916,6 +23343,11 @@ $portalMode = $request->header('X-Portal-Mode', 'auto');
 ⋮----
 // Determine effective role based on portal mode
 ⋮----
+// paged=1: the Events screens ask for one page at a time, already filtered
+// (search, membership, date, quick tab, status) and sorted by the database.
+if ($request->boolean('paged')) {
+return $this->pagedEvents($request, $user, $effectiveRole === 'Staff');
+⋮----
 // Staff portal: show all active events (exclude soft-deleted)
 $events = Event::withoutTrashed()->with('borrowedItems.inventoryItem')->orderByDesc('event_start')->get();
 $this->attachInventoryCounts($events);
@@ -21926,6 +23358,125 @@ $this->attachInventoryCounts($events);
 ->get();
 ⋮----
 return response()->json(['data' => $events]);
+⋮----
+/**
+     * One page of the Events list for the staff or member screen. Filters:
+     * search, membership (id), date (Y-m-d), tab (all | today | week | feedback),
+     * status (all | upcoming | ongoing | past); sort: default | soonest | latest | name-az.
+     * Returns the page plus the size of every tab and status, so the counts always
+     * match what the filters would show.
+     */
+private function pagedEvents(Request $request, $user, bool $staff)
+⋮----
+$base = Event::withoutTrashed();
+⋮----
+// A resident only sees events open to everyone or to one of their memberships.
+$mine = DB::table('membership_residents')->where('user_id', $user->id)->pluck('membership_id')->toArray();
+$base->where(function ($q) use ($mine) {
+$q->whereRaw('JSON_LENGTH(membership_ids) = 0')->orWhereNull('membership_ids');
+⋮----
+$visibleTotal = (clone $base)->count(); // everything this person may see, before the filters
+⋮----
+if ($request->filled('membership')) {
+$id = (int) $request->input('membership');
+$base->where(fn ($q) => $q->whereJsonContains('membership_ids', $id)->orWhereJsonContains('membership_ids', (string) $id));
+⋮----
+if ($request->filled('date')) {
+$base->whereDate('event_start', (string) $request->input('date'));
+⋮----
+foreach (Paged::tokens($request->input('search')) as $word) {
+$like = Paged::like($word);
+$base->where(function ($q) use ($like) {
+$q->whereRaw('LOWER(name) LIKE ?', [$like])
+->orWhereRaw('LOWER(COALESCE(location, \'\')) LIKE ?', [$like])
+->orWhereRaw('LOWER(COALESCE(description, \'\')) LIKE ?', [$like])
+->orWhereRaw('DATE(event_start) LIKE ?', [$like])
+->orWhereRaw("LOWER(DATE_FORMAT(event_start, '%M %e %Y')) LIKE ?", [$like]);
+⋮----
+$nowSql = $now->toDateTimeString();
+⋮----
+$q->whereRaw('((SELECT COUNT(*) FROM feedback WHERE feedback.event_id = events.id) + (SELECT COUNT(*) FROM absence_reasons WHERE absence_reasons.event_id = events.id)) > 0');
+⋮----
+$q->where('event_start', '<', $now->copy()->addDay()->startOfDay()->toDateTimeString())
+->whereRaw('COALESCE(event_end, event_start) >= ?', [$now->copy()->startOfDay()->toDateTimeString()]);
+⋮----
+$q->where('event_start', '>=', $now->copy()->startOfWeek()->toDateTimeString())
+->where('event_start', '<', $now->copy()->startOfWeek()->addWeek()->toDateTimeString());
+⋮----
+// Member screen: upcoming = starts from now on, past = already started.
+⋮----
+$q->where('event_start', '>=', $nowSql);
+⋮----
+$q->where('event_start', '<', $nowSql);
+⋮----
+$q->where('event_start', '>', $nowSql);
+⋮----
+$q->where('event_start', '<=', $nowSql)->whereRaw("{$endExpr} >= ?", [$nowSql]);
+⋮----
+$q->whereRaw("{$endExpr} < ?", [$nowSql]);
+⋮----
+// Budget health (Budget screen): spent vs. approved_budget, from the non-deleted expenses.
+⋮----
+$q->whereNotNull('approved_budget')->whereRaw("{$spentExpr} > approved_budget");
+⋮----
+$q->whereNotNull('approved_budget')->where('approved_budget', '>', 0)
+->whereRaw("{$spentExpr} <= approved_budget")
+->whereRaw("{$spentExpr} * 100 >= approved_budget * 80");
+⋮----
+$tab = (string) $request->input('tab', 'all');
+$status = (string) $request->input('status', 'all');
+$budget = (string) $request->input('budget', 'all');
+⋮----
+$applyTab($q, $key);
+$tabCounts[$key] = $q->count();
+⋮----
+$applyTab($q, $tab);
+$applyBudget($q, $budget);
+$applyStatus($q, $key);
+$statusCounts[$key] = $q->count();
+⋮----
+$applyStatus($q, $status);
+$applyBudget($q, $key);
+$budgetCounts[$key] = $q->count();
+⋮----
+$applyTab($query, $tab);
+$applyBudget($query, $budget);
+$applyStatus($query, $status);
+⋮----
+// Staff: Ongoing first, then Upcoming, then Past; the sort picks the order inside each group.
+// Members: simply newest event first.
+⋮----
+$query->orderByRaw($rank, [$nowSql, $nowSql]);
+⋮----
+switch ($staff ? $request->input('sort') : 'latest') {
+⋮----
+$query->orderBy('event_start');
+⋮----
+$query->orderBy('event_start', 'desc');
+⋮----
+$query->orderBy('name');
+⋮----
+$query->orderByRaw("{$spentExpr} DESC");
+⋮----
+case 'used': // share of the approved budget already spent; events without a budget last
+$query->orderByRaw("CASE WHEN approved_budget IS NULL THEN -1 WHEN approved_budget = 0 THEN (CASE WHEN {$spentExpr} > 0 THEN 100 ELSE 0 END) ELSE LEAST(100, {$spentExpr} / approved_budget * 100) END DESC");
+⋮----
+default: // upcoming soonest first, past most recent first
+$query->orderByRaw("CASE WHEN {$endExpr} < ? THEN -UNIX_TIMESTAMP(event_start) ELSE UNIX_TIMESTAMP(event_start) END", [$nowSql]);
+⋮----
+$query->orderBy('id', 'desc');
+⋮----
+$paginator = $query->with('borrowedItems.inventoryItem')
+->paginate(Paged::perPage($request, 6), ['*'], 'page', Paged::page($request));
+$events = $paginator->getCollection();
+⋮----
+// What each card on the Budget screen shows: money spent so far.
+$spent = DB::table('event_expenses')->whereIn('event_id', $events->pluck('id'))->whereNull('deleted_at')
+->select('event_id', DB::raw('SUM(amount) as s'))->groupBy('event_id')->pluck('s', 'event_id');
+⋮----
+$event->setAttribute('budget_spent', round((float) ($spent[$event->id] ?? 0), 2));
+⋮----
+return response()->json(Paged::body($paginator, $events->values(), [
 ⋮----
 /**
      * Gives each event `inventory_items_count` -- how many different items it
@@ -21964,7 +23515,24 @@ return response()->json(Event::withoutTrashed()->with('borrowedItems.inventoryIt
 ⋮----
 public function show($id)
 ⋮----
-return response()->json(Event::withoutTrashed()->with('borrowedItems.inventoryItem')->findOrFail($id));
+$event = Event::withoutTrashed()->findOrFail($id);
+⋮----
+if (!$this->isStaff()) {
+// A resident may read only an event that is open to everyone or to one of their
+// own memberships, and never sees the borrowed-equipment details.
+⋮----
+$mine = DB::table('membership_residents')
+->where('user_id', Auth::id())
+->whereNull('deleted_at')
+⋮----
+->map(fn ($v) => (int) $v)
+->all();
+⋮----
+return response()->json(['message' => 'Unauthorized'], 403);
+⋮----
+return response()->json($event);
+⋮----
+return response()->json($event->load('borrowedItems.inventoryItem'));
 ⋮----
 public function store(Request $request)
 ⋮----
@@ -21972,8 +23540,6 @@ public function store(Request $request)
 // authenticated Resident (the route only requires 'auth'), letting
 // them create a real event, trigger notifications/SMS to the whole
 // barangay, and even post to the official Facebook Page.
-if (!$this->isStaff()) {
-return response()->json(['message' => 'Unauthorized'], 403);
 ⋮----
 $request->validate([
 ⋮----
@@ -22056,7 +23622,6 @@ public function update(Request $request, $id)
 // Strictly BEFORE event_start -- see store() above for why.
 ⋮----
 // ✅ MODIFIED: Find event excluding soft-deleted
-$event = Event::withoutTrashed()->findOrFail($id);
 ⋮----
 // Ongoing/Past events are locked -- same rule the frontend already
 // shows (disabled Edit button + hint), now enforced here too so it
@@ -22261,18 +23826,19 @@ $item = InventoryItem::findOrFail((int) $bi['inventory_item_id']);
 ⋮----
 throw new \Exception("Not enough stock for \"{$item->name}\" (available: {$item->quantity}, requested: {$quantity}).");
 ⋮----
-$short = $item->shortfall($units);
-⋮----
+// No per-condition choice was sent: take the quantity from the
+// item's main condition first, then its largest groups, so the
+// borrow row always records its units per condition (its four
+// counts must add up to `quantity`).
 $have = $item->conditionCounts();
+⋮----
+$short = $item->shortfall($units);
 ⋮----
 throw new \Exception("Not enough {$label} stock for \"{$item->name}\" (available: {$have[$label]}, requested: {$units[$label]}).");
 ⋮----
 $item->takeUnits($units);
 ⋮----
-$item->save();
-⋮----
 $borrow->setUnits($units);
-⋮----
 $borrow->save();
 ⋮----
 /**
@@ -22309,17 +23875,21 @@ $touched->settleLostOnLoan();
      * for the Dashboard, so staff can release everything a given event
      * is still holding in one action instead of hunting it down later.
      */
-public function overdueBorrows()
+/**
+     * Events whose loan is overdue (ended, items still out). With paged=1 the Returns
+     * screen gets one filtered page (search by event or item name, ended_date), the KPI
+     * stats over the whole queue, and -- with focus=<event id> -- the page that event is on.
+     */
+public function overdueBorrows(Request $request)
 ⋮----
-$events = Event::withoutTrashed()
-->whereHas('borrowedItems')
-->with(['borrowedItems.inventoryItem:id,name,condition'])
-->get()
-->filter(function ($event) {
+$nowSql = now()->toDateTimeString();
 ⋮----
-return $endedAt && $endedAt->isPast();
+$base = Event::withoutTrashed()->whereHas('borrowedItems')->whereRaw("{$endExpr} < ?", [$nowSql]);
 ⋮----
-->map(function ($event) {
+return $events->map(function ($event) {
+// Units already reported lost from this event's loan, per item.
+$lostHere = \App\Models\InventoryUnitLog::where('action', 'lost')->where('event_id', $event->id)
+->get()->groupBy('inventory_item_id')->map(fn ($g) => (int) $g->sum('quantity'));
 ⋮----
 'items' => $event->borrowedItems->map(fn ($b) => [
 ⋮----
@@ -22327,7 +23897,39 @@ return $endedAt && $endedAt->isPast();
 'units' => $b->resolvedUnits($b->inventoryItem->condition ?? 'Good'),
 ])->values(),
 ⋮----
-->values();
+})->values();
+⋮----
+if (!$request->boolean('paged')) {
+return response()->json($present((clone $base)->with(['borrowedItems.inventoryItem:id,name,new_quantity,good_quantity,fair_quantity,poor_quantity'])->get()));
+⋮----
+// KPI strip: the whole overdue queue, whatever the filters say.
+$all = (clone $base)->with('borrowedItems:id,event_id,inventory_item_id,quantity')->get(['events.id', 'events.event_start', 'events.event_end']);
+⋮----
+$oldestDays = max($oldestDays, (int) floor($ended->diffInDays(now(), false)));
+⋮----
+'total_events' => $all->count(),
+'total_units' => (int) $all->sum(fn ($ev) => $ev->borrowedItems->sum('quantity')),
+'distinct_items' => $all->flatMap(fn ($ev) => $ev->borrowedItems->pluck('inventory_item_id'))->unique()->count(),
+⋮----
+if ($request->filled('ended_date')) {
+$filtered->whereRaw("DATE({$endExpr}) = ?", [(string) $request->input('ended_date')]);
+⋮----
+$filtered->where(function ($q) use ($like) {
+$q->whereRaw('LOWER(events.name) LIKE ?', [$like])
+->orWhereHas('borrowedItems.inventoryItem', fn ($i) => $i->whereRaw('LOWER(name) LIKE ?', [$like]));
+⋮----
+$filtered->orderBy('events.id');
+⋮----
+$perPage = Paged::perPage($request, 6);
+$page = Paged::page($request);
+if ($request->filled('focus')) {
+$focus = (int) $request->input('focus');
+$before = (clone $filtered)->where('events.id', '<', $focus)->count();
+$exists = (clone $filtered)->where('events.id', $focus)->exists();
+⋮----
+$paginator = $filtered->with(['borrowedItems.inventoryItem:id,name,new_quantity,good_quantity,fair_quantity,poor_quantity'])->paginate($perPage, ['*'], 'page', $page);
+⋮----
+return response()->json(Paged::body($paginator, $present($paginator->getCollection()), ['stats' => $stats]));
 ⋮----
 /**
      * Everything this event took from Inventory, for the event's Inventory
@@ -22432,6 +24034,46 @@ $release->save();
 $this->createLog('Return Items', 'Inventory', "Returned {$releaseQty}x {$itemName} from event: {$event->name}");
 ⋮----
 /**
+     * Reports units of a borrowed item as lost -- they never came back.
+     * Staff pick exactly which units, per condition they went out in (e.g.
+     * 3 Good + 2 Fair), so nothing is chosen at random. The units leave the
+     * loan and are added to the item's lost count; they are NOT added to
+     * stock, and no photo is needed. This is separate from returning items:
+     * it is not logged as a release. If a unit turns up later, "Found" in
+     * Inventory records it.
+     */
+public function reportLostBorrowedItem(Request $request, $eventId, $borrowId)
+⋮----
+// The checks run inside the transaction on locked rows, so two staff
+// reporting the same loan at once can't both pass them (and report
+// more units lost than are actually out).
+\DB::transaction(function () use ($event, $borrowId, $request, &$lostUnits, &$lost, &$item) {
+$borrow = $event->borrowedItems()->where('id', $borrowId)->lockForUpdate()->firstOrFail();
+$item = InventoryItem::withTrashed()->lockForUpdate()->find($borrow->inventory_item_id);
+⋮----
+$out = $borrow->resolvedUnits($main);
+⋮----
+$lostUnits[$label] = max(0, (int) $request->input("lost_units.{$label}", 0));
+⋮----
+throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+⋮----
+throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json(['message' => 'Enter how many units were lost.'], 422));
+⋮----
+$borrow->setUnits($out);
+⋮----
+// Units already reported lost from Inventory while this loan was open
+// ("lost pending") are the same units -- settle those first, no double count.
+⋮----
+$item->save();
+$item->settleLostOnLoan();
+⋮----
+\App\Models\InventoryUnitLog::create([
+⋮----
+'user_code' => auth()->user()?->user_code,
+⋮----
+$this->createLog('Report Lost', 'Inventory', "Reported {$lost}x {$itemName} lost (" . implode(', ', $parts) . ") from event: {$event->name}");
+⋮----
+/**
      * Releases from roughly the last two weeks, across every event, newest
      * first -- the "Undo" trail for the Returns page. Two weeks is plenty
      * of room for "wait, I released the wrong amount earlier today/this
@@ -22459,7 +24101,7 @@ $query->whereHas('event', fn ($q) => $q->where('name', 'like', "%{$search}%"))
 ⋮----
 $total = (clone $base)->count();
 ⋮----
-$rows = $base->with(['event:id,name', 'inventoryItem:id,name,condition'])
+$rows = $base->with(['event:id,name', 'inventoryItem:id,name,new_quantity,good_quantity,fair_quantity,poor_quantity'])
 ->latest()
 ->skip(($page - 1) * $perPage)
 ->take($perPage)
@@ -22469,12 +24111,12 @@ $rows = $base->with(['event:id,name', 'inventoryItem:id,name,condition'])
 // borrowed), so it needs that ceiling up front.
 $stillBorrowed = EventInventoryItem::whereIn('event_id', $rows->pluck('event_id')->unique())
 ->whereIn('inventory_item_id', $rows->pluck('inventory_item_id')->unique())
-⋮----
+->get()
 ->groupBy(fn ($b) => $b->event_id . '-' . $b->inventory_item_id)
 ->map(fn ($group) => (int) $group->sum('quantity'));
 ⋮----
 // Units still out per condition, so Edit Return can cap each condition.
-$stillOutUnits = EventInventoryItem::with('inventoryItem:id,condition')
+$stillOutUnits = EventInventoryItem::with('inventoryItem:id,new_quantity,good_quantity,fair_quantity,poor_quantity')
 ->whereIn('event_id', $rows->pluck('event_id')->unique())
 ⋮----
 ->map(function ($group) {
@@ -22644,6 +24286,147 @@ $undos = $base->with(['release.event:id,name', 'release.inventoryItem:id,name'])
 ->map(fn ($u) => [
 ````
 
+## File: resources/js/pages/staff/components/Sidebar.tsx
+````typescript
+import { useStaffAlertsUnread, useSecurityUnread } from "../../../lib/staffAlertsStore";
+import { matchesSearch } from "../../../lib/search";
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  LayoutDashboard,
+  ScanLine,
+  Users,
+  Home,
+  Award,
+  CalendarDays,
+  Bell,
+  Settings,
+  LogOut,
+  FileText,
+  Archive,
+  ChevronDown,
+  ChevronUp,
+  BarChart3,
+  Package,
+  Wallet,
+  Link2,
+  Tags,
+  X as XIcon,
+  IdCard,
+  CalendarCheck,
+  Boxes,
+  Undo2,
+  Search,
+  SearchX,
+  UserCog,
+  ShieldCheck,
+  MessageSquareText,
+} from "lucide-react";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { staffPathFor } from "../../../lib/staffRoutes";
+import api from "../../../lib/api";
+⋮----
+// --- NAVIGATION CONFIG ---
+⋮----
+// Account
+⋮----
+// Head Staff only (hidden for everyone else in the Sidebar below).
+⋮----
+// Records & audit
+⋮----
+// Configuration
+⋮----
+// Settings is split into labelled sections so related pages sit together.
+⋮----
+// --- MODULE GROUPING ---
+// The nav used to be one long flat list. It's now organized the same way
+// Settings already was: a handful of collapsible modules, each bundling
+// related pages together. Dashboard and Reports & Analytics stay as
+// standalone top-level links (each is its own single destination, not a
+// category), same as Settings' own trigger button below.
+⋮----
+// Each group icon is deliberately different from every icon used by its
+// own children below -- reusing a child's icon (e.g. the Events & Check-in
+// group and the Events item both showing a calendar) reads as a visual
+// duplicate.
+⋮----
+interface SidebarProps {
+  active: string;
+  setActive: (key: string, path?: string) => void;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
+  /** Signed-in staff member, shown in the account card above "Sign out". */
+  userName?: string;
+  userRole?: string;
+  /** Only the Head Staff sees the Staff Accounts page. */
+  isHeadStaff?: boolean;
+}
+⋮----
+/** Signed-in staff member, shown in the account card above "Sign out". */
+⋮----
+/** Only the Head Staff sees the Staff Accounts page. */
+⋮----
+// Count of households with no head of household -- red badge on
+// Households (and its group) so staff notice a head must be added.
+⋮----
+// Unread feedback alerts (shared with the top-bar bell).
+⋮----
+// Unread security alerts -- badge on My Account.
+⋮----
+const onChange = (e: Event)
+⋮----
+// Every real destination in the sidebar, flattened once, so the search
+// box below can filter across standalone links, every module's items,
+// and Settings' submenu all at the same time -- a real quick-jump, not
+// a decorative input that does nothing.
+⋮----
+// Which module the currently active page lives under -- "settings" is
+// its own pseudo-group key here, matching the group SETTINGS_NAV renders
+// into below.
+const findGroupKeyForActive = (activeKey: string): string | null =>
+⋮----
+// Collapsible modules, same interaction as the pre-existing Settings
+// submenu -- closed by default, but whichever module the current page
+// belongs to starts open so navigating here directly doesn't hide it.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+const toggleGroup = (key: string) => setOpenGroups((prev) => (
+⋮----
+// Bolds + golds the matched substring inside a nav label while typing in
+// the search box (e.g. "das" in "Dashboard"), rather than just filtering
+// the list with no visual cue about what matched.
+⋮----
+
+⋮----
+// The profile menu in the top bar asks for the same confirm dialog.
+⋮----
+const open = ()
+⋮----
+setLoggingOut(true);
+⋮----
+{/* Quick-jump search -- filters every real nav destination
+            (standalone links, module items, and Settings' submenu) as you
+            type, rather than sitting there decoratively. */}
+⋮----
+onChange=
+⋮----
+<p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">
+⋮----
+{/* STANDALONE LINKS -- Dashboard and Reports each go straight
+                    to one page, so they stay flat instead of being wrapped in
+                    a one-item module. */}
+⋮----
+onClick=
+⋮----
+{/* SUB NAVIGATION */}
+⋮----
+{/* Templated confirm modal, same pattern used for every delete action
+          in the app -- logout is destructive to the current session so it
+          gets the same "are you sure" treatment instead of firing instantly. */}
+⋮----
+<button onClick=
+````
+
 ## File: resources/js/pages/staff/views/ArchiveView.tsx
 ````typescript
 import KpiCard from "../../../components/ui/KpiCard";
@@ -22675,6 +24458,8 @@ interface TrashedItem {
 // semantic mapping as the light styles they replace, recolored for the
 // dark navy/gold/teal system used everywhere else.
 ⋮----
+// One page of archived records, already filtered/sorted by the server, and the archive's own figures.
+⋮----
 // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
 ⋮----
 // Brief skeleton flash on every page switch, same as Activity Logs --
@@ -22700,20 +24485,27 @@ const formatTimeOnly = (dateTimeStr?: string) =>
 ⋮----
 const fetchArchivedItems = async (background = false) =>
 ⋮----
+// A page past the end (e.g. after the last record of a page was restored): go back.
+⋮----
 const handleRestoreConfirm = async () =>
 ⋮----
 // Show success modal instead of alert
 ⋮----
 setRestoreItem(null); // Close confirmation modal
 ⋮----
+// The background poll must refresh with the filters of the moment, not those of an older render.
+⋮----
+// Any filter change starts again from page 1; every change (or page) asks the server.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
 // Quiet background poll -- paused while a restore/success/error modal is
 // open so the list doesn't reshuffle under the staff member's cursor.
 ⋮----
 // eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
-// Portfolio-wide KPIs across every trashed record, independent of the
-// current search/type filter -- gives staff the scale of what's sitting
-// in the trash before they drill into any one type.
+// Portfolio-wide KPIs across every trashed record (from the server), independent of
+// the current search/type filter.
 ⋮----
 const relativeTimeLabel = (timestamp: number | null) =>
 ⋮----
@@ -22744,10 +24536,9 @@ onClick=
 
 ## File: resources/js/pages/staff/views/HouseholdsView.tsx
 ````typescript
-import { matchesSearch } from "../../../lib/search";
 import SaveButton from "../../../components/ui/SaveButton";
 import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, AlertCircle, AlertTriangle, ChevronDown, Search, Check } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
@@ -22797,6 +24588,12 @@ const csrfToken = ()
 async function api(url: string, options: RequestInit =
 ⋮----
 function fullName(m: Member)
+⋮----
+// A resident picker backed by the server: the typed search is matched by the database
+// (HouseholdController::unassigned, paged=1) and only the first matches come back.
+function useUnassignedSearch(search: string, enabled: boolean, exclude: number | null = null, reloadKey: unknown = 0)
+⋮----
+const [loadTick, setLoadTick] = useState(0); // bumps after every reload so the pickers refetch
 ⋮----
 // Server-side size filter + sort (the list is paginated by the API).
 ⋮----
@@ -23072,6 +24869,8 @@ const fetchReport = async (silent = false) =>
 ⋮----
 // The server-built file (PDF / Word) for the current report + options.
 const fetchReportBlob = async (format: "pdf" | "word" | "csv") =>
+⋮----
+// "CSV / Excel": the server sends the report's data and the browser builds the styled workbook (letterhead, message, tiles, table).
 ⋮----
 const handleDownload = async (format: "pdf" | "word" | "csv") =>
 ⋮----
@@ -23357,7 +25156,7 @@ onClose=
 //     setCurrentPage(updater as any);
 //     setPageSwitching(true);
 //     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
 //   };
 //   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
 //   const itemsPerPage = 10;
@@ -23619,7 +25418,7 @@ import FilterBar from "../../../components/ui/FilterBar";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
-import { matchesSearch } from "../../../lib/search";
+import api from "../../../lib/api";
 import { attendanceStatus, weekFirstOrder } from "../../../lib/attendanceStatus";
 ⋮----
 export interface AttendanceRecord {
@@ -23646,9 +25445,13 @@ interface AttendanceViewProps {
   userMemberships?: { id: number; name: string }[];
   /** True until the first attendance fetch lands -- shows the skeleton list. */
   loading?: boolean;
+  /** The signed-in member; the list is fetched page by page for this id. */
+  memberId?: string | number;
 }
 ⋮----
 /** True until the first attendance fetch lands -- shows the skeleton list. */
+⋮----
+/** The signed-in member; the list is fetched page by page for this id. */
 ⋮----
 const statusLabel = (status: string) =>
 ⋮----
@@ -23661,8 +25464,16 @@ const formatEventDateTime = (datetimeStr: string): string =>
 ⋮----
 const formatTimeOnly = (datetimeStr: string): string =>
 ⋮----
-// Only finished outcomes belong here: Complete, Incomplete, or Missed.
-// Events that haven't ended yet (upcoming / ongoing) are not shown.
+// Status, membership, date, search, order and paging are all done by the server
+// (EventAttendanceController::getMemberHistory, paged=1).
+⋮----
+const fetchPage = async (silent = false) =>
+⋮----
+// A new search / filter starts again from page 1.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// The page's quiet 20 s refresh brings new records in; mirror it for the list.
 ⋮----
 // h-full inherits from Members.tsx's h-full wrapper; flex flex-col
 // lets the header stay fixed and the list scroll independently.
@@ -23677,6 +25488,222 @@ onClick=
 {/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
 ⋮----
 <p className="text-[13.5px] text-white/40 mt-1">
+````
+
+## File: resources/js/pages/staff/views/QRCodesView.tsx
+````typescript
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import SaveButton from "../../../components/ui/SaveButton";
+import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
+import FormSelect from "../../../components/ui/FormSelect";
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { Users, Plus, Pencil, Trash2, Search, CheckCircle, AlertCircle, AlertTriangle, Layers, ChevronRight, ChevronDown, X, Save } from "lucide-react";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import Skeleton from "../../../components/ui/Skeleton";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import { tc } from "../../../lib/contentTranslations";
+import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+⋮----
+export interface Membership {
+  id: string | number;
+  name: string;
+  description: string;
+}
+⋮----
+interface AgeBracketOption {
+  id: number;
+  label: string;
+}
+⋮----
+interface CivilStatusOption {
+  id: number;
+  label: string;
+}
+⋮----
+interface CurrentStatusOption {
+  id: number;
+  label: string;
+}
+⋮----
+interface QRCodesViewProps {
+  highlightText: (text: string, query: string) => React.ReactNode;
+  memberships?: Membership[];
+}
+⋮----
+// Membership Groups -- the sectoral associations / councils residents can
+// belong to (Senior Citizens, SK Youth Council, 4Ps, PWD Federation, etc.).
+// Laid out to match the rest of the Residents/Households/Dashboard module:
+// same ink/sage palette, same card and search-bar shapes, same modal
+// template -- so this screen reads as part of the same product instead of
+// an older, differently-themed page bolted on.
+⋮----
+// Brief skeleton flash on every page switch, same as Activity Logs --
+// this list paginates client-side so there's nothing to actually wait
+// on, but the flash keeps page switches feeling consistent app-wide.
+⋮----
+const goToPage = (page: number) =>
+⋮----
+// Eligibility is only enforced when a resident is first assigned to a
+// gated membership -- nothing re-checks it afterward, so residents can
+// drift out of eligibility over time (aged out of a bracket, status
+// changed) and stay enrolled unnoticed. This lets staff proactively ask.
+⋮----
+// Delete confirmation state
+⋮----
+// NEW: Deletion failed modal state
+⋮----
+// Generic error modal -- replaces native alert() for add/edit membership
+// failures so it matches the rest of the app's popup template instead of
+// a jarring native browser dialog.
+⋮----
+// Success modals
+⋮----
+// Unsaved-changes guard for the Add/Edit Membership modals -- closing
+// (X, Cancel, or clicking the backdrop) while the form differs from
+// where it started asks first instead of silently discarding, matching
+// the same pattern used on the Residents form.
+⋮----
+// Adviser example (Senior Citizen eligibility) extended to Youth / Solo
+// Parent: Staff-configurable lists used to optionally gate a membership.
+⋮----
+// Prevent body scroll when modal is open
+⋮----
+// Search and paging are done by the server (MembershipController::index, paged=1).
+⋮----
+const fetchMemberships = async (silent = false) =>
+⋮----
+// A page past the end (the last card of a page was deleted): step back.
+⋮----
+const fetchAllResidents = async () =>
+⋮----
+const checkEligibility = async (m: any) =>
+⋮----
+const handleAddMembership = (e: React.FormEvent) =>
+⋮----
+const performAddMembership = async () =>
+⋮----
+const handleEditMembership = (e: React.FormEvent) =>
+⋮----
+const performEditMembership = async () =>
+⋮----
+// Revert to what's actually saved instead of leaving the
+// rejected edit sitting in the form.
+⋮----
+const openDeleteConfirm = (id: number | string, name: string) =>
+⋮----
+const handleConfirmDelete = async () =>
+⋮----
+const openEditModal = (membership: any) =>
+⋮----
+// Nothing to submit if the form still matches what was loaded.
+⋮----
+const handleRefresh = () =>
+⋮----
+// Real-time-ish refresh: this app has no websocket/push layer, so a
+// second staff member adding/editing a group elsewhere is picked up here
+// via light polling plus a refetch whenever this tab regains focus or
+// becomes visible again -- instead of only updating on this tab's own
+// actions. A modal open pauses the poll so it never yanks a card out
+// from under an in-progress edit.
+⋮----
+const handleVisibility = () =>
+const handleFocus = () =>
+⋮----
+// A new search starts again from page 1; any search / page change reloads from the server.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+const getResidentsByMembership = (membershipName: string) =>
+⋮----
+const handleViewMembers = (membership: any) =>
+⋮----
+const closeModal = () =>
+⋮----
+const closeAddModal = () =>
+⋮----
+const closeEditModal = () =>
+⋮----
+// Nothing typed yet -- safe to close without asking.
+⋮----
+const handleCancelAdd = () =>
+⋮----
+const handleCancelEdit = () =>
+⋮----
+const closeDeleteConfirm = () =>
+⋮----
+const closeDeleteFailed = () =>
+⋮----
+const closeGenericError = ()
+const handleGenericErrorBackdropClick = (e: React.MouseEvent) =>
+⋮----
+const closeAddSuccess = ()
+const closeDeleteSuccess = ()
+const closeUpdateSuccess = ()
+⋮----
+const handleBackdropClick = (e: React.MouseEvent) =>
+⋮----
+const handleAddBackdropClick = (e: React.MouseEvent) =>
+⋮----
+const handleEditBackdropClick = (e: React.MouseEvent) =>
+⋮----
+const handleDeleteBackdropClick = (e: React.MouseEvent) =>
+⋮----
+const handleDeleteFailedBackdropClick = (e: React.MouseEvent) =>
+⋮----
+const handleAddSuccessBackdropClick = (e: React.MouseEvent) =>
+const handleDeleteSuccessBackdropClick = (e: React.MouseEvent) =>
+const handleUpdateSuccessBackdropClick = (e: React.MouseEvent) =>
+⋮----
+// Jump straight from the Edit modal into the same delete-confirm flow
+// used everywhere else, instead of a separate archive icon on the card.
+const handleDeleteFromEditModal = () =>
+⋮----
+const handleEsc = (e: KeyboardEvent) =>
+⋮----
+// The unsaved-changes prompt itself takes priority -- Escape just
+// dismisses it (equivalent to "Stay"), never discards on its own.
+⋮----
+{/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents/
+          Households background and palette. Modals further down stay in
+          the original light theme, same scoping used on those pages. */}
+⋮----
+onChange=
+⋮----
+onClick=
+⋮----
+{/* View Roster Modal */}
+⋮----
+<button onClick=
+⋮----
+{/* New Membership Group Modal -- sized and styled to match the Add New
+          Record modal (Residents) exactly: same width class, card sections,
+          title size, close icon, and button treatment. */}
+⋮----
+subtitle=
+⋮----
+placeholder=
+⋮----
+<FormSection title=
+⋮----
+title=
+⋮----
+cancelLabel=
+⋮----
+onCancel=
+⋮----
+{/* Delete Confirmation Modal */}
+⋮----
+{/* Add Success Modal */}
+⋮----
+{/* Delete Success Modal */}
+⋮----
+{/* Deletion Failed Modal */}
+⋮----
+{/* Generic Error Modal -- replaces native alert() for add/edit failures */}
+⋮----
+{/* Cancel Unsaved Changes Confirm Modal -- same pattern as the Residents form */}
 ````
 
 ## File: resources/js/pages/members/views/EventsView.tsx
@@ -23748,7 +25775,7 @@ onClick=
 //     setCurrentPage(updater as any);
 //     setPageSwitching(true);
 //     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
 //   };
 //   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
 //   const itemsPerPage = 6;
@@ -24052,7 +26079,7 @@ onClick=
 ⋮----
 //       <div className="pl-1">
 //         {pageSwitching ? (
-//           <div className="grid gap-5 md:grid-cols-2">
+//           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
 //             {Array.from({ length: 4 }).map((_, i) => (
 //               <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
 //                 <Skeleton className="h-4 w-2/3" />
@@ -24070,7 +26097,7 @@ onClick=
 //                 <h3 className="mb-4 border-b border-white/10 pb-2 text-lg font-bold text-white">
 //                   {dateLabel === THIS_WEEK_KEY ? t("thisWeekLabel") : dateLabel}
 //                 </h3>
-//                 <div className="grid gap-5 md:grid-cols-2">
+//                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
 //                   {eventsInGroup.map((e) => {
 //                     const today = new Date();
 //                     const isUpcoming = new Date(e.date) >= today;
@@ -24244,10 +26271,793 @@ onClick=
 //   );
 // }
 ⋮----
+//LATEST WORKING IMPLEMENTATION
+// import { scrollListIntoView } from "../../../lib/scrollToList";
+// import useFilterSwitching from "../../../hooks/useFilterSwitching";
+// import { useState, useMemo, useEffect, useRef } from "react";
+// import { Filter, Star, Pencil, CheckCircle, X, HelpCircle, Lock } from "lucide-react";
+// import FeedbackComment from "../../../components/ui/FeedbackComment";
+// import type { ResponseFields } from "../../../components/ui/FeedbackComment";
+// import { ABSENCE_REASON_KEYS } from "../../../lib/absence";
+// import SearchBar from "../../../components/ui/SearchBar";
+// import DatePicker from "../../../components/ui/DatePicker";
+// import FilterDropdown from "../../../components/ui/FilterDropdown";
+// import FilterBar from "../../../components/ui/FilterBar";
+// import Skeleton from "../../../components/ui/Skeleton";
+// import { useLanguage } from "../../../i18n/LanguageContext";
+// import { tc } from "../../../lib/contentTranslations";
+// import api, { apiErrorMessage } from "../../../lib/api";
+// import { matchesSearch } from "../../../lib/search";
+// import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+// import StatusModal from "../../../components/ui/StatusModal";
+⋮----
+// const THIS_WEEK_KEY = "__THIS_WEEK__";
+⋮----
+// interface Event {
+//   id: number;
+//   title: string;
+//   date: string;
+//   event_end?: string | null;
+//   location: string;
+//   description: string;
+//   membership_ids?: number[];
+//   memberships?: { id: number; name: string }[];
+// }
+⋮----
+// interface AttendanceRecord {
+//   eventId?: number;
+//   status: string;
+// }
+⋮----
+// interface FeedbackEntry extends ResponseFields {
+//   id: number;
+//   event_id: number;
+//   rating: number;
+//   comment: string | null;
+//   edits_count?: number;
+//   staff_liked_at?: string | null;
+//   staff_reply?: string | null;
+//   staff_replied_at?: string | null;
+//   /** Epoch ms until the member may still edit (set client-side from the server's seconds-left). */
+//   edit_until?: number;
+// }
+⋮----
+// export interface AbsenceEntry extends ResponseFields {
+//   id: number;
+//   event_id: number;
+//   reason: string;
+//   comment: string | null;
+//   edits_count?: number;
+//   staff_liked_at?: string | null;
+//   staff_reply?: string | null;
+//   staff_replied_at?: string | null;
+//   edit_until?: number;
+// }
+⋮----
+// interface EventsViewProps {
+//   allEvents: Event[];
+//   allMemberships: { id: number; name: string }[];
+//   userMemberships: { id: number; name: string }[];
+//   highlightText: (text: string, query: string) => React.ReactNode;
+//   attendanceRecords?: AttendanceRecord[];
+//   myFeedback?: FeedbackEntry[];
+//   onFeedbackSubmitted?: (entry: FeedbackEntry) => void;
+//   myAbsences?: AbsenceEntry[];
+//   onAbsenceSubmitted?: (entry: AbsenceEntry) => void;
+//   /** An event the member was sent here to see (from a notification card). */
+//   focusEventId?: number | null;
+//   onFocusHandled?: () => void;
+//   /** The signed-in member, for the avatar and name on their own comment. */
+//   member?: { first_name?: string | null; last_name?: string | null } | null;
+//   feedbackRules?: { close_after_hours: number; edit_window_minutes: number };
+//   /** True until the first events fetch lands -- shows the skeleton grid. */
+//   loading?: boolean;
+// }
+⋮----
+// export default function EventsView({
+//   allEvents,
+//   allMemberships,
+//   userMemberships,
+//   highlightText,
+//   attendanceRecords = [],
+//   myFeedback = [],
+//   onFeedbackSubmitted,
+//   myAbsences = [],
+//   onAbsenceSubmitted,
+//   focusEventId = null,
+//   onFocusHandled,
+//   member = null,
+//   feedbackRules = { close_after_hours: 12, edit_window_minutes: 30 },
+//   loading = false,
+// }: EventsViewProps) {
+//   const { t, language, locale } = useLanguage();
+//   const [confirmReviewEventId, setConfirmReviewEventId] = useState<number | null>(null);
+//   const [reviewSavedOpen, setReviewSavedOpen] = useState(false);
+//   const [reviewSavedKind, setReviewSavedKind] = useState<"added" | "updated">("added");
+//   const [confirmCancelReviewOpen, setConfirmCancelReviewOpen] = useState(false);
+//   const [eventSearch, setEventSearch] = useState("");
+//   const [eventFilter, setEventFilter] = useState("all");
+//   const [membershipFilter, setMembershipFilter] = useState("all");
+//   const [selectedDate, setSelectedDate] = useState("");
+//   const [currentPage, setCurrentPage] = useState(1);
+//   const [pageSwitchingRaw, setPageSwitching] = useState(false);
+//   const filterSwitching = useFilterSwitching([eventSearch, eventFilter, membershipFilter, selectedDate]);
+//   const pageSwitching = pageSwitchingRaw || filterSwitching;
+//   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+//   const listTopRef = useRef<HTMLSpanElement | null>(null);
+//   const goToPage = (updater: number | ((p: number) => number)) => {
+//     setCurrentPage(updater as any);
+//     scrollListIntoView(listTopRef.current);
+//     setPageSwitching(true);
+//     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
+//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
+//   };
+//   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
+//   const itemsPerPage = 6;
+⋮----
+//   const [reviewingEventId, setReviewingEventId] = useState<number | null>(null);
+//   const [reviewRating, setReviewRating] = useState(0);
+//   const [reviewHoverRating, setReviewHoverRating] = useState(0);
+//   const [reviewComment, setReviewComment] = useState("");
+//   const [submittingReview, setSubmittingReview] = useState(false);
+//   const [reviewError, setReviewError] = useState<string | null>(null);
+//   const [justSubmittedEventId, setJustSubmittedEventId] = useState<number | null>(null);
+⋮----
+//   useEffect(() => {
+//     if (justSubmittedEventId === null) return;
+//     const timer = setTimeout(() => setJustSubmittedEventId(null), 4000);
+//     return () => clearTimeout(timer);
+//   }, [justSubmittedEventId]);
+⋮----
+//   // Re-evaluates the open / locked states while the page is open.
+//   const [nowMs, setNowMs] = useState(() => Date.now());
+//   useEffect(() => {
+//     const h = setInterval(() => setNowMs(Date.now()), 15000);
+//     return () => clearInterval(h);
+//   }, []);
+//   const closesAtMs = (ev: Event) => {
+//     const end = new Date(ev.event_end || ev.date).getTime();
+//     return end ? end + feedbackRules.close_after_hours * 3600000 : 0;
+//   };
+//   const windowOpen = (ev: Event) => !closesAtMs(ev) || nowMs < closesAtMs(ev);
+//   const canEdit = (entry?: { edit_until?: number } | null) => !!entry && nowMs < (entry.edit_until ?? 0);
+//   const fmtTime = (ms: number) => new Date(ms).toLocaleString(locale, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+⋮----
+//   const getAttendanceForEvent = (eventId: number) =>
+//     attendanceRecords.find((r) => Number(r.eventId) === Number(eventId));
+⋮----
+//   const getFeedbackForEvent = (eventId: number) =>
+//     myFeedback.find((f) => Number(f.event_id) === Number(eventId));
+⋮----
+//   const canReviewEvent = (eventId: number) => {
+//     const attendance = getAttendanceForEvent(eventId);
+//     if (!attendance) return false;
+//     if (attendance.status === "complete") return true;
+//     if (attendance.status !== "incomplete") return false;
+//     const event = allEvents.find((ev) => ev.id === eventId);
+//     if (!event?.event_end) return false;
+//     return new Date(event.event_end).getTime() <= Date.now();
+//   };
+⋮----
+//   // "Why couldn't you attend?" -- for finished events the member has no
+//   // check-in for (and that are meant for them).
+//   const getAbsenceForEvent = (eventId: number) => myAbsences.find((r) => Number(r.event_id) === Number(eventId));
+//   const canGiveReason = (ev: Event) => {
+//     const att = getAttendanceForEvent(ev.id);
+//     if (att && att.status !== "missed") return false;
+//     const end = new Date(ev.event_end || ev.date).getTime();
+//     if (!end || end > Date.now()) return false;
+//     if (ev.membership_ids?.length && !userMemberships.some((m) => ev.membership_ids!.includes(m.id))) return false;
+//     return !!getAbsenceForEvent(ev.id) || windowOpen(ev);
+//   };
+//   const [reasonEventId, setReasonEventId] = useState<number | null>(null);
+//   const [reasonKey, setReasonKey] = useState("");
+//   const [reasonComment, setReasonComment] = useState("");
+//   const [submittingReason, setSubmittingReason] = useState(false);
+//   const [reasonError, setReasonError] = useState<string | null>(null);
+//   const startReason = (eventId: number) => {
+//     const existing = getAbsenceForEvent(eventId);
+//     setReasonEventId(eventId);
+//     setReasonKey(existing?.reason ?? "");
+//     setReasonComment(existing?.comment ?? "");
+//     setReasonError(null);
+//   };
+//   const submitReason = async (eventId: number) => {
+//     if (!reasonKey) return;
+//     setSubmittingReason(true);
+//     setReasonError(null);
+//     try {
+//       const res = await api.post("/feedback/absence", { event_id: eventId, reason: reasonKey, comment: reasonComment.trim() || undefined });
+//       const saved = res.data?.absence;
+//       onAbsenceSubmitted?.({
+//         ...(getAbsenceForEvent(eventId) ?? {}),
+//         id: saved?.id ?? Date.now(),
+//         event_id: eventId,
+//         reason: reasonKey,
+//         comment: reasonComment.trim() || null,
+//         updated_at: new Date().toISOString(),
+//         edits_count: (() => {
+//           const prevA = getAbsenceForEvent(eventId);
+//           return (prevA?.edits_count ?? 0) + (prevA && (prevA.reason !== reasonKey || (prevA.comment ?? "") !== (reasonComment.trim() || "")) ? 1 : 0);
+//         })(),
+//         edit_until: getAbsenceForEvent(eventId)?.edit_until ?? Date.now() + feedbackRules.edit_window_minutes * 60000,
+//       });
+//       setReasonEventId(null);
+//     } catch (err) {
+//       setReasonError(apiErrorMessage(err, t("absFailed")));
+//     } finally {
+//       setSubmittingReason(false);
+//     }
+//   };
+⋮----
+//   const startReview = (eventId: number) => {
+//     const existing = getFeedbackForEvent(eventId);
+//     setReviewingEventId(eventId);
+//     setReviewRating(existing?.rating ?? 0);
+//     setReviewComment(existing?.comment ?? "");
+//     setReviewHoverRating(0);
+//     setReviewError(null);
+//     setJustSubmittedEventId(null);
+//   };
+⋮----
+//   const cancelReview = () => {
+//     setReviewingEventId(null);
+//     setReviewRating(0);
+//     setReviewComment("");
+//     setReviewError(null);
+//   };
+⋮----
+//   const submitReview = async (eventId: number) => {
+//     setConfirmReviewEventId(null);
+//     if (reviewRating < 1) return;
+//     const wasEdit = !!getFeedbackForEvent(eventId);
+//     setSubmittingReview(true);
+//     setReviewError(null);
+//     try {
+//       const res = await api.post("/feedback", {
+//         event_id: eventId,
+//         rating: reviewRating,
+//         comment: reviewComment || undefined,
+//       });
+//       const saved = res.data?.feedback;
+//       const prev = getFeedbackForEvent(eventId);
+//       onFeedbackSubmitted?.({
+//         ...(prev ?? {}),
+//         id: saved?.id ?? Date.now(),
+//         event_id: eventId,
+//         rating: reviewRating,
+//         comment: reviewComment || null,
+//         updated_at: new Date().toISOString(),
+//         edits_count: (prev?.edits_count ?? 0) + (prev && (prev.rating !== reviewRating || (prev.comment ?? "") !== (reviewComment.trim() || "")) ? 1 : 0),
+//         edit_until: prev?.edit_until ?? Date.now() + feedbackRules.edit_window_minutes * 60000,
+//       });
+//       setReviewingEventId(null);
+//       setJustSubmittedEventId(eventId);
+//       setReviewSavedKind(wasEdit ? "updated" : "added");
+//       setReviewSavedOpen(true);
+//     } catch (err) {
+//       setReviewError(apiErrorMessage(err, t("submitReviewFailed")));
+//     } finally {
+//       setSubmittingReview(false);
+//     }
+//   };
+⋮----
+//   const formatTime = (dateTimeStr: string): string => {
+//     if (!dateTimeStr) return "";
+//     const date = new Date(dateTimeStr);
+//     if (isNaN(date.getTime())) return "";
+//     let hours = date.getHours();
+//     const minutes = date.getMinutes();
+//     const ampm = hours >= 12 ? 'PM' : 'AM';
+//     hours = hours % 12;
+//     if (hours === 0) hours = 12;
+//     return `${hours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+//   };
+⋮----
+//   const formatDateOnly = (dateTimeStr: string): string => {
+//     if (!dateTimeStr) return "";
+//     return dateTimeStr.split(" ")[0];
+//   };
+⋮----
+//   const getStartOfWeek = (date: Date) => {
+//     const d = new Date(date);
+//     const day = d.getDay();
+//     d.setDate(d.getDate() - day);
+//     d.setHours(0, 0, 0, 0);
+//     return d;
+//   };
+⋮----
+//   const getEndOfWeek = (date: Date) => {
+//     const d = getStartOfWeek(date);
+//     d.setDate(d.getDate() + 6);
+//     d.setHours(23, 59, 59, 999);
+//     return d;
+//   };
+⋮----
+//   const filteredEvents = useMemo(() => {
+//     const today = new Date();
+//     let result = [...allEvents];
+//     if (eventFilter === "upcoming") result = result.filter((e) => new Date(e.date) >= today);
+//     else if (eventFilter === "past") result = result.filter((e) => new Date(e.date) < today);
+⋮----
+//     if (membershipFilter !== "all") {
+//       const selectedId = Number(membershipFilter);
+//       result = result.filter((e) => e.membership_ids?.includes(selectedId));
+//     }
+⋮----
+//     if (eventSearch.trim()) {
+//       result = result.filter((e) =>
+//         matchesSearch(eventSearch, e.title, e.date, e.location, e.description)
+//       );
+//     }
+⋮----
+//     // Date filter: keep only events that start on the picked day.
+//     if (selectedDate) {
+//       result = result.filter((e) => String(e.date || "").split(/[ T]/)[0] === selectedDate);
+//     }
+⋮----
+//     // Order the WHOLE list before it is paginated, so page 1 always opens with
+//     // what matters now and the order never shuffles between pages:
+//     //   1. This week, still to come / happening  -- soonest first
+//     //   2. This week, already finished           -- most recent first
+//     //   3. Later than this week                  -- soonest first
+//     //   4. Before this week                      -- most recent first
+//     const nowMs = Date.now();
+//     const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0);
+//     const wkStart = getStartOfWeek(dayStart).getTime();
+//     const wkEnd = getEndOfWeek(dayStart).getTime();
+//     const startMs = (e: { date: string }) => new Date(e.date).getTime() || 0;
+//     const endMs = (e: { date: string; event_end?: string | null }) => {
+//       const end = e.event_end ? new Date(e.event_end).getTime() : NaN;
+//       return Number.isNaN(end) ? startMs(e) : end;
+//     };
+//     const bucket = (e: { date: string; event_end?: string | null }) => {
+//       const st = startMs(e);
+//       if (st >= wkStart && st <= wkEnd) return endMs(e) >= nowMs ? 0 : 1;
+//       return st > wkEnd ? 2 : 3;
+//     };
+//     result.sort((a, b) => {
+//       const ba = bucket(a), bb = bucket(b);
+//       if (ba !== bb) return ba - bb;
+//       return (ba === 0 || ba === 2) ? startMs(a) - startMs(b) : startMs(b) - startMs(a);
+//     });
+//     return result;
+//   }, [allEvents, eventFilter, membershipFilter, eventSearch, selectedDate]);
+⋮----
+//   const totalPages = Math.ceil(filteredEvents.length / itemsPerPage);
+//   const paginatedEvents = useMemo(() => {
+//     const startIndex = (currentPage - 1) * itemsPerPage;
+//     return filteredEvents.slice(startIndex, startIndex + itemsPerPage);
+//   }, [filteredEvents, currentPage, itemsPerPage]);
+⋮----
+//   useEffect(() => {
+//     setCurrentPage(1);
+//   }, [eventSearch, eventFilter, membershipFilter, selectedDate]);
+⋮----
+//   // Arriving from a notification card: clear the filters, open the page that
+//   // holds the event, scroll to it and flash it so it is easy to spot.
+//   const [focusTick, setFocusTick] = useState(0);
+//   const [flashId, setFlashId] = useState<number | null>(null);
+//   const pendingFocus = useRef<number | null>(null);
+//   useEffect(() => {
+//     if (focusEventId == null || loading) return;
+//     if (allEvents.some((ev) => ev.id === focusEventId)) {
+//       pendingFocus.current = focusEventId;
+//       setEventSearch("");
+//       setEventFilter("all");
+//       setMembershipFilter("all");
+//       setSelectedDate("");
+//       setFocusTick((n) => n + 1);
+//     }
+//     onFocusHandled?.();
+//   }, [focusEventId, loading]); // eslint-disable-line react-hooks/exhaustive-deps
+//   useEffect(() => {
+//     const id = pendingFocus.current;
+//     if (id == null) return;
+//     pendingFocus.current = null;
+//     const idx = filteredEvents.findIndex((ev) => ev.id === id);
+//     if (idx < 0) return;
+//     setCurrentPage(Math.floor(idx / itemsPerPage) + 1);
+//     setFlashId(id);
+//   }, [focusTick, filteredEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+//   useEffect(() => {
+//     if (flashId == null) return;
+//     const scroll = setTimeout(() => {
+//       document.querySelector(`[data-event-id="${flashId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+//     }, 250);
+//     const clear = setTimeout(() => setFlashId(null), 3500);
+//     return () => { clearTimeout(scroll); clearTimeout(clear); };
+//   }, [flashId]);
+⋮----
+//   const groupedEvents = useMemo(() => {
+//     const groups: Record<string, typeof allEvents> = {};
+//     const today = new Date();
+//     today.setHours(0, 0, 0, 0);
+//     const weekStart = getStartOfWeek(today);
+//     const weekEnd = getEndOfWeek(today);
+⋮----
+//     paginatedEvents.forEach((e) => {
+//       const eventDate = new Date(e.date);
+//       eventDate.setHours(0, 0, 0, 0);
+//       const dateOnly = e.date.split(" ")[0];
+//       let sectionKey: string;
+//       if (eventDate >= weekStart && eventDate <= weekEnd) sectionKey = THIS_WEEK_KEY;
+//       else sectionKey = new Date(dateOnly).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+//       if (!groups[sectionKey]) groups[sectionKey] = [];
+//       groups[sectionKey].push(e);
+//     });
+⋮----
+//     // The events arrive already in their final order (see filteredEvents), and
+//     // object keys keep insertion order -- so the sections do too.
+//     return groups;
+//   }, [paginatedEvents]);
+⋮----
+//   return (
+//     // <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> e rollback ni if dili mugana just below ani
+//     <div className="h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-y-auto lg:overflow-hidden">
+//       {/* Fixed Header */}
+//       <div className="flex-shrink-0 pb-6">
+//         <div className="w-full">
+//           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("eventsAndAttendance")}</h1>
+//           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("eventsSubtitle")}</p>
+⋮----
+//           <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+//             <FilterBar
+//               search={{ value: eventSearch, onChange: setEventSearch, placeholder: t("searchEventsPlaceholder") }}
+//               filters={[
+//                 {
+//                   key: "status", label: t("statusColumn"), value: eventFilter, onChange: setEventFilter,
+//                   options: [
+//                     { value: "all", label: t("allEvents") },
+//                     { value: "upcoming", label: t("upcomingEvents") },
+//                     { value: "past", label: t("pastEvents") },
+//                   ],
+//                 },
+//                 {
+//                   key: "membership", label: t("fltMembership"), value: membershipFilter, onChange: setMembershipFilter, searchable: true, minWidthClass: "min-w-[220px]",
+//                   options: [
+//                     { value: "all", label: t("allMembershipsOption") },
+//                     ...userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
+//                   ],
+//                 },
+//               ]}
+//               count={loading || pageSwitching ? undefined : { shown: filteredEvents.length, total: allEvents.length }}
+//               extraChips={selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []}
+//               onClearExtras={() => setSelectedDate("")}
+//             >
+//               <div className="h-11 shrink-0">
+//                 <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
+//               </div>
+//             </FilterBar>
+//           </div>
+⋮----
+//           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+//           <div className="flex justify-end mt-4 max-lg:mt-0">
+//             {totalPages > 1 && (loading ? null : (
+//               <div className="flex items-center gap-2 max-lg:fixed max-lg:bottom-5 max-lg:right-5 max-lg:z-40 max-lg:rounded-full max-lg:border max-lg:border-white/15 max-lg:bg-[#0A0E1A]/95 max-lg:px-3 max-lg:py-2 max-lg:shadow-2xl max-lg:backdrop-blur">
+//                 <button
+//                   onClick={() => goToPage(p => Math.max(1, p - 1))}
+//                   disabled={currentPage === 1}
+//                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+//                 >
+//                   ←
+//                 </button>
+⋮----
+//                 <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+//                   {currentPage}
+//                 </span>
+⋮----
+//                 <button
+//                   onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
+//                   disabled={currentPage === totalPages}
+//                   className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+//                 >
+//                   →
+//                 </button>
+//               </div>
+//             ))}
+//           </div>
+//         </div>
+//       </div>
+⋮----
+//       {/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
+//       <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0 pb-24 lg:pb-4">
+//         <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
+//         {pageSwitching || loading ? (
+//           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+//             {Array.from({ length: 4 }).map((_, i) => (
+//               <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
+//                 <Skeleton className="h-4 w-2/3" />
+//                 <Skeleton className="h-3 w-1/2" />
+//                 <Skeleton className="h-3 w-1/3" />
+//               </div>
+//             ))}
+//           </div>
+//         ) : filteredEvents.length === 0 ? (
+//           <p className="text-white/40 italic">{t("noEventsMatch")}</p>
+//         ) : (
+//           <div className="space-y-8">
+//             {Object.entries(groupedEvents).map(([dateLabel, eventsInGroup]) => (
+//               <div key={dateLabel}>
+//                 <h3 className="mb-4 border-b border-white/10 pb-2 text-lg font-bold text-white">
+//                   {dateLabel === THIS_WEEK_KEY ? t("thisWeekLabel") : dateLabel}
+//                 </h3>
+//                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+//                   {eventsInGroup.map((e) => {
+//                     const today = new Date();
+//                     const isUpcoming = new Date(e.date) >= today;
+//                     const memNames = Array.isArray(e.memberships) && e.memberships.length > 0
+//                       ? e.memberships.map((m) => m.name)
+//                       : Array.isArray(e.membership_ids)
+//                         ? e.membership_ids.map((id) => allMemberships.find((m) => m.id === id)?.name).filter(Boolean) as string[]
+//                         : [];
+//                     const dateOnly = formatDateOnly(e.date);
+//                     const endTimeOnly = e.event_end ? formatTime(e.event_end) : "";
+//                     const timeOnly = `${formatTime(e.date)}${endTimeOnly ? ` – ${endTimeOnly}` : ""}`;
+⋮----
+//                     return (
+//                       <div key={e.id} data-event-id={e.id} className={`relative rounded-3xl border-l-4 border-gold-400 border-y border-r p-5 transition-all duration-500 ${flashId === e.id ? "border-[#4FBEB0] bg-[#4FBEB0]/10 ring-2 ring-[#4FBEB0]/60" : "border-white/10 bg-white/[0.04] hover:bg-white/[0.06]"}`}>
+//                         <div className="absolute top-4 right-4 flex items-center gap-1.5">
+//                           <span className={`w-2.5 h-2.5 rounded-full ${isUpcoming ? "bg-gold-400" : "bg-[#4FBEB0]"}`} />
+//                           <span className="text-xs font-medium text-white/50">{isUpcoming ? t("upcomingBadge") : t("pastBadge")}</span>
+//                         </div>
+⋮----
+//                         <h2 className="pr-20 text-base font-bold text-white">{highlightText(tc(e.title, language as any), eventSearch)}</h2>
+//                         <p className="mt-1 text-sm text-white/40">{highlightText(dateOnly, eventSearch)} · {timeOnly}</p>
+//                         <p className="mt-1 text-sm text-white/40">{highlightText(tc(e.location, language as any), eventSearch)}</p>
+//                         <p className="mt-3 text-sm text-white/70">{highlightText(tc(e.description, language as any), eventSearch)}</p>
+⋮----
+//                         <div className="mt-4 flex flex-wrap items-center gap-2">
+//                           {memNames.length > 0 ? (
+//                             <>
+//                               <span className="rounded-full bg-[#4FBEB0]/15 px-3 py-1 text-xs font-semibold text-[#7DD8CB] border border-[#4FBEB0]/25">
+//                                 {t("forLabel")} {memNames.join(", ")}
+//                               </span>
+//                               <span className="rounded-full bg-white/[0.06] px-3 py-1 text-xs font-semibold text-white/50 border border-white/10">
+//                                 {t("includedInMembership")}
+//                               </span>
+//                             </>
+//                           ) : (
+//                             <span className="rounded-full bg-[#4FBEB0]/15 px-3 py-1 text-xs font-semibold text-[#7DD8CB] border border-[#4FBEB0]/25">
+//                               {t("openEventAllResidents")}
+//                             </span>
+//                           )}
+//                         </div>
+⋮----
+//                         {canReviewEvent(e.id) && (() => {
+//                           const feedback = getFeedbackForEvent(e.id);
+//                           const isReviewing = reviewingEventId === e.id;
+//                           // Add: dirty once there is anything to save. Edit: dirty only if the
+//                           // rating or comment actually differs from what is already saved.
+//                           const reviewDirty = feedback
+//                             ? reviewRating !== feedback.rating || reviewComment.trim() !== (feedback.comment ?? "").trim()
+//                             : reviewRating > 0 || reviewComment.trim() !== "";
+//                           return (
+//                             <div className="mt-4 pt-4 border-t border-white/10">
+//                               {isReviewing ? (
+//                                 <div>
+//                                   <p className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">{t("rateThisEventLabel")}</p>
+//                                   <div className="flex items-center gap-1">
+//                                     {[1, 2, 3, 4, 5].map((n) => (
+//                                       <button key={n} type="button"
+//                                         onMouseEnter={() => setReviewHoverRating(n)}
+//                                         onMouseLeave={() => setReviewHoverRating(0)}
+//                                         onClick={() => setReviewRating(n)} className="p-0.5">
+//                                         <Star size={22} className={(reviewHoverRating || reviewRating) >= n ? "text-gold-400 fill-gold-400" : "text-white/20"} />
+//                                       </button>
+//                                     ))}
+//                                   </div>
+//                                   <textarea value={reviewComment} onChange={(ev) => setReviewComment(ev.target.value)}
+//                                     placeholder={t("optionalCommentPlaceholder")} rows={2}
+//                                     className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70" />
+//                                   {reviewError && <p className="mt-1 text-xs text-red-400">{reviewError}</p>}
+//                                   <div className="mt-2 flex gap-2">
+//                                     <button type="button" onClick={() => setConfirmReviewEventId(e.id)} disabled={reviewRating < 1 || submittingReview || !reviewDirty}
+//                                       className="flex-1 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold py-2 disabled:opacity-50 transition">
+//                                       {submittingReview ? t("submittingLabel") : t("submitReviewButton")}
+//                                     </button>
+//                                     <button type="button" onClick={() => (reviewDirty ? setConfirmCancelReviewOpen(true) : cancelReview())} disabled={submittingReview}
+//                                       className="rounded-full border border-white/15 text-white/60 hover:bg-white/5 text-sm font-medium px-4 disabled:opacity-50 transition">
+//                                       {t("cancelLabel")}
+//                                     </button>
+//                                   </div>
+//                                 </div>
+//                               ) : feedback ? (
+//                                 <div>
+//                                   <FeedbackComment
+//                                     role="member"
+//                                     kind="rating"
+//                                     item={feedback}
+//                                     author={member}
+//                                     comment={feedback.comment}
+//                                     header={
+//                                       <div className="flex items-center gap-1">
+//                                         {[1, 2, 3, 4, 5].map((n) => (
+//                                           <Star key={n} size={16} className={feedback.rating >= n ? "text-gold-400 fill-gold-400 shrink-0" : "text-white/15 shrink-0"} />
+//                                         ))}
+//                                       </div>
+//                                     }
+//                                     actions={
+//                                       canEdit(feedback) ? (
+//                                         <button type="button" onClick={() => startReview(e.id)} title={t("editReviewTitle")} className="font-semibold text-white/55 transition hover:text-white hover:underline">
+//                                           {t("editLabel")}
+//                                         </button>
+//                                       ) : (
+//                                         <span title={t("fbLockedHint").replace("{n}", String(feedbackRules.edit_window_minutes))} className="inline-flex items-center gap-1 text-white/35">
+//                                           <Lock className="h-3 w-3" /> {t("fbLocked")}
+//                                         </span>
+//                                       )
+//                                     }
+//                                     footer={
+//                                       <>
+//                                         {canEdit(feedback) && <p className="mt-1 px-1 text-[11px] text-white/40">{t("fbEditUntil").replace("{time}", fmtTime(feedback.edit_until!))}</p>}
+//                                         {justSubmittedEventId === e.id && (
+//                                           <p className="mt-1 flex items-center gap-1 px-1 text-xs font-medium text-[#7DD8CB]">
+//                                             <CheckCircle className="h-3.5 w-3.5" /> {t("feedbackSavedConfirmation")}
+//                                           </p>
+//                                         )}
+//                                       </>
+//                                     }
+//                                     onChange={(patch) => onFeedbackSubmitted?.({ ...feedback, ...patch })}
+//                                   />
+//                                 </div>
+//                               ) : (
+//                                 windowOpen(e) ? (
+//                                   <div>
+//                                     <button type="button" onClick={() => startReview(e.id)}
+//                                       className="inline-flex items-center gap-1.5 rounded-full border border-white/15 text-white/70 text-sm font-semibold px-4 py-2 hover:bg-white/10 transition">
+//                                       <Star className="h-4 w-4" /> {t("rateThisEventButton")}
+//                                     </button>
+//                                     <p className="mt-2 text-[11px] text-white/40">{t("fbOpenUntil").replace("{time}", fmtTime(closesAtMs(e)))}</p>
+//                                   </div>
+//                                 ) : (
+//                                   <p className="flex items-center gap-1.5 text-xs text-white/45"><Lock className="h-3.5 w-3.5" /> {t("fbClosedNote").replace("{n}", String(feedbackRules.close_after_hours))}</p>
+//                                 )
+//                               )}
+//                             </div>
+//                           );
+//                         })()}
+⋮----
+//                         {canGiveReason(e) && (() => {
+//                           const absence = getAbsenceForEvent(e.id);
+//                           const editing = reasonEventId === e.id || !absence;
+//                           return (
+//                             <div className="mt-4 pt-4 border-t border-white/10">
+//                               {editing ? (
+//                                 <div>
+//                                   <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-[#7DD8CB]">
+//                                     <HelpCircle className="h-3.5 w-3.5" /> {t("absTitle")}
+//                                   </p>
+//                                   <p className="mt-1 text-xs text-white/45">{t("absSubtitle")}</p>
+//                                   {!absence && <p className="mt-1 text-[11px] text-white/35">{t("fbOpenUntil").replace("{time}", fmtTime(closesAtMs(e)))}</p>}
+//                                   <div className="mt-3 flex flex-wrap gap-2">
+//                                     {ABSENCE_REASON_KEYS.map((k) => {
+//                                       const on = reasonEventId === e.id && reasonKey === k;
+//                                       return (
+//                                         <button
+//                                           key={k}
+//                                           type="button"
+//                                           onClick={() => { if (reasonEventId !== e.id) startReason(e.id); setReasonKey(k); }}
+//                                           className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${on ? "border-[#4FBEB0] bg-[#4FBEB0]/15 text-[#7DD8CB]" : "border-white/15 text-white/65 hover:bg-white/10"}`}
+//                                         >
+//                                           {t(`absReason_${k}`)}
+//                                         </button>
+//                                       );
+//                                     })}
+//                                   </div>
+//                                   {reasonEventId === e.id && (
+//                                     <>
+//                                       <textarea
+//                                         value={reasonComment}
+//                                         onChange={(ev) => setReasonComment(ev.target.value)}
+//                                         placeholder={t("absCommentPlaceholder")}
+//                                         rows={2}
+//                                         maxLength={500}
+//                                         className="mt-3 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+//                                       />
+//                                       {reasonError && <p className="mt-1 text-xs text-red-400">{reasonError}</p>}
+//                                       <div className="mt-2 flex gap-2">
+//                                         <button
+//                                           type="button"
+//                                           onClick={() => submitReason(e.id)}
+//                                           disabled={!reasonKey || submittingReason || (!!absence && reasonKey === absence.reason && reasonComment.trim() === (absence.comment ?? "").trim())}
+//                                           className="flex-1 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold py-2 disabled:opacity-50 transition"
+//                                         >
+//                                           {submittingReason ? t("submittingLabel") : t("absSubmit")}
+//                                         </button>
+//                                         {absence && (
+//                                           <button type="button" onClick={() => setReasonEventId(null)} disabled={submittingReason} className="rounded-full border border-white/15 text-white/60 hover:bg-white/5 text-sm font-medium px-4 disabled:opacity-50 transition">
+//                                             {t("cancelLabel")}
+//                                           </button>
+//                                         )}
+//                                       </div>
+//                                     </>
+//                                   )}
+//                                 </div>
+//                               ) : (
+//                                 <div>
+//                                   <FeedbackComment
+//                                     role="member"
+//                                     kind="absence"
+//                                     item={absence!}
+//                                     author={member}
+//                                     comment={absence!.comment}
+//                                     header={<span className="inline-block rounded-full border border-gold-400/30 bg-gold-400/10 px-3 py-0.5 text-xs font-semibold text-gold-300">{t(`absReason_${absence!.reason}`)}</span>}
+//                                     actions={
+//                                       canEdit(absence) ? (
+//                                         <button type="button" onClick={() => startReason(e.id)} className="font-semibold text-white/55 transition hover:text-white hover:underline">
+//                                           {t("editLabel")}
+//                                         </button>
+//                                       ) : (
+//                                         <span title={t("fbLockedHint").replace("{n}", String(feedbackRules.edit_window_minutes))} className="inline-flex items-center gap-1 text-white/35">
+//                                           <Lock className="h-3 w-3" /> {t("fbLocked")}
+//                                         </span>
+//                                       )
+//                                     }
+//                                     footer={canEdit(absence) ? <p className="mt-1 px-1 text-[11px] text-white/40">{t("fbEditUntil").replace("{time}", fmtTime(absence!.edit_until!))}</p> : undefined}
+//                                     onChange={(patch) => onAbsenceSubmitted?.({ ...absence!, ...patch })}
+//                                   />
+//                                 </div>
+//                               )}
+//                             </div>
+//                           );
+//                         })()}
+//                       </div>
+//                     );
+//                   })}
+//                 </div>
+//               </div>
+//             ))}
+//           </div>
+//         )}
+//       </div>
+⋮----
+//       <ConfirmDialog
+//         open={confirmReviewEventId !== null}
+//         icon={<Star size={32} />}
+//         title={confirmReviewEventId !== null && getFeedbackForEvent(confirmReviewEventId) ? t("confirmUpdateReviewTitle") : t("confirmAddReviewTitle")}
+//         body={confirmReviewEventId !== null && getFeedbackForEvent(confirmReviewEventId) ? t("confirmUpdateReviewBody") : t("confirmAddReviewBody")}
+//         cancelLabel={t("cancelLabel")}
+//         confirmLabel={confirmReviewEventId !== null && getFeedbackForEvent(confirmReviewEventId) ? t("yesUpdateReview") : t("yesAddReview")}
+//         onCancel={() => setConfirmReviewEventId(null)}
+//         onConfirm={() => confirmReviewEventId !== null && submitReview(confirmReviewEventId)}
+//       />
+//       <ConfirmDialog
+//         open={confirmCancelReviewOpen}
+//         icon={<X size={32} />}
+//         title={t("confirmCancelReviewTitle")}
+//         body={t("confirmCancelReviewBody")}
+//         cancelLabel={t("keepEditingLabel")}
+//         confirmLabel={t("yesCancelReview")}
+//         tone="danger"
+//         onCancel={() => setConfirmCancelReviewOpen(false)}
+//         onConfirm={() => { setConfirmCancelReviewOpen(false); cancelReview(); }}
+//       />
+//       <StatusModal
+//         open={reviewSavedOpen}
+//         type="success"
+//         title={t("successTitle")}
+//         message={reviewSavedKind === "updated" ? t("reviewUpdatedSuccess") : t("reviewAddedSuccess")}
+//         okLabel={t("okLabel")}
+//         onClose={() => setReviewSavedOpen(false)}
+//       />
+//     </div>
+//   );
+// }
+⋮----
 import { scrollListIntoView } from "../../../lib/scrollToList";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Filter, Star, Pencil, CheckCircle, X, HelpCircle, Lock } from "lucide-react";
+import {
+  Filter,
+  Star,
+  Pencil,
+  CheckCircle,
+  X,
+  HelpCircle,
+  Lock,
+  Trash2,
+} from "lucide-react";
 import FeedbackComment from "../../../components/ui/FeedbackComment";
 import type { ResponseFields } from "../../../components/ui/FeedbackComment";
 import { ABSENCE_REASON_KEYS } from "../../../lib/absence";
@@ -24288,11 +27098,10 @@ interface FeedbackEntry extends ResponseFields {
   staff_liked_at?: string | null;
   staff_reply?: string | null;
   staff_replied_at?: string | null;
-  /** Epoch ms until the member may still edit (set client-side from the server's seconds-left). */
+  is_locked?: boolean;
   edit_until?: number;
+  edit_window_minutes?: number;
 }
-⋮----
-/** Epoch ms until the member may still edit (set client-side from the server's seconds-left). */
 ⋮----
 export interface AbsenceEntry extends ResponseFields {
   id: number;
@@ -24316,50 +27125,52 @@ interface EventsViewProps {
   onFeedbackSubmitted?: (entry: FeedbackEntry) => void;
   myAbsences?: AbsenceEntry[];
   onAbsenceSubmitted?: (entry: AbsenceEntry) => void;
-  /** An event the member was sent here to see (from a notification card). */
   focusEventId?: number | null;
   onFocusHandled?: () => void;
-  /** The signed-in member, for the avatar and name on their own comment. */
   member?: { first_name?: string | null; last_name?: string | null } | null;
   feedbackRules?: { close_after_hours: number; edit_window_minutes: number };
-  /** True until the first events fetch lands -- shows the skeleton grid. */
   loading?: boolean;
 }
 ⋮----
-/** An event the member was sent here to see (from a notification card). */
-⋮----
-/** The signed-in member, for the avatar and name on their own comment. */
-⋮----
-/** True until the first events fetch lands -- shows the skeleton grid. */
-⋮----
 const goToPage = (updater: number | ((p: number) => number)) =>
 ⋮----
-// Re-evaluates the open / locked states while the page is open.
+// --- POPUP MODAL STATES ---
 ⋮----
-const closesAtMs = (ev: Event) =>
-const windowOpen = (ev: Event)
-const canEdit = (entry?:
-const fmtTime = (ms: number) => new Date(ms).toLocaleString(locale,
+// Live clock -- ticks every second so the countdown updates without refresh.
+⋮----
+// ---- LOCAL MIRROR STATE ----
 ⋮----
 const getAttendanceForEvent = (eventId: number)
 ⋮----
 const getFeedbackForEvent = (eventId: number)
 ⋮----
+const getAbsenceForEvent = (eventId: number)
+⋮----
 const canReviewEvent = (eventId: number) =>
 ⋮----
-// "Why couldn't you attend?" -- for finished events the member has no
-// check-in for (and that are meant for them).
-const getAbsenceForEvent = (eventId: number)
 const canGiveReason = (ev: Event) =>
 ⋮----
-const startReason = (eventId: number) =>
-const submitReason = async (eventId: number) =>
+// Mirror FeedbackController::eventIsOver(): event_end → call_time_end → end-of-day on start.
+⋮----
+if (Date.now() <= end.getTime()) return false; // event hasn't ended yet
+⋮----
+return false; // they attended → rate instead
+⋮----
+return !getAbsenceForEvent(ev.id); // not answered yet
 ⋮----
 const startReview = (eventId: number) =>
 ⋮----
 const cancelReview = () =>
 ⋮----
 const submitReview = async (eventId: number) =>
+⋮----
+// SHOW THE CORRECT POPUP
+⋮----
+const startReason = (eventId: number) =>
+⋮----
+const cancelReason = () =>
+⋮----
+const submitReason = async (eventId: number) =>
 ⋮----
 const formatTime = (dateTimeStr: string): string =>
 ⋮----
@@ -24369,407 +27180,34 @@ const getStartOfWeek = (date: Date) =>
 ⋮----
 const getEndOfWeek = (date: Date) =>
 ⋮----
-// Date filter: keep only events that start on the picked day.
+// Search, upcoming/past, membership, date, order and paging are all done by the server
+// (EventController::pagedEvents, member mode); the screen only holds the current page.
 ⋮----
-// Order the WHOLE list before it is paginated, so page 1 always opens with
-// what matters now and the order never shuffles between pages:
-//   1. This week, still to come / happening  -- soonest first
-//   2. This week, already finished           -- most recent first
-//   3. Later than this week                  -- soonest first
-//   4. Before this week                      -- most recent first
+const fetchPage = async (silent = false) =>
 ⋮----
-const startMs = (e:
-const endMs = (e:
-const bucket = (e:
+// Clear the loader whenever THIS is the latest request, silent or not --
+// otherwise a background refresh that supersedes the first fetch leaves
+// the skeleton on forever.
 ⋮----
-// Arriving from a notification card: clear the filters, open the page that
-// holds the event, scroll to it and flash it so it is easy to spot.
-⋮----
-}, [focusEventId, loading]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-}, [focusTick, filteredEvents]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// The events arrive already in their final order (see filteredEvents), and
-// object keys keep insertion order -- so the sections do too.
-⋮----
-// <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> e rollback ni if dili mugana just below ani
-⋮----
-{/* Fixed Header */}
-⋮----
-{/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-⋮----
-onClick=
-⋮----
-{/* Scrollable body — min-h-0 makes overflow-y-auto actually work inside flex-col */}
-⋮----
-<p className="mt-1 text-sm text-white/40">
-⋮----
-
-⋮----
-// Add: dirty once there is anything to save. Edit: dirty only if the
-// rating or comment actually differs from what is already saved.
-⋮----
-onMouseLeave=
-⋮----
-placeholder=
-⋮----
-header=
-⋮----
-cancelLabel=
-⋮----
-onCancel=
-⋮----
-onConfirm=
-````
-
-## File: resources/js/pages/staff/components/Sidebar.tsx
-````typescript
-import { useStaffAlertsUnread, useSecurityUnread } from "../../../lib/staffAlertsStore";
-import { matchesSearch } from "../../../lib/search";
-import React, { useState, useEffect, useMemo } from "react";
-import {
-  LayoutDashboard,
-  ScanLine,
-  Users,
-  Home,
-  Award,
-  CalendarDays,
-  Bell,
-  Settings,
-  LogOut,
-  FileText,
-  Archive,
-  ChevronDown,
-  ChevronUp,
-  BarChart3,
-  Package,
-  Wallet,
-  Link2,
-  Tags,
-  X as XIcon,
-  IdCard,
-  CalendarCheck,
-  Boxes,
-  Undo2,
-  Search,
-  SearchX,
-  UserCog,
-  ShieldCheck,
-  MessageSquareText,
-} from "lucide-react";
-import { useLanguage } from "../../../i18n/LanguageContext";
-import { staffPathFor } from "../../../lib/staffRoutes";
-import api from "../../../lib/api";
-⋮----
-// --- NAVIGATION CONFIG ---
-⋮----
-// Account
-⋮----
-// Head Staff only (hidden for everyone else in the Sidebar below).
-⋮----
-// Records & audit
-⋮----
-// Configuration
-⋮----
-// Settings is split into labelled sections so related pages sit together.
-⋮----
-// --- MODULE GROUPING ---
-// The nav used to be one long flat list. It's now organized the same way
-// Settings already was: a handful of collapsible modules, each bundling
-// related pages together. Dashboard and Reports & Analytics stay as
-// standalone top-level links (each is its own single destination, not a
-// category), same as Settings' own trigger button below.
-⋮----
-// Each group icon is deliberately different from every icon used by its
-// own children below -- reusing a child's icon (e.g. the Events & Check-in
-// group and the Events item both showing a calendar) reads as a visual
-// duplicate.
-⋮----
-interface SidebarProps {
-  active: string;
-  setActive: (key: string, path?: string) => void;
-  mobileOpen?: boolean;
-  onCloseMobile?: () => void;
-  /** Signed-in staff member, shown in the account card above "Sign out". */
-  userName?: string;
-  userRole?: string;
-  /** Only the Head Staff sees the Staff Accounts page. */
-  isHeadStaff?: boolean;
-}
-⋮----
-/** Signed-in staff member, shown in the account card above "Sign out". */
-⋮----
-/** Only the Head Staff sees the Staff Accounts page. */
-⋮----
-// Count of households with no head of household -- red badge on
-// Households (and its group) so staff notice a head must be added.
-⋮----
-// Unread feedback alerts (shared with the top-bar bell).
-⋮----
-// Unread security alerts -- badge on My Account.
-⋮----
-const onChange = (e: Event)
-⋮----
-// Every real destination in the sidebar, flattened once, so the search
-// box below can filter across standalone links, every module's items,
-// and Settings' submenu all at the same time -- a real quick-jump, not
-// a decorative input that does nothing.
-⋮----
-// Which module the currently active page lives under -- "settings" is
-// its own pseudo-group key here, matching the group SETTINGS_NAV renders
-// into below.
-const findGroupKeyForActive = (activeKey: string): string | null =>
-⋮----
-// Collapsible modules, same interaction as the pre-existing Settings
-// submenu -- closed by default, but whichever module the current page
-// belongs to starts open so navigating here directly doesn't hide it.
+// A new search / filter starts again from page 1.
 ⋮----
 // eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
-const toggleGroup = (key: string) => setOpenGroups((prev) => (
-⋮----
-// Bolds + golds the matched substring inside a nav label while typing in
-// the search box (e.g. "das" in "Dashboard"), rather than just filtering
-// the list with no visual cue about what matched.
-⋮----
-
-⋮----
-// The profile menu in the top bar asks for the same confirm dialog.
-⋮----
-const open = ()
-⋮----
-setLoggingOut(true);
-⋮----
-{/* Quick-jump search -- filters every real nav destination
-            (standalone links, module items, and Settings' submenu) as you
-            type, rather than sitting there decoratively. */}
-⋮----
-onChange=
-⋮----
-<p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">
-⋮----
-{/* STANDALONE LINKS -- Dashboard and Reports each go straight
-                    to one page, so they stay flat instead of being wrapped in
-                    a one-item module. */}
+// The page's own quiet refresh updates `allEvents`; mirror it for the list.
 ⋮----
 onClick=
 ⋮----
-{/* SUB NAVIGATION */}
-⋮----
-{/* Templated confirm modal, same pattern used for every delete action
-          in the app -- logout is destructive to the current session so it
-          gets the same "are you sure" treatment instead of firing instantly. */}
-⋮----
-<button onClick=
-````
 
-## File: resources/js/pages/staff/views/QRCodesView.tsx
-````typescript
-import { scrollListIntoView } from "../../../lib/scrollToList";
-import SaveButton from "../../../components/ui/SaveButton";
-import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
-import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import { matchesSearch } from "../../../lib/search";
-import FormSelect from "../../../components/ui/FormSelect";
-import React, { useState, useMemo, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
-import { Users, Plus, Pencil, Trash2, Search, CheckCircle, AlertCircle, AlertTriangle, Layers, ChevronRight, ChevronDown, X, Save } from "lucide-react";
-import ConfirmDialog from "../../../components/ui/ConfirmDialog";
-import Skeleton from "../../../components/ui/Skeleton";
-import { useLanguage } from "../../../i18n/LanguageContext";
-import { tc } from "../../../lib/contentTranslations";
-import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 ⋮----
-export interface Membership {
-  id: string | number;
-  name: string;
-  description: string;
-}
+onMouseLeave=
 ⋮----
-interface AgeBracketOption {
-  id: number;
-  label: string;
-}
+{/* CHANGED: was `{canGiveReason(e) && (` -- now also renders when an absence entry already exists */}
 ⋮----
-interface CivilStatusOption {
-  id: number;
-  label: string;
-}
+onConfirm=
 ⋮----
-interface CurrentStatusOption {
-  id: number;
-  label: string;
-}
+{/* --- THANK YOU POPUP (New Submit) --- */}
 ⋮----
-interface QRCodesViewProps {
-  highlightText: (text: string, query: string) => React.ReactNode;
-  memberships?: Membership[];
-}
-⋮----
-// Membership Groups -- the sectoral associations / councils residents can
-// belong to (Senior Citizens, SK Youth Council, 4Ps, PWD Federation, etc.).
-// Laid out to match the rest of the Residents/Households/Dashboard module:
-// same ink/sage palette, same card and search-bar shapes, same modal
-// template -- so this screen reads as part of the same product instead of
-// an older, differently-themed page bolted on.
-⋮----
-// Brief skeleton flash on every page switch, same as Activity Logs --
-// this list paginates client-side so there's nothing to actually wait
-// on, but the flash keeps page switches feeling consistent app-wide.
-⋮----
-const goToPage = (page: number) =>
-⋮----
-// Eligibility is only enforced when a resident is first assigned to a
-// gated membership -- nothing re-checks it afterward, so residents can
-// drift out of eligibility over time (aged out of a bracket, status
-// changed) and stay enrolled unnoticed. This lets staff proactively ask.
-⋮----
-// Delete confirmation state
-⋮----
-// NEW: Deletion failed modal state
-⋮----
-// Generic error modal -- replaces native alert() for add/edit membership
-// failures so it matches the rest of the app's popup template instead of
-// a jarring native browser dialog.
-⋮----
-// Success modals
-⋮----
-// Unsaved-changes guard for the Add/Edit Membership modals -- closing
-// (X, Cancel, or clicking the backdrop) while the form differs from
-// where it started asks first instead of silently discarding, matching
-// the same pattern used on the Residents form.
-⋮----
-// Adviser example (Senior Citizen eligibility) extended to Youth / Solo
-// Parent: Staff-configurable lists used to optionally gate a membership.
-⋮----
-// Prevent body scroll when modal is open
-⋮----
-const fetchMemberships = async (silent = false) =>
-⋮----
-const fetchAllResidents = async () =>
-⋮----
-const checkEligibility = async (m: any) =>
-⋮----
-const handleAddMembership = (e: React.FormEvent) =>
-⋮----
-const performAddMembership = async () =>
-⋮----
-const handleEditMembership = (e: React.FormEvent) =>
-⋮----
-const performEditMembership = async () =>
-⋮----
-// Revert to what's actually saved instead of leaving the
-// rejected edit sitting in the form.
-⋮----
-const openDeleteConfirm = (id: number | string, name: string) =>
-⋮----
-const handleConfirmDelete = async () =>
-⋮----
-const openEditModal = (membership: any) =>
-⋮----
-// Nothing to submit if the form still matches what was loaded.
-⋮----
-const handleRefresh = () =>
-⋮----
-// Real-time-ish refresh: this app has no websocket/push layer, so a
-// second staff member adding/editing a group elsewhere is picked up here
-// via light polling plus a refetch whenever this tab regains focus or
-// becomes visible again -- instead of only updating on this tab's own
-// actions. A modal open pauses the poll so it never yanks a card out
-// from under an in-progress edit.
-⋮----
-const handleVisibility = () =>
-const handleFocus = () =>
-⋮----
-const getResidentsByMembership = (membershipName: string) =>
-⋮----
-const handleViewMembers = (membership: any) =>
-⋮----
-const closeModal = () =>
-⋮----
-const closeAddModal = () =>
-⋮----
-const closeEditModal = () =>
-⋮----
-// Nothing typed yet -- safe to close without asking.
-⋮----
-const handleCancelAdd = () =>
-⋮----
-const handleCancelEdit = () =>
-⋮----
-const closeDeleteConfirm = () =>
-⋮----
-const closeDeleteFailed = () =>
-⋮----
-const closeGenericError = ()
-const handleGenericErrorBackdropClick = (e: React.MouseEvent) =>
-⋮----
-const closeAddSuccess = ()
-const closeDeleteSuccess = ()
-const closeUpdateSuccess = ()
-⋮----
-const handleBackdropClick = (e: React.MouseEvent) =>
-⋮----
-const handleAddBackdropClick = (e: React.MouseEvent) =>
-⋮----
-const handleEditBackdropClick = (e: React.MouseEvent) =>
-⋮----
-const handleDeleteBackdropClick = (e: React.MouseEvent) =>
-⋮----
-const handleDeleteFailedBackdropClick = (e: React.MouseEvent) =>
-⋮----
-const handleAddSuccessBackdropClick = (e: React.MouseEvent) =>
-const handleDeleteSuccessBackdropClick = (e: React.MouseEvent) =>
-const handleUpdateSuccessBackdropClick = (e: React.MouseEvent) =>
-⋮----
-// Jump straight from the Edit modal into the same delete-confirm flow
-// used everywhere else, instead of a separate archive icon on the card.
-const handleDeleteFromEditModal = () =>
-⋮----
-const handleEsc = (e: KeyboardEvent) =>
-⋮----
-// The unsaved-changes prompt itself takes priority -- Escape just
-// dismisses it (equivalent to "Stay"), never discards on its own.
-⋮----
-{/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents/
-          Households background and palette. Modals further down stay in
-          the original light theme, same scoping used on those pages. */}
-⋮----
-onChange=
-⋮----
-onClick=
-⋮----
-{/* View Roster Modal */}
-⋮----
-<button onClick=
-⋮----
-{/* New Membership Group Modal -- sized and styled to match the Add New
-          Record modal (Residents) exactly: same width class, card sections,
-          title size, close icon, and button treatment. */}
-⋮----
-subtitle=
-⋮----
-placeholder=
-⋮----
-<FormSection title=
-⋮----
-title=
-⋮----
-cancelLabel=
-⋮----
-onCancel=
-⋮----
-{/* Delete Confirmation Modal */}
-⋮----
-{/* Add Success Modal */}
-⋮----
-{/* Delete Success Modal */}
-⋮----
-{/* Deletion Failed Modal */}
-⋮----
-{/* Generic Error Modal -- replaces native alert() for add/edit failures */}
-⋮----
-{/* Cancel Unsaved Changes Confirm Modal -- same pattern as the Residents form */}
+{/* --- FEEDBACK UPDATED POPUP (Edit Submit) --- */}
 ````
 
 ## File: resources/js/pages/staff/views/ProfilingSettingsView.tsx
@@ -24781,6 +27219,7 @@ import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 import NumberStepper from "../../../components/ui/NumberStepper";
+import FormSelect from "../../../components/ui/FormSelect";
 import { useLanguage } from "../../../i18n/LanguageContext";
 ⋮----
 import { tc } from "../../../lib/contentTranslations";
@@ -24814,6 +27253,7 @@ interface CivilStatus {
 interface CurrentStatus {
   id: number;
   label: string;
+  category?: string;
   sort_order: number;
 }
 ⋮----
@@ -24870,8 +27310,6 @@ setConfirmStatusSave(false);
 // Surface the backend's specific reason (e.g. "currently in use")
 // instead of a generic message.
 ⋮----
-setConfirmCurrentStatusSave(false);
-⋮----
 // Surface the backend's specific reason (e.g. a duplicate label)
 // instead of a generic message.
 ⋮----
@@ -24926,9 +27364,8 @@ onChange=
 ## File: resources/js/pages/staff/views/BudgetView.tsx
 ````typescript
 import KpiCard from "../../../components/ui/KpiCard";
-import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Lock, Banknote, PiggyBank, AlertTriangle, ChevronRight, Wallet } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import Skeleton from "../../../components/ui/Skeleton";
@@ -24937,14 +27374,12 @@ import FormDrawer from "../../../components/ui/FormDrawer";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
 import SimplePager from "../../../components/ui/SimplePager";
-import usePager from "../../../hooks/usePager";
 import { useLanguage } from "../../../i18n/LanguageContext";
 ⋮----
-import EventBudgetWorkspace, { type EventOption, NEAR_LIMIT_PCT, money, roundCents, budgetStateOf, type BudgetState } from "../../../components/budget/EventBudgetWorkspace";
+import EventBudgetWorkspace, { type EventOption, money, budgetStateOf } from "../../../components/budget/EventBudgetWorkspace";
 import { makeEventTiming, STATUS_META } from "../../../lib/eventTiming";
 ⋮----
 import { tc } from "../../../lib/contentTranslations";
-import useFilterSwitching from "../../../hooks/useFilterSwitching";
 /**
  * UC-8: Record Event Budget and Expenses. A portfolio-wide KPI strip (total
  * approved, total spent, remaining, events over budget) sits on top of the
@@ -24972,6 +27407,7 @@ import useFilterSwitching from "../../../hooks/useFilterSwitching";
 // fetch lands. The short minimum keeps it from flashing for a single
 // frame on a fast response, so opening the page always reads as a
 // deliberate load like the other modules.
+// Only the KPI strip waits for the portfolio figures; the event cards load on their own.
 ⋮----
 const fetchPortfolio = async () =>
 ⋮----
@@ -24983,25 +27419,29 @@ const fetchPortfolio = async () =>
 ⋮----
 // eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
-// Per-event approved/spent figures from that same portfolio call,
-// looked up by event id so the picker list on the left can show each
-// event's own little progress bar without an extra request per row.
-⋮----
-const stateOfEvent = (id: string | number): BudgetState =>
-const eventDay = (e: EventOption)
-⋮----
 // Shared event-timing helpers (same ones the budget workspace uses).
 ⋮----
-// Spent / approved per event, straight from the portfolio fetch.
-const figuresOf = (id: string | number) =>
+// Search, status tab, budget health, date, sort and paging are all done by the
+// server (EventController::pagedEvents), so the cards, counts and pages agree.
 ⋮----
-// Cards stay grouped by real status (Ongoing, Upcoming, Past); the sort picks the order inside each group.
+const fetchPage = async (silent = false) =>
 ⋮----
-const withinGroup = (k: "Ongoing" | "Upcoming" | "Past") => (a: typeof decoratedEvents[number], b: typeof decoratedEvents[number]) =>
+// A new search / filter / sort starts again from page 1.
 ⋮----
-// Paging runs over the whole ordered list, then the visible slice is regrouped under its status headings.
+// eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
-// Filters / search / sort changing flashes the same card skeleton a page change does.
+// An expense was saved: refresh the cards quietly.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// Money spent changes while staff work -- keep the cards in step with the KPI strip's poll.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// Spent / approved per event: the page rows already carry both.
+const figuresOf = (e:
+⋮----
+// Cards stay grouped under their real status heading (the server already ordered them that way).
 ⋮----
 {/* Full-bleed dark navy page -- same technique and palette as the
         Dashboard/Residents/Households/Memberships/Events pages, so Budget
@@ -25039,14 +27479,14 @@ import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FormSelect from "../../../components/ui/FormSelect";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter, ChevronLeft, ChevronRight } from "lucide-react";
+import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import NumberStepper from "../../../components/ui/NumberStepper";
 import PhotoAttachment from "../../../components/ui/PhotoAttachment";
-import { PhotoItem, photoItemsFromUrls, appendPhotoFields, photoItemsChanged } from "../../../components/ui/PhotoGallery";
+import { PhotoItem, photoItemsFromUrls, photoItemsChanged } from "../../../components/ui/PhotoGallery";
 import Skeleton from "../../../components/ui/Skeleton";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -25055,6 +27495,7 @@ import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/St
 import { tc } from "../../../lib/contentTranslations";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import Portal from "../../../components/ui/Portal";
+import UnitsModal from "../../../components/inventory/UnitsModal";
 // An item's condition covers the units still in use. Lost and disposed units
 // are separate counters on the item, so they are only *filters*, not conditions.
 type Condition = "New" | "Good" | "Fair" | "Poor";
@@ -25082,8 +27523,6 @@ interface InventoryItem {
   storage_location: string | null;
   notes: string | null;
   photo_url: string | null;
-  // Every photo, cover first (the list above only ever shows the cover).
-  photo_urls: string[];
   // How many units are currently lent out to a still-active event (see
   // InventoryItem::borrows() on the backend). >0 means the item can't be
   // deleted yet -- it has to be returned to Inventory first.
@@ -25104,8 +27543,6 @@ interface InventoryItem {
 ⋮----
 // In-stock units per condition (they add up to `quantity`), so one item can
 // hold e.g. 45 Good + 15 New instead of needing a duplicate row.
-⋮----
-// Every photo, cover first (the list above only ever shows the cover).
 ⋮----
 // How many units are currently lent out to a still-active event (see
 // InventoryItem::borrows() on the backend). >0 means the item can't be
@@ -25134,10 +27571,14 @@ const formFromItem = (item: InventoryItem) => (
  * of the card-grid layout this page used previously.
  */
 ⋮----
+// Paging, filtering and sorting happen on the server; these come back with each page.
+⋮----
 // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
 ⋮----
 // Closing the Add/Edit Item modal (X, Cancel, or the backdrop) with
 // unsaved changes asks first instead of silently discarding them.
+⋮----
+// Lost / found / disposed / restored units for one item (see UnitsModal).
 ⋮----
 // Brief skeleton flash on every page switch, same as Activity Logs --
 // this list paginates client-side so there's nothing to actually wait
@@ -25178,17 +27619,19 @@ const fetchStats = async () =>
 ⋮----
 const fetchItems = async () =>
 ⋮----
+// Only the newest request may update the screen (typing fast fires several).
+⋮----
+// A page past the end (e.g. after the last row of a page was removed): go back.
+⋮----
+// Any filter change starts again from page 1.
+⋮----
 // eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
-// Quick tabs + sort run on top of the server's search/condition result.
-// "Low stock" = 3 or fewer units still in stock (there is no reorder level
-// on an item, so this is the one place the threshold lives).
+// Keep the open Units drawer in step with fresh stock numbers after a save.
 ⋮----
-const isAttention = (i: InventoryItem)
-⋮----
+// Quick tabs, sorting and paging are done by the server (see InventoryController::index);
+// each tab's count comes back with the page.
 const tabCount = (k: InvTab)
-⋮----
-// eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
 // Nothing to submit if editing an item and the form still matches its
 // original values -- keeps a no-op "Update Item" click (and its own
@@ -25197,19 +27640,7 @@ const tabCount = (k: InvTab)
 ⋮----
 const handleCloseForm = () =>
 ⋮----
-// Lost / Disposed move units out of (or back into) the in-stock Quantity
-// live, mirroring what the server does on save: stepping Lost or Disposed
-// up takes units out of Quantity, stepping down puts them back. When
-// editing, the sum of the per-condition counts is the BASE stock sent to the server; the number
-// shown in the Quantity box is what's left after the Lost/Disposed changes.
-// Units found again that were out on loan when reported (lost_pending)
-// settle with that loan instead of returning to stock.
-const projectStock = (base: number, lost: number, disposed: number) =>
-⋮----
-// Main condition = the one holding the most units (ties go to the worse one).
-⋮----
-// Upper limits so the numbers stay within what actually exists: disposed
-// can only come from stock, lost can also come from units out on loan.
+// Main condition (only used in the saved-message wording): the one holding the most units.
 ⋮----
 // Picking a photo replaces the current one -- an item holds exactly one.
 const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -25234,11 +27665,17 @@ const handleFormSubmit = (e: React.FormEvent) =>
 ⋮----
 const performSave = async () =>
 ⋮----
-// Units per condition; the server adds them up into the in-stock
-// quantity and keeps the item's main condition in step.
+// Units per condition; the server adds them up into the in-stock quantity.
+⋮----
+// An item holds one photo: only send it when a new file was picked.
+⋮----
+// The counts this form was opened with, so the server can tell if the stock moved meanwhile.
 ⋮----
 // Revert to the item's real values instead of leaving the
 // rejected edit sitting in the form.
+⋮----
+// Units can be adjusted when the item has stock, lost or disposed units.
+const hasUnits = (i: InventoryItem)
 ⋮----
 const handleDelete = async () =>
 ⋮----
@@ -25263,24 +27700,27 @@ const handleDelete = async () =>
                           would orphan its borrow record (see
                           InventoryController::destroy). */}
 ⋮----
-<button onClick=
-⋮----
 onClick=
+disabled=
+⋮----
+title=
+⋮----
+<button onClick=
 ⋮----
 {/* Add/Edit Item modal -- dark navy card, same treatment as the
           Households Edit modal (centered card rather than a full-page
           takeover, since this form is small). */}
 ⋮----
-title=
-⋮----
 <FormSection title=
-⋮----
-<NumberStepper min=
 ⋮----
 {/* Unsaved-changes guard for the Add/Edit Item modal */}
 ⋮----
 {/* Add / Update / Delete all land here on success, instead of just
           silently closing the form/confirm dialog. */}
+⋮----
+setSuccessMessage(msg);
+fetchItems();
+fetchStats();
 ⋮----
 {/* Confirm-before-save step: shown on top of the open form when
           Add/Update is clicked, so the request only fires once the user
@@ -25293,562 +27733,12 @@ confirmLabel=
           modals: bg-[#0A0E1A] card, white/10 border, teal accents). */}
 ````
 
-## File: resources/js/pages/staff/views/EventsView.tsx
-````typescript
-import Portal from "../../../components/ui/Portal";
-import { scrollListIntoView } from "../../../lib/scrollToList";
-import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import { matchesSearch } from "../../../lib/search";
-import { makeEventTiming, STATUS_META } from "../../../lib/eventTiming";
-import FormSelect from "../../../components/ui/FormSelect";
-import React, { useEffect, useMemo, useState, useRef } from "react";
-import { createPortal } from "react-dom";
-import FeedbackComment from "../../../components/ui/FeedbackComment";
-import type { ResponseFields } from "../../../components/ui/FeedbackComment";
-import {
-  Filter, X, LogIn, LogOut, ChevronLeft, Archive,
-  Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown,
-  Megaphone, ClipboardList, Users, ArrowLeft, Save, Download, Printer, CheckCircle2, ChevronRight, Eye,
-} from "lucide-react";
-import SearchableSelect from "../../../components/ui/SearchableSelect";
-import FilterDropdown from "../../../components/ui/FilterDropdown";
-import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
-import QuickTabs from "../../../components/ui/QuickTabs";
-import DatePicker from "../../../components/ui/DatePicker";
-import TimePicker from "../../../components/ui/TimePicker";
-import ConfirmDialog from "../../../components/ui/ConfirmDialog";
-import StatusModal from "../../../components/ui/StatusModal";
-import NumberStepper from "../../../components/ui/NumberStepper";
-import EventBudgetWorkspace from "../../../components/budget/EventBudgetWorkspace";
-import Skeleton from "../../../components/ui/Skeleton";
-import { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
-import SlideOutGhost from "../../../components/ui/SlideOutGhost";
-import ReportOptionsModal, { type SectionDef, type AttendeeFilter } from "./ReportOptionsModal";
-import api, { apiErrorMessage } from "../../../lib/api";
-import { useLanguage } from "../../../i18n/LanguageContext";
-⋮----
-import { tc } from "../../../lib/contentTranslations";
-// What can go on one event's printout / PDF / Word file. Keys must match the
-// backend's allowed attendance sections (ReportController::buildExportPayload).
-⋮----
-interface MyEvent {
-  id: number | string;
-  title: string;
-  date: string;
-  event_start?: string;
-  event_end?: string;
-  call_time_start?: string;
-  call_time_end?: string;
-  startDate?: string;
-  endDate?: string;
-  startTime: string;
-  endTime: string;
-  callStartTime?: string;
-  callEndTime?: string;
-  location: string;
-  description: string;
-  notificationMessage?: string;
-  membershipIds?: (string | number)[];
-  membershipNames?: string[];
-  approvedBudget?: number | string | null;
-  // How many different inventory items this event took (still out or already returned) -- known as soon as the events load.
-  inventoryCount?: number;
-  // Feedback + non-attendance reasons received for this event.
-  feedbackCount?: number;
-  // How many attendance rows the event has -- known as soon as the events load.
-  attendanceCount?: number;
-  borrowedItems?: { inventoryItemId: string; name: string; quantity: number; units: Record<string, number> }[];
-}
-⋮----
-// How many different inventory items this event took (still out or already returned) -- known as soon as the events load.
-⋮----
-// Feedback + non-attendance reasons received for this event.
-⋮----
-// How many attendance rows the event has -- known as soon as the events load.
-⋮----
-interface BorrowableInventoryItem {
-  id: number | string;
-  name: string;
-  quantity: number;
-  condition: string;
-  // In-stock units per condition (they add up to `quantity`).
-  new_quantity?: number;
-  good_quantity?: number;
-  fair_quantity?: number;
-  poor_quantity?: number;
-  storage_location?: string | null;
-}
-⋮----
-// In-stock units per condition (they add up to `quantity`).
-⋮----
-// One borrowed item in the Create/Edit Event form. `units` is how many of each
-// condition staff picked (kept as strings, like the other form fields);
-// `quantity` is always their sum.
-type BorrowRow = { inventoryItemId: string; quantity: string; units: Record<string, string> };
-⋮----
-interface EventsViewProps {
-  allEvents: MyEvent[];
-  onDeleteEvent: (id: number | string) => Promise<void>;
-  onCreateEvent?: (event: MyEvent) => void;
-  highlightText: (text: string, query: string) => React.ReactNode;
-  residents?: any[];
-  memberships?: any[];
-  attendanceRecords?: any[];
-  loading?: boolean;
-  // Asks the page to open one event on a given tab (used by the bell notifications).
-  openRequest?: { eventId: number; tab: string; sub?: string; nonce: number } | null;
-  onOpenRequestHandled?: () => void;
-}
-⋮----
-// Asks the page to open one event on a given tab (used by the bell notifications).
-⋮----
-const eventStatusLabel = (label: string)
-// The card/detail-view chip reads "Completed" for a finished event instead
-// of "Past" -- "Past" stays as-is everywhere else (filter dropdown option,
-// etc.) since that wording is still correct there.
-const eventStatusChipLabel = (label: string)
-const statusPillClasses = (label: string, dark = false) =>
-const statusDotClasses = (label: string, dark = false) =>
-const attendanceStatusLabel = (label: string) =>
-⋮----
-// Quick tabs (Today / This week / Has feedback) and sort, on top of the status + membership + date filters.
-⋮----
-// Tab to land on when the detail view opens (set by a bell notification).
-⋮----
-// Which of the 4 tabs (Overview / Attendance / Budget / Feedback) is
-// showing in the full-page event detail view.
-⋮----
-// UC-16 (staff side): the ratings/comments residents left for this
-// event -- fetched from /feedback/event/{id} (backend already existed,
-// it just wasn't wired into any staff screen yet).
-type FeedbackRow = ResponseFields & { rating: number; comment: string | null; user?: { first_name: string; last_name: string } };
-type AbsenceRow = ResponseFields & { reason: string; comment: string | null; user?: { first_name: string; last_name: string } };
-⋮----
-// The event's Inventory tab: what it borrowed, what is still out, and what
-// came back (and in which condition) -- from /events/{id}/inventory.
-type EventInventoryRow = {
-    inventory_item_id: number; name: string; photo_url?: string | null; total: number; status: "borrowed" | "partial" | "returned";
-    out: number; out_units: Record<string, number>; returned: number; returned_units: Record<string, number>;
-  };
-⋮----
-// Full-size look at an item photo or a return's evidence photo (prev/next, Esc closes).
-⋮----
-const stepInvPhoto = (dir: 1 | -1) => setInvPhoto((cur) =>
-⋮----
-const onKey = (e: KeyboardEvent) =>
-⋮----
-}, [invPhoto]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// A new feedback arrived for the event on screen: refresh its Feedback tab live.
-⋮----
-const onFeedback = (e: Event) =>
-⋮----
-}, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-}, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// Whether the Add/Edit Event modal is open (renamed in spirit from the old
-// "formOpen" toggle for the persistent side panel this replaced).
-⋮----
-// Brief skeleton flash whenever the page number is switched, same as the
-// Activity Logs page (which re-fetches per page). This list paginates
-// client-side over already-loaded data, so there's nothing to actually
-// wait on -- the flash is purely so switching pages always feels the same.
-⋮----
-// Page-open skeleton -- `loading` is only true during Staff's very first
-// fetch, so without this, opening Events later showed the cards instantly.
-⋮----
-// While the page is still showing its skeleton the counters read 0, not the
-// numbers of a list that has not loaded yet.
-⋮----
-const goToPage = (page: number) =>
-⋮----
-// Same brief flash inside an event's detail view (tab switch, attendance /
-// feedback page switch).
-⋮----
-const flashDetail = () =>
-⋮----
-// Opening an event also flashes the detail skeleton, same as switching tabs.
-useEffect(() => { if (viewEv?.id) flashDetail(); }, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// Bell notification -> open that event on the requested tab. Waits for the
-// events to be loaded, then clears the request so it only fires once.
-⋮----
-if (!target) return; // events still loading -- runs again when they arrive
-⋮----
-}, [openRequest, localEvents]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-const getStartOfWeek = (date: Date) =>
-⋮----
-const getEndOfWeek = (date: Date) =>
-⋮----
-const getTodayString = () =>
-⋮----
-// "HH:MM" for right now in the browser's local time -- used as the
-// time inputs' floor whenever the selected event date is today, so the
-// picker itself won't offer an already-passed time (matches the
-// call_time_start >= now guard the backend now also enforces).
-const getCurrentTimeString = () =>
-⋮----
-const getMembershipName = (id: any) =>
-⋮----
-const getMembershipNames = (e: MyEvent): string[] =>
-⋮----
-// "All residents" when the event is open to everyone, otherwise the
-// actual membership group name(s) (e.g. "Pantawid Pamilya", "Walang
-// Gutom") joined together -- the same two states shown on the card
-// footer and in the Overview tab's Coverage stat.
-const getCoverageLabel = (e: MyEvent): string =>
-⋮----
-const formatDbEvent = (dbEvent: any): MyEvent =>
-⋮----
-// Borrows made before units were split count toward the item's main condition.
-⋮----
-const refreshEventsFromAPI = async () =>
-⋮----
-}, []); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-const handleRefresh = () =>
-⋮----
-// Only the event being viewed needs its attendance list, so fetch just that
-// one (instead of every event one-by-one). Cached copy shows instantly while
-// a fresh one loads in the background.
-⋮----
-}, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// Real-time-ish refresh: this app has no websocket/push layer, so a
-// second staff member adding/editing/attending an event elsewhere is
-// picked up here via light polling plus a refetch whenever this tab
-// regains focus or becomes visible again, matching the same pattern used
-// on the Memberships page. Paused while the Add/Edit modal or a delete
-// confirmation is open so a background refresh never yanks state out from
-// under an in-progress edit.
-⋮----
-const handleVisibility = () =>
-const handleFocus = () =>
-⋮----
-const getXsrfToken = () =>
-⋮----
-// Whether the currently-selected event date is today -- used below to
-// reject an already-passed time the moment it's picked, rather than
-// only catching it on submit.
-⋮----
-// Per-field inline "that time already passed" messages for the four
-// time inputs. Deliberately NOT using the native `min` attribute for
-// this (we tried that first) -- on this Electron/Chromium build, an
-// empty <input type="time"> with `min` set would auto-fill itself from
-// min the moment it was focused/stepped, but mis-rendered the AM/PM
-// segment (showed e.g. "08:11 AM" for a min of 20:11/8:11 PM), so the
-// field silently ended up holding a real PAST value that looked like a
-// small, easy-to-miss discrepancy rather than an obviously invalid one.
-// Rejecting the change in JS and never writing the bad value into state
-// sidesteps that entirely, on any browser.
-⋮----
-const handleTimeFieldChange = (
-    field: "time" | "endTime" | "callTimeStart" | "callTimeEnd",
-    value: string
-) =>
-⋮----
-// getCurrentTimeString() is re-read on every keystroke/step, not
-// cached, so this stays correct even if the form's been open a while.
-⋮----
-return; // reject -- never write an already-passed time into state
-⋮----
-// UC-9 tie-in: items borrowed from Inventory for this event. Fetched
-// once (excludes Disposed/Lost condition -- see InventoryController::
-// borrowable()) and reused for both Create and Edit, since they share
-// one form.
-⋮----
-// When editing, the item's current stock in `borrowableItems` already
-// has THIS event's own borrow deducted from it (the backend only
-// returns it when the event is saved) -- add that amount back per item
-// so the quantity cap reflects what's really available to re-select.
-⋮----
-// Same idea per condition: units of this item this event already holds.
-const availableUnitsFor = (itemId: string, label: string): number =>
-⋮----
-const availableStockFor = (itemId: string): number =>
-⋮----
-const addBorrowRow = (itemId: string) =>
-⋮----
-// Start with one unit from the condition that has the most stock; staff
-// then choose how many of each condition they want.
-⋮----
-const updateBorrowUnits = (itemId: string, label: string, raw: string) =>
-⋮----
-const removeBorrowRow = (itemId: string) =>
-⋮----
-const getBorrowItemName = (itemId: string): string =>
-⋮----
-// Skeleton flash on every search/status change, and always jump back to
-// page 1 -- otherwise a filter applied from page 3 left the table empty
-// (page 3 of a 1-page result), which looked like the filter did nothing.
-⋮----
-const formatTime12Hour = (timeStr: string | undefined): string =>
-⋮----
-const highlightAttendanceText = (text: string, query: string) =>
-⋮----
-// Three real states now instead of just Upcoming/Past -- an event that
-// has started but hasn't ended yet (its own event_start/event_end, not
-// just the sign-in/out call-time window) reads as "Ongoing" rather than
-// staying "Upcoming" all the way through, or flipping straight to
-// "Past" the moment its date turns over.
-const parseEventDateTime = (value?: string | null): Date | null =>
-⋮----
-const getEventStatus = (event: MyEvent):
-⋮----
-// Prefer the event's own end time, then the attendance window's
-// close, then (for legacy records with neither) end-of-day on the
-// start date so a record with no end info at all doesn't read as
-// "Ongoing" forever.
-⋮----
-// Display-only: an upcoming event whose sign-in window (call time start)
-// has already opened reads "Check-in open". Filters/locking still use the
-// real Upcoming/Ongoing/Past status.
-const chipKey = (event: MyEvent, label: string) =>
-⋮----
-const isEventLocked = (label: "Upcoming" | "Ongoing" | "Past")
-⋮----
-const getFilterStatus = (event: MyEvent, filter: string): boolean =>
-⋮----
-// Everything except the Ongoing/Upcoming/Past tab, so the tab counts stay
-// truthful for the current search / membership / date.
-⋮----
-// Quick-tab tests. "Today" = the event runs at any point today; "This week"
-// = it starts Monday-Sunday of the current week; "Has feedback" = at least
-// one rating or non-attendance reason came in.
-const eventTabTest = (tab: typeof eventTab, e: MyEvent): boolean =>
-⋮----
-}), [baseScopedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-[baseScopedEvents, eventTab] // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-[scopedEvents, eventFilter] // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-}, [scopedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// Ongoing first, then Upcoming (soonest first), then Past (most recent first).
-⋮----
-const startOf = (e: MyEvent)
-⋮----
-// Sections stay grouped by status; the sort picks the order inside each one.
-⋮----
-}, [filteredEvents, eventSort]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// The cards on the visible page show an attendee count, so load just those
-// few events' attendance, in parallel, once each (cached afterwards).
-⋮----
-}, [paginatedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// Filters / search changing flashes the list skeleton too (not on first mount).
-⋮----
-// Runs the field-level checks that used to live at the top of the old
-// handleSaveEvent, then -- if they pass -- opens the confirm step
-// instead of saving right away. The actual request now happens in
-// performSaveEvent, only once the user confirms.
-const handleSaveEvent = (e: React.FormEvent) =>
-⋮----
-// Call Time Start must be strictly earlier than the event's own
-// Start Time -- equal would leave a zero-length sign-in window
-// (e.g. event starts 7:00, call time can't also be 7:00). Matches
-// the backend's before:event_start rule (was before_or_equal).
-⋮----
-// The earliest moment in the whole event window is Call Time Start
-// (it's required to be < the event's own Start Time), so checking
-// it here catches a past Start Time too. Runs for both create and
-// edit now -- editing an Upcoming event into a past time was never
-// actually blocked before, only creating one was.
-//
-// When editing, only flag this if the earliest time is actually
-// being CHANGED to a past value -- it's normal for an Upcoming
-// event's Call Time (sign-in opens) to have already passed while
-// the event itself hasn't started yet, and that alone must not
-// block unrelated edits (e.g. fixing the description). Matches the
-// same "only if changed" rule the backend now enforces.
-⋮----
-const timeOnly = (value?: string)
-⋮----
-const performSaveEvent = async () =>
-⋮----
-// Exactly the units staff picked, per condition.
-⋮----
-// Adviser recommendation: "2 in 1 — Facebook Page" (only relevant on create)
-⋮----
-// If this save was made from inside the detail view, keep it open on
-// the freshly-saved copy instead of dumping the user back to the grid.
-⋮----
-// A rejected edit reverts the form to what was actually loaded --
-// "Go Back" on the error popup should mean back to the real event,
-// not leave whatever half-invalid values were just typed sitting
-// in the fields.
-⋮----
-const openAddEventModal = () =>
-⋮----
-const startEditEvent = (event: MyEvent) =>
-⋮----
-// Call time / end time all share the event's own date -- only the
-// time-of-day differs, so just pull HH:MM back out of each timestamp.
-⋮----
-// Nothing to submit if editing an event and the form still matches what
-// was loaded (title, schedule, borrowed items, everything).
-⋮----
-: JSON.stringify(newEvent) === JSON.stringify(blankEventForm); // new event: nothing entered yet
-⋮----
-const closeEventModal = () =>
-⋮----
-const confirmDelete = async () =>
-⋮----
-// If the deleted event was the one open in the detail view, go back
-// to the grid instead of leaving a dead event on screen.
-⋮----
-const cancelDelete = ()
-⋮----
-const getMembersForEvent = (event: MyEvent) =>
-⋮----
-const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[]) =>
-⋮----
-// Sort: Complete -> Incomplete -> Missed (who actually attended first),
-// then last name A-Z inside each group so a name is easy to find.
-const rank = (r: any)
-const lastName = (name: string) =>
-⋮----
-// "No scan" only means Missed once the event is over: before it starts the
-// row reads Upcoming, and while it is running, Ongoing.
-const getAttendanceStatus = (record: any) =>
-⋮----
-// The status filter only offers what can exist for this event right now:
-// an event that hasn't started offers Upcoming (never Missed), a running one
-// offers Ongoing, and only a finished one offers Missed.
-⋮----
-const getFilteredAttendance = (fullList: any[]) =>
-⋮----
-// Attendance tab data -- keyed off the event currently open in the detail
-// view (`viewEv`) instead of a separate modal's own state, now that the
-// attendance table lives inside the Attendance tab rather than its own
-// popup.
-⋮----
-}, [viewEv, attendanceSearch, attendanceStatusFilter, attendanceCurrentPage, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-}, [viewEv, attendanceSearch, attendanceStatusFilter, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// Residents and the attendance rows arrive a moment after the event opens;
-// the server's own count is there from the start, so the tab never
-// begins at 0 and climbs.
-⋮----
-}, [viewEv, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
-⋮----
-// ---- Budget tab -------------------------------------------------------
-// The tab embeds the shared EventBudgetWorkspace (the very same component
-// the Budget & Expenses page uses), so an event's budget and expenses are
-// managed in one place and can be edited from either page. This just keeps
-// this page's copy of the event in step when the approved budget changes
-// there, so the Overview tile and the Edit Event form never show a stale
-// figure.
-const handleBudgetSummary = (summary:
-⋮----
-// ---- Generate Report (per event) -- same Print & Export Options flow as
-// Reports & Analytics, scoped to the event open in the detail view.
-⋮----
-const openEventReport = (mode: "print" | "download") =>
-⋮----
-// Start from what the Attendance tab is showing: filtered to "Missed" -> the
-// report starts on "Absent" (the other statuses have no exact match, so "All").
-⋮----
-const fetchEventReportBlob = async (format: "pdf" | "word") =>
-⋮----
-const saveBlob = (blob: Blob, filename: string) =>
-⋮----
-const reportFileBase = ()
-⋮----
-const isPhoneOrTabletDevice = () =>
-⋮----
-// Desktop: the report is rendered by the browser itself in a hidden frame
-// on this very page and the print dialog opens straight away -- no new tab
-// and no blob: address. Printing the browser's own HTML (instead of a PDF
-// inside a frame) is what lets the page margins be exact, with no blank
-// band at the top. Phones/tablets can't print a hidden frame reliably, so
-// they open the PDF in the device's viewer instead (same as Reports).
-const handleEventReportPrint = async () =>
-⋮----
-// Wait for the seal image / fonts so the preview is complete.
-⋮----
-const handleEventReportDownload = async (format: "pdf" | "word") =>
-⋮----
-// Full-bleed dark navy wrapper -- same technique and palette as
-// the list view right below this (and the Dashboard/Residents/
-// Households pages), so the event detail reads as part of the
-// same system instead of the light page it used to be.
-⋮----
-onClick=
-⋮----
-
-⋮----
-title=
-⋮----
-<h3 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">
-⋮----
-{/* Solid-colored to match the Dashboard's Residents / Active
-                      Memberships / Overdue Returns stat cards -- same three
-                      colors, just flat instead of the Dashboard's gradient.
-                      These already read fine on the dark page, so only the
-                      surrounding surfaces needed to change. */}
-⋮----
-onClose=
-⋮----
-onDownload=
-⋮----
-{/* Same search bar card/input pattern as the Residents,
-                      Households, Memberships and main Events search --
-                      the status filter sits alongside it, unchanged. */}
-⋮----
-onChange=
-⋮----
-{/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-⋮----
-// Whole, half or empty star (4.5 -> four and a half).
-⋮----
-{/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents/
-              Households/Memberships background and palette. The Add/Edit
-              Event modal further down stays in the original light theme,
-              same scoping used on those pages. */}
-⋮----
-<span className="truncate font-medium" title=
-⋮----
-{/* Add / Edit Event Page -- right-anchored slide-over drawer, same
-          mechanic as the Residents Profile slide-over (dimmed backdrop,
-          slides in from the right edge, ~half the page wide) instead of a
-          full content-area take-over. Same dark background + logo
-          watermark, same title/back link treatment, same section header
-          and input styling, same full-width Save button inside -- only the
-          outer positioning/animation changed. Same fields, same handlers. */}
-⋮----
-{/* Call time: sign-in/out attendance window, separate from the event's own start/end */}
-⋮----
-{/* UC-8: Record Event Budget and Expenses */}
-⋮----
-{/* Items borrowed from Inventory for this event -- excludes
-                      Disposed/Lost stock (see InventoryController::borrowable()),
-                      and deducts the chosen quantity from Inventory on save. */}
-⋮----
-placeholder=
-⋮----
-{/* Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)" */}
-⋮----
-confirmLabel=
-⋮----
-{/* Delete Event Confirm Modal */}
-⋮----
-{/* Result popups -- every Add / Update / Delete lands on one of these. */}
-⋮----
-<button onClick=
-````
-
 ## File: resources/js/pages/staff/views/ResidentsView.tsx
 ````typescript
 import Portal from "../../../components/ui/Portal";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import SaveButton from "../../../components/ui/SaveButton";
-import { matchesSearch } from "../../../lib/search";
+import useServerMatchIds from "../../../hooks/useServerMatchIds";
 import { highlightMatches } from "../../../lib/highlight";
 import SuffixSelect from "../../../components/ui/SuffixSelect";
 import FilterBar, { type FilterDef, type ExtraChip } from "../../../components/ui/FilterBar";
@@ -25905,6 +27795,7 @@ import { tc } from "../../../lib/contentTranslations";
 interface Membership {
   id: number;
   name: string;
+  eligible_current_status_id?: number | null;
 }
 ⋮----
 interface CivilStatusOption {
@@ -25915,7 +27806,14 @@ interface CivilStatusOption {
 interface CurrentStatusOption {
   id: number;
   label: string;
+  category?: string;
 }
+⋮----
+// Display order + pick rule of the Current Status groups. Only "employment"
+// is pick-one (Student / Unemployed / Out-of-School Youth contradict each
+// other); the server enforces the same rule.
+⋮----
+const csCategoryOf = (c?: string)
 ⋮----
 interface AgeBracketOption {
   id: number;
@@ -26061,6 +27959,8 @@ const withSuffix = (name: string, suffix?: string | null)
 ⋮----
 // ─── Quick "add new household" panel (opened from either resident form) ──
 ⋮----
+// The rows of the current page, already filtered/sorted by the server, and the tab sizes.
+⋮----
 // Popped up (instead of buried in an inline banner) for every save
 // failure -- validation rejections (e.g. membership eligibility) and
 // generic server/network failures alike -- per "all validations plsss".
@@ -26149,7 +28049,13 @@ const applyRoleChange = async (password: string) =>
 // automatically -- no separate "sync" step needed.
 const submitNewHousehold = async () =>
 ⋮----
+// One server row -> the shape the screen uses.
+const toResidentRow = (item: any): ResidentRow => (
+⋮----
 // ─── Fetch residents ──────────────────────────────────────────────────────
+// The full list is kept only as a lookup directory (open a profile, household
+// sizes, duplicate checks). What the table shows -- search, filters, sort,
+// paging and the tab counts -- comes from the server (fetchPage below).
 const fetchResidents = async () =>
 ⋮----
 // The endpoint can fail (e.g. a pending migration) and still return
@@ -26157,6 +28063,8 @@ const fetchResidents = async () =>
 // error payload -- either way, data.map() below would throw and get
 // silently swallowed by the catch, which used to leave the table
 // looking like "no records" instead of surfacing what went wrong.
+⋮----
+setReloadTick((n) => n + 1); // the table's page may have changed too
 ⋮----
 // ─── Fetch real attendance history for whichever resident's profile
 // panel is currently open (GET /users/{id}/attendances) ────────────────
@@ -26262,17 +28170,17 @@ const handleCancelEdit = () =>
 // ─── Filter + Pagination ──────────────────────────────────────────────────
 // One predicate for the table AND the export, so "what you see is what you
 // export" can't drift. `extras` = the FilterBar dropdowns; scope = Members tab.
-const residentSearchHit = (x: ResidentRow, q: string)
-const matchesExtraFilters = (x: ResidentRow) =>
 ⋮----
-const sortResidents = (rows: ResidentRow[]) =>
+// The filters, as the server expects them (shared by the table and the export).
+const filterParams = (scope: string) => (
 ⋮----
-const byName = (a: ResidentRow, b: ResidentRow)
+const fetchPage = async () =>
 ⋮----
-default: return out.sort((a, b) => b.real_id - a.real_id); // recently added
+// Only the newest request may update the screen (typing fast fires several).
 ⋮----
-// Archived/trashed residents live on the Archive page now -- this
-// list only ever shows active records.
+// A page past the end (e.g. after the last row of a page was archived): go back.
+⋮----
+// Any filter change starts again from page 1.
 ⋮----
 // eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
@@ -26283,6 +28191,9 @@ default: return out.sort((a, b) => b.real_id - a.real_id); // recently added
 type ExportScope = "all" | "members" | "not-members";
 ⋮----
 const openExportDialog = (format: "excel" | "pdf") =>
+⋮----
+// The export list comes from the server too, with the same filters as the table
+// (or without them when "apply search & filters" is off) -- one source of truth.
 ⋮----
 // eslint-disable-next-line react-hooks/exhaustive-deps
 ⋮----
@@ -26298,11 +28209,16 @@ const handleExport = async () =>
 // Opening message (English, like the rest of the exported document) -- optional.
 ⋮----
 // ─── Sub-components ───────────────────────────────────────────────────────
-// Current Status is many-to-many (a resident can be, say, both a Solo
-// Parent and PWD at once), so this is a checkbox list rather than a
-// single-select dropdown -- same shape as MembershipCheckboxes below.
+// Current Status: staff-managed options, shown as chips grouped by
+// category. A resident can hold several (Solo Parent + PWD), except inside
+// "employment" where only one applies. The chosen ids still go to the
+// server as current_status_ids[], and membership eligibility checks them.
 ⋮----
-const toggle = (id: number) =>
+const setIds = (fn: (ids: number[]) => number[]) =>
+⋮----
+const toggle = (cs: CurrentStatusOption) =>
+⋮----
+// Memberships already ticked above that need a particular status.
 ⋮----
 // "Account Access" fields shared by the Add and Edit forms (called as a
 // plain function, not a component, so typing in the password box doesn't
@@ -26321,6 +28237,8 @@ aria-label=
 ⋮----
 
 ⋮----
+// The program search is matched by the server (memberships list endpoint, paged=1).
+⋮----
 onChange=
 ⋮----
 // A resident being edited may already have a saved photo (preview set
@@ -26330,6 +28248,8 @@ onChange=
 const openPreview = ()
 ⋮----
 // ─── JSX ──────────────────────────────────────────────────────────────────
+⋮----
+// Tab sizes come from the server (all active residents, members, not yet members).
 ⋮----
 {/* Full-bleed dark navy page, same technique and palette as the
           Dashboard: cancels the shared content area's own padding so this
@@ -26411,6 +28331,587 @@ setFormErrors((p) => (
 <button onClick=
 ````
 
+## File: resources/js/pages/staff/views/EventsView.tsx
+````typescript
+import Portal from "../../../components/ui/Portal";
+import { scrollListIntoView } from "../../../lib/scrollToList";
+import useFilterSwitching from "../../../hooks/useFilterSwitching";
+import { makeEventTiming, STATUS_META } from "../../../lib/eventTiming";
+import FormSelect from "../../../components/ui/FormSelect";
+import React, { useEffect, useMemo, useState, useRef } from "react";
+import { createPortal } from "react-dom";
+import FeedbackComment from "../../../components/ui/FeedbackComment";
+import type { ResponseFields } from "../../../components/ui/FeedbackComment";
+import {
+  Filter, X, LogIn, LogOut, ChevronLeft, Archive,
+  Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown,
+  Megaphone, ClipboardList, Users, ArrowLeft, Save, Download, Printer, CheckCircle2, ChevronRight, Eye,
+} from "lucide-react";
+import SearchableSelect from "../../../components/ui/SearchableSelect";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
+import QuickTabs from "../../../components/ui/QuickTabs";
+import DatePicker from "../../../components/ui/DatePicker";
+import TimePicker from "../../../components/ui/TimePicker";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
+import NumberStepper from "../../../components/ui/NumberStepper";
+import EventBudgetWorkspace from "../../../components/budget/EventBudgetWorkspace";
+import Skeleton from "../../../components/ui/Skeleton";
+import { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
+import SlideOutGhost from "../../../components/ui/SlideOutGhost";
+import ReportOptionsModal, { type SectionDef, type AttendeeFilter } from "./ReportOptionsModal";
+import api, { apiErrorMessage } from "../../../lib/api";
+import { useLanguage } from "../../../i18n/LanguageContext";
+⋮----
+import { tc } from "../../../lib/contentTranslations";
+// What can go on one event's printout / PDF / Word file. Keys must match the
+// backend's allowed attendance sections (ReportController::buildExportPayload).
+⋮----
+interface MyEvent {
+  id: number | string;
+  title: string;
+  date: string;
+  event_start?: string;
+  event_end?: string;
+  call_time_start?: string;
+  call_time_end?: string;
+  startDate?: string;
+  endDate?: string;
+  startTime: string;
+  endTime: string;
+  callStartTime?: string;
+  callEndTime?: string;
+  location: string;
+  description: string;
+  notificationMessage?: string;
+  membershipIds?: (string | number)[];
+  membershipNames?: string[];
+  approvedBudget?: number | string | null;
+  // How many different inventory items this event took (still out or already returned) -- known as soon as the events load.
+  inventoryCount?: number;
+  // Feedback + non-attendance reasons received for this event.
+  feedbackCount?: number;
+  // How many attendance rows the event has -- known as soon as the events load.
+  attendanceCount?: number;
+  borrowedItems?: { inventoryItemId: string; name: string; quantity: number; units: Record<string, number> }[];
+}
+⋮----
+// How many different inventory items this event took (still out or already returned) -- known as soon as the events load.
+⋮----
+// Feedback + non-attendance reasons received for this event.
+⋮----
+// How many attendance rows the event has -- known as soon as the events load.
+⋮----
+interface BorrowableInventoryItem {
+  id: number | string;
+  name: string;
+  quantity: number;
+  condition: string;
+  // In-stock units per condition (they add up to `quantity`).
+  new_quantity?: number;
+  good_quantity?: number;
+  fair_quantity?: number;
+  poor_quantity?: number;
+  storage_location?: string | null;
+}
+⋮----
+// In-stock units per condition (they add up to `quantity`).
+⋮----
+// One borrowed item in the Create/Edit Event form. `units` is how many of each
+// condition staff picked (kept as strings, like the other form fields);
+// `quantity` is always their sum.
+type BorrowRow = { inventoryItemId: string; quantity: string; units: Record<string, string> };
+⋮----
+interface EventsViewProps {
+  allEvents: MyEvent[];
+  onDeleteEvent: (id: number | string) => Promise<void>;
+  onCreateEvent?: (event: MyEvent) => void;
+  highlightText: (text: string, query: string) => React.ReactNode;
+  residents?: any[];
+  memberships?: any[];
+  attendanceRecords?: any[];
+  loading?: boolean;
+  // Asks the page to open one event on a given tab (used by the bell notifications).
+  openRequest?: { eventId: number; tab: string; sub?: string; nonce: number } | null;
+  onOpenRequestHandled?: () => void;
+}
+⋮----
+// Asks the page to open one event on a given tab (used by the bell notifications).
+⋮----
+const eventStatusLabel = (label: string)
+// The card/detail-view chip reads "Completed" for a finished event instead
+// of "Past" -- "Past" stays as-is everywhere else (filter dropdown option,
+// etc.) since that wording is still correct there.
+const eventStatusChipLabel = (label: string)
+const statusPillClasses = (label: string, dark = false) =>
+const statusDotClasses = (label: string, dark = false) =>
+const attendanceStatusLabel = (label: string) =>
+⋮----
+// Quick tabs (Today / This week / Has feedback) and sort, on top of the status + membership + date filters.
+⋮----
+const [pageLoading, setPageLoading] = useState(true); // the server page of cards is loading
+⋮----
+// Tab to land on when the detail view opens (set by a bell notification).
+⋮----
+// Which of the 4 tabs (Overview / Attendance / Budget / Feedback) is
+// showing in the full-page event detail view.
+⋮----
+// UC-16 (staff side): the ratings/comments residents left for this
+// event -- fetched from /feedback/event/{id} (backend already existed,
+// it just wasn't wired into any staff screen yet).
+type FeedbackRow = ResponseFields & { rating: number; comment: string | null; user?: { first_name: string; last_name: string } };
+type AbsenceRow = ResponseFields & { reason: string; comment: string | null; user?: { first_name: string; last_name: string } };
+⋮----
+// The event's Inventory tab: what it borrowed, what is still out, and what
+// came back (and in which condition) -- from /events/{id}/inventory.
+type EventInventoryRow = {
+    inventory_item_id: number; name: string; photo_url?: string | null; total: number; status: "borrowed" | "partial" | "returned";
+    out: number; out_units: Record<string, number>; returned: number; returned_units: Record<string, number>;
+  };
+⋮----
+// Full-size look at an item photo or a return's evidence photo (prev/next, Esc closes).
+⋮----
+const stepInvPhoto = (dir: 1 | -1) => setInvPhoto((cur) =>
+⋮----
+const onKey = (e: KeyboardEvent) =>
+⋮----
+}, [invPhoto]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+// A new feedback arrived for the event on screen: refresh its Feedback tab live.
+⋮----
+const onFeedback = (e: Event) =>
+⋮----
+}, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+}, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+// Whether the Add/Edit Event modal is open (renamed in spirit from the old
+// "formOpen" toggle for the persistent side panel this replaced).
+⋮----
+// Brief skeleton flash whenever the page number is switched, same as the
+// Activity Logs page (which re-fetches per page). This list paginates
+// client-side over already-loaded data, so there's nothing to actually
+// wait on -- the flash is purely so switching pages always feels the same.
+⋮----
+// Page-open skeleton -- `loading` is only true during Staff's very first
+// fetch, so without this, opening Events later showed the cards instantly.
+⋮----
+// While the page is still showing its skeleton the counters read 0, not the
+// numbers of a list that has not loaded yet.
+⋮----
+const goToPage = (page: number) =>
+⋮----
+// Same brief flash inside an event's detail view (tab switch, attendance /
+// feedback page switch).
+⋮----
+const flashDetail = () =>
+⋮----
+// Opening an event also flashes the detail skeleton, same as switching tabs.
+useEffect(() => { if (viewEv?.id) flashDetail(); }, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+// What the cards show: one page, already filtered and sorted by the server, plus the
+// size of every tab and status (so the numbers always match the filters).
+⋮----
+// Bell notification -> open that event on the requested tab. Waits for the
+// events to be loaded, then clears the request so it only fires once.
+⋮----
+if (!target) return; // events still loading -- runs again when they arrive
+⋮----
+}, [openRequest, localEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+const getStartOfWeek = (date: Date) =>
+⋮----
+const getEndOfWeek = (date: Date) =>
+⋮----
+const getTodayString = () =>
+⋮----
+// "HH:MM" for right now in the browser's local time -- used as the
+// time inputs' floor whenever the selected event date is today, so the
+// picker itself won't offer an already-passed time (matches the
+// call_time_start >= now guard the backend now also enforces).
+const getCurrentTimeString = () =>
+⋮----
+const getMembershipName = (id: any) =>
+⋮----
+const getMembershipNames = (e: MyEvent): string[] =>
+⋮----
+// "All residents" when the event is open to everyone, otherwise the
+// actual membership group name(s) (e.g. "Pantawid Pamilya", "Walang
+// Gutom") joined together -- the same two states shown on the card
+// footer and in the Overview tab's Coverage stat.
+const getCoverageLabel = (e: MyEvent): string =>
+⋮----
+const formatDbEvent = (dbEvent: any): MyEvent =>
+⋮----
+// Borrows made before units were split count toward the item's main condition.
+⋮----
+const refreshEventsFromAPI = async (reloadPage = true) =>
+⋮----
+if (reloadPage) setEventsReloadTick((n) => n + 1); // the page of cards may have changed too
+⋮----
+refreshEventsFromAPI(false); // the first page of cards is already being fetched
+⋮----
+}, []); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+const handleRefresh = () =>
+⋮----
+// Only the event being viewed needs its attendance list, so fetch just that
+// one (instead of every event one-by-one). Cached copy shows instantly while
+// a fresh one loads in the background.
+⋮----
+}, [viewEv?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+// Real-time-ish refresh: this app has no websocket/push layer, so a
+// second staff member adding/editing/attending an event elsewhere is
+// picked up here via light polling plus a refetch whenever this tab
+// regains focus or becomes visible again, matching the same pattern used
+// on the Memberships page. Paused while the Add/Edit modal or a delete
+// confirmation is open so a background refresh never yanks state out from
+// under an in-progress edit.
+⋮----
+const handleVisibility = () =>
+const handleFocus = () =>
+⋮----
+const getXsrfToken = () =>
+⋮----
+// Whether the currently-selected event date is today -- used below to
+// reject an already-passed time the moment it's picked, rather than
+// only catching it on submit.
+⋮----
+// Per-field inline "that time already passed" messages for the four
+// time inputs. Deliberately NOT using the native `min` attribute for
+// this (we tried that first) -- on this Electron/Chromium build, an
+// empty <input type="time"> with `min` set would auto-fill itself from
+// min the moment it was focused/stepped, but mis-rendered the AM/PM
+// segment (showed e.g. "08:11 AM" for a min of 20:11/8:11 PM), so the
+// field silently ended up holding a real PAST value that looked like a
+// small, easy-to-miss discrepancy rather than an obviously invalid one.
+// Rejecting the change in JS and never writing the bad value into state
+// sidesteps that entirely, on any browser.
+⋮----
+const handleTimeFieldChange = (
+    field: "time" | "endTime" | "callTimeStart" | "callTimeEnd",
+    value: string
+) =>
+⋮----
+// getCurrentTimeString() is re-read on every keystroke/step, not
+// cached, so this stays correct even if the form's been open a while.
+⋮----
+return; // reject -- never write an already-passed time into state
+⋮----
+// UC-9 tie-in: items borrowed from Inventory for this event. Fetched
+// once (excludes Disposed/Lost condition -- see InventoryController::
+// borrowable()) and reused for both Create and Edit, since they share
+// one form.
+⋮----
+// When editing, the item's current stock in `borrowableItems` already
+// has THIS event's own borrow deducted from it (the backend only
+// returns it when the event is saved) -- add that amount back per item
+// so the quantity cap reflects what's really available to re-select.
+⋮----
+// Same idea per condition: units of this item this event already holds.
+const availableUnitsFor = (itemId: string, label: string): number =>
+⋮----
+const availableStockFor = (itemId: string): number =>
+⋮----
+const addBorrowRow = (itemId: string) =>
+⋮----
+// Start with one unit from the condition that has the most stock; staff
+// then choose how many of each condition they want.
+⋮----
+const updateBorrowUnits = (itemId: string, label: string, raw: string) =>
+⋮----
+const removeBorrowRow = (itemId: string) =>
+⋮----
+const getBorrowItemName = (itemId: string): string =>
+⋮----
+// Skeleton flash on every search/status change, and always jump back to
+// page 1 -- otherwise a filter applied from page 3 left the table empty
+// (page 3 of a 1-page result), which looked like the filter did nothing.
+⋮----
+const formatTime12Hour = (timeStr: string | undefined): string =>
+⋮----
+const highlightAttendanceText = (text: string, query: string) =>
+⋮----
+// Three real states now instead of just Upcoming/Past -- an event that
+// has started but hasn't ended yet (its own event_start/event_end, not
+// just the sign-in/out call-time window) reads as "Ongoing" rather than
+// staying "Upcoming" all the way through, or flipping straight to
+// "Past" the moment its date turns over.
+const parseEventDateTime = (value?: string | null): Date | null =>
+⋮----
+const getEventStatus = (event: MyEvent):
+⋮----
+// Prefer the event's own end time, then the attendance window's
+// close, then (for legacy records with neither) end-of-day on the
+// start date so a record with no end info at all doesn't read as
+// "Ongoing" forever.
+⋮----
+// Display-only: an upcoming event whose sign-in window (call time start)
+// has already opened reads "Check-in open". Filters/locking still use the
+// real Upcoming/Ongoing/Past status.
+const chipKey = (event: MyEvent, label: string) =>
+⋮----
+const isEventLocked = (label: "Upcoming" | "Ongoing" | "Past")
+⋮----
+const getFilterStatus = (event: MyEvent, filter: string): boolean =>
+⋮----
+// Search, membership, date, quick tab, status, sort and paging are all done by the
+// server (EventController::pagedEvents), so the cards, counts and pages agree.
+const fetchEventsPage = async (silent = false) =>
+⋮----
+// A page past the end (e.g. after the last event of a page was archived): go back.
+⋮----
+// Typing waits a moment so one request covers a burst of keystrokes; tabs, filters and
+// paging fetch straight away.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// Background refreshes / saves: update the page quietly, no skeleton.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// The cards on the visible page show an attendee count, so load just those
+// few events' attendance, in parallel, once each (cached afterwards).
+⋮----
+}, [paginatedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+// Filters / search changing flashes the list skeleton too (not on first mount).
+⋮----
+// Runs the field-level checks that used to live at the top of the old
+// handleSaveEvent, then -- if they pass -- opens the confirm step
+// instead of saving right away. The actual request now happens in
+// performSaveEvent, only once the user confirms.
+const handleSaveEvent = (e: React.FormEvent) =>
+⋮----
+// Call Time Start must be strictly earlier than the event's own
+// Start Time -- equal would leave a zero-length sign-in window
+// (e.g. event starts 7:00, call time can't also be 7:00). Matches
+// the backend's before:event_start rule (was before_or_equal).
+⋮----
+// The earliest moment in the whole event window is Call Time Start
+// (it's required to be < the event's own Start Time), so checking
+// it here catches a past Start Time too. Runs for both create and
+// edit now -- editing an Upcoming event into a past time was never
+// actually blocked before, only creating one was.
+//
+// When editing, only flag this if the earliest time is actually
+// being CHANGED to a past value -- it's normal for an Upcoming
+// event's Call Time (sign-in opens) to have already passed while
+// the event itself hasn't started yet, and that alone must not
+// block unrelated edits (e.g. fixing the description). Matches the
+// same "only if changed" rule the backend now enforces.
+⋮----
+const timeOnly = (value?: string)
+⋮----
+const performSaveEvent = async () =>
+⋮----
+// Exactly the units staff picked, per condition.
+⋮----
+// Adviser recommendation: "2 in 1 — Facebook Page" (only relevant on create)
+⋮----
+// If this save was made from inside the detail view, keep it open on
+// the freshly-saved copy instead of dumping the user back to the grid.
+⋮----
+// A rejected edit reverts the form to what was actually loaded --
+// "Go Back" on the error popup should mean back to the real event,
+// not leave whatever half-invalid values were just typed sitting
+// in the fields.
+⋮----
+const openAddEventModal = () =>
+⋮----
+const startEditEvent = (event: MyEvent) =>
+⋮----
+// Call time / end time all share the event's own date -- only the
+// time-of-day differs, so just pull HH:MM back out of each timestamp.
+⋮----
+// Nothing to submit if editing an event and the form still matches what
+// was loaded (title, schedule, borrowed items, everything).
+⋮----
+: JSON.stringify(newEvent) === JSON.stringify(blankEventForm); // new event: nothing entered yet
+⋮----
+const closeEventModal = () =>
+⋮----
+const confirmDelete = async () =>
+⋮----
+// If the deleted event was the one open in the detail view, go back
+// to the grid instead of leaving a dead event on screen.
+⋮----
+const cancelDelete = ()
+⋮----
+const getMembersForEvent = (event: MyEvent) =>
+⋮----
+const getFullAttendanceList = (eventId: string | number, eligibleMembers: any[]) =>
+⋮----
+// Sort: Complete -> Incomplete -> Missed (who actually attended first),
+// then last name A-Z inside each group so a name is easy to find.
+const rank = (r: any)
+const lastName = (name: string) =>
+⋮----
+// "No scan" only means Missed once the event is over: before it starts the
+// row reads Upcoming, and while it is running, Ongoing.
+const getAttendanceStatus = (record: any) =>
+⋮----
+// The status filter only offers what can exist for this event right now:
+// an event that hasn't started offers Upcoming (never Missed), a running one
+// offers Ongoing, and only a finished one offers Missed.
+⋮----
+// Attendance tab data -- keyed off the event currently open in the detail
+// view (`viewEv`) instead of a separate modal's own state, now that the
+// attendance table lives inside the Attendance tab rather than its own
+// popup.
+// The roster table is one server query (EventAttendanceController::getEventAttendees, paged=1):
+// name / ID search, status filter and paging all happen in the database.
+⋮----
+const fetchRoster = async (silent = false) =>
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// A scan lands (or the 20 s refresh brings new rows): refresh the table quietly.
+⋮----
+// eslint-disable-next-line react-hooks/exhaustive-deps
+⋮----
+// Residents and the attendance rows arrive a moment after the event opens;
+// the server's own count is there from the start, so the tab never
+// begins at 0 and climbs.
+⋮----
+}, [viewEv, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
+⋮----
+// ---- Budget tab -------------------------------------------------------
+// The tab embeds the shared EventBudgetWorkspace (the very same component
+// the Budget & Expenses page uses), so an event's budget and expenses are
+// managed in one place and can be edited from either page. This just keeps
+// this page's copy of the event in step when the approved budget changes
+// there, so the Overview tile and the Edit Event form never show a stale
+// figure.
+const handleBudgetSummary = (summary:
+⋮----
+// ---- Generate Report (per event) -- same Print & Export Options flow as
+// Reports & Analytics, scoped to the event open in the detail view.
+⋮----
+const openEventReport = (mode: "print" | "download") =>
+⋮----
+// Start from what the Attendance tab is showing: filtered to "Missed" -> the
+// report starts on "Absent" (the other statuses have no exact match, so "All").
+⋮----
+const fetchEventReportBlob = async (format: "pdf" | "word") =>
+⋮----
+const saveBlob = (blob: Blob, filename: string) =>
+⋮----
+const reportFileBase = ()
+⋮----
+const isPhoneOrTabletDevice = () =>
+⋮----
+// Desktop: the report is rendered by the browser itself in a hidden frame
+// on this very page and the print dialog opens straight away -- no new tab
+// and no blob: address. Printing the browser's own HTML (instead of a PDF
+// inside a frame) is what lets the page margins be exact, with no blank
+// band at the top. Phones/tablets can't print a hidden frame reliably, so
+// they open the PDF in the device's viewer instead (same as Reports).
+const handleEventReportPrint = async () =>
+⋮----
+// Wait for the seal image / fonts so the preview is complete.
+⋮----
+const handleEventReportDownload = async (format: "pdf" | "word") =>
+⋮----
+// Full-bleed dark navy wrapper -- same technique and palette as
+// the list view right below this (and the Dashboard/Residents/
+// Households pages), so the event detail reads as part of the
+// same system instead of the light page it used to be.
+⋮----
+onClick=
+⋮----
+
+⋮----
+title=
+⋮----
+<h3 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">
+⋮----
+{/* Solid-colored to match the Dashboard's Residents / Active
+                      Memberships / Overdue Returns stat cards -- same three
+                      colors, just flat instead of the Dashboard's gradient.
+                      These already read fine on the dark page, so only the
+                      surrounding surfaces needed to change. */}
+⋮----
+onClose=
+⋮----
+onDownload=
+⋮----
+{/* Same search bar card/input pattern as the Residents,
+                      Households, Memberships and main Events search --
+                      the status filter sits alongside it, unchanged. */}
+⋮----
+onChange=
+⋮----
+{/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+⋮----
+// Whole, half or empty star (4.5 -> four and a half).
+⋮----
+{/* <FeedbackComment
+                              role="staff"
+                              kind="rating"
+                              item={f}
+                              author={f.user ?? null}
+                              comment={f.comment}
+                              header={
+                                <span className="flex items-center gap-0.5">
+                                  {[1, 2, 3, 4, 5].map((n) => (
+                                    <Star key={n} className={`h-3.5 w-3.5 ${n <= f.rating ? "text-amber-400 fill-amber-400" : "text-white/15"}`} />
+                                  ))}
+                                </span>
+                              }
+                              onChange={(patch) => setEventFeedback((prev) => prev.map((x) => (x.id === f.id ? { ...x, ...patch } : x)))}
+                            /> */}
+⋮----
+{/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
+⋮----
+{/* <FeedbackComment
+                                  role="staff"
+                                  kind="absence"
+                                  item={r}
+                                  author={r.user ?? null}
+                                  comment={r.comment}
+                                  header={<span className="inline-block rounded-full border border-gold-400/30 bg-gold-400/10 px-3 py-0.5 text-xs font-semibold text-gold-300">{t(`absReason_${r.reason}`)}</span>}
+                                  onChange={(patch) => setEventAbsences((prev) => prev.map((x) => (x.id === r.id ? { ...x, ...patch } : x)))}
+                                /> */}
+⋮----
+{/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents/
+              Households/Memberships background and palette. The Add/Edit
+              Event modal further down stays in the original light theme,
+              same scoping used on those pages. */}
+⋮----
+<span className="truncate font-medium" title=
+⋮----
+{/* Add / Edit Event Page -- right-anchored slide-over drawer, same
+          mechanic as the Residents Profile slide-over (dimmed backdrop,
+          slides in from the right edge, ~half the page wide) instead of a
+          full content-area take-over. Same dark background + logo
+          watermark, same title/back link treatment, same section header
+          and input styling, same full-width Save button inside -- only the
+          outer positioning/animation changed. Same fields, same handlers. */}
+⋮----
+{/* Call time: sign-in/out attendance window, separate from the event's own start/end */}
+⋮----
+{/* UC-8: Record Event Budget and Expenses */}
+⋮----
+{/* Items borrowed from Inventory for this event -- excludes
+                      Disposed/Lost stock (see InventoryController::borrowable()),
+                      and deducts the chosen quantity from Inventory on save. */}
+⋮----
+placeholder=
+⋮----
+{/* Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)" */}
+⋮----
+confirmLabel=
+⋮----
+{/* Delete Event Confirm Modal */}
+⋮----
+{/* Result popups -- every Add / Update / Delete lands on one of these. */}
+⋮----
+<button onClick=
+````
+
 ## File: resources/js/i18n/translations.ts
 ````typescript
 // UC-17: Switch Interface Language (English / Filipino / Bisaya).
@@ -26428,6 +28929,7 @@ import { operationsTranslations } from "./locales/operations";
 import { feedbackExtrasTranslations } from "./locales/feedbackExtras";
 import { filtersTranslations } from "./locales/filters";
 import { reportsProTranslations } from "./locales/reportsPro";
+import { lostFoundTranslations } from "./locales/lostFound";
 ⋮----
 export type LanguageCode = "en" | "tl" | "ceb";
 ⋮----
