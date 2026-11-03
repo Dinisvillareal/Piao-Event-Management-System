@@ -9,6 +9,7 @@ use App\Models\StaffRecoveryCode;
 use App\Models\User;
 use App\Rules\StrongPassword;
 use App\Services\SecurityService;
+use App\Support\Paged;
 use App\Support\Totp;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -97,6 +98,57 @@ class StaffAccountController extends Controller
             'recovery_codes_remaining' => StaffRecoveryCode::where('user_id', auth()->id())->whereNull('used_at')->count(),
             'transfer_hours' => self::TRANSFER_HOURS,
         ]);
+    }
+
+    /**
+     * One page of the staff team list, filtered and sorted by the database.
+     * tab: all | active | suspended | no-2fa; search: name or ID; sort: head | name-az | name-za | signin.
+     */
+    public function team(Request $request)
+    {
+        $base = User::where('role', 'Staff');
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $like = Paged::like($word);
+            $base->where(fn ($q) => $q->whereRaw("LOWER(CONCAT_WS(' ', first_name, middle_name, last_name, suffix)) LIKE ?", [$like])
+                ->orWhereRaw('LOWER(user_code) LIKE ?', [$like]));
+        }
+
+        $apply = function ($q, string $tab) {
+            if ($tab === 'active') {
+                $q->whereNull('suspended_at');
+            } elseif ($tab === 'suspended') {
+                $q->whereNotNull('suspended_at');
+            } elseif ($tab === 'no-2fa') {
+                $q->whereNull('two_factor_confirmed_at')->whereNull('suspended_at');
+            }
+        };
+        $counts = [];
+        foreach (['all' => 'all', 'active' => 'active', 'suspended' => 'suspended', 'no2fa' => 'no-2fa'] as $key => $tab) {
+            $q = clone $base;
+            $apply($q, $tab);
+            $counts[$key] = $q->count();
+        }
+
+        $query = clone $base;
+        $apply($query, (string) $request->input('tab', 'all'));
+        $name = "CONCAT_WS(' ', first_name, middle_name, last_name, suffix)";
+        switch ($request->input('sort')) {
+            case 'name-az':
+                $query->orderByRaw("{$name} ASC");
+                break;
+            case 'name-za':
+                $query->orderByRaw("{$name} DESC");
+                break;
+            case 'signin':
+                $query->orderByRaw('last_login_at IS NULL')->orderByDesc('last_login_at');
+                break;
+            default:
+                $query->orderByDesc('is_head_staff')->orderByRaw("{$name} ASC");
+        }
+
+        $paginator = $query->orderBy('id')->paginate(Paged::perPage($request, 5), ['*'], 'page', Paged::page($request));
+
+        return response()->json(Paged::body($paginator, $paginator->getCollection()->map(fn ($u) => $this->row($u))->values(), ['counts' => $counts]));
     }
 
     /** Residents who could be promoted (must already have a portal account). */

@@ -21,7 +21,7 @@
 //     setCurrentPage(updater as any);
 //     setPageSwitching(true);
 //     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
 //   };
 //   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
 //   const [allMemberships, setAllMemberships] = useState<any[]>([]);
@@ -451,7 +451,7 @@
 //     setCurrentPage(updater as any);
 //     setPageSwitching(true);
 //     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
 //   };
 //   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
 //   const [allMemberships, setAllMemberships] = useState<any[]>([]);
@@ -874,7 +874,6 @@ import { tc } from "../../../lib/contentTranslations";
 import { renderMemberIdCard, renderMemberIdCardSides } from "../../../lib/memberIdCard";
 import IdCardFlip from "../../../components/ui/IdCardFlip";
 import { useBarangayOfficials } from "../../../lib/barangayOfficials";
-import { matchesSearch } from "../../../lib/search";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 
 export default function QRCodesView({ highlightText, userId, userCode, fullName }: any) {
@@ -891,7 +890,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     setCurrentPage(updater as any);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const [allMemberships, setAllMemberships] = useState<any[]>([]);
@@ -906,49 +905,63 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   // Member's own contact number -- printed on the back of the ID card.
   const [contactNumber, setContactNumber] = useState("");
 
+  // The member's own contact number (printed on the ID card's back) loads once.
   useEffect(() => {
     if (!userId) return;
-    const fetchMemberships = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const membershipRes = await fetch(`/membership-residents/${userId}?per_page=100`, {
-          credentials: 'include', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        if (!membershipRes.ok) throw new Error(`HTTP ${membershipRes.status}`);
-        const membershipData = await membershipRes.json();
-        setContactNumber(membershipData.contact_number || "");
-        const membershipIds = (membershipData.memberships || []).map((m: any) => m.id);
-        if (membershipIds.length === 0) { setAllMemberships([]); setLoading(false); return; }
-
-        const allMembershipsRes = await fetch(`/api/memberships`, {
-          credentials: 'include', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-        });
-        if (!allMembershipsRes.ok) throw new Error(`HTTP ${allMembershipsRes.status}`);
-        const allMembershipsData = await allMembershipsRes.json();
-        const allMembershipsList = Array.isArray(allMembershipsData) ? allMembershipsData : (allMembershipsData.data || []);
-        setAllMemberships(allMembershipsList.filter((m: any) => membershipIds.includes(m.id)));
-      } catch (err) {
-        console.error('Failed to fetch memberships:', err);
-        setError(err instanceof Error ? err.message : t("memErrLoadMemberships"));
-      } finally { setLoading(false); }
-    };
-    fetchMemberships();
+    fetch(`/membership-residents/${userId}?per_page=1`, {
+      credentials: 'include', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d) setContactNumber(d.contact_number || ""); })
+      .catch(() => {});
   }, [userId]);
 
-  const filteredMemberships = useMemo(() => {
-    if (!searchQuery.trim()) return allMemberships;
-    return allMemberships.filter(m => matchesSearch(searchQuery, m.name, m.description));
-  }, [allMemberships, searchQuery]);
+  // Search and paging of the member's groups are done by the server (MembershipController::index, mine=<id>).
+  const [totalItems, setTotalItems] = useState(0);
+  const [lastPage, setLastPage] = useState(1);
+  const membershipsSeq = useRef(0);
+  const fetchMemberships = async () => {
+    if (!userId) return;
+    const seq = ++membershipsSeq.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const qs = new URLSearchParams({ paged: '1', mine: String(userId), page: String(currentPage), per_page: String(itemsPerPage) });
+      if (searchQuery.trim()) qs.set('search', searchQuery.trim());
+      const res = await fetch(`/api/memberships?${qs.toString()}`, {
+        credentials: 'include', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
+      if (seq !== membershipsSeq.current) return;
+      if (body.meta.last_page < currentPage) { setCurrentPage(Math.max(1, body.meta.last_page)); return; }
+      setAllMemberships(body.data ?? []);
+      setTotalItems(body.meta.total);
+      setLastPage(body.meta.last_page);
+    } catch (err) {
+      console.error('Failed to fetch memberships:', err);
+      if (seq === membershipsSeq.current) setError(err instanceof Error ? err.message : t("memErrLoadMemberships"));
+    } finally {
+      if (seq === membershipsSeq.current) setLoading(false);
+    }
+  };
+  const fetchMembershipsRef = useRef(fetchMemberships);
+  fetchMembershipsRef.current = fetchMemberships;
 
-  const totalItems = filteredMemberships.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const displayMemberships = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredMemberships.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredMemberships, currentPage, itemsPerPage]);
+  // A new search starts again from page 1.
+  const prevSearchRef = useRef(searchQuery);
+  useEffect(() => {
+    if (prevSearchRef.current !== searchQuery) {
+      prevSearchRef.current = searchQuery;
+      if (currentPage !== 1) { setCurrentPage(1); return; }
+    }
+    const timer = setTimeout(() => fetchMembershipsRef.current(), 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, searchQuery, currentPage]);
 
-  useEffect(() => { setCurrentPage(1); }, [searchQuery]);
+  const totalPages = Math.max(1, lastPage);
+  const displayMemberships = allMemberships;
 
   const performDownloadQRCode = useCallback(async () => {
     setShowDownloadConfirm(false);

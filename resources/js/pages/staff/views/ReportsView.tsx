@@ -412,11 +412,15 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
       params.event_ids = effectiveRecordIds.join(",");
       params.attendee_filter = attendeeFilter;
     }
+    // "CSV / Excel": the server sends the report's data and the browser builds the styled workbook (letterhead, message, tiles, table).
+    if (format === "csv") {
+      const response = await api.get("/reports/export/csv", { params: { ...params, as: "json" } });
+      const { buildReportWorkbookBlob } = await import("../../../lib/reportExcelExport");
+      return buildReportWorkbookBlob(response.data);
+    }
     const response = await api.get(`/reports/export/${format}`, { params, responseType: "blob" });
     const mime = format === "pdf"
       ? "application/pdf"
-      : format === "csv"
-      ? "text/csv"
       : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     return new Blob([response.data], { type: mime });
   };
@@ -428,7 +432,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${reportType}-report.${format === "pdf" ? "pdf" : format === "csv" ? "csv" : "docx"}`;
+      link.download = `${reportType}-report.${format === "pdf" ? "pdf" : format === "csv" ? "xlsx" : "docx"}`;
       document.body.appendChild(link);
       link.click();
       link.remove();

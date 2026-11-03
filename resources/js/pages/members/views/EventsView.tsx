@@ -65,7 +65,7 @@
 //     setCurrentPage(updater as any);
 //     setPageSwitching(true);
 //     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
 //   };
 //   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
 //   const itemsPerPage = 6;
@@ -369,7 +369,7 @@
 
 //       <div className="pl-1">
 //         {pageSwitching ? (
-//           <div className="grid gap-5 md:grid-cols-2">
+//           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
 //             {Array.from({ length: 4 }).map((_, i) => (
 //               <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
 //                 <Skeleton className="h-4 w-2/3" />
@@ -387,7 +387,7 @@
 //                 <h3 className="mb-4 border-b border-white/10 pb-2 text-lg font-bold text-white">
 //                   {dateLabel === THIS_WEEK_KEY ? t("thisWeekLabel") : dateLabel}
 //                 </h3>
-//                 <div className="grid gap-5 md:grid-cols-2">
+//                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
 //                   {eventsInGroup.map((e) => {
 //                     const today = new Date();
 //                     const isUpcoming = new Date(e.date) >= today;
@@ -680,7 +680,7 @@
 //     scrollListIntoView(listTopRef.current);
 //     setPageSwitching(true);
 //     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
 //   };
 //   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
 //   const itemsPerPage = 6;
@@ -1054,7 +1054,7 @@
 //       <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0 pb-24 lg:pb-4">
 //         <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
 //         {pageSwitching || loading ? (
-//           <div className="grid gap-5 md:grid-cols-2">
+//           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
 //             {Array.from({ length: 4 }).map((_, i) => (
 //               <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
 //                 <Skeleton className="h-4 w-2/3" />
@@ -1072,7 +1072,7 @@
 //                 <h3 className="mb-4 border-b border-white/10 pb-2 text-lg font-bold text-white">
 //                   {dateLabel === THIS_WEEK_KEY ? t("thisWeekLabel") : dateLabel}
 //                 </h3>
-//                 <div className="grid gap-5 md:grid-cols-2">
+//                 <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
 //                   {eventsInGroup.map((e) => {
 //                     const today = new Date();
 //                     const isUpcoming = new Date(e.date) >= today;
@@ -1455,7 +1455,7 @@ export default function EventsView({
     setCurrentPage(updater as any);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
     scrollListIntoView(listTopRef.current);
   };
 
@@ -1696,49 +1696,85 @@ export default function EventsView({
     return d;
   };
 
-  const filteredEvents = useMemo(() => {
-    const today = new Date();
-    let result = [...allEvents];
-
-    if (eventFilter === "upcoming") {
-      result = result.filter((e) => new Date(e.date) >= today);
-    } else if (eventFilter === "past") {
-      result = result.filter((e) => new Date(e.date) < today);
+  // Search, upcoming/past, membership, date, order and paging are all done by the server
+  // (EventController::pagedEvents, member mode); the screen only holds the current page.
+  const [pageEvents, setPageEvents] = useState<Event[]>([]);
+  const [eventMeta, setEventMeta] = useState({ total: 0, last_page: 1 });
+  const [visibleTotal, setVisibleTotal] = useState(0);
+  const [pageLoading, setPageLoading] = useState(true);
+  const pageSeq = useRef(0);
+  const fetchPage = async (silent = false) => {
+    const seq = ++pageSeq.current;
+    if (!silent) setPageLoading(true);
+    try {
+      const portalMode = localStorage.getItem("portalMode") || sessionStorage.getItem("portalMode") || "member";
+      const res = await api.get("/events-data", {
+        headers: { "X-Portal-Mode": portalMode },
+        params: {
+          paged: 1,
+          search: eventSearch.trim() || undefined,
+          status: eventFilter,
+          membership: membershipFilter === "all" ? undefined : membershipFilter,
+          date: dateFilter || undefined,
+          page: currentPage,
+          per_page: itemsPerPage,
+        },
+      });
+      if (seq !== pageSeq.current) return;
+      const body = res.data;
+      if (body.meta.last_page < currentPage) {
+        setCurrentPage(Math.max(1, body.meta.last_page));
+        return;
+      }
+      setPageEvents((body.data ?? []).map((event: any) => ({
+        id: event.id,
+        title: event.name,
+        date: event.event_start,
+        event_start: event.event_start,
+        event_end: event.event_end,
+        location: event.location,
+        description: event.description,
+        membership_ids: Array.isArray(event.membership_ids) ? event.membership_ids : [],
+        memberships: Array.isArray(event.memberships) ? event.memberships : [],
+      })));
+      setEventMeta({ total: body.meta.total, last_page: body.meta.last_page });
+      setVisibleTotal(body.all_total ?? body.meta.total);
+    } catch (err) {
+      if (seq === pageSeq.current) console.error("Failed to fetch events page:", err);
+    } finally {
+      // Clear the loader whenever THIS is the latest request, silent or not --
+      // otherwise a background refresh that supersedes the first fetch leaves
+      // the skeleton on forever.
+      if (seq === pageSeq.current) setPageLoading(false);
     }
+  };
+  const fetchPageRef = useRef(fetchPage);
+  fetchPageRef.current = fetchPage;
 
-    if (membershipFilter !== "all") {
-      const selectedId = Number(membershipFilter);
-      result = result.filter((e) => e.membership_ids?.includes(selectedId));
-    }
-
-    if (dateFilter) {
-      result = result.filter((e) => (e.date ?? "").split(" ")[0] === dateFilter);
-    }
-
-    if (eventSearch.trim()) {
-      const q = eventSearch.toLowerCase();
-      result = result.filter(
-        (e) =>
-          e.title.toLowerCase().includes(q) ||
-          e.date.toLowerCase().includes(q) ||
-          e.location.toLowerCase().includes(q) ||
-          e.description.toLowerCase().includes(q)
-      );
-    }
-
-    result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    return result;
-  }, [allEvents, eventFilter, membershipFilter, dateFilter, eventSearch]);
-
-  const totalPages = Math.ceil(filteredEvents.length / itemsPerPage);
-  const paginatedEvents = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredEvents.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredEvents, currentPage, itemsPerPage]);
-
+  // A new search / filter starts again from page 1.
+  const eventFilterKey = `${eventSearch}|${eventFilter}|${membershipFilter}|${dateFilter}`;
+  const prevEventFilterKey = useRef(eventFilterKey);
   useEffect(() => {
-    setCurrentPage(1);
-  }, [eventSearch, eventFilter, membershipFilter, dateFilter]);
+    if (prevEventFilterKey.current !== eventFilterKey) {
+      prevEventFilterKey.current = eventFilterKey;
+      if (currentPage !== 1) { setCurrentPage(1); return; }
+    }
+    const timer = setTimeout(() => fetchPageRef.current(), 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventFilterKey, currentPage]);
+
+  // The page's own quiet refresh updates `allEvents`; mirror it for the list.
+  const firstEventsRun = useRef(true);
+  useEffect(() => {
+    if (firstEventsRun.current) { firstEventsRun.current = false; return; }
+    fetchPageRef.current(true);
+  }, [allEvents]);
+
+  const filteredEvents = { length: eventMeta.total };
+  const totalPages = Math.max(1, eventMeta.last_page);
+  const paginatedEvents = pageEvents;
+
 
   const THIS_WEEK_KEY = "__THIS_WEEK__";
   const groupedEvents = useMemo(() => {
@@ -1841,18 +1877,20 @@ export default function EventsView({
                   noResultsLabel={t("noMatchesFoundLabel")}
                 />
 
-                <DatePicker
-                  value={dateFilter}
-                  onChange={setDateFilter}
-                  placeholder={t("filterByDate") || "Filter by date"}
-                  dark
-                  className="h-11 shrink-0"
-                />
+                <div className="h-11 w-full shrink-0 sm:w-[200px]">
+                  <DatePicker
+                    value={dateFilter}
+                    onChange={setDateFilter}
+                    placeholder={t("filterByDate")}
+                    dark
+                    className="h-11 pl-4 pr-4 py-2.5"
+                  />
+                </div>
               </div>
             </div>
 
             <p className="mt-2 text-xs text-white/40">
-              {filteredEvents.length} of {allEvents.length} {t("eventsMatchCount")}
+              {eventMeta.total} of {visibleTotal} {t("eventsMatchCount")}
             </p>
 
             {totalPages > 1 && (
@@ -1884,8 +1922,8 @@ export default function EventsView({
         </div>
 
         <div className="pl-1">
-          {pageSwitching ? (
-            <div className="grid gap-5 md:grid-cols-2">
+          {pageSwitching || pageLoading ? (
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
               {Array.from({ length: 4 }).map((_, i) => (
                 <div
                   key={i}
@@ -1906,7 +1944,7 @@ export default function EventsView({
                   <h3 className="mb-4 border-b border-white/10 pb-2 text-lg font-bold text-white">
                     {dateLabel === THIS_WEEK_KEY ? t("thisWeekLabel") : dateLabel}
                   </h3>
-                  <div className="grid gap-5 md:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                     {eventsInGroup.map((e) => {
                       const today = new Date();
                       const isUpcoming = new Date(e.date) >= today;

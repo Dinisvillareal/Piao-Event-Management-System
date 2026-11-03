@@ -98,14 +98,14 @@ export function MemberDashboardSkeleton({ memberName = "" }: { memberName?: stri
         <MemberDashboardHeader memberName={memberName} loading />
 
         {/* Summary cards */}
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-36 rounded-3xl" />
           ))}
         </div>
 
         {/* My activity + QR */}
-        <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <div className={`${panel} space-y-4`}>
             <div className="flex items-center justify-between">
               <Skeleton className="h-6 w-40" />
@@ -134,7 +134,7 @@ export function MemberDashboardSkeleton({ memberName = "" }: { memberName?: stri
         </div>
 
         {/* Notifications + upcoming events */}
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {Array.from({ length: 2 }).map((_, i) => (
             <div key={i} className={`${panel} space-y-3`}>
               <div className="flex items-center justify-between">
@@ -281,7 +281,7 @@ export default function DashboardView({
         <div className="space-y-5">
       <MemberDashboardHeader memberName={memberName} />
 
-      <div className="report-stagger grid gap-4 md:grid-cols-3">
+      <div className="report-stagger grid grid-cols-1 gap-4 md:grid-cols-3">
         <SummaryCard
           value={membershipsCount}
           title={t("verifiedMemberships")}
@@ -308,7 +308,7 @@ export default function DashboardView({
         />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         {/* My Activity -- genuinely live: a ticking clock plus counts
             derived from data this page already fetches (notifications,
             attendance, upcoming events), same pattern as the staff
@@ -352,9 +352,9 @@ export default function DashboardView({
               { label: t("lastCheckInTile"), value: lastCheckIn ? formatDateCard(lastCheckIn.eventDate) : "—", icon: ClipboardCheck, tone: "text-[#7DD8CB]" },
               { label: t("missedCheckInsTile"), value: missedCount, icon: AlertCircle, tone: missedCount > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
             ].map((tile) => (
-              <div key={tile.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <div key={tile.label} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-3 min-[420px]:p-4">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-display text-2xl font-extrabold tabular-nums text-white">{tile.value}</span>
+                  <span className="min-w-0 truncate font-display text-lg font-extrabold tabular-nums text-white min-[420px]:text-2xl">{tile.value}</span>
                   <tile.icon className={`h-4 w-4 shrink-0 ${tile.tone}`} />
                 </div>
                 <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/45">{tile.label}</p>
@@ -409,7 +409,7 @@ export default function DashboardView({
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* This Week's Notifications Card */}
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06] flex flex-col h-full">
           <div className="flex items-center justify-between flex-shrink-0">

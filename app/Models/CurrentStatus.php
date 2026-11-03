@@ -9,7 +9,9 @@ class CurrentStatus extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['label', 'sort_order', 'deleted_by'];
+    public const CATEGORIES = ['employment', 'household', 'economic', 'sector', 'other'];
+
+    protected $fillable = ['label', 'category', 'sort_order', 'deleted_by'];
 
     protected $casts = [
         'sort_order' => 'integer',
@@ -33,6 +35,15 @@ class CurrentStatus extends Model
     public static function forgetCache(): void
     {
         self::$cached = null;
+    }
+
+    /**
+     * Ids of the "employment" group -- the only category where a resident
+     * can hold just one status (Student and Unemployed together make no sense).
+     */
+    public static function employmentIds(): array
+    {
+        return self::where('category', 'employment')->pluck('id')->map(fn ($v) => (int) $v)->all();
     }
 
     public function users()

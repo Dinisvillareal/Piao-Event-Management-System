@@ -8,9 +8,7 @@ import SearchBar from "../../../components/ui/SearchBar";
 import Skeleton from "../../../components/ui/Skeleton";
 import StatCardSkeleton from "../../../components/ui/StatCardSkeleton";
 import SectionCard from "../../../components/ui/SectionCard";
-import { matchesSearch } from "../../../lib/search";
 import SimplePager from "../../../components/ui/SimplePager";
-import usePager from "../../../hooks/usePager";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
@@ -98,6 +96,7 @@ export default function StaffAccountsView() {
     try {
       const res = await api.get("/staff-accounts");
       setData(res.data);
+      setTeamTick((n) => n + 1); // the team list below is its own server query -- refresh it too
     } catch (err: any) {
       if (err?.response?.status === 403) setForbidden(true);
       else setError(apiErrorMessage(err));
@@ -115,7 +114,7 @@ export default function StaffAccountsView() {
       api.get("/staff-accounts/candidates", { params: { search: search.trim() } })
         .then((r) => setCandidates(r.data ?? []))
         .catch(() => setCandidates([]));
-    }, 250);
+    }, 120);
     return () => clearTimeout(id);
   }, [search]);
 
@@ -189,28 +188,43 @@ export default function StaffAccountsView() {
   const [teamTab, setTeamTab] = useState<"all" | "active" | "suspended" | "no-2fa">("all");
   const [teamSearch, setTeamSearch] = useState("");
   const [teamSort, setTeamSort] = useState("head");
-  const teamSwitching = useFilterSwitching([teamTab, teamSearch, teamSort]);
+  const teamSwitching = false;
   const allStaff = data?.staff ?? [];
-  const tabCounts = {
-    all: allStaff.length,
-    active: allStaff.filter((s) => !s.suspended_at).length,
-    suspended: allStaff.filter((s) => s.suspended_at).length,
-    no2fa: allStaff.filter((s) => !s.two_factor_enabled && !s.suspended_at).length,
-  };
-  const teamFiltered = useMemo(() => {
-    let r = allStaff;
-    if (teamTab === "active") r = r.filter((s) => !s.suspended_at);
-    else if (teamTab === "suspended") r = r.filter((s) => s.suspended_at);
-    else if (teamTab === "no-2fa") r = r.filter((s) => !s.two_factor_enabled && !s.suspended_at);
-    if (teamSearch.trim()) r = r.filter((s) => matchesSearch(teamSearch, s.name, s.user_code));
-    const out = [...r];
-    if (teamSort === "name-az") out.sort((a, b) => a.name.localeCompare(b.name));
-    else if (teamSort === "name-za") out.sort((a, b) => b.name.localeCompare(a.name));
-    else if (teamSort === "signin") out.sort((a, b) => (b.last_login_at ?? "").localeCompare(a.last_login_at ?? ""));
-    else out.sort((a, b) => Number(b.is_head_staff) - Number(a.is_head_staff) || a.name.localeCompare(b.name));
-    return out;
-  }, [allStaff, teamTab, teamSearch, teamSort]);
-  const team = usePager(teamFiltered, 5, 350, `${teamTab}|${teamSearch}|${teamSort}`);
+  // Tabs, search, sort and paging for the team list are done by the server (StaffAccountController::team).
+  const [teamRows, setTeamRows] = useState<Staff[]>([]);
+  const [teamMeta, setTeamMeta] = useState({ total: 0, last_page: 1 });
+  const [tabCounts, setTabCounts] = useState({ all: 0, active: 0, suspended: 0, no2fa: 0 });
+  const [teamPage, setTeamPage] = useState(1);
+  const [teamLoading, setTeamLoading] = useState(true);
+  const [teamTick, setTeamTick] = useState(0);
+  const teamSeq = useRef(0);
+  const teamKey = `${teamTab}|${teamSearch}|${teamSort}`;
+  const prevTeamKey = useRef(teamKey);
+  useEffect(() => {
+    if (prevTeamKey.current !== teamKey) {
+      prevTeamKey.current = teamKey;
+      if (teamPage !== 1) { setTeamPage(1); return; }
+    }
+    const timer = setTimeout(async () => {
+      const seq = ++teamSeq.current;
+      setTeamLoading(true);
+      try {
+        const res = await api.get("/staff-accounts/team", { params: { tab: teamTab, search: teamSearch.trim() || undefined, sort: teamSort, page: teamPage, per_page: 5 } });
+        if (seq !== teamSeq.current) return;
+        if (res.data.meta.last_page < teamPage) { setTeamPage(Math.max(1, res.data.meta.last_page)); return; }
+        setTeamRows(res.data.data ?? []);
+        setTeamMeta({ total: res.data.meta.total, last_page: res.data.meta.last_page });
+        setTabCounts(res.data.counts);
+      } catch {
+        // keep the last list; the overview call reports real errors
+      } finally {
+        if (seq === teamSeq.current) setTeamLoading(false);
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [teamKey, teamPage, teamTick]);
+  const team = { page: teamPage, totalPages: Math.max(1, teamMeta.last_page), shown: teamRows, switching: teamLoading, go: setTeamPage };
   const teamTabChips: ExtraChip[] = teamTab === "all" ? [] : [{
     key: "tab",
     label: teamTab === "active" ? t("tabActive") : teamTab === "suspended" ? t("tabSuspended") : t("tabNoTwoStep"),
@@ -267,7 +281,7 @@ export default function StaffAccountsView() {
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(380px,1fr)] lg:items-start">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(380px,1fr)] lg:items-start">
         {/* ── Left: the team ── */}
         <SectionCard icon={<Users className="h-5 w-5" />} title={t("secStaffTeam")} desc={t("secStaffTeamDesc")}>
           {!loading && (
@@ -293,7 +307,7 @@ export default function StaffAccountsView() {
                     { value: "signin", label: t("sortLastSignIn") },
                   ],
                 }}
-                count={{ shown: teamFiltered.length, total: allStaff.length }}
+                count={{ shown: teamMeta.total, total: tabCounts.all }}
                 extraChips={teamTabChips}
                 onClearExtras={() => setTeamTab("all")}
               />

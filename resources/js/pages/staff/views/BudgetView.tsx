@@ -1,7 +1,6 @@
 import KpiCard from "../../../components/ui/KpiCard";
-import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Lock, Banknote, PiggyBank, AlertTriangle, ChevronRight, Wallet } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import Skeleton from "../../../components/ui/Skeleton";
@@ -10,14 +9,12 @@ import FormDrawer from "../../../components/ui/FormDrawer";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
 import SimplePager from "../../../components/ui/SimplePager";
-import usePager from "../../../hooks/usePager";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
-import EventBudgetWorkspace, { type EventOption, NEAR_LIMIT_PCT, money, roundCents, budgetStateOf, type BudgetState } from "../../../components/budget/EventBudgetWorkspace";
+import EventBudgetWorkspace, { type EventOption, money, budgetStateOf } from "../../../components/budget/EventBudgetWorkspace";
 import { makeEventTiming, STATUS_META } from "../../../lib/eventTiming";
 
 import { tc } from "../../../lib/contentTranslations";
-import useFilterSwitching from "../../../hooks/useFilterSwitching";
 /**
  * UC-8: Record Event Budget and Expenses. A portfolio-wide KPI strip (total
  * approved, total spent, remaining, events over budget) sits on top of the
@@ -54,12 +51,8 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   // fetch lands. The short minimum keeps it from flashing for a single
   // frame on a fast response, so opening the page always reads as a
   // deliberate load like the other modules.
-  const [minLoadElapsed, setMinLoadElapsed] = useState(false);
-  useEffect(() => {
-    const id = setTimeout(() => setMinLoadElapsed(true), 450);
-    return () => clearTimeout(id);
-  }, []);
-  const initialLoading = portfolio === null || !minLoadElapsed;
+  // Only the KPI strip waits for the portfolio figures; the event cards load on their own.
+  const initialLoading = portfolio === null;
 
   const fetchPortfolio = async () => {
     try {
@@ -98,17 +91,6 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       ? t("updatedSecondsAgoLabel").replace("{n}", String(secondsSinceUpdate))
       : t("updatedMinutesAgoLabel").replace("{n}", String(Math.floor(secondsSinceUpdate / 60)));
 
-  // Per-event approved/spent figures from that same portfolio call,
-  // looked up by event id so the picker list on the left can show each
-  // event's own little progress bar without an extra request per row.
-  const budgetByEventId = useMemo(() => {
-    const map = new Map<string, { approved_budget: number | null; total_expenses: number }>();
-    (portfolio?.per_event ?? []).forEach((ev: any) => {
-      map.set(String(ev.id), { approved_budget: ev.approved_budget ?? null, total_expenses: Number(ev.total_expenses) || 0 });
-    });
-    return map;
-  }, [portfolio]);
-
   const portfolioSummary = portfolio?.summary ?? {
     total_events: 0,
     total_approved_budget: 0,
@@ -118,64 +100,103 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
     total_over_amount: 0,
   };
 
-  const stateOfEvent = (id: string | number): BudgetState => {
-    const b = budgetByEventId.get(String(id));
-    return budgetStateOf(b?.approved_budget != null ? Number(b.approved_budget) : null, b?.total_expenses ?? 0);
-  };
-  const eventDay = (e: EventOption) => String(e.event_start ?? e.date ?? "").slice(0, 10);
-  const dateFilterActive = !!selectedDate;
-  const searchedEvents = allEvents.filter((e) => matchesSearch(search, e.title) && (!selectedDate || eventDay(e) === selectedDate));
-  const filterCounts = {
-    all: searchedEvents.length,
-    near: searchedEvents.filter((e) => stateOfEvent(e.id) === "near").length,
-    over: searchedEvents.filter((e) => stateOfEvent(e.id) === "over").length,
-  };
-  const filteredEvents = budgetFilter === "all" ? searchedEvents : searchedEvents.filter((e) => stateOfEvent(e.id) === budgetFilter);
-
   // Shared event-timing helpers (same ones the budget workspace uses).
-  const { getEventStatus, eventWindow, relativeLabel, eventStatusLabel, formatTimeFriendly, parseEventDateTime } = makeEventTiming(t);
+  const { eventWindow, relativeLabel, eventStatusLabel, formatTimeFriendly, parseEventDateTime, getEventStatus } = makeEventTiming(t);
 
-  // Spent / approved per event, straight from the portfolio fetch.
-  const figuresOf = (id: string | number) => {
-    const b = budgetByEventId.get(String(id));
-    const approved = b?.approved_budget != null ? Number(b.approved_budget) : null;
-    const spent = b?.total_expenses ?? 0;
+  // Search, status tab, budget health, date, sort and paging are all done by the
+  // server (EventController::pagedEvents), so the cards, counts and pages agree.
+  const [pageEvents, setPageEvents] = useState<(EventOption & { budget_spent?: number; approved_budget?: number | string | null })[]>([]);
+  const [pageNo, setPageNo] = useState(1);
+  const [meta, setMeta] = useState({ total: 0, last_page: 1 });
+  const [counts, setCounts] = useState({ status: { all: 0, ongoing: 0, upcoming: 0, past: 0 }, budget: { all: 0, near: 0, over: 0 } });
+  const [pageLoading, setPageLoading] = useState(true);
+  const [reloadTick, setReloadTick] = useState(0);
+  const pageSeq = useRef(0);
+  const prevSearch = useRef(search);
+
+  const fetchPage = async (silent = false) => {
+    const seq = ++pageSeq.current;
+    if (!silent) setPageLoading(true);
+    try {
+      const res = await api.get("/events-data", {
+        params: {
+          paged: 1,
+          search: search.trim() || undefined,
+          status: timeTab,
+          budget: budgetFilter,
+          date: selectedDate || undefined,
+          sort: sortKey,
+          page: pageNo,
+          per_page: EVENTS_PAGE_SIZE,
+        },
+      });
+      if (seq !== pageSeq.current) return;
+      const body = res.data;
+      if (body.meta.last_page < pageNo) {
+        setPageNo(Math.max(1, body.meta.last_page));
+        return;
+      }
+      setPageEvents((body.data ?? []).map((d: any) => ({ ...d, title: d.name, date: d.event_start })));
+      setMeta({ total: body.meta.total, last_page: body.meta.last_page });
+      setCounts({ status: body.counts.status, budget: body.counts.budget });
+    } catch (e) {
+      if (seq === pageSeq.current) console.error("Error loading budget events:", e);
+    } finally {
+      if (seq === pageSeq.current) setPageLoading(false);
+    }
+  };
+  const fetchPageRef = useRef(fetchPage);
+  fetchPageRef.current = fetchPage;
+
+  // A new search / filter / sort starts again from page 1.
+  const filterKey = `${search}|${timeTab}|${budgetFilter}|${selectedDate}|${sortKey}`;
+  const prevFilterKey = useRef(filterKey);
+  useEffect(() => {
+    if (prevFilterKey.current !== filterKey) {
+      prevFilterKey.current = filterKey;
+      if (pageNo !== 1) { setPageNo(1); return; }
+    }
+    const typed = prevSearch.current !== search;
+    prevSearch.current = search;
+    const timer = setTimeout(() => fetchPageRef.current(), typed ? 150 : 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterKey, pageNo]);
+  // An expense was saved: refresh the cards quietly.
+  useEffect(() => {
+    if (reloadTick > 0) fetchPageRef.current(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadTick]);
+
+  // Money spent changes while staff work -- keep the cards in step with the KPI strip's poll.
+  const firstPortfolio = useRef(true);
+  useEffect(() => {
+    if (!lastUpdated) return;
+    if (firstPortfolio.current) { firstPortfolio.current = false; return; }
+    fetchPageRef.current(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastUpdated]);
+
+  // Spent / approved per event: the page rows already carry both.
+  const figuresOf = (e: { budget_spent?: number; approved_budget?: number | string | null }) => {
+    const approved = e.approved_budget != null ? Number(e.approved_budget) : null;
+    const spent = Number(e.budget_spent) || 0;
     const pct = approved ? Math.min(100, (spent / approved) * 100) : approved === 0 ? (spent > 0 ? 100 : 0) : null;
     return { approved, spent, pct };
   };
 
-  // Cards stay grouped by real status (Ongoing, Upcoming, Past); the sort picks the order inside each group.
-  const decoratedEvents = filteredEvents.map((e) => ({ e, status: getEventStatus(e).label, start: eventWindow(e).start?.getTime() ?? 0 }));
-  const statusCounts = {
-    all: decoratedEvents.length,
-    ongoing: decoratedEvents.filter((d) => d.status === "Ongoing").length,
-    upcoming: decoratedEvents.filter((d) => d.status === "Upcoming").length,
-    past: decoratedEvents.filter((d) => d.status === "Past").length,
-  };
-  const withinGroup = (k: "Ongoing" | "Upcoming" | "Past") => (a: typeof decoratedEvents[number], b: typeof decoratedEvents[number]) => {
-    if (sortKey === "soonest") return a.start - b.start;
-    if (sortKey === "latest") return b.start - a.start;
-    if (sortKey === "spent") return figuresOf(b.e.id).spent - figuresOf(a.e.id).spent;
-    if (sortKey === "used") return (figuresOf(b.e.id).pct ?? -1) - (figuresOf(a.e.id).pct ?? -1);
-    return k === "Past" ? b.start - a.start : a.start - b.start;
-  };
-  const listSections = (["Ongoing", "Upcoming", "Past"] as const)
-    .filter((k) => timeTab === "all" || timeTab === STATUS_META[k].tab)
-    .map((k) => ({ key: k, items: decoratedEvents.filter((d) => d.status === k).sort(withinGroup(k)) }))
+  // Cards stay grouped under their real status heading (the server already ordered them that way).
+  const pagedSections = (["Ongoing", "Upcoming", "Past"] as const)
+    .map((k) => ({
+      key: k,
+      total: counts.status[k.toLowerCase() as "ongoing" | "upcoming" | "past"],
+      items: pageEvents.filter((e) => getEventStatus(e).label === k).map((e) => ({ e, status: k })),
+    }))
     .filter((sec) => sec.items.length > 0);
 
-  // Paging runs over the whole ordered list, then the visible slice is regrouped under its status headings.
-  const flatList = listSections.flatMap((sec) => sec.items.map((item) => ({ key: sec.key, item })));
-  const pager = usePager(flatList, EVENTS_PAGE_SIZE, 350, `${search}|${timeTab}|${budgetFilter}|${selectedDate}|${sortKey}`);
-  const pagedSections = listSections
-    .map((sec) => ({ key: sec.key, total: sec.items.length, items: pager.shown.filter((x) => x.key === sec.key).map((x) => x.item) }))
-    .filter((sec) => sec.items.length > 0);
-
-  // Filters / search / sort changing flashes the same card skeleton a page change does.
-  const filterSwitching = useFilterSwitching([search, timeTab, budgetFilter, selectedDate, sortKey]);
-  const listLoading = initialLoading || pager.switching || filterSwitching;
-
-  const selectedEvent = allEvents.find((e) => String(e.id) === String(selectedEventId));
+  const listLoading = pageLoading;
+  
+  const selectedEvent = allEvents.find((e) => String(e.id) === String(selectedEventId)) ?? pageEvents.find((e) => String(e.id) === String(selectedEventId));
 
   return (
     <>
@@ -232,10 +253,10 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           value={timeTab}
           onChange={(k) => setTimeTab(k as typeof timeTab)}
           tabs={[
-            { key: "all", label: t("budgetFilterAll"), count: initialLoading ? 0 : statusCounts.all },
-            { key: "ongoing", label: t("timeTabOngoing"), count: initialLoading ? 0 : statusCounts.ongoing },
-            { key: "upcoming", label: t("timeTabUpcoming"), count: initialLoading ? 0 : statusCounts.upcoming },
-            { key: "past", label: t("timeTabPast"), count: initialLoading ? 0 : statusCounts.past },
+            { key: "all", label: t("budgetFilterAll"), count: pageLoading ? 0 : counts.status.all },
+            { key: "ongoing", label: t("timeTabOngoing"), count: pageLoading ? 0 : counts.status.ongoing },
+            { key: "upcoming", label: t("timeTabUpcoming"), count: pageLoading ? 0 : counts.status.upcoming },
+            { key: "past", label: t("timeTabPast"), count: pageLoading ? 0 : counts.status.past },
           ]}
         />
         <FilterBar
@@ -243,9 +264,9 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           filters={[{
             key: "budget", label: t("budgetFilterLabel"), value: budgetFilter, onChange: (v) => setBudgetFilter(v as typeof budgetFilter),
             options: [
-              { value: "all", label: `${t("budgetFilterAll")} (${filterCounts.all})` },
-              { value: "near", label: `${t("budgetFilterNear")} (${filterCounts.near})` },
-              { value: "over", label: `${t("budgetFilterOver")} (${filterCounts.over})` },
+              { value: "all", label: `${t("budgetFilterAll")} (${counts.budget.all})` },
+              { value: "near", label: `${t("budgetFilterNear")} (${counts.budget.near})` },
+              { value: "over", label: `${t("budgetFilterOver")} (${counts.budget.over})` },
             ],
           }]}
           sort={{
@@ -258,7 +279,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               { value: "used", label: t("sortUsedHigh") },
             ],
           }}
-          count={initialLoading ? undefined : { shown: filteredEvents.length, total: allEvents.length }}
+          count={pageLoading ? undefined : { shown: meta.total, total: counts.status.all }}
           extraChips={[
             ...(timeTab !== "all" ? [{ key: "tab", label: t(timeTab === "ongoing" ? "timeTabOngoing" : timeTab === "upcoming" ? "timeTabUpcoming" : "timeTabPast"), onRemove: () => setTimeTab("all") }] : []),
             ...(selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []),
@@ -283,7 +304,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
             </div>
           ))}
         </div>
-      ) : listSections.length === 0 ? (
+      ) : pagedSections.length === 0 ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
           {budgetFilter !== "all" || timeTab !== "all" || selectedDate || search ? t("noEventsInFilter") : t("noEventsFound")}
         </div>
@@ -303,7 +324,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                   {sec.items.map(({ e, status }) => {
                     const locked = status !== "Upcoming";
-                    const { approved, spent, pct } = figuresOf(e.id);
+                    const { approved, spent, pct } = figuresOf(e as any);
                     const state = budgetStateOf(approved, spent);
                     const over = state === "over";
                     const near = state === "near";
@@ -362,7 +383,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
         </div>
       )}
 
-      <SimplePager page={pager.page} totalPages={pager.totalPages} onChange={pager.go} loading={pager.switching || filterSwitching} />
+      <SimplePager page={pageNo} totalPages={meta.last_page} onChange={setPageNo} loading={pageLoading} />
 
       {/* The event's whole budget slides in from the right, like every other form. */}
       {selectedEvent && (
@@ -384,7 +405,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
             </button>
           }
         >
-          <EventBudgetWorkspace event={selectedEvent} onChanged={fetchPortfolio} showHeader={false} />
+          <EventBudgetWorkspace event={selectedEvent} onChanged={() => { fetchPortfolio(); setReloadTick((n) => n + 1); }} showHeader={false} />
         </FormDrawer>
       )}
       </div>

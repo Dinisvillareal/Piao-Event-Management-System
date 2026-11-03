@@ -1,6 +1,5 @@
 import { scrollListIntoView } from "../../../lib/scrollToList";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import { matchesSearch } from "../../../lib/search";
 import { useState, useMemo, useEffect, useRef } from "react";
 import SearchBar from "../../../components/ui/SearchBar";
 import DatePicker from "../../../components/ui/DatePicker";
@@ -42,7 +41,12 @@ interface NotificationsViewProps {
 
 export default function NotificationsView({ highlightText }: NotificationsViewProps) {
    const { t, language, locale } = useLanguage();
+   // Only the current page is held here; search, filters and paging are done by the server.
    const [notifications, setNotifications] = useState<Notification[]>([]);
+   const [totalMatching, setTotalMatching] = useState(0);
+   const [lastPage, setLastPage] = useState(1);
+   const [badge, setBadge] = useState({ events: 0, feedback_unread: 0 });
+   const [serverEventOptions, setServerEventOptions] = useState<{ value: string; label: string }[]>([]);
    // Announcements about events, and staff hearts/replies on the member's own feedback, are kept apart.
    const [tab, setTab] = useState<"notifications" | "feedback">("notifications");
    const [loading, setLoading] = useState(true);
@@ -67,7 +71,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
      scrollListIntoView(listTopRef.current);
        setPageSwitching(true);
        if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-       pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+       pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
    };
    useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
    const itemsPerPage = 10;
@@ -85,23 +89,43 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    }, [selectedNotification]);
 
 
+   // Quietly re-checks for new notifications every 20s, the same live
+   // polling pattern the staff portal's live dashboards use, so this
+   // page keeps itself current instead of only ever loading once.
    useEffect(() => {
-       fetchNotifications();
-       // Quietly re-checks for new notifications every 20s, the same live
-       // polling pattern the staff portal's live dashboards use, so this
-       // page keeps itself current instead of only ever loading once.
-       const poll = setInterval(() => fetchNotifications(true), 20000);
+       const poll = setInterval(() => fetchNotificationsRef.current(true), 20000);
        return () => clearInterval(poll);
    }, []);
+
+   // A new tab / search / filter starts again from page 1; any change reloads from the server.
+   const notifFilterKey = `${tab}|${notificationSearch}|${dateFilter}|${statusFilter}|${eventFilter}|${selectedDate}`;
+   const prevNotifFilterKey = useRef(notifFilterKey);
+   useEffect(() => {
+       if (prevNotifFilterKey.current !== notifFilterKey) {
+           prevNotifFilterKey.current = notifFilterKey;
+           if (currentPage !== 1) { setCurrentPage(1); return; }
+       }
+       const timer = setTimeout(() => fetchNotificationsRef.current(), 120);
+       return () => clearTimeout(timer);
+       // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [notifFilterKey, currentPage]);
 
 
    // `silent` skips the full-page spinner -- used by the 20s background poll
    // below, so new notifications simply appear instead of the whole page
    // flashing back to a loading state every 20 seconds.
+   const notifSeq = useRef(0);
    const fetchNotifications = async (silent = false) => {
+       const seq = ++notifSeq.current;
        if (!silent) setLoading(true);
        try {
-           const response = await fetch('/notifications?per_page=200', {
+           const qs = new URLSearchParams({ paged: '1', tab: tab === 'feedback' ? 'feedback' : 'events', page: String(currentPage), per_page: String(itemsPerPage) });
+           if (notificationSearch.trim()) qs.set('search', notificationSearch.trim());
+           if (dateFilter !== 'all') qs.set('date_filter', dateFilter);
+           if (statusFilter !== 'all') qs.set('status', statusFilter);
+           if (eventFilter !== 'all') qs.set('event', eventFilter);
+           if (selectedDate) qs.set('date', selectedDate);
+           const response = await fetch(`/notifications?${qs.toString()}`, {
                headers: {
                    'Accept': 'application/json',
                    'X-Requested-With': 'XMLHttpRequest'
@@ -112,14 +136,25 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
 
            if (response.ok) {
                const data = await response.json();
+               if (seq !== notifSeq.current) return;
+               if ((data.last_page ?? 1) < currentPage) {
+                   setCurrentPage(Math.max(1, data.last_page));
+                   return;
+               }
                setNotifications(Array.isArray(data) ? data : (data.data || []));
+               setTotalMatching(data.total ?? 0);
+               setLastPage(data.last_page ?? 1);
+               if (data.counts) setBadge(data.counts);
+               setServerEventOptions(Array.isArray(data.event_options) ? data.event_options : []);
            }
        } catch (error) {
            console.error('Error fetching notifications:', error);
        } finally {
-           setLoading(false);
+           if (seq === notifSeq.current) setLoading(false);
        }
    };
+   const fetchNotificationsRef = useRef(fetchNotifications);
+   fetchNotificationsRef.current = fetchNotifications;
 
 
    const getCsrfToken = () => {
@@ -152,6 +187,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                    )
                );
                window.dispatchEvent(new Event("member-notifications-changed"));
+               fetchNotificationsRef.current(true); // refresh the tab badges (and any "Unread" filter)
            }
        } catch (error) {
            console.error('Error marking as read:', error);
@@ -231,91 +267,23 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    };
 
 
-   const eventNotifications = useMemo(() => notifications.filter((n) => n.type !== 'feedback_reply'), [notifications]);
-   const feedbackNotifications = useMemo(() => notifications.filter((n) => n.type === 'feedback_reply'), [notifications]);
-   const feedbackUnread = feedbackNotifications.filter((n) => !n.read).length;
-   const currentList = tab === 'feedback' ? feedbackNotifications : eventNotifications;
+   const feedbackUnread = badge.feedback_unread;
 
-   // One entry per event that has at least one notification, A-Z.
-   const eventFilterOptions = useMemo(() => {
-       const seen = new Map<string, string>();
-       currentList.forEach((n) => {
-           if (n.event?.id != null && n.event.name) seen.set(String(n.event.id), n.event.name);
-       });
-       const list = Array.from(seen, ([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label));
-       return [{ value: "all", label: t("allEvents") }, ...list];
+   // One entry per event that has at least one notification in this tab, A-Z (from the server).
+   const eventFilterOptions = useMemo(
+       () => [{ value: "all", label: t("allEvents") }, ...serverEventOptions],
        // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [currentList, language]);
+       [serverEventOptions, language]
+   );
 
-
-   const filteredNotifications = useMemo(() => {
-       let filtered = [...currentList];
-
-       // Search filter
-       if (notificationSearch.trim()) {
-           filtered = filtered.filter((n) =>
-               matchesSearch(notificationSearch, n.title, n.message)
-           );
-       }
-
-       // Event filter: All / Ongoing / Upcoming / Past
-       if (dateFilter !== 'all') {
-           const now = new Date();
-           const startOf = (n: Notification) => (n.event?.event_start ? new Date(n.event.event_start) : null);
-           const endOf = (n: Notification) =>
-               n.event?.event_end ? new Date(n.event.event_end) : startOf(n);
-           if (dateFilter === 'upcoming') {
-               filtered = filtered.filter(n => { const st = startOf(n); return !!st && st > now; });
-           } else if (dateFilter === 'ongoing') {
-               filtered = filtered.filter(n => {
-                   const st = startOf(n); const en = endOf(n);
-                   return !!st && !!en && st <= now && en >= now;
-               });
-           } else if (dateFilter === 'past') {
-               filtered = filtered.filter(n => { const en = endOf(n); return !!en && en < now; });
-           }
-       }
-
-       // Event filter: only notifications about one chosen event
-       if (eventFilter !== 'all') {
-           filtered = filtered.filter(n => String(n.event?.id ?? '') === eventFilter);
-       }
-
-       // Status filter: All / Unread
-       if (statusFilter === 'unread') {
-           filtered = filtered.filter(n => !n.read);
-       } else if (statusFilter === 'read') {
-           filtered = filtered.filter(n => n.read);
-       }
-
-       if (selectedDate) {
-           filtered = filtered.filter((n) => {
-               const d = new Date(n.created_at);
-               if (isNaN(d.getTime())) return false;
-               const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-               return ymd === selectedDate;
-           });
-       }
-
-       return filtered;
-   }, [currentList, notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
-
-
-   // Pagination logic
-   const totalPages = Math.ceil(filteredNotifications.length / itemsPerPage);
-   const paginatedNotifications = useMemo(() => {
-       const startIndex = (currentPage - 1) * itemsPerPage;
-       return filteredNotifications.slice(startIndex, startIndex + itemsPerPage);
-   }, [filteredNotifications, currentPage, itemsPerPage]);
+   const filteredNotifications = { length: totalMatching };
+   const totalPages = Math.max(1, lastPage);
+   const paginatedNotifications = notifications;
 
 
    // The upcoming/past filter only applies to event announcements.
    useEffect(() => { if (tab === 'feedback') setDateFilter('all'); }, [tab]);
 
-   // Reset to first page when filters change
-   useEffect(() => {
-       setCurrentPage(1);
-   }, [tab, notificationSearch, dateFilter, statusFilter, eventFilter, selectedDate]);
 
 
    const closeModal = () => {
@@ -373,7 +341,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                {/* Switcher -- same pill buttons as the staff Notifications page. */}
                <div className="mt-4 flex flex-wrap items-center gap-2.5">
                    {([
-                       { key: "notifications", label: t("notify"), icon: <Bell className="h-5 w-5" />, count: eventNotifications.length, always: true },
+                       { key: "notifications", label: t("notify"), icon: <Bell className="h-5 w-5" />, count: badge.events, always: true },
                        { key: "feedback", label: t("memFeedbackTab"), icon: <MessageSquare className="h-5 w-5" />, count: feedbackUnread, always: false },
                    ] as const).map((p) => (
                        <button
@@ -433,7 +401,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                    </FilterBar>
                </div>
 
-               <p className="mt-2 text-xs text-white/40">{t("showingLabel")} {itemsPerPage} {t("perPage")}</p>
+               <p className="mt-2 text-xs text-white/40">{t("showingPerPage").replace("{n}", String(itemsPerPage))}</p>
 
 
                {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}

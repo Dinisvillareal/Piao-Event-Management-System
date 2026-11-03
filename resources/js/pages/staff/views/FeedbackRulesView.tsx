@@ -86,7 +86,7 @@ export default function FeedbackRulesView({ isHeadStaff }: { isHeadStaff: boolea
 
         {!saved ? (
           <div className="space-y-6" aria-busy="true">
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <SectionCard icon={<Clock className="h-5 w-5" />} title={t("fbRuleCloseTitle")} desc={t("fbRuleCloseDesc")} className="h-full">
                 <RuleSkeleton chips={5} />
               </SectionCard>
@@ -105,7 +105,7 @@ export default function FeedbackRulesView({ isHeadStaff }: { isHeadStaff: boolea
           </div>
         ) : (
           <form onSubmit={(e) => { e.preventDefault(); if (isHeadStaff && valid && dirty) setAskPw(true); }} noValidate className="space-y-6">
-            <div className="grid gap-6 lg:grid-cols-2">
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <SectionCard icon={<Clock className="h-5 w-5" />} title={t("fbRuleCloseTitle")} desc={t("fbRuleCloseDesc")} className="h-full">
                 <div className="flex flex-wrap items-center gap-3">
                   <input type="text" inputMode="numeric" value={hours} onChange={(e) => setHours(e.target.value.replace(/\D/g, "").slice(0, 3))} disabled={!isHeadStaff} className={input} aria-label={t("fbRuleCloseTitle")} />

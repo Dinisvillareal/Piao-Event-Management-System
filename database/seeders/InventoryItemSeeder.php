@@ -78,6 +78,13 @@ class InventoryItemSeeder extends Seeder
             // Unit counters default to 0 for anything not listed above.
             $item += ['lost_quantity' => 0, 'lost_pending' => 0, 'disposed_quantity' => 0];
 
+            // The rows above name the condition their stock is in; items store that as
+            // per-condition counts (there is no condition column), so all of the stock
+            // starts in that one condition. InventoryConditionSeeder splits some of it later.
+            $condition = $item['condition'] ?? 'Good';
+            unset($item['condition']);
+            $item[InventoryItem::CONDITION_COLUMNS[$condition] ?? 'good_quantity'] = (int) $item['quantity'];
+
             InventoryItem::firstOrCreate(
                 ['name' => $item['name']],
                 $item

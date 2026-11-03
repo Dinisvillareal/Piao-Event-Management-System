@@ -18,12 +18,18 @@ class CurrentStatusSeeder extends Seeder
     public function run(): void
     {
         $statuses = [
-            ['label' => 'Solo Parent',                  'sort_order' => 1],
-            ['label' => 'Person with Disability (PWD)', 'sort_order' => 2],
-            ['label' => 'Indigent',                     'sort_order' => 3],
-            ['label' => 'Out-of-School Youth',          'sort_order' => 4],
-            ['label' => 'OFW Dependent',                'sort_order' => 5],
-            ['label' => 'Unemployed',                   'sort_order' => 6],
+            ['label' => 'Solo Parent',                  'category' => 'household', 'sort_order' => 1],
+            ['label' => 'Person with Disability (PWD)', 'category' => 'sector', 'sort_order' => 2],
+            ['label' => 'Indigent',                     'category' => 'economic', 'sort_order' => 3],
+            ['label' => 'Out-of-School Youth',          'category' => 'employment', 'sort_order' => 4],
+            ['label' => 'OFW Dependent',                'category' => 'household', 'sort_order' => 5],
+            ['label' => 'Unemployed',                   'category' => 'employment', 'sort_order' => 6],
+            ['label' => 'Student',                      'category' => 'employment', 'sort_order' => 7],
+            ['label' => 'Employed',                     'category' => 'employment', 'sort_order' => 8],
+            ['label' => 'Self-employed',                'category' => 'employment', 'sort_order' => 9],
+            ['label' => 'Retired',                      'category' => 'employment', 'sort_order' => 10],
+            ['label' => '4Ps Beneficiary',              'category' => 'economic',   'sort_order' => 11],
+            ['label' => 'Indigenous Person',            'category' => 'sector',     'sort_order' => 12],
         ];
 
         foreach ($statuses as $status) {

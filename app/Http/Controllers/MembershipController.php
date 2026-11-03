@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Membership;
 use App\Models\ActivityLog;
 use App\Models\AgeBracket;
+use App\Support\Paged;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -13,13 +14,35 @@ class MembershipController extends Controller
     // =========================
     // GET ALL (ACTIVE ONLY)
     // =========================
-    public function index()
+    public function index(Request $request)
     {
         // ✅ ONLY show active (not archived) memberships
-        $memberships = Membership::withoutTrashed()
+        $query = Membership::withoutTrashed()
             ->where('is_active', true)
-            ->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
-            ->get();
+            ->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus']);
+
+        // paged=1 (Memberships screen): search, order and page are done here.
+        if ($request->boolean('paged')) {
+            // mine=<user id>: only the groups that resident belongs to (own id, or staff).
+            if ($request->filled('mine')) {
+                $mine = (int) $request->input('mine');
+                if ($mine !== (int) auth()->id() && !$this->isStaff()) {
+                    return response()->json(['message' => 'Unauthorized'], 403);
+                }
+                $query->whereIn('id', DB::table('membership_residents')->where('user_id', $mine)->select('membership_id'));
+            }
+            foreach (Paged::tokens($request->input('search')) as $word) {
+                $like = Paged::like($word);
+                $query->where(fn ($q) => $q->whereRaw('LOWER(name) LIKE ?', [$like])->orWhereRaw("LOWER(COALESCE(description, '')) LIKE ?", [$like]));
+            }
+            $paginator = $query->orderBy('id')->paginate(Paged::perPage($request, 6), ['*'], 'page', Paged::page($request));
+
+            return response()->json(Paged::body($paginator, $paginator->getCollection()->values(), [
+                'all_total' => Membership::withoutTrashed()->where('is_active', true)->count(),
+            ]));
+        }
+
+        $memberships = $query->get();
         // eligible_gender is a plain enum column (no relation to eager-load)
         
         return response()->json($memberships);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Download, Eye, EyeOff, FileSpreadsheet, FileText, FileType, ListChecks, Printer, Search, Users } from "lucide-react";
 import api from "../../../../lib/api";
-import { matchesSearch } from "../../../../lib/search";
+import useServerMatchIds from "../../../../hooks/useServerMatchIds";
 import FormDrawer, { FormSection } from "../../../../components/ui/FormDrawer";
 import Skeleton from "../../../../components/ui/Skeleton";
 import type { AttendeeFilter, RecordEventOption, SectionDef } from "../ReportOptionsModal";
@@ -132,9 +132,11 @@ export default function ReportGenerateDrawer({
   const mainSelectedCount = selected.filter((k) => !otherKeys.includes(k)).length;
   const keptOther = selected.filter((k) => otherKeys.includes(k));
 
+  // The event search is matched by the server; the report's events are narrowed to its answer.
+  const matchedIds = useServerMatchIds("/events-data", search);
   const filteredEvents = useMemo(
-    () => (search.trim() ? recordEvents.filter((e) => matchesSearch(search, e.name, e.date)) : recordEvents),
-    [recordEvents, search]
+    () => (matchedIds === null ? recordEvents : recordEvents.filter((e) => matchedIds.has(String(e.id)))),
+    [recordEvents, matchedIds]
   );
 
   const toggleSection = (key: string) => onSelectedChange(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
@@ -209,7 +211,7 @@ export default function ReportGenerateDrawer({
       </FormSection>
 
       <FormSection title={t("rpFormatHeading")} className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {formats.map((f) => {
             const on = format === f.key;
             return (
@@ -246,11 +248,11 @@ export default function ReportGenerateDrawer({
                 <button type="button" className={presetBtn} onClick={() => onSelectedChange([...keptOther])}>{t("rptPresetNone")}</button>
               </div>
             </div>
-            <div className="grid gap-2.5 sm:grid-cols-2">{mainSections.map(sectionButton)}</div>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">{mainSections.map(sectionButton)}</div>
             {otherSections.length > 0 && (
               <div className="border-t border-white/10 pt-4">
                 <p className="mb-3 text-sm font-bold uppercase tracking-wide text-white/60">{t("rptOtherHeading")}</p>
-                <div className="grid gap-2.5 sm:grid-cols-2">{otherSections.map(sectionButton)}</div>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">{otherSections.map(sectionButton)}</div>
               </div>
             )}
           </FormSection>

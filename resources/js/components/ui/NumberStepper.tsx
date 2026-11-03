@@ -98,7 +98,7 @@ export default function NumberStepper({
         placeholder={placeholder}
         value={value}
         onChange={(e) => handleTyped(e.target.value)}
-        className={`[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${className}`}
+        className={`min-w-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${className}`}
       />
       <div className="absolute right-1 top-1/2 -translate-y-1/2 flex flex-col">
         <button

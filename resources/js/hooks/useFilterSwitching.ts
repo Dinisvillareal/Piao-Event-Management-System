@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
  * a page change does. While someone is still typing, the timer keeps
  * restarting, so the skeleton stays up until ~350ms after the last change.
  */
-export default function useFilterSwitching(deps: unknown[], ms = 350): boolean {
+export default function useFilterSwitching(deps: unknown[], ms = 0): boolean {
   const key = JSON.stringify(deps);
   const prev = useRef(key);
   const [switching, setSwitching] = useState(false);

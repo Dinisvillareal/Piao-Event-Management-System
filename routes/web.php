@@ -119,8 +119,6 @@ Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(
     | USER MEMBERSHIPS
     |--------------------------------------------------------------------------
     */
-    Route::put('/users/{id}/memberships', [UserController::class, 'updateMemberships']);
-    Route::delete('/users/{id}/memberships', [UserController::class, 'removeMemberships']);
 
     /*
     |--------------------------------------------------------------------------
@@ -215,6 +213,7 @@ Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(
     Route::post('/events/{id}/restore', [EventController::class, 'restore']);        // Restore soft-deleted event
     Route::post('/events/{id}/release-borrowed-items', [EventController::class, 'returnBorrowedItems']);
     Route::post('/events/{eventId}/borrowed-items/{borrowId}/release', [EventController::class, 'releaseBorrowedItem']);
+    Route::post('/events/{eventId}/borrowed-items/{borrowId}/lost', [EventController::class, 'reportLostBorrowedItem']);
 
     /*
     |--------------------------------------------------------------------------
@@ -364,6 +363,8 @@ Route::put('/feedback/{kind}/{id}/reply', [FeedbackController::class, 'reply'])
     Route::get('/inventory/borrowable', [InventoryController::class, 'borrowable'])->middleware(EnsureStaff::class);
     Route::post('/inventory', [InventoryController::class, 'store'])->middleware(EnsureStaff::class);
     Route::put('/inventory/{id}', [InventoryController::class, 'update'])->middleware(EnsureStaff::class);
+    Route::post('/inventory/{id}/units', [InventoryController::class, 'adjustUnits'])->middleware(EnsureStaff::class);
+    Route::get('/inventory/{id}/unit-logs', [InventoryController::class, 'unitLogs'])->middleware(EnsureStaff::class);
     Route::delete('/inventory/{id}', [InventoryController::class, 'destroy'])->middleware(EnsureStaff::class);
 
     /*
@@ -402,6 +403,7 @@ Route::put('/feedback/{kind}/{id}/reply', [FeedbackController::class, 'reply'])
     // Head Staff only. Each action also re-asks for the caller's password.
     Route::middleware(EnsureHeadStaff::class)->prefix('staff-accounts')->group(function () {
         Route::get('/', [StaffAccountController::class, 'index']);
+        Route::get('/team', [StaffAccountController::class, 'team']);
         Route::get('/candidates', [StaffAccountController::class, 'candidates']);
 
         // Changes are rate-limited (10/min per person) on top of the password re-check.

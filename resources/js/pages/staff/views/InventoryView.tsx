@@ -6,14 +6,14 @@ import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FormSelect from "../../../components/ui/FormSelect";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter, ChevronLeft, ChevronRight } from "lucide-react";
+import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import NumberStepper from "../../../components/ui/NumberStepper";
 import PhotoAttachment from "../../../components/ui/PhotoAttachment";
-import { PhotoItem, photoItemsFromUrls, appendPhotoFields, photoItemsChanged } from "../../../components/ui/PhotoGallery";
+import { PhotoItem, photoItemsFromUrls, photoItemsChanged } from "../../../components/ui/PhotoGallery";
 import Skeleton from "../../../components/ui/Skeleton";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -22,6 +22,7 @@ import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/St
 import { tc } from "../../../lib/contentTranslations";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import Portal from "../../../components/ui/Portal";
+import UnitsModal from "../../../components/inventory/UnitsModal";
 // An item's condition covers the units still in use. Lost and disposed units
 // are separate counters on the item, so they are only *filters*, not conditions.
 type Condition = "New" | "Good" | "Fair" | "Poor";
@@ -49,8 +50,6 @@ interface InventoryItem {
   storage_location: string | null;
   notes: string | null;
   photo_url: string | null;
-  // Every photo, cover first (the list above only ever shows the cover).
-  photo_urls: string[];
   // How many units are currently lent out to a still-active event (see
   // InventoryItem::borrows() on the backend). >0 means the item can't be
   // deleted yet -- it has to be returned to Inventory first.
@@ -88,8 +87,6 @@ const emptyForm = {
   good_quantity: 1,
   fair_quantity: 0,
   poor_quantity: 0,
-  lost_quantity: 0,
-  disposed_quantity: 0,
   storage_location: "",
   notes: "",
 };
@@ -100,8 +97,6 @@ const formFromItem = (item: InventoryItem) => ({
   good_quantity: Number(item.good_quantity) || 0,
   fair_quantity: Number(item.fair_quantity) || 0,
   poor_quantity: Number(item.poor_quantity) || 0,
-  lost_quantity: item.lost_quantity ?? 0,
-  disposed_quantity: item.disposed_quantity ?? 0,
   storage_location: item.storage_location ?? "",
   notes: item.notes ?? "",
 });
@@ -125,6 +120,10 @@ const CONDITION_LABEL_KEYS: Record<ConditionFilter, string> = {
 export default function InventoryView() {
   const { t, language } = useLanguage();
   const [items, setItems] = useState<InventoryItem[]>([]);
+  // Paging, filtering and sorting happen on the server; these come back with each page.
+  const [meta, setMeta] = useState({ total: 0, last_page: 1 });
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
+  const fetchSeq = useRef(0);
   const [loading, setLoading] = useState(true);
   // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
   const statsLoading = usePageOpenSkeleton(loading);
@@ -139,6 +138,8 @@ export default function InventoryView() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  // Lost / found / disposed / restored units for one item (see UnitsModal).
+  const [unitsItem, setUnitsItem] = useState<InventoryItem | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   // Brief skeleton flash on every page switch, same as Activity Logs --
@@ -157,7 +158,7 @@ export default function InventoryView() {
     scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const itemsPerPage = 10;
@@ -241,65 +242,63 @@ export default function InventoryView() {
     const totalUnits = allItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
     const onLoanCount = allItems.filter((i) => i.borrowed_quantity > 0).length;
     const needsAttentionCount = allItems.filter(
-      (i) => !!i.overdue_borrow_event || Number(i.poor_quantity) > 0 || (Number(i.quantity) === 0 && i.condition === "Poor") || (i.lost_quantity ?? 0) > 0
+      (i) => !!i.overdue_borrow_event || Number(i.poor_quantity) > 0 || (i.lost_quantity ?? 0) > 0
     ).length;
     return { totalItems, totalUnits, onLoanCount, needsAttentionCount };
   }, [allItems]);
 
   const fetchItems = async () => {
+    // Only the newest request may update the screen (typing fast fires several).
+    const seq = ++fetchSeq.current;
     setLoading(true);
     try {
-      const res = await api.get("/inventory", { params: { search, condition: conditionFilter } });
-      setItems(res.data);
+      const res = await api.get("/inventory", {
+        params: { paged: 1, search, condition: conditionFilter, tab: invTab, sort: sortKey, page: currentPage, per_page: itemsPerPage },
+      });
+      if (seq !== fetchSeq.current) return;
+      const { data, meta: m, counts } = res.data;
+      // A page past the end (e.g. after the last row of a page was removed): go back.
+      if (m.last_page < currentPage) {
+        setCurrentPage(Math.max(1, m.last_page));
+        return;
+      }
+      setItems(data);
+      setMeta({ total: m.total, last_page: m.last_page });
+      setTabCounts(counts ?? {});
     } catch (e) {
-      setError(apiErrorMessage(e, t("loadInventoryFailed")));
+      if (seq === fetchSeq.current) setError(apiErrorMessage(e, t("loadInventoryFailed")));
     } finally {
-      setLoading(false);
+      if (seq === fetchSeq.current) setLoading(false);
     }
   };
 
-  useEffect(() => {
-    const t = setTimeout(fetchItems, 250);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, conditionFilter]);
-
+  // Any filter change starts again from page 1.
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, conditionFilter, invTab, sortKey, items.length]);
+  }, [search, conditionFilter, invTab, sortKey]);
 
-  // Quick tabs + sort run on top of the server's search/condition result.
-  // "Low stock" = 3 or fewer units still in stock (there is no reorder level
-  // on an item, so this is the one place the threshold lives).
-  const LOW_STOCK_AT = 3;
-  const isAttention = (i: InventoryItem) =>
-    !!i.overdue_borrow_event || Number(i.poor_quantity) > 0 || (Number(i.quantity) === 0 && i.condition === "Poor") || (i.lost_quantity ?? 0) > 0;
-  const tabTests: Record<InvTab, (i: InventoryItem) => boolean> = {
-    all: () => true,
-    "on-loan": (i) => i.borrowed_quantity > 0,
-    low: (i) => Number(i.quantity) <= LOW_STOCK_AT,
-    "lost-pending": (i) => (i.lost_pending ?? 0) > 0,
-    attention: isAttention,
-  };
-  const tabCount = (k: InvTab) => items.filter(tabTests[k]).length;
-  const viewItems = useMemo(() => {
-    const r = items.filter(tabTests[invTab]);
-    switch (sortKey) {
-      case "name-za": return [...r].sort((a, b) => b.name.localeCompare(a.name));
-      case "qty-high": return [...r].sort((a, b) => Number(b.quantity) - Number(a.quantity) || a.name.localeCompare(b.name));
-      case "qty-low": return [...r].sort((a, b) => Number(a.quantity) - Number(b.quantity) || a.name.localeCompare(b.name));
-      case "recent": return [...r].sort((a, b) => b.id - a.id);
-      default: return [...r].sort((a, b) => a.name.localeCompare(b.name));
-    }
+  useEffect(() => {
+    const timer = setTimeout(fetchItems, 120);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, invTab, sortKey]);
+  }, [search, conditionFilter, invTab, sortKey, currentPage]);
+
+  // Keep the open Units drawer in step with fresh stock numbers after a save.
+  useEffect(() => {
+    setUnitsItem((cur) => (cur ? items.find((i) => i.id === cur.id) ?? cur : cur));
+  }, [items]);
+
+  // Quick tabs, sorting and paging are done by the server (see InventoryController::index);
+  // each tab's count comes back with the page.
+  const tabCount = (k: InvTab) => tabCounts[k] ?? 0;
+  const viewItems = items;
   const tabLabels: Record<InvTab, string> = {
     all: t("tabAll"), "on-loan": t("tabOnLoan"), low: t("tabLowStock"), "lost-pending": t("tabLostPending"), attention: t("tabNeedsAttention"),
   };
   const invTabChips: ExtraChip[] = invTab === "all" ? [] : [{ key: "tab", label: tabLabels[invTab], onRemove: () => setInvTab("all") }];
 
-  const totalPages = Math.max(1, Math.ceil(viewItems.length / itemsPerPage));
-  const paginatedItems = viewItems.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const totalPages = Math.max(1, meta.last_page);
+  const paginatedItems = viewItems;
 
   // Nothing to submit if editing an item and the form still matches its
   // original values -- keeps a no-op "Update Item" click (and its own
@@ -311,11 +310,9 @@ export default function InventoryView() {
     Number(form.good_quantity) === (Number(editing.good_quantity) || 0) &&
     Number(form.fair_quantity) === (Number(editing.fair_quantity) || 0) &&
     Number(form.poor_quantity) === (Number(editing.poor_quantity) || 0) &&
-    Number(form.lost_quantity) === (editing.lost_quantity ?? 0) &&
-    Number(form.disposed_quantity) === (editing.disposed_quantity ?? 0) &&
     form.storage_location === (editing.storage_location ?? "") &&
     form.notes === (editing.notes ?? "") &&
-    !photoItemsChanged(photoItems, editing.photo_urls?.length ?? (editing.photo_url ? 1 : 0))
+    !photoItemsChanged(photoItems, editing.photo_url ? 1 : 0)
   );
 
   const hasFormChanges = editing
@@ -327,40 +324,12 @@ export default function InventoryView() {
     else closeForm();
   };
 
-  // Lost / Disposed move units out of (or back into) the in-stock Quantity
-  // live, mirroring what the server does on save: stepping Lost or Disposed
-  // up takes units out of Quantity, stepping down puts them back. When
-  // editing, the sum of the per-condition counts is the BASE stock sent to the server; the number
-  // shown in the Quantity box is what's left after the Lost/Disposed changes.
-  // Units found again that were out on loan when reported (lost_pending)
-  // settle with that loan instead of returning to stock.
-  const projectStock = (base: number, lost: number, disposed: number) => {
-    if (!editing) return base;
-    let s = base;
-    const dl = lost - (editing.lost_quantity ?? 0);
-    if (dl > 0) {
-      s -= Math.min(dl, s);
-    } else if (dl < 0) {
-      const found = -dl;
-      s += found - Math.min(found, editing.lost_pending ?? 0);
-    }
-    return s - (disposed - (editing.disposed_quantity ?? 0));
-  };
   const baseQuantity = CONDITIONS.reduce((sum, c) => sum + (Number(form[COUNT_KEY[c]]) || 0), 0);
-  // Main condition = the one holding the most units (ties go to the worse one).
+  // Main condition (only used in the saved-message wording): the one holding the most units.
   const mainCondition: Condition = baseQuantity > 0
     ? ([...CONDITIONS].reverse().reduce((best, c) => (Number(form[COUNT_KEY[c]]) > Number(form[COUNT_KEY[best]]) ? c : best), "Poor" as Condition))
     : (editing?.condition ?? "Good");
-  const shownQuantity = editing ? projectStock(baseQuantity, form.lost_quantity, form.disposed_quantity) : baseQuantity;
-  // Upper limits so the numbers stay within what actually exists: disposed
-  // can only come from stock, lost can also come from units out on loan.
-  const maxDisposed = editing ? (editing.disposed_quantity ?? 0) + Math.max(0, projectStock(baseQuantity, form.lost_quantity, editing.disposed_quantity ?? 0)) : 0;
-  const maxLost = editing
-    ? (editing.lost_quantity ?? 0)
-      + Math.max(0, baseQuantity - Math.max(0, form.disposed_quantity - (editing.disposed_quantity ?? 0)))
-      + Math.max(0, (editing.borrowed_quantity ?? 0) - (editing.lost_pending ?? 0))
-    : 0;
-
+  const shownQuantity = baseQuantity;
   // Picking a photo replaces the current one -- an item holds exactly one.
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -439,19 +408,19 @@ export default function InventoryView() {
     try {
       const fd = new FormData();
       fd.append("name", form.name);
-      // Units per condition; the server adds them up into the in-stock
-      // quantity and keeps the item's main condition in step.
+      // Units per condition; the server adds them up into the in-stock quantity.
       CONDITIONS.forEach((c) => fd.append(COUNT_KEY[c], String(form[COUNT_KEY[c]])));
       fd.append("quantity", String(baseQuantity));
-      fd.append("condition", mainCondition);
-      if (editing) {
-        fd.append("lost_quantity", String(form.lost_quantity));
-        fd.append("disposed_quantity", String(form.disposed_quantity));
-      }
       if (form.storage_location) fd.append("storage_location", form.storage_location);
       if (form.notes) fd.append("notes", form.notes);
 
-      appendPhotoFields(fd, photoItems);
+      // An item holds one photo: only send it when a new file was picked.
+      if (photoItems[0]?.file) fd.append("photo", photoItems[0].file);
+
+      if (editing) {
+        // The counts this form was opened with, so the server can tell if the stock moved meanwhile.
+        CONDITIONS.forEach((c) => fd.append(`base_${COUNT_KEY[c]}`, String(Number(editing[COUNT_KEY[c]]) || 0)));
+      }
 
       let archived = false;
       if (editing) {
@@ -481,6 +450,9 @@ export default function InventoryView() {
       }
     }
   };
+
+  // Units can be adjusted when the item has stock, lost or disposed units.
+  const hasUnits = (i: InventoryItem) => i.quantity > 0 || i.lost_quantity > 0 || i.disposed_quantity > 0;
 
   const handleDelete = async () => {
     if (deleteId === null) return;
@@ -576,7 +548,7 @@ export default function InventoryView() {
               { value: "recent", label: t("sortRecentlyAdded") },
             ],
           }}
-          count={{ shown: viewItems.length, total: allItems.length || items.length }}
+          count={{ shown: meta.total, total: allItems.length || meta.total }}
           extraChips={invTabChips}
           onClearExtras={() => setInvTab("all")}
         />
@@ -610,7 +582,7 @@ export default function InventoryView() {
         <>
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="rtable w-full text-sm">
               <thead>
                 <tr className="border-b border-white/10">
                   <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("itemColumn")}</th>
@@ -708,6 +680,14 @@ export default function InventoryView() {
                           would orphan its borrow record (see
                           InventoryController::destroy). */}
                       <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => hasUnits(item) && setUnitsItem(item)}
+                          disabled={!hasUnits(item)}
+                          className={`p-1.5 rounded-full transition ${hasUnits(item) ? "text-white/50 hover:bg-white/10 hover:text-white" : "text-white/20 cursor-not-allowed"}`}
+                          title={t("unitsButtonTitle")}
+                        >
+                          <Layers className="h-4 w-4" />
+                        </button>
                         <button onClick={() => openEdit(item)} className="p-1.5 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition" title={t("editLabel")}>
                           <Pencil className="h-4 w-4" />
                         </button>
@@ -794,16 +774,16 @@ export default function InventoryView() {
           <FormSection title={t("secStock")} className="space-y-5">
               <div>
                 <label className="block text-base font-semibold text-white mb-1.5">{t("conditionUnitsLabel")}</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 2xl:grid-cols-4 gap-x-3 gap-y-4">
                   {CONDITIONS.map((c) => (
-                    <div key={c}>
+                    <div key={c} className="min-w-0">
                       <span className={`mb-1.5 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${CONDITION_STYLES[c]}`}>{t(CONDITION_LABEL_KEYS[c])}</span>
                       <NumberStepper
                         min={0}
                         fullWidth
                         value={String(form[COUNT_KEY[c]])}
                         onChange={(v) => setForm((p) => ({ ...p, [COUNT_KEY[c]]: Math.max(0, Math.floor(Number(v) || 0)) }))}
-                        className="w-full rounded-full border border-white/25 bg-white/10 pl-4 pr-8 py-3 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
+                        className="w-full rounded-full border border-white/25 bg-white/10 pl-4 pr-7 py-3 text-base font-sans text-white [font-variant-numeric:tabular-nums] placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
                     </div>
                   ))}
                 </div>
@@ -812,19 +792,7 @@ export default function InventoryView() {
                 </p>
               </div>
               {editing && (
-                <div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-base font-semibold text-white mb-1.5">{t("lostUnitsLabel")}</label>
-                      <NumberStepper min={0} max={maxLost} fullWidth value={String(form.lost_quantity)} onChange={(v) => setForm((p) => ({ ...p, lost_quantity: Math.min(maxLost, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/25 bg-white/10 pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
-                    </div>
-                    <div>
-                      <label className="block text-base font-semibold text-white mb-1.5">{t("disposedUnitsLabel")}</label>
-                      <NumberStepper min={0} max={maxDisposed} fullWidth value={String(form.disposed_quantity)} onChange={(v) => setForm((p) => ({ ...p, disposed_quantity: Math.min(maxDisposed, Math.max(0, Number(v) || 0)) }))} className="w-full rounded-full border border-white/25 bg-white/10 pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" />
-                    </div>
-                  </div>
-                  <p className="mt-2 text-sm text-white/45">{t("lostUnitsHint")}</p>
-                </div>
+                <p className="text-sm text-white/45">{t("editStockHint")}</p>
               )}
           </FormSection>
           <FormSection title={t("secAdditionalInfo")} className="space-y-5">
@@ -868,6 +836,20 @@ export default function InventoryView() {
       {/* Add / Update / Delete all land here on success, instead of just
           silently closing the form/confirm dialog. */}
       <StatusModal open={!!successMessage} type="success" title={t("successTitle")} message={successMessage || ""} okLabel={t("okLabel")} onClose={() => setSuccessMessage(null)} z={65} />
+
+      {unitsItem && (
+        <UnitsModal
+          item={unitsItem}
+          onClose={() => setUnitsItem(null)}
+          onError={setError}
+          onViewPhotos={setViewingPhoto}
+          onDone={(msg) => {
+            setSuccessMessage(msg);
+            fetchItems();
+            fetchStats();
+          }}
+        />
+      )}
 
       {deleteId !== null && (
         <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4">

@@ -53,6 +53,19 @@ export const residentsTranslations: Dict = {
   resCreating: { en: "Creating…", tl: "Ginagawa…", ceb: "Gihimo…" },
 
   // Membership picker + ID photo
+  // Current Status groups (resident form + Settings)
+  csHelper: { en: "Select all that apply. Used to check membership eligibility.", tl: "Piliin ang lahat ng naaangkop. Ginagamit para suriin ang pagiging kwalipikado sa membership.", ceb: "Pilia ang tanan nga angay. Gamiton aron susihon ang pagka-kwalipikado sa membership." },
+  csPickOne: { en: "Pick one", tl: "Pumili ng isa", ceb: "Pili og usa" },
+  csNone: { en: "None / Not applicable", tl: "Wala / Hindi naaangkop", ceb: "Wala / Dili angay" },
+  csPrivacyNote: { en: "Disability information is sensitive and is used only for barangay programs.", tl: "Sensitibo ang impormasyon tungkol sa kapansanan at gagamitin lamang sa mga programa ng barangay.", ceb: "Sensitibo ang impormasyon bahin sa kapansanan ug gamiton lamang sa mga programa sa barangay." },
+  csRequiredBy: { en: "\"{membership}\" requires: {status}", tl: "Kailangan ng \"{membership}\": {status}", ceb: "Gikinahanglan sa \"{membership}\": {status}" },
+  csGroup_employment: { en: "Employment & Education", tl: "Trabaho at Edukasyon", ceb: "Trabaho ug Edukasyon" },
+  csGroup_household: { en: "Household & Family", tl: "Sambahayan at Pamilya", ceb: "Panimalay ug Pamilya" },
+  csGroup_economic: { en: "Economic", tl: "Kabuhayan", ceb: "Kabuhayan" },
+  csGroup_sector: { en: "Special Sector", tl: "Espesyal na Sektor", ceb: "Espesyal nga Sektor" },
+  csGroup_other: { en: "Other", tl: "Iba pa", ceb: "Uban pa" },
+  csCategoryLabel: { en: "Category", tl: "Kategorya", ceb: "Kategorya" },
+  csCategoryHint: { en: "Groups this status in the resident form. Employment & Education allows only one choice per resident.", tl: "Pinagsasama ang status na ito sa form ng residente. Isa lang ang pwedeng piliin sa Trabaho at Edukasyon.", ceb: "Gihiusa kini nga status sa form sa residente. Usa ra ang mapili sa Trabaho ug Edukasyon." },
   resNoneSelected: { en: "None selected", tl: "Walang napili", ceb: "Walay napili" },
   resNSelected: { en: "{n} selected", tl: "{n} ang napili", ceb: "{n} ang napili" },
   resMembershipHint: { en: "Search and tap a program to enroll this resident in real time.", tl: "Maghanap at i-tap ang isang programa para i-enroll agad ang residenteng ito.", ceb: "Pangita ug i-tap ang usa ka programa aron dayon i-enroll kini nga residente." },

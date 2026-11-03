@@ -54,7 +54,7 @@
 //     setCurrentPage(updater as any);
 //     setPageSwitching(true);
 //     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+//     pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
 //   };
 //   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
 //   const itemsPerPage = 10;
@@ -316,7 +316,7 @@ import FilterBar from "../../../components/ui/FilterBar";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
-import { matchesSearch } from "../../../lib/search";
+import api from "../../../lib/api";
 import { attendanceStatus, weekFirstOrder } from "../../../lib/attendanceStatus";
 
 
@@ -344,9 +344,11 @@ interface AttendanceViewProps {
   userMemberships?: { id: number; name: string }[];
   /** True until the first attendance fetch lands -- shows the skeleton list. */
   loading?: boolean;
+  /** The signed-in member; the list is fetched page by page for this id. */
+  memberId?: string | number;
 }
 
-export default function AttendanceView({ attendanceRecords, highlightText, allEvents = [], userMemberships = [], loading = false }: AttendanceViewProps) {
+export default function AttendanceView({ attendanceRecords, highlightText, allEvents = [], userMemberships = [], loading: parentLoading = false, memberId }: AttendanceViewProps) {
   const { t, language } = useLanguage();
   const statusLabel = (status: string) => {
     if (status === "complete") return t("statusComplete");
@@ -371,7 +373,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
     scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const itemsPerPage = 10;
@@ -418,38 +420,81 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
     return `${hours}:${minutes} ${ampm}`;
   };
 
-  const filteredAttendance = useMemo(() => {
-    // Only finished outcomes belong here: Complete, Incomplete, or Missed.
-    // Events that haven't ended yet (upcoming / ongoing) are not shown.
-    let result = attendanceRecords.filter((rec) => ["complete", "incomplete", "missed"].includes(attendanceStatus(rec)));
-    if (attendanceFilter !== "all") result = result.filter((rec) => attendanceStatus(rec) === attendanceFilter);
-    if (showMembershipFilter && membershipFilter !== "all") {
-      const selectedId = Number(membershipFilter);
-      result = result.filter((rec) => {
-        const event = allEvents.find((e) => e.id === rec.eventId);
-        return event?.membership_ids?.includes(selectedId);
+  // Status, membership, date, search, order and paging are all done by the server
+  // (EventAttendanceController::getMemberHistory, paged=1).
+  const [pageRecords, setPageRecords] = useState<AttendanceRecord[]>([]);
+  const [meta, setMeta] = useState({ total: 0, last_page: 1 });
+  const [allTotal, setAllTotal] = useState(0);
+  const [pageLoading, setPageLoading] = useState(true);
+  const pageSeq = useRef(0);
+  const fetchPage = async (silent = false) => {
+    if (!memberId) return;
+    const seq = ++pageSeq.current;
+    if (!silent) setPageLoading(true);
+    try {
+      const res = await api.get(`/attendance/${memberId}`, {
+        params: {
+          paged: 1,
+          search: attendanceSearch.trim() || undefined,
+          status: attendanceFilter,
+          membership: showMembershipFilter && membershipFilter !== "all" ? membershipFilter : undefined,
+          date: selectedDate || undefined,
+          page: currentPage,
+          per_page: itemsPerPage,
+        },
       });
+      if (seq !== pageSeq.current) return;
+      const body = res.data;
+      if (body.meta.last_page < currentPage) {
+        setCurrentPage(Math.max(1, body.meta.last_page));
+        return;
+      }
+      setPageRecords((body.data ?? []).map((item: any) => ({
+        id: item.id,
+        eventId: item.eventId,
+        eventTitle: item.eventTitle ?? '—',
+        eventDate: item.eventDate ?? '',
+        eventEnd: item.eventEnd ?? '',
+        location: item.location ?? '—',
+        timeIn: item.timeIn ?? '',
+        timeOut: item.timeOut ?? '',
+        status: (!item.timeIn && !item.timeOut) ? 'missed' : (item.status?.toLowerCase() ?? 'incomplete'),
+      })));
+      setMeta({ total: body.meta.total, last_page: body.meta.last_page });
+      setAllTotal(body.all_total ?? body.meta.total);
+    } catch (err) {
+      if (seq === pageSeq.current) console.error('Failed to fetch attendance page:', err);
+    } finally {
+      if (seq === pageSeq.current) setPageLoading(false);
     }
-    if (attendanceSearch.trim()) {
-      result = result.filter((rec) =>
-        matchesSearch(attendanceSearch, rec.eventTitle, rec.eventDate, rec.location, rec.timeIn, rec.timeOut)
-      );
-    }
-    if (selectedDate) {
-      result = result.filter((rec) => String(rec.eventDate || "").split(/[ T]/)[0] === selectedDate);
-    }
-    return weekFirstOrder(result);
-  }, [attendanceRecords, attendanceFilter, membershipFilter, showMembershipFilter, allEvents, attendanceSearch, selectedDate]);
+  };
+  const fetchPageRef = useRef(fetchPage);
+  fetchPageRef.current = fetchPage;
 
-  const totalPages = Math.ceil(filteredAttendance.length / itemsPerPage);
-  const paginatedAttendance = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredAttendance.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredAttendance, currentPage, itemsPerPage]);
-
+  // A new search / filter starts again from page 1.
+  const filterKey = `${attendanceSearch}|${attendanceFilter}|${membershipFilter}|${selectedDate}`;
+  const prevFilterKey = useRef(filterKey);
   useEffect(() => {
-    setCurrentPage(1);
-  }, [attendanceSearch, attendanceFilter, membershipFilter, selectedDate]);
+    if (prevFilterKey.current !== filterKey) {
+      prevFilterKey.current = filterKey;
+      if (currentPage !== 1) { setCurrentPage(1); return; }
+    }
+    const timer = setTimeout(() => fetchPageRef.current(), 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterKey, currentPage, memberId]);
+
+  // The page's quiet 20 s refresh brings new records in; mirror it for the list.
+  const firstRecordsRun = useRef(true);
+  useEffect(() => {
+    if (firstRecordsRun.current) { firstRecordsRun.current = false; return; }
+    fetchPageRef.current(true);
+  }, [attendanceRecords]);
+
+  const loading = parentLoading && pageRecords.length === 0 ? true : pageLoading && pageRecords.length === 0;
+  const filteredAttendance = { length: meta.total };
+  const totalPages = Math.max(1, meta.last_page);
+  const paginatedAttendance = pageRecords;
 
   return (
     // h-full inherits from Members.tsx's h-full wrapper; flex flex-col
@@ -483,7 +528,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                   ],
                 }] : []),
               ]}
-              count={loading || pageSwitching ? undefined : { shown: filteredAttendance.length, total: attendanceRecords.length }}
+              count={loading || pageSwitching ? undefined : { shown: meta.total, total: allTotal }}
               extraChips={selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []}
               onClearExtras={() => setSelectedDate("")}
             >
@@ -526,7 +571,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
       <div className="lg:flex-1 lg:overflow-y-auto lg:min-h-0 pb-24 lg:pb-4">
         <div className="space-y-3">
           <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
-          {pageSwitching || loading ? (
+          {pageSwitching || loading || pageLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
                 <div className="min-w-0 flex-1 space-y-1.5">

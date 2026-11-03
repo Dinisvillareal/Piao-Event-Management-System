@@ -180,7 +180,7 @@ export default function ActivityLogsView() {
         setTotalRecords(0);
       }
     } finally {
-      if (requestId === fetchRequestIdRef.current && !background) setLoading(false);
+      if (requestId === fetchRequestIdRef.current) setLoading(false);
     }
   };
 
@@ -408,7 +408,7 @@ export default function ActivityLogsView() {
         </FilterBar>
       </div>
 
-      <p className="text-xs text-white/45">{t("showingLabel")} {itemsPerPage} {t("perPage")}</p>
+      <p className="text-xs text-white/45">{t("showingPerPage").replace("{n}", String(itemsPerPage))}</p>
 
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
         <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />

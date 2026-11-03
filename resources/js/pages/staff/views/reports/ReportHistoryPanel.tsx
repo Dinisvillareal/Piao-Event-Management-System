@@ -104,7 +104,7 @@ export default function ReportHistoryPanel({
     } catch (e) {
       if (id === reqId.current && !silent) onError(apiErrorMessage(e, t("rpHistLoadFailed")));
     } finally {
-      if (id === reqId.current && !silent) setFetching(false);
+      if (id === reqId.current) setFetching(false);
       if (id === reqId.current && scrollPending.current) {
         scrollPending.current = false;
         window.requestAnimationFrame(() => topRef.current?.scrollIntoView({ behavior: "auto", block: "start" }));

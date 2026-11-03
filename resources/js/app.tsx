@@ -43,9 +43,11 @@ import SplashScreen from "./components/ui/SplashScreen";
 import ForcedPasswordChange from "./components/auth/ForcedPasswordChange";
 import { LanguageProvider } from "./i18n/LanguageContext";
 import { loadContentTranslations } from "./lib/contentTranslations";
+import { startResponsiveTables } from "./lib/responsiveTables";
 
 // Fire-and-forget; components will show English until it resolves.
 loadContentTranslations();
+startResponsiveTables();
 
 const rootElement = document.getElementById("app");
 

@@ -13,12 +13,13 @@ use App\Models\CurrentStatus;
 use App\Models\InventoryItem;
 use App\Models\EventExpense;
 use App\Models\Household;
+use App\Support\Paged;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class ArchiveController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         if (auth()->user()?->role !== 'Staff') {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -155,7 +156,48 @@ class ArchiveController extends Controller
             return strtotime($b['deletedAt']) <=> strtotime($a['deletedAt']);
         });
 
+        // paged=1: the Archive screen asks for one page, already filtered (type,
+        // search) and sorted here, plus the figures of the whole archive.
+        if ($request->boolean('paged')) {
+            return $this->pagedArchive($request, collect($archivedItems));
+        }
+
         return response()->json($archivedItems);
+    }
+
+    private function pagedArchive(Request $request, \Illuminate\Support\Collection $all)
+    {
+        $stamps = $all->map(fn ($i) => strtotime($i['deletedAt'] ?? '') ?: null)->filter();
+        $stats = [
+            'total' => $all->count(),
+            'distinct_types' => $all->pluck('type')->unique()->count(),
+            'newest_at' => $stamps->isNotEmpty() ? date('c', $stamps->max()) : null,
+            'oldest_days' => $stamps->isNotEmpty() ? (int) floor((time() - $stamps->min()) / 86400) : 0,
+        ];
+
+        $rows = $all;
+        if ($request->filled('type') && $request->input('type') !== 'all') {
+            $rows = $rows->where('type', $request->input('type'));
+        }
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $rows = $rows->filter(fn ($i) => str_contains(mb_strtolower(($i['name'] ?? '') . ' ' . ($i['type'] ?? '') . ' ' . ($i['deletedBy'] ?? '')), $word));
+        }
+
+        $rows = match ($request->input('sort')) {
+            'oldest' => $rows->sortBy(fn ($i) => (string) $i['deletedAt']),
+            'name-az' => $rows->sortBy(fn ($i) => mb_strtolower((string) $i['name'])),
+            default => $rows->sortByDesc(fn ($i) => (string) $i['deletedAt']),
+        };
+
+        $perPage = Paged::perPage($request, 20);
+        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+            $rows->forPage(Paged::page($request), $perPage)->values(),
+            $rows->count(),
+            $perPage,
+            Paged::page($request)
+        );
+
+        return response()->json(Paged::body($paginator, $paginator->getCollection()->values(), ['stats' => $stats]));
     }
 
     public function restore(Request $request)

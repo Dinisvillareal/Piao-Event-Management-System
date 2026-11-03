@@ -71,7 +71,7 @@ export default function ChangePasswordForm({
     { ok: checks[4].ok, label: t("secPwSpecial") },
   ];
   const ruleList = (
-    <ul className={split ? "space-y-2.5 text-sm" : "mt-3 grid gap-1.5 px-2 text-sm sm:grid-cols-2"}>
+    <ul className={split ? "space-y-2.5 text-sm" : "mt-3 grid grid-cols-1 gap-1.5 px-2 text-sm sm:grid-cols-2"}>
       {rules.map((c) => (
         <li key={c.label} className={`flex items-center gap-2 ${c.ok ? "text-[#7DD8CB]" : "text-white/55"}`}>
           {c.ok ? <Check className="h-4 w-4 shrink-0" /> : <Circle className="h-3.5 w-3.5 shrink-0" />} {c.label}
@@ -106,7 +106,7 @@ export default function ChangePasswordForm({
 
   if (split) {
     return (
-      <form onSubmit={submit} noValidate className="grid gap-8 lg:grid-cols-2">
+      <form onSubmit={submit} noValidate className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         {fieldsBlock}
         <div className="flex flex-col gap-5">
           <div className="rounded-xl border border-white/10 bg-white/[0.03] p-5">

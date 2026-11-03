@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Paged;
 use Illuminate\Http\Request;
 use App\Models\Event;
 use App\Models\User;
@@ -201,6 +202,12 @@ class EventController extends Controller
             $effectiveRole = 'Resident';
         }
 
+        // paged=1: the Events screens ask for one page at a time, already filtered
+        // (search, membership, date, quick tab, status) and sorted by the database.
+        if ($request->boolean('paged')) {
+            return $this->pagedEvents($request, $user, $effectiveRole === 'Staff');
+        }
+
         if ($effectiveRole === 'Staff') {
             // Staff portal: show all active events (exclude soft-deleted)
             $events = Event::withoutTrashed()->with('borrowedItems.inventoryItem')->orderByDesc('event_start')->get();
@@ -227,6 +234,172 @@ class EventController extends Controller
         }
 
         return response()->json(['data' => $events]);
+    }
+
+    /**
+     * One page of the Events list for the staff or member screen. Filters:
+     * search, membership (id), date (Y-m-d), tab (all | today | week | feedback),
+     * status (all | upcoming | ongoing | past); sort: default | soonest | latest | name-az.
+     * Returns the page plus the size of every tab and status, so the counts always
+     * match what the filters would show.
+     */
+    private function pagedEvents(Request $request, $user, bool $staff)
+    {
+        $base = Event::withoutTrashed();
+
+        if (!$staff) {
+            // A resident only sees events open to everyone or to one of their memberships.
+            $mine = DB::table('membership_residents')->where('user_id', $user->id)->pluck('membership_id')->toArray();
+            $base->where(function ($q) use ($mine) {
+                $q->whereRaw('JSON_LENGTH(membership_ids) = 0')->orWhereNull('membership_ids');
+                foreach ($mine as $mid) {
+                    $q->orWhereJsonContains('membership_ids', $mid);
+                }
+            });
+        }
+
+        $visibleTotal = (clone $base)->count(); // everything this person may see, before the filters
+
+        if ($request->filled('membership')) {
+            $id = (int) $request->input('membership');
+            $base->where(fn ($q) => $q->whereJsonContains('membership_ids', $id)->orWhereJsonContains('membership_ids', (string) $id));
+        }
+        if ($request->filled('date')) {
+            $base->whereDate('event_start', (string) $request->input('date'));
+        }
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $like = Paged::like($word);
+            $base->where(function ($q) use ($like) {
+                $q->whereRaw('LOWER(name) LIKE ?', [$like])
+                  ->orWhereRaw('LOWER(COALESCE(location, \'\')) LIKE ?', [$like])
+                  ->orWhereRaw('LOWER(COALESCE(description, \'\')) LIKE ?', [$like])
+                  ->orWhereRaw('DATE(event_start) LIKE ?', [$like])
+                  ->orWhereRaw("LOWER(DATE_FORMAT(event_start, '%M %e %Y')) LIKE ?", [$like]);
+            });
+        }
+
+        $now = now();
+        $nowSql = $now->toDateTimeString();
+        $endExpr = "COALESCE(event_end, call_time_end, CONCAT(DATE(event_start), ' 23:59:59'))";
+
+        $applyTab = function ($q, string $tab) use ($now, $endExpr) {
+            if ($tab === 'feedback') {
+                $q->whereRaw('((SELECT COUNT(*) FROM feedback WHERE feedback.event_id = events.id) + (SELECT COUNT(*) FROM absence_reasons WHERE absence_reasons.event_id = events.id)) > 0');
+            } elseif ($tab === 'today') {
+                $q->where('event_start', '<', $now->copy()->addDay()->startOfDay()->toDateTimeString())
+                  ->whereRaw('COALESCE(event_end, event_start) >= ?', [$now->copy()->startOfDay()->toDateTimeString()]);
+            } elseif ($tab === 'week') {
+                $q->where('event_start', '>=', $now->copy()->startOfWeek()->toDateTimeString())
+                  ->where('event_start', '<', $now->copy()->startOfWeek()->addWeek()->toDateTimeString());
+            }
+        };
+        $applyStatus = function ($q, string $status) use ($nowSql, $endExpr, $staff) {
+            if (!$staff) {
+                // Member screen: upcoming = starts from now on, past = already started.
+                if ($status === 'upcoming') {
+                    $q->where('event_start', '>=', $nowSql);
+                } elseif ($status === 'past') {
+                    $q->where('event_start', '<', $nowSql);
+                }
+                return;
+            }
+            if ($status === 'upcoming') {
+                $q->where('event_start', '>', $nowSql);
+            } elseif ($status === 'ongoing') {
+                $q->where('event_start', '<=', $nowSql)->whereRaw("{$endExpr} >= ?", [$nowSql]);
+            } elseif ($status === 'past') {
+                $q->whereRaw("{$endExpr} < ?", [$nowSql]);
+            }
+        };
+
+        // Budget health (Budget screen): spent vs. approved_budget, from the non-deleted expenses.
+        $spentExpr = '(SELECT COALESCE(SUM(event_expenses.amount), 0) FROM event_expenses WHERE event_expenses.event_id = events.id AND event_expenses.deleted_at IS NULL)';
+        $applyBudget = function ($q, string $budget) use ($spentExpr) {
+            if ($budget === 'over') {
+                $q->whereNotNull('approved_budget')->whereRaw("{$spentExpr} > approved_budget");
+            } elseif ($budget === 'near') {
+                $q->whereNotNull('approved_budget')->where('approved_budget', '>', 0)
+                  ->whereRaw("{$spentExpr} <= approved_budget")
+                  ->whereRaw("{$spentExpr} * 100 >= approved_budget * 80");
+            }
+        };
+
+        $tab = (string) $request->input('tab', 'all');
+        $status = (string) $request->input('status', 'all');
+        $budget = (string) $request->input('budget', 'all');
+
+        $tabCounts = [];
+        foreach (['all', 'today', 'week', 'feedback'] as $key) {
+            $q = clone $base;
+            $applyTab($q, $key);
+            $tabCounts[$key] = $q->count();
+        }
+        $statusCounts = [];
+        foreach (['all', 'ongoing', 'upcoming', 'past'] as $key) {
+            $q = clone $base;
+            $applyTab($q, $tab);
+            $applyBudget($q, $budget);
+            $applyStatus($q, $key);
+            $statusCounts[$key] = $q->count();
+        }
+        $budgetCounts = [];
+        foreach (['all', 'near', 'over'] as $key) {
+            $q = clone $base;
+            $applyTab($q, $tab);
+            $applyStatus($q, $status);
+            $applyBudget($q, $key);
+            $budgetCounts[$key] = $q->count();
+        }
+
+        $query = clone $base;
+        $applyTab($query, $tab);
+        $applyBudget($query, $budget);
+        $applyStatus($query, $status);
+
+        // Staff: Ongoing first, then Upcoming, then Past; the sort picks the order inside each group.
+        // Members: simply newest event first.
+        if ($staff) {
+            $rank = "CASE WHEN event_start > ? THEN 1 WHEN {$endExpr} < ? THEN 2 ELSE 0 END";
+            $query->orderByRaw($rank, [$nowSql, $nowSql]);
+        }
+        switch ($staff ? $request->input('sort') : 'latest') {
+            case 'soonest':
+                $query->orderBy('event_start');
+                break;
+            case 'latest':
+                $query->orderBy('event_start', 'desc');
+                break;
+            case 'name-az':
+                $query->orderBy('name');
+                break;
+            case 'spent':
+                $query->orderByRaw("{$spentExpr} DESC");
+                break;
+            case 'used': // share of the approved budget already spent; events without a budget last
+                $query->orderByRaw("CASE WHEN approved_budget IS NULL THEN -1 WHEN approved_budget = 0 THEN (CASE WHEN {$spentExpr} > 0 THEN 100 ELSE 0 END) ELSE LEAST(100, {$spentExpr} / approved_budget * 100) END DESC");
+                break;
+            default: // upcoming soonest first, past most recent first
+                $query->orderByRaw("CASE WHEN {$endExpr} < ? THEN -UNIX_TIMESTAMP(event_start) ELSE UNIX_TIMESTAMP(event_start) END", [$nowSql]);
+        }
+        $query->orderBy('id', 'desc');
+
+        $paginator = $query->with('borrowedItems.inventoryItem')
+            ->paginate(Paged::perPage($request, 6), ['*'], 'page', Paged::page($request));
+        $events = $paginator->getCollection();
+        if ($staff) {
+            $this->attachInventoryCounts($events);
+            // What each card on the Budget screen shows: money spent so far.
+            $spent = DB::table('event_expenses')->whereIn('event_id', $events->pluck('id'))->whereNull('deleted_at')
+                ->select('event_id', DB::raw('SUM(amount) as s'))->groupBy('event_id')->pluck('s', 'event_id');
+            foreach ($events as $event) {
+                $event->setAttribute('budget_spent', round((float) ($spent[$event->id] ?? 0), 2));
+            }
+        }
+
+        return response()->json(Paged::body($paginator, $events->values(), [
+            'counts' => ['tabs' => $tabCounts, 'status' => $statusCounts, 'budget' => $budgetCounts],
+            'all_total' => $visibleTotal,
+        ]));
     }
 
     /**
@@ -277,8 +450,27 @@ class EventController extends Controller
 
     public function show($id)
     {
-        // ✅ MODIFIED: Exclude soft-deleted events
-        return response()->json(Event::withoutTrashed()->with('borrowedItems.inventoryItem')->findOrFail($id));
+        $event = Event::withoutTrashed()->findOrFail($id);
+
+        if (!$this->isStaff()) {
+            // A resident may read only an event that is open to everyone or to one of their
+            // own memberships, and never sees the borrowed-equipment details.
+            $ids = is_array($event->membership_ids) ? $event->membership_ids : [];
+            if (count($ids) > 0) {
+                $mine = DB::table('membership_residents')
+                    ->where('user_id', Auth::id())
+                    ->whereNull('deleted_at')
+                    ->pluck('membership_id')
+                    ->map(fn ($v) => (int) $v)
+                    ->all();
+                if (!array_intersect(array_map('intval', $ids), $mine)) {
+                    return response()->json(['message' => 'Unauthorized'], 403);
+                }
+            }
+            return response()->json($event);
+        }
+
+        return response()->json($event->load('borrowedItems.inventoryItem'));
     }
 
     public function store(Request $request)
@@ -882,27 +1074,39 @@ class EventController extends Controller
                 throw new \Exception("Not enough stock for \"{$item->name}\" (available: {$item->quantity}, requested: {$quantity}).");
             }
 
-            if ($units) {
-                $short = $item->shortfall($units);
-                if ($short) {
-                    $have = $item->conditionCounts();
-                    $label = array_key_first($short);
-                    throw new \Exception("Not enough {$label} stock for \"{$item->name}\" (available: {$have[$label]}, requested: {$units[$label]}).");
+            if (! $units) {
+                // No per-condition choice was sent: take the quantity from the
+                // item's main condition first, then its largest groups, so the
+                // borrow row always records its units per condition (its four
+                // counts must add up to `quantity`).
+                $have = $item->conditionCounts();
+                $order = array_keys($have);
+                usort($order, fn ($a, $b) => ($b === $item->condition) <=> ($a === $item->condition) ?: $have[$b] <=> $have[$a]);
+                $units = array_fill_keys($labels, 0);
+                $need = $quantity;
+                foreach ($order as $label) {
+                    $cut = min($need, $have[$label]);
+                    $units[$label] = $cut;
+                    $need -= $cut;
+                    if ($need <= 0) {
+                        break;
+                    }
                 }
-                $item->takeUnits($units);
-            } else {
-                $item->quantity -= $quantity;
-                $item->save();
             }
+
+            $short = $item->shortfall($units);
+            if ($short) {
+                $have = $item->conditionCounts();
+                $label = array_key_first($short);
+                throw new \Exception("Not enough {$label} stock for \"{$item->name}\" (available: {$have[$label]}, requested: {$units[$label]}).");
+            }
+            $item->takeUnits($units);
 
             $borrow = new EventInventoryItem([
                 'event_id'           => $event->id,
                 'inventory_item_id'  => $item->id,
-                'quantity'           => $quantity,
             ]);
-            if ($units) {
-                $borrow->setUnits($units);
-            }
+            $borrow->setUnits($units);
             $borrow->save();
         }
     }
@@ -954,21 +1158,27 @@ class EventController extends Controller
      * for the Dashboard, so staff can release everything a given event
      * is still holding in one action instead of hunting it down later.
      */
-    public function overdueBorrows()
+    /**
+     * Events whose loan is overdue (ended, items still out). With paged=1 the Returns
+     * screen gets one filtered page (search by event or item name, ended_date), the KPI
+     * stats over the whole queue, and -- with focus=<event id> -- the page that event is on.
+     */
+    public function overdueBorrows(Request $request)
     {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $events = Event::withoutTrashed()
-            ->whereHas('borrowedItems')
-            ->with(['borrowedItems.inventoryItem:id,name,condition'])
-            ->get()
-            ->filter(function ($event) {
-                $endedAt = $event->event_end ?? $event->event_start;
-                return $endedAt && $endedAt->isPast();
-            })
-            ->map(function ($event) {
+        $nowSql = now()->toDateTimeString();
+        $endExpr = 'COALESCE(events.event_end, events.event_start)';
+        $base = Event::withoutTrashed()->whereHas('borrowedItems')->whereRaw("{$endExpr} < ?", [$nowSql]);
+
+        $present = function ($events) {
+            return $events->map(function ($event) {
+                // Units already reported lost from this event's loan, per item.
+                $lostHere = \App\Models\InventoryUnitLog::where('action', 'lost')->where('event_id', $event->id)
+                    ->get()->groupBy('inventory_item_id')->map(fn ($g) => (int) $g->sum('quantity'));
+
                 return [
                     'id' => $event->id,
                     'name' => $event->name,
@@ -977,14 +1187,61 @@ class EventController extends Controller
                         'id' => $b->id,
                         'name' => $b->inventoryItem->name ?? 'Unknown item',
                         'quantity' => $b->quantity,
+                        'lost_quantity' => $lostHere[$b->inventory_item_id] ?? 0,
                         // Units still out, per condition (what the return form starts from).
                         'units' => $b->resolvedUnits($b->inventoryItem->condition ?? 'Good'),
                     ])->values(),
                 ];
-            })
-            ->values();
+            })->values();
+        };
 
-        return response()->json($events);
+        if (!$request->boolean('paged')) {
+            return response()->json($present((clone $base)->with(['borrowedItems.inventoryItem:id,name,new_quantity,good_quantity,fair_quantity,poor_quantity'])->get()));
+        }
+
+        // KPI strip: the whole overdue queue, whatever the filters say.
+        $all = (clone $base)->with('borrowedItems:id,event_id,inventory_item_id,quantity')->get(['events.id', 'events.event_start', 'events.event_end']);
+        $oldestDays = 0;
+        foreach ($all as $ev) {
+            $ended = $ev->event_end ?? $ev->event_start;
+            if ($ended) {
+                $oldestDays = max($oldestDays, (int) floor($ended->diffInDays(now(), false)));
+            }
+        }
+        $stats = [
+            'total_events' => $all->count(),
+            'total_units' => (int) $all->sum(fn ($ev) => $ev->borrowedItems->sum('quantity')),
+            'distinct_items' => $all->flatMap(fn ($ev) => $ev->borrowedItems->pluck('inventory_item_id'))->unique()->count(),
+            'oldest_days' => $oldestDays,
+        ];
+
+        $filtered = clone $base;
+        if ($request->filled('ended_date')) {
+            $filtered->whereRaw("DATE({$endExpr}) = ?", [(string) $request->input('ended_date')]);
+        }
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $like = Paged::like($word);
+            $filtered->where(function ($q) use ($like) {
+                $q->whereRaw('LOWER(events.name) LIKE ?', [$like])
+                  ->orWhereHas('borrowedItems.inventoryItem', fn ($i) => $i->whereRaw('LOWER(name) LIKE ?', [$like]));
+            });
+        }
+        $filtered->orderBy('events.id');
+
+        $perPage = Paged::perPage($request, 6);
+        $page = Paged::page($request);
+        if ($request->filled('focus')) {
+            $focus = (int) $request->input('focus');
+            $before = (clone $filtered)->where('events.id', '<', $focus)->count();
+            $exists = (clone $filtered)->where('events.id', $focus)->exists();
+            if ($exists) {
+                $page = intdiv($before, $perPage) + 1;
+            }
+        }
+
+        $paginator = $filtered->with(['borrowedItems.inventoryItem:id,name,new_quantity,good_quantity,fair_quantity,poor_quantity'])->paginate($perPage, ['*'], 'page', $page);
+
+        return response()->json(Paged::body($paginator, $present($paginator->getCollection()), ['stats' => $stats]));
     }
 
     /**
@@ -1195,6 +1452,100 @@ class EventController extends Controller
     }
 
     /**
+     * Reports units of a borrowed item as lost -- they never came back.
+     * Staff pick exactly which units, per condition they went out in (e.g.
+     * 3 Good + 2 Fair), so nothing is chosen at random. The units leave the
+     * loan and are added to the item's lost count; they are NOT added to
+     * stock, and no photo is needed. This is separate from returning items:
+     * it is not logged as a release. If a unit turns up later, "Found" in
+     * Inventory records it.
+     */
+    public function reportLostBorrowedItem(Request $request, $eventId, $borrowId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $event = Event::withoutTrashed()->findOrFail($eventId);
+        $borrow = $event->borrowedItems()->where('id', $borrowId)->firstOrFail();
+
+        $request->validate([
+            'lost_units' => 'required|array',
+            'lost_units.*' => 'nullable|integer|min:0',
+        ]);
+
+        $lostUnits = [];
+        $lost = 0;
+        $item = null;
+
+        // The checks run inside the transaction on locked rows, so two staff
+        // reporting the same loan at once can't both pass them (and report
+        // more units lost than are actually out).
+        \DB::transaction(function () use ($event, $borrowId, $request, &$lostUnits, &$lost, &$item) {
+            $borrow = $event->borrowedItems()->where('id', $borrowId)->lockForUpdate()->firstOrFail();
+            $item = InventoryItem::withTrashed()->lockForUpdate()->find($borrow->inventory_item_id);
+            $main = $item->condition ?? 'Good';
+            $out = $borrow->resolvedUnits($main);
+
+            foreach (array_keys(InventoryItem::CONDITION_COLUMNS) as $label) {
+                $lostUnits[$label] = max(0, (int) $request->input("lost_units.{$label}", 0));
+                if ($lostUnits[$label] > ($out[$label] ?? 0)) {
+                    throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                        'message' => "Can't report {$lostUnits[$label]} {$label} unit(s) as lost -- only " . ($out[$label] ?? 0) . " {$label} are out on loan.",
+                    ], 422));
+                }
+            }
+            $lost = array_sum($lostUnits);
+            if ($lost <= 0) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json(['message' => 'Enter how many units were lost.'], 422));
+            }
+
+            foreach ($lostUnits as $label => $n) {
+                $out[$label] = ($out[$label] ?? 0) - $n;
+            }
+            $borrow->setUnits($out);
+            if ($borrow->quantity <= 0) {
+                $borrow->delete();
+            } else {
+                $borrow->save();
+            }
+
+            if ($item) {
+                // Units already reported lost from Inventory while this loan was open
+                // ("lost pending") are the same units -- settle those first, no double count.
+                $fromPending = min($lost, (int) $item->lost_pending);
+                $item->lost_pending = (int) $item->lost_pending - $fromPending;
+                $item->lost_quantity = (int) $item->lost_quantity + ($lost - $fromPending);
+                $item->save();
+                $item->settleLostOnLoan();
+            }
+
+            \App\Models\InventoryUnitLog::create([
+                'inventory_item_id' => $borrow->inventory_item_id,
+                'event_id' => $event->id,
+                'action' => 'lost',
+                'quantity' => $lost,
+                'units' => $lostUnits,
+                'user_code' => auth()->user()?->user_code,
+            ]);
+        });
+
+        $parts = [];
+        foreach ($lostUnits as $label => $n) {
+            if ($n > 0) {
+                $parts[] = "{$n} {$label}";
+            }
+        }
+        $itemName = $item->name ?? 'item';
+        $this->createLog('Report Lost', 'Inventory', "Reported {$lost}x {$itemName} lost (" . implode(', ', $parts) . ") from event: {$event->name}");
+
+        return response()->json([
+            'message' => 'Lost units recorded.',
+            'lost_quantity' => $lost,
+        ]);
+    }
+
+    /**
      * Releases from roughly the last two weeks, across every event, newest
      * first -- the "Undo" trail for the Returns page. Two weeks is plenty
      * of room for "wait, I released the wrong amount earlier today/this
@@ -1231,7 +1582,7 @@ class EventController extends Controller
         $lastPage = max(1, (int) ceil($total / $perPage));
         $page = min($page, $lastPage);
 
-        $rows = $base->with(['event:id,name', 'inventoryItem:id,name,condition'])
+        $rows = $base->with(['event:id,name', 'inventoryItem:id,name,new_quantity,good_quantity,fair_quantity,poor_quantity'])
             ->latest()
             ->skip(($page - 1) * $perPage)
             ->take($perPage)
@@ -1247,7 +1598,7 @@ class EventController extends Controller
             ->map(fn ($group) => (int) $group->sum('quantity'));
 
         // Units still out per condition, so Edit Return can cap each condition.
-        $stillOutUnits = EventInventoryItem::with('inventoryItem:id,condition')
+        $stillOutUnits = EventInventoryItem::with('inventoryItem:id,new_quantity,good_quantity,fair_quantity,poor_quantity')
             ->whereIn('event_id', $rows->pluck('event_id')->unique())
             ->whereIn('inventory_item_id', $rows->pluck('inventory_item_id')->unique())
             ->get()

@@ -1,5 +1,4 @@
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import { matchesSearch } from "../../../lib/search";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Filter, Users, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, Smartphone, Home } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
@@ -72,31 +71,60 @@ export default function NotificationsView({ memberships = [], highlightText, ini
        setCurrentPage(updater as any);
        setPageSwitching(true);
        if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-       pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+       pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
    };
    useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
    const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
    const itemsPerPage = 10;
 
 
-   useEffect(() => {
-       fetchAllNotifications();
-   }, []);
-
-
-   const fetchAllNotifications = async (): Promise<void> => {
+   // Search, date, audience and paging are all done by the server (NotificationController::staffNotifications).
+   const [totalMatching, setTotalMatching] = useState<number>(0);
+   const [lastPage, setLastPage] = useState<number>(1);
+   const [allTotal, setAllTotal] = useState<number>(0);
+   const notifSeq = useRef(0);
+   const fetchNotifications = async (): Promise<void> => {
+       const seq = ++notifSeq.current;
        setLoading(true);
        try {
-           const response = await api.get('/notifications/staff', { params: { per_page: 1000 } });
+           const response = await api.get('/notifications/staff', {
+               params: {
+                   search: searchQuery.trim() || undefined,
+                   date_filter: dateFilter,
+                   target_membership_id: targetFilter,
+                   page: currentPage,
+                   per_page: itemsPerPage,
+               },
+           });
+           if (seq !== notifSeq.current) return;
            const data = response.data;
-           const notificationsData = Array.isArray(data) ? data : (data.data || []);
-           setAllNotifications(notificationsData);
+           if ((data.last_page ?? 1) < currentPage) {
+               setCurrentPage(Math.max(1, data.last_page));
+               return;
+           }
+           setAllNotifications(Array.isArray(data) ? data : (data.data || []));
+           setTotalMatching(data.total ?? 0);
+           setLastPage(data.last_page ?? 1);
+           setAllTotal(data.all_total ?? data.total ?? 0);
        } catch (error) {
-           console.error('Error fetching notifications:', error);
+           if (seq === notifSeq.current) console.error('Error fetching notifications:', error);
        } finally {
-           setLoading(false);
+           if (seq === notifSeq.current) setLoading(false);
        }
    };
+
+   // A new search / filter starts again from page 1.
+   const notifFilterKey = `${searchQuery}|${dateFilter}|${targetFilter}`;
+   const prevNotifFilterKey = useRef(notifFilterKey);
+   useEffect(() => {
+       if (prevNotifFilterKey.current !== notifFilterKey) {
+           prevNotifFilterKey.current = notifFilterKey;
+           if (currentPage !== 1) { setCurrentPage(1); return; }
+       }
+       const timer = setTimeout(fetchNotifications, 120);
+       return () => clearTimeout(timer);
+       // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [notifFilterKey, currentPage]);
 
    // Adviser recommendation: "Notify by household — head of household — SMS
    // contact number per household" — a staff-facing view of what was sent.
@@ -122,7 +150,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
        setActiveTab(tab);
        setPageSwitching(true);
        if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-       pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+       pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
    };
 
    // Server-paginated: each page is its own request, so the skeleton shows
@@ -161,58 +189,9 @@ export default function NotificationsView({ memberships = [], highlightText, ini
    }, [smsPage, smsSearchApplied, smsStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
-   const filteredNotifications = useMemo(() => {
-       let filtered = [...allNotifications];
-
-
-       if (searchQuery.trim()) {
-           filtered = filtered.filter(n =>
-               matchesSearch(searchQuery, n.title, n.message)
-           );
-       }
-
-
-       if (dateFilter !== 'all') {
-           const now = new Date();
-           if (dateFilter === 'upcoming') {
-               filtered = filtered.filter(n => {
-                   if (!n.event?.event_start) return false;
-                   return new Date(n.event.event_start) > now;
-               });
-           } else if (dateFilter === 'past') {
-               filtered = filtered.filter(n => {
-                   if (!n.event?.event_start) return false;
-                   return new Date(n.event.event_start) < now;
-               });
-           }
-       }
-
-
-       if (targetFilter !== 'all-residents') {
-           const targetId = parseInt(targetFilter);
-           filtered = filtered.filter(n => {
-               const membershipIds = n.event?.membership_ids || [];
-               return membershipIds.includes(targetId);
-           });
-       }
-
-
-       return filtered;
-   }, [allNotifications, searchQuery, dateFilter, targetFilter]);
-
-
-   // Pagination logic
-   const totalPages = Math.ceil(filteredNotifications.length / itemsPerPage);
-   const paginatedNotifications = useMemo(() => {
-       const startIndex = (currentPage - 1) * itemsPerPage;
-       return filteredNotifications.slice(startIndex, startIndex + itemsPerPage);
-   }, [filteredNotifications, currentPage, itemsPerPage]);
-
-
-   // Reset to first page when filters change
-   useEffect(() => {
-       setCurrentPage(1);
-   }, [searchQuery, dateFilter, targetFilter]);
+   const filteredNotifications = { length: totalMatching };
+   const totalPages = lastPage;
+   const paginatedNotifications = allNotifications;
 
 
    // For card view: DD/MM/YYYY
@@ -314,7 +293,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                        <Bell className="h-[18px] w-[18px]" />
                        {t("notify")}
                        <span className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "notifications" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
-                           {loading ? 0 : allNotifications.length}
+                           {loading && allTotal === 0 ? 0 : allTotal}
                        </span>
                    </button>
                    <button
@@ -367,7 +346,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                    />
                </div>
 
-               <p className="mt-2 text-xs text-white/40">{t("showingLabel")} {itemsPerPage} {t("perPage")}</p>
+               <p className="mt-2 text-xs text-white/40">{t("showingPerPage").replace("{n}", String(itemsPerPage))}</p>
 
 
                {/* ✅ PAGINATION - ← 1 → STYLE */}
@@ -414,7 +393,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                </div>
 
                {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-               <p className="mt-4 text-xs text-white/40">{t("showingLabel")} {smsPerPage} {t("perPage")}</p>
+               <p className="mt-4 text-xs text-white/40">{t("showingPerPage").replace("{n}", String(smsPerPage))}</p>
                <div className="flex justify-end mt-4">
                    {smsLastPage > 1 && ((smsLoading || pageSwitching) ? null : (
                        <div className="flex items-center gap-2">

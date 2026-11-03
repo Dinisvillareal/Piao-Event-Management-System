@@ -3,7 +3,6 @@ import { scrollListIntoView } from "../../../lib/scrollToList";
 import SaveButton from "../../../components/ui/SaveButton";
 import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Undo2, CheckCircle2, PackageX, X, RotateCcw, Pencil, Search, Package, Clock, History, Camera, Eye, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
@@ -25,6 +24,8 @@ interface OverdueEventItem {
   id: number;
   name: string;
   quantity: number;
+  // Units already reported lost from this event's loan.
+  lost_quantity?: number;
   // Units still out, per condition (New / Good / Fair / Poor).
   units?: Record<string, number>;
 }
@@ -94,7 +95,10 @@ const RELEASES_PER_PAGE = 5;
 // summary that links back here.
 export default function ReturnsView() {
   const { t, locale, language } = useLanguage();
+  // One page of the Pending Returns queue (search, ended date and paging are done by the server).
   const [events, setEvents] = useState<OverdueEvent[]>([]);
+  const [overdueMeta, setOverdueMeta] = useState({ total: 0, last_page: 1 });
+  const [queueStats, setQueueStats] = useState({ totalEvents: 0, totalUnits: 0, distinctItems: 0, oldestDays: 0 });
   const [loading, setLoading] = useState(true);
   // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
   const statsLoading = usePageOpenSkeleton(loading);
@@ -116,7 +120,7 @@ export default function ReturnsView() {
     scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   // Which of the two panels is showing. They are two stages of ONE flow:
@@ -129,9 +133,11 @@ export default function ReturnsView() {
   const switchTab = (tab: "pending" | "released") => {
     if (tab === activeTab) return;
     setActiveTab(tab);
-    setPageSwitching(true);
-    if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    // Load the panel being opened for real (not a fake delay): its table shows the
+    // skeleton until fresh rows arrive, so Pending <-> Recently Released never shows
+    // stale rows or an empty frame.
+    if (tab === "released") fetchRecentReleasesRef.current(undefined, false);
+    else fetchOverdueRef.current(false);
   };
   // Highlights for the "where did it go?" moment after a release / undo:
   // newly logged releases glow in Recently Released, and the event that
@@ -145,7 +151,8 @@ export default function ReturnsView() {
   const [flowToast, setFlowToast] = useState<{
     title: string;
     message: string;
-    target: "pending" | "released";
+    // Where the extra button jumps to; none when there is nothing to show there (e.g. lost units).
+    target?: "pending" | "released";
     tone: "ok" | "warn";
   } | null>(null);
   // How many units to release per item, keyed by borrow-record id --
@@ -165,6 +172,12 @@ export default function ReturnsView() {
   // individually later) rather than forcing an all-or-nothing release.
   const [selectedItemIds, setSelectedItemIds] = useState<Record<number, boolean>>({});
   const [confirmReleaseAll, setConfirmReleaseAll] = useState(false);
+
+  // Lost units are reported on their own (not part of a release): per item,
+  // how many of each condition never came back. No photo, not logged as a return.
+  const [lostDraft, setLostDraft] = useState<Record<number, Record<string, number>>>({});
+  const [confirmLost, setConfirmLost] = useState<{ eventId: number; item: OverdueEventItem } | null>(null);
+  const [reportingLostId, setReportingLostId] = useState<number | null>(null);
   const [bulkReleasing, setBulkReleasing] = useState(false);
 
   // Evidence photo attached per borrowed item before it can be released --
@@ -227,16 +240,47 @@ export default function ReturnsView() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
-  const fetchOverdue = async (background = false) => {
+  // The latest filters/page, read by fetchOverdue so the 20 s poll never uses stale ones.
+  const overdueQueryRef = useRef({ search: "", endedDate: "", page: 1 });
+  overdueQueryRef.current = { search, endedDate, page: currentPage };
+  const overdueSeq = useRef(0);
+
+  const fetchOverdue = async (background = false, focusEventId?: number) => {
+    const seq = ++overdueSeq.current;
     if (!background) setLoading(true);
     try {
-      const response = await api.get("/events/overdue-borrows");
-      setEvents(Array.isArray(response.data) ? response.data : []);
+      const q = overdueQueryRef.current;
+      const response = await api.get("/events/overdue-borrows", {
+        params: {
+          paged: 1,
+          search: q.search.trim() || undefined,
+          ended_date: q.endedDate || undefined,
+          page: q.page,
+          per_page: ITEMS_PER_PAGE,
+          focus: focusEventId,
+        },
+      });
+      if (seq !== overdueSeq.current) return;
+      const body = response.data;
+      // A page past the end (the last event of a page was just cleared): step back.
+      if (!focusEventId && body.meta.last_page < q.page) {
+        setCurrentPage(Math.max(1, body.meta.last_page));
+        return;
+      }
+      if (focusEventId) setCurrentPage(body.meta.page);
+      setEvents(Array.isArray(body.data) ? body.data : []);
+      setOverdueMeta({ total: body.meta.total, last_page: body.meta.last_page });
+      setQueueStats({
+        totalEvents: body.stats?.total_events ?? 0,
+        totalUnits: body.stats?.total_units ?? 0,
+        distinctItems: body.stats?.distinct_items ?? 0,
+        oldestDays: body.stats?.oldest_days ?? 0,
+      });
       setLastUpdated(new Date());
     } catch {
       if (!background) setError(t("loadReturnsFailed"));
     } finally {
-      if (!background) setLoading(false);
+      if (seq === overdueSeq.current) setLoading(false);
     }
   };
 
@@ -264,6 +308,11 @@ export default function ReturnsView() {
       if (!background) setRecentReleasesLoading(false);
     }
   };
+
+  const fetchOverdueRef = useRef(fetchOverdue);
+  fetchOverdueRef.current = fetchOverdue;
+  const fetchRecentReleasesRef = useRef(fetchRecentReleases);
+  fetchRecentReleasesRef.current = fetchRecentReleases;
 
   // The background poll needs to know, on every tick, whether a modal is
   // currently open (so it can skip refreshing under someone's feet) and
@@ -314,21 +363,7 @@ export default function ReturnsView() {
   // Portfolio-wide KPIs across every overdue event currently queued --
   // gives staff the scale of the backlog before drilling into any one
   // event's line items.
-  const stats = useMemo(() => {
-    const totalUnits = events.reduce((sum, ev) => sum + ev.items.reduce((s, it) => s + it.quantity, 0), 0);
-    const distinctItems = new Set<string>();
-    events.forEach((ev) => ev.items.forEach((it) => distinctItems.add(it.name)));
-    let oldestDays = 0;
-    const now = Date.now();
-    events.forEach((ev) => {
-      const ended = new Date(ev.ended_at).getTime();
-      if (!isNaN(ended)) {
-        const days = Math.floor((now - ended) / (1000 * 60 * 60 * 24));
-        if (days > oldestDays) oldestDays = days;
-      }
-    });
-    return { totalEvents: events.length, totalUnits, distinctItems: distinctItems.size, oldestDays };
-  }, [events]);
+  const stats = queueStats;
 
   const daysOverdue = (endedAt: string) => {
     const ended = new Date(endedAt).getTime();
@@ -336,28 +371,23 @@ export default function ReturnsView() {
     return Math.max(0, Math.floor((Date.now() - ended) / (1000 * 60 * 60 * 24)));
   };
 
-  // Ended-date range filter -- comparing plain "yyyy-mm-dd" slices keeps
-  // this independent of time-of-day/timezone formatting.
-  const filteredEvents = useMemo(() => {
-    const q = search.trim();
-    return events.filter((ev) => {
-      if (q) {
-        const matchesEvent = matchesSearch(q, ev.name);
-        const matchesItem = ev.items.some((it) => matchesSearch(q, it.name));
-        if (!matchesEvent && !matchesItem) return false;
-      }
-      if (endedDate && ev.ended_at.slice(0, 10) !== endedDate) return false;
-      return true;
-    });
-  }, [events, search, endedDate]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredEvents.length / ITEMS_PER_PAGE));
+  const filteredEvents = { length: overdueMeta.total };
+  const totalPages = Math.max(1, overdueMeta.last_page);
   const safePage = Math.min(currentPage, totalPages);
-  const paginatedEvents = filteredEvents.slice((safePage - 1) * ITEMS_PER_PAGE, safePage * ITEMS_PER_PAGE);
+  const paginatedEvents = events;
 
   useEffect(() => {
     setCurrentPage(1);
   }, [search, endedDate]);
+
+  // Search / ended date / page changes reload the queue from the server (the first load is the mount effect).
+  const firstOverdueLoad = useRef(true);
+  useEffect(() => {
+    if (firstOverdueLoad.current) { firstOverdueLoad.current = false; return; }
+    const timer = setTimeout(() => fetchOverdue(true), 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, endedDate, currentPage]);
 
   // The same search box also searches Recently Released
   // (by event or item name), same as it does for the table above --
@@ -373,15 +403,13 @@ export default function ReturnsView() {
   }, [search]);
 
   // After items move back to Pending, bring the event that just got its items back into view
-  // (it may sit on another page of Pending Returns).
+  // (it may sit on another page of Pending Returns) -- the server tells which page that is.
   useEffect(() => {
     if (jumpToEventId === null) return;
-    const idx = filteredEvents.findIndex((ev) => ev.id === jumpToEventId);
-    if (idx >= 0) {
-      setCurrentPage(Math.floor(idx / ITEMS_PER_PAGE) + 1);
-      setJumpToEventId(null);
-    }
-  }, [jumpToEventId, filteredEvents]);
+    const id = jumpToEventId;
+    setJumpToEventId(null);
+    fetchOverdue(true, id);
+  }, [jumpToEventId]);
 
   // Highlights only start fading once the person is actually looking at
   // the tab they point to.
@@ -396,7 +424,7 @@ export default function ReturnsView() {
     return () => clearTimeout(timer);
   }, [activeTab, flashEventIds]);
   const goToToastTarget = () => {
-    if (!flowToast) return;
+    if (!flowToast?.target) return;
     setSelectedEventId(null);
     switchTab(flowToast.target);
     setFlowToast(null);
@@ -465,6 +493,59 @@ export default function ReturnsView() {
       delete next[itemId];
       return next;
     });
+  };
+
+  const lostDraftFor = (item: OverdueEventItem): Record<string, number> => lostDraft[item.id] ?? { New: 0, Good: 0, Fair: 0, Poor: 0 };
+  const lostTotalFor = (item: OverdueEventItem) => sumUnits(lostDraftFor(item));
+  // Each condition is capped by how many of that condition are out on this loan.
+  const setLostDraftUnit = (item: OverdueEventItem, label: string, value: number) => {
+    const out = defaultUnits(item)[label] ?? 0;
+    const clamped = Math.max(0, Math.min(out, Math.floor(value) || 0));
+    setLostDraft((prev) => ({ ...prev, [item.id]: { ...lostDraftFor(item), [label]: clamped } }));
+  };
+
+  const reportLostItem = async (eventId: number, item: OverdueEventItem) => {
+    const lostUnits = lostDraftFor(item);
+    const lost = sumUnits(lostUnits);
+    setConfirmLost(null);
+    if (lost <= 0) return;
+    setReportingLostId(item.id);
+    try {
+      const fd = new FormData();
+      Object.entries(lostUnits).forEach(([label, n]) => { if (n > 0) fd.append(`lost_units[${label}]`, String(n)); });
+      await api.post(`/events/${eventId}/borrowed-items/${item.id}/lost`, fd);
+      setEvents((prev) =>
+        prev
+          .map((ev) =>
+            ev.id === eventId
+              ? {
+                  ...ev,
+                  items: ev.items
+                    .map((it) => {
+                      if (it.id !== item.id) return it;
+                      const left = defaultUnits(it);
+                      Object.keys(left).forEach((label) => { left[label] = Math.max(0, left[label] - (lostUnits[label] ?? 0)); });
+                      return { ...it, quantity: it.quantity - lost, lost_quantity: (it.lost_quantity ?? 0) + lost, units: left };
+                    })
+                    .filter((it) => it.quantity > 0),
+                }
+              : ev
+          )
+          .filter((ev) => ev.items.length > 0)
+      );
+      setLostDraft((prev) => { const next = { ...prev }; delete next[item.id]; return next; });
+      setReleaseUnits((prev) => { const next = { ...prev }; delete next[item.id]; return next; });
+      setFlowToast({
+        title: t("lostReportedTitle"),
+        message: t("lostReportedMessage").replace("{n}", String(lost)).replace("{item}", tc(item.name, language as any)),
+        tone: "ok",
+      });
+      fetchOverdue(true);
+    } catch (err) {
+      setError(apiErrorMessage(err, t("lostReportFailed")));
+    } finally {
+      setReportingLostId(null);
+    }
   };
 
   const releaseOneItem = async (eventId: number, item: OverdueEventItem, qty: number) => {
@@ -915,7 +996,7 @@ export default function ReturnsView() {
         ) : (
           <>
             <div className="overflow-x-auto">
-              <table className="w-full text-[15px]">
+              <table className="rtable w-full text-[15px]">
                 <thead>
                   <tr className="border-b border-white/10">
                     <th className="py-3.5 px-5 text-left text-xs font-bold uppercase tracking-wide text-white">{t("eventColumnLabel")}</th>
@@ -957,7 +1038,12 @@ export default function ReturnsView() {
                         <td className="py-4 px-5 text-white/50">
                           <ul className="space-y-0.5">
                             {ev.items.map((it) => (
-                              <li key={it.id} className="text-[13px]">{it.quantity}&times; {tc(it.name, language as any)}</li>
+                              <li key={it.id} className="text-[13px]">
+                                {it.quantity}&times; {tc(it.name, language as any)}
+                                {(it.lost_quantity ?? 0) > 0 && (
+                                  <span className="ml-1.5 rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-300">{t("lostSoFarChip").replace("{n}", String(it.lost_quantity))}</span>
+                                )}
+                              </li>
                             ))}
                           </ul>
                         </td>
@@ -1220,6 +1306,9 @@ export default function ReturnsView() {
                       className="h-5 w-5 shrink-0 rounded border-white/25 bg-white/[0.03] accent-[#4FBEB0]"
                     />
                     <span className="text-lg font-bold text-white truncate">{it.quantity}&times; {tc(it.name, language as any)}</span>
+                    {(it.lost_quantity ?? 0) > 0 && (
+                      <span className="shrink-0 rounded-full bg-red-500/15 px-2.5 py-0.5 text-xs font-semibold text-red-300">{t("lostSoFarChip").replace("{n}", String(it.lost_quantity))}</span>
+                    )}
                   </label>
                   <div className="flex items-center gap-3 ml-auto">
                     <span className="text-sm text-white/60 [font-variant-numeric:tabular-nums]">
@@ -1233,9 +1322,9 @@ export default function ReturnsView() {
                     worn or damaged. Goes back into Inventory exactly like this. */}
                 <div>
                   <p className="mb-2 text-sm font-semibold text-white/80">{t("returnConditionLabel")}</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 2xl:grid-cols-4 gap-x-3 gap-y-4">
                     {RETURN_CONDITIONS.map((c) => (
-                      <div key={c.label}>
+                      <div key={c.label} className="min-w-0">
                         <span className={`mb-1.5 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
                         <NumberStepper
                           min={0}
@@ -1243,7 +1332,7 @@ export default function ReturnsView() {
                           fullWidth
                           value={String(unitsFor(it)[c.label] ?? 0)}
                           onChange={(v) => setUnitFor(it, c.label, Number(v))}
-                          className="w-full rounded-full border border-white/25 bg-white/10 pl-4 pr-8 py-3 text-base font-sans text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20"
+                          className="w-full rounded-full border border-white/25 bg-white/10 pl-4 pr-7 py-3 text-base font-sans text-white [font-variant-numeric:tabular-nums] focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20"
                         />
                       </div>
                     ))}
@@ -1261,6 +1350,44 @@ export default function ReturnsView() {
                     onError={setError}
                     emptyLabel={t("attachEvidenceLabel")}
                   />
+                </div>
+
+                {/* Units that never came back. Reported on their own: no photo,
+                    and not part of "Release Selected". */}
+                <div className="border-t border-white/10 pt-5">
+                  <p className="mb-1 text-sm font-semibold text-white/80">{t("returnLostLabel")}</p>
+                  <p className="mb-3 text-xs text-white/50">{t("returnLostHint")}</p>
+                  <div className="grid grid-cols-2 2xl:grid-cols-4 gap-x-3 gap-y-4">
+                    {RETURN_CONDITIONS.map((c) => {
+                      const outHere = defaultUnits(it)[c.label] ?? 0;
+                      return (
+                        <div key={c.label} className={`min-w-0 ${outHere === 0 ? "opacity-60" : ""}`}>
+                          <span className="mb-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
+                            <span className="whitespace-nowrap text-xs text-white/55">{t("lostOutOfN").replace("{n}", String(outHere))}</span>
+                          </span>
+                          <NumberStepper
+                            min={0}
+                            max={outHere}
+                            disabled={outHere === 0}
+                            fullWidth
+                            value={String(lostDraftFor(it)[c.label] ?? 0)}
+                            onChange={(v) => setLostDraftUnit(it, c.label, Number(v))}
+                            className="w-full rounded-full border border-red-400/30 bg-red-500/10 pl-4 pr-7 py-3 text-base font-sans text-white [font-variant-numeric:tabular-nums] focus:border-red-400/60 focus:outline-none focus:ring-2 focus:ring-red-400/20"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmLost({ eventId: modalEvent.id, item: it })}
+                    disabled={lostTotalFor(it) <= 0 || reportingLostId === it.id}
+                    className="mt-4 inline-flex items-center gap-2 rounded-full border border-red-400/40 bg-red-500/10 px-5 py-2.5 text-sm font-bold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <PackageX className="h-4 w-4" />
+                    {reportingLostId === it.id ? t("savingLabel") : lostTotalFor(it) > 0 ? t("reportLostN").replace("{n}", String(lostTotalFor(it))) : t("reportLostButton")}
+                  </button>
                 </div>
               </div>
             ))}
@@ -1296,6 +1423,19 @@ export default function ReturnsView() {
         confirmLabel={t("confirmReturnLabel")}
         onCancel={() => setConfirmRelease(null)}
         onConfirm={() => confirmRelease && releaseOneItem(confirmRelease.eventId, confirmRelease.item, confirmRelease.qty)}
+        tone="danger"
+        z={10000}
+      />
+
+      <ConfirmDialog
+        open={confirmLost !== null}
+        icon={<PackageX size={32} />}
+        title={t("confirmLostTitle")}
+        body={confirmLost ? t("confirmLostBody").replace("{n}", String(lostTotalFor(confirmLost.item))).replace("{item}", tc(confirmLost.item.name, language as any)) : ""}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("confirmLostLabel")}
+        onCancel={() => setConfirmLost(null)}
+        onConfirm={() => confirmLost && reportLostItem(confirmLost.eventId, confirmLost.item)}
         tone="danger"
         z={10000}
       />

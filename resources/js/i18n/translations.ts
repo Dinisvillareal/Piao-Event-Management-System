@@ -13,6 +13,7 @@ import { operationsTranslations } from "./locales/operations";
 import { feedbackExtrasTranslations } from "./locales/feedbackExtras";
 import { filtersTranslations } from "./locales/filters";
 import { reportsProTranslations } from "./locales/reportsPro";
+import { lostFoundTranslations } from "./locales/lostFound";
 
 export type LanguageCode = "en" | "tl" | "ceb";
 
@@ -202,6 +203,7 @@ export const translations: Dict = {
   membershipsFoundCount: { en: "membership(s) found", tl: "membership ang natagpuan", ceb: "membership ang nakit-an" },
   showingLabel: { en: "showing", tl: "ipinapakita", ceb: "gipakita" },
   perPage: { en: "per page", tl: "bawat pahina", ceb: "matag panid" },
+  showingPerPage: { en: "Showing {n} per page", tl: "Nagpapakita ng {n} bawat pahina", ceb: "Gipakita ang {n} matag panid" },
   recordsLabelShort: { en: "total", tl: "kabuuan", ceb: "tanan" },
   scanAtEvents: { en: "Scan this at events for attendance", tl: "I-scan ito sa mga event para sa pagdalo", ceb: "I-scan ni sa mga event para sa pagtambong" },
   unableToGenerateQr: { en: "Unable to generate QR code", tl: "Hindi magawa ang QR code", ceb: "Dili mahimo ang QR code" },
@@ -250,6 +252,7 @@ export const translations: Dict = {
   pastEvents: { en: "Past Events", tl: "Nakaraang mga Kaganapan", ceb: "Nangaging mga Kalihokan" },
   ongoingEvents: { en: "Ongoing Events", tl: "Kasalukuyang Nagaganap na Kaganapan", ceb: "Kalihokan nga Nagpadayon Karon" },
   allMembershipsOption: { en: "All Memberships", tl: "Lahat ng Membership", ceb: "Tanan nga Membership" },
+  filterByDate: { en: "Filter by date", tl: "I-filter ayon sa petsa", ceb: "I-filter pinaagi sa petsa" },
   eventsMatchCount: { en: "event(s) match", tl: "kaganapan ang tumugma", ceb: "kalihokan ang parehas" },
   noEventsMatch: { en: "No events match your search or filter.", tl: "Walang kaganapan na tumugma sa iyong paghahanap o filter.", ceb: "Walay kalihokan nga parehas sa imong pangita o filter." },
   thisWeekLabel: { en: "📅 This Week", tl: "📅 Ngayong Linggo", ceb: "📅 Karong Semanaha" },
@@ -1815,6 +1818,7 @@ export const translations: Dict = {
   ...feedbackExtrasTranslations,
   ...filtersTranslations,
   ...reportsProTranslations,
+  ...lostFoundTranslations,
 
 };
 

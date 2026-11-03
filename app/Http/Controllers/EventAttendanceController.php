@@ -8,6 +8,7 @@ use App\Models\EventAttendance;
 use App\Models\Event;
 use App\Models\User;
 use App\Models\ActivityLog;
+use App\Support\Paged;
 
 class EventAttendanceController extends Controller
 {
@@ -266,7 +267,7 @@ class EventAttendanceController extends Controller
     // EVENT ATTENDEES
     // =========================
 
-    public function getEventAttendees($eventId)
+    public function getEventAttendees(Request $request, $eventId)
     {
         // Attendee lists carry other residents' personal details -- staff only.
         if (!$this->isStaff()) {
@@ -280,6 +281,12 @@ class EventAttendanceController extends Controller
             $event->addMissingAttendanceRecords();
         }
 
+        // paged=1 (the event's Attendance tab): the roster -- everyone eligible plus anyone who
+        // scanned -- filtered by name / ID / status and cut into pages by the database.
+        if ($request->boolean('paged') && $event) {
+            return $this->pagedRoster($request, $event);
+        }
+
         return response()->json(
             EventAttendance::with('user:id,first_name,last_name,user_code')
                 ->where('event_id', $eventId)
@@ -288,11 +295,17 @@ class EventAttendanceController extends Controller
         );
     }
 
-   public function getMemberHistory($userId)
+   public function getMemberHistory(Request $request, $userId)
 {
     // A resident may only read their own attendance history; staff can read anyone's.
     if ((int) auth()->id() !== (int) $userId && !$this->isStaff()) {
         return response()->json(['message' => 'Unauthorized'], 403);
+    }
+
+    // paged=1 (the member's Attendance screen): finished records only, filtered by
+    // status / membership / date / search, "this week first" order, one page at a time.
+    if ($request->boolean('paged')) {
+        return $this->pagedMemberHistory($request, (int) $userId);
     }
 
     $attendances = EventAttendance::where('user_id', $userId)
@@ -318,4 +331,148 @@ class EventAttendanceController extends Controller
     
     return response()->json($attendances);
 }
+
+    /**
+     * Mirrors the browser's attendanceStatus(): time in/out recorded -> complete or
+     * incomplete; otherwise upcoming / ongoing / missed from the event's own window.
+     */
+    private function pagedMemberHistory(Request $request, int $userId)
+    {
+        $now = now()->toDateTimeString();
+        $statusExpr = "CASE
+            WHEN attendances.time_in IS NOT NULL OR attendances.time_out IS NOT NULL THEN (CASE WHEN LOWER(attendances.status) = 'complete' THEN 'complete' ELSE 'incomplete' END)
+            WHEN events.event_start IS NULL THEN 'missed'
+            WHEN ? < events.event_start THEN 'upcoming'
+            WHEN ? <= COALESCE(events.event_end, events.event_start) THEN 'ongoing'
+            ELSE 'missed' END";
+
+        $base = EventAttendance::query()
+            ->leftJoin('events', fn ($j) => $j->on('events.id', '=', 'attendances.event_id')->whereNull('events.deleted_at'))
+            ->where('attendances.user_id', $userId)
+            ->select('attendances.*');
+        $allTotal = (clone $base)->count();
+
+        $base->whereRaw("({$statusExpr}) IN ('complete', 'incomplete', 'missed')", [$now, $now]);
+
+        if ($request->filled('membership')) {
+            $id = (int) $request->input('membership');
+            $base->where(fn ($q) => $q->whereJsonContains('events.membership_ids', $id)->orWhereJsonContains('events.membership_ids', (string) $id));
+        }
+        if ($request->filled('date')) {
+            $base->whereRaw('DATE(events.event_start) = ?', [(string) $request->input('date')]);
+        }
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $like = Paged::like($word);
+            $base->where(function ($q) use ($like) {
+                $q->whereRaw("LOWER(COALESCE(events.name, '')) LIKE ?", [$like])
+                  ->orWhereRaw("LOWER(COALESCE(events.location, '')) LIKE ?", [$like])
+                  ->orWhereRaw("CAST(events.event_start AS CHAR) LIKE ?", [$like])
+                  ->orWhereRaw("CAST(attendances.time_in AS CHAR) LIKE ?", [$like])
+                  ->orWhereRaw("CAST(attendances.time_out AS CHAR) LIKE ?", [$like]);
+            });
+        }
+
+        // Size of each status choice under the other filters (so the dropdown counts add up).
+        $counts = ['all' => (clone $base)->count()];
+        foreach (['complete', 'incomplete', 'missed'] as $key) {
+            $counts[$key] = (clone $base)->whereRaw("({$statusExpr}) = ?", [$now, $now, $key])->count();
+        }
+
+        $query = clone $base;
+        $status = (string) $request->input('status', 'all');
+        if (in_array($status, ['complete', 'incomplete', 'missed'], true)) {
+            $query->whereRaw("({$statusExpr}) = ?", [$now, $now, $status]);
+        }
+
+        // "This week first" (Sunday-start week): what's still to come this week, then what
+        // already finished, then later events soonest-first, then older ones latest-first.
+        $weekStart = now()->copy()->startOfDay()->subDays(now()->dayOfWeek);
+        $weekEnd = $weekStart->copy()->addDays(6)->endOfDay();
+        $bucket = 'CASE WHEN events.event_start >= ? AND events.event_start <= ? THEN (CASE WHEN COALESCE(events.event_end, events.event_start) >= ? THEN 0 ELSE 1 END)
+                        WHEN events.event_start > ? THEN 2 ELSE 3 END';
+        $bindings = [$weekStart->toDateTimeString(), $weekEnd->toDateTimeString(), $now, $weekEnd->toDateTimeString()];
+        $query->orderByRaw("({$bucket})", $bindings)
+              ->orderByRaw("CASE WHEN ({$bucket}) IN (0, 2) THEN COALESCE(UNIX_TIMESTAMP(events.event_start), 0) ELSE -COALESCE(UNIX_TIMESTAMP(events.event_start), 0) END", $bindings)
+              ->orderBy('attendances.id', 'desc');
+
+        $paginator = $query->with('event')->paginate(Paged::perPage($request, 10), ['*'], 'page', Paged::page($request));
+        $rows = $paginator->getCollection()->map(function ($attendance) {
+            $isEventDeleted = is_null($attendance->event);
+
+            return [
+                'id' => $attendance->id,
+                'eventId' => $attendance->event_id,
+                'eventTitle' => $isEventDeleted ? '' : $attendance->event->name,
+                'eventDate' => $isEventDeleted ? '' : $attendance->event->event_start,
+                'eventEnd' => $isEventDeleted ? '' : $attendance->event->event_end,
+                'location' => $isEventDeleted ? '' : $attendance->event->location,
+                'timeIn' => $attendance->time_in,
+                'timeOut' => $attendance->time_out,
+                'status' => $attendance->status,
+                'isEventDeleted' => $isEventDeleted,
+            ];
+        })->values();
+
+        return response()->json(Paged::body($paginator, $rows, ['counts' => $counts, 'all_total' => $allTotal]));
+    }
+
+    /** Event roster page. status: all | complete | incomplete | upcoming | ongoing | missed (the last three = no scan yet). */
+    private function pagedRoster(Request $request, Event $event)
+    {
+        $membershipIds = $event->membership_ids ?? [];
+        $base = User::query()
+            ->leftJoin('attendances', fn ($j) => $j->on('attendances.user_id', '=', 'users.id')->where('attendances.event_id', $event->id))
+            ->where(function ($q) use ($membershipIds) {
+                $q->whereNotNull('attendances.id')
+                  ->orWhere(function ($e) use ($membershipIds) {
+                      $e->whereIn('users.role', ['Resident', 'Staff']);
+                      if (!empty($membershipIds)) {
+                          $e->whereExists(fn ($m) => $m->select(DB::raw(1))->from('membership_residents')
+                              ->whereColumn('membership_residents.user_id', 'users.id')
+                              ->whereIn('membership_residents.membership_id', $membershipIds));
+                      }
+                  });
+            })
+            ->select('users.id', 'users.first_name', 'users.last_name', 'users.user_code', 'attendances.time_in', 'attendances.time_out');
+
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $like = Paged::like($word);
+            $base->where(fn ($q) => $q->whereRaw("LOWER(CONCAT_WS(' ', users.first_name, users.last_name)) LIKE ?", [$like])
+                ->orWhereRaw('LOWER(COALESCE(users.user_code, \'\')) LIKE ?', [$like]));
+        }
+
+        $complete = 'attendances.time_in IS NOT NULL AND attendances.time_out IS NOT NULL';
+        $incomplete = '(attendances.time_in IS NOT NULL) <> (attendances.time_out IS NOT NULL)';
+        $none = 'attendances.time_in IS NULL AND attendances.time_out IS NULL';
+        $counts = [
+            'all' => (clone $base)->count(),
+            'complete' => (clone $base)->whereRaw($complete)->count(),
+            'incomplete' => (clone $base)->whereRaw($incomplete)->count(),
+            'none' => (clone $base)->whereRaw($none)->count(),
+        ];
+
+        $query = clone $base;
+        $status = (string) $request->input('status', 'all');
+        if ($status === 'complete') {
+            $query->whereRaw($complete);
+        } elseif ($status === 'incomplete') {
+            $query->whereRaw($incomplete);
+        } elseif (in_array($status, ['upcoming', 'ongoing', 'missed'], true)) {
+            $query->whereRaw($none);
+        }
+        // Who actually attended first (complete, incomplete, then no scan), then last name A-Z.
+        $query->orderByRaw("CASE WHEN {$complete} THEN 0 WHEN {$incomplete} THEN 1 ELSE 2 END")
+              ->orderByRaw('LOWER(users.last_name)')->orderByRaw('LOWER(users.first_name)')->orderBy('users.id');
+
+        $paginator = $query->paginate(Paged::perPage($request, 10), ['*'], 'page', Paged::page($request));
+        $rows = $paginator->getCollection()->map(fn ($u) => [
+            'residentId' => $u->id,
+            'residentName' => trim("{$u->first_name} {$u->last_name}"),
+            'userCode' => $u->user_code ?? '',
+            'timeIn' => $u->time_in,
+            'timeOut' => $u->time_out,
+        ])->values();
+
+        return response()->json(Paged::body($paginator, $rows, ['counts' => $counts]));
+    }
 }

@@ -497,7 +497,7 @@ export default function DashboardView({
           ))}
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <div className="flex flex-col gap-4">
           {/* Today's Live Snapshot -- replaces the old static activity log
               with a genuinely real-time panel: a ticking clock plus counts
@@ -541,9 +541,9 @@ export default function DashboardView({
                 ];
 
                 return snapshotTiles.map((tile) => (
-                  <div key={tile.label} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                  <div key={tile.label} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-3 min-[420px]:p-4">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-display text-2xl font-extrabold tabular-nums text-white">{tile.value}</span>
+                      <span className="min-w-0 truncate font-display text-lg font-extrabold tabular-nums text-white min-[420px]:text-2xl">{tile.value}</span>
                       <tile.icon className={`h-4 w-4 shrink-0 ${tile.tone}`} />
                     </div>
                     <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/45">{tile.label}</p>

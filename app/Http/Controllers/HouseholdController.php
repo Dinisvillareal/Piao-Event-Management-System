@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Household;
 use App\Models\User;
 use App\Models\ActivityLog;
+use App\Support\Paged;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -353,7 +354,7 @@ class HouseholdController extends Controller
      * Residents not currently linked to any household -- used by the
      * frontend's "add member" picker.
      */
-    public function unassigned()
+    public function unassigned(Request $request)
     {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -362,14 +363,29 @@ class HouseholdController extends Controller
         // Both Residents and Staff can belong to a household -- a barangay
         // staff member may live with a resident family and still needs to
         // show up in that household's member list.
-        $residents = User::whereNull('household_id')
+        $query = User::whereNull('household_id')
             ->whereIn('role', ['Resident', 'Staff'])
             ->whereNull('deleted_at')
             ->select($this->memberFields())
-            ->orderBy('last_name')
-            ->get();
+            ->orderBy('last_name');
 
-        return response()->json($residents);
+        // paged=1 (the resident pickers): the typed search is matched by the database and
+        // only the first matches come back, with the size of the whole pool.
+        if ($request->boolean('paged')) {
+            $total = (clone $query)->count();
+            if ($request->filled('exclude')) {
+                $query->where('id', '!=', (int) $request->input('exclude'));
+            }
+            foreach (Paged::tokens($request->input('search')) as $word) {
+                $like = Paged::like($word);
+                $query->where(fn ($q) => $q->whereRaw("LOWER(CONCAT_WS(' ', first_name, middle_name, last_name)) LIKE ?", [$like])
+                    ->orWhereRaw('LOWER(COALESCE(user_code, \'\')) LIKE ?', [$like]));
+            }
+
+            return response()->json(['data' => $query->limit(Paged::perPage($request, 30, 100))->get(), 'total' => $total]);
+        }
+
+        return response()->json($query->get());
     }
 
     /**

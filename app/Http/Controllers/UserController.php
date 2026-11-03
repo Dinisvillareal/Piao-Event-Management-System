@@ -158,6 +158,20 @@ class UserController extends Controller
      * whose age bracket / civil status doesn't match what the membership
      * requires (configured under Settings -> Profiling).
      */
+    /**
+     * A resident can hold only one "employment" status (Student, Unemployed,
+     * Out-of-School Youth...) -- they describe what the person is doing now,
+     * so combining them is contradictory. Other categories stay multi-select.
+     */
+    private function employmentConflict(array $statusIds): ?string
+    {
+        if (count($statusIds) < 2) return null;
+        $picked = array_values(array_intersect($statusIds, \App\Models\CurrentStatus::employmentIds()));
+        if (count($picked) <= 1) return null;
+        $labels = \App\Models\CurrentStatus::whereIn('id', $picked)->pluck('label')->implode(', ');
+        return "Choose only one employment / school status (selected: {$labels}).";
+    }
+
     private function checkMembershipEligibility(array $membershipIds, ?string $birthDate, ?int $civilStatusId, ?string $gender = null, array $currentStatusIds = []): ?array
     {
         if (empty($membershipIds)) {
@@ -264,6 +278,9 @@ class UserController extends Controller
         // who doesn't match its required age bracket / civil status.
         $incomingMembershipIds = array_filter((array) $request->membership_ids);
         $incomingCurrentStatusIds = array_map('intval', array_filter((array) $request->current_status_ids));
+        if ($error = $this->employmentConflict($incomingCurrentStatusIds)) {
+            return response()->json(['errors' => ['current_status_ids' => [$error]]], 422);
+        }
         if (!empty($incomingMembershipIds)) {
             $violations = $this->checkMembershipEligibility(
                 $incomingMembershipIds,
@@ -609,6 +626,13 @@ class UserController extends Controller
     {
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if ($request->has('current_status_ids')) {
+            $ids = array_map('intval', array_filter((array) $request->current_status_ids));
+            if ($error = $this->employmentConflict($ids)) {
+                return response()->json(['errors' => ['current_status_ids' => [$error]]], 422);
+            }
         }
 
         DB::beginTransaction();

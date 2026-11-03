@@ -1,4 +1,4 @@
-import { matchesSearch } from "../../../lib/search";
+import useServerMatchIds from "../../../hooks/useServerMatchIds";
 import React, { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, FileText, FileType, Printer, Search, X, Download, ListChecks, Users } from "lucide-react";
@@ -77,9 +77,12 @@ export default function ReportOptionsModal({
   const hasRecordsSection = sections.some((s) => s.key === "records");
   const recordsOn = hasRecordsSection && selected.includes("records");
 
-  const filteredEvents = useMemo(() => {
-    return search.trim() ? recordEvents.filter((e) => matchesSearch(search, e.name, e.date)) : recordEvents;
-  }, [recordEvents, search]);
+  // The event search is matched by the server; the report's events are narrowed to its answer.
+  const matchedIds = useServerMatchIds("/events-data", search);
+  const filteredEvents = useMemo(
+    () => (matchedIds === null ? recordEvents : recordEvents.filter((e) => matchedIds.has(String(e.id)))),
+    [recordEvents, matchedIds]
+  );
 
   if (!open) return null;
 
@@ -151,7 +154,7 @@ export default function ReportOptionsModal({
                 <button type="button" className={presetBtn} onClick={() => onSelectedChange([...keptOther])}>{t("rptPresetNone")}</button>
               </div>
             </div>
-            <div className="grid gap-2.5 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               {mainSections.map((s) => {
                 const on = selected.includes(s.key);
                 return (
@@ -178,7 +181,7 @@ export default function ReportOptionsModal({
           {otherSections.length > 0 && (
             <div className="border-t border-white/10 pt-6">
               <p className="mb-3 text-[15px] font-bold uppercase tracking-wide text-white/80">{t("rptOtherHeading")}</p>
-              <div className="grid gap-2.5 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                 {otherSections.map((s) => {
                   const on = selected.includes(s.key);
                   return (

@@ -150,7 +150,7 @@ export default function MyAccountView() {
         </div>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[480px_minmax(0,1fr)] lg:items-start">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[480px_minmax(0,1fr)] lg:items-start">
         {/* ── Left: who you are + security at a glance ── */}
         <aside className="lg:sticky lg:top-4">
           <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
