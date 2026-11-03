@@ -100,7 +100,7 @@ function PortalSelectionModal({
             {t("loginPortalWelcome").replace("{name}", userName)}
           </p>
 
-          <div className="mt-12 grid gap-7 text-left sm:grid-cols-2">
+          <div className="mt-12 grid grid-cols-1 gap-7 text-left sm:grid-cols-2">
             <div className="overflow-hidden rounded-2xl border border-white/15 bg-white/[0.05]">
               <div className="flex items-center justify-between border-b border-white/10 px-7 py-5">
                 <span className="text-[12px] font-bold uppercase tracking-wide text-white/60">{t("loginStaffAccess")}</span>
@@ -637,8 +637,12 @@ export default function LoginPage() {
                     type="text"
                     name="otp"
                     inputMode="numeric"
+                    pattern="[0-9]{6}"
                     autoComplete="one-time-code"
-                    maxLength={8}
+                    maxLength={6}
+                    minLength={6}
+                    // Digits only, six of them: typing or pasting anything else is dropped.
+                    onInput={(e) => { e.currentTarget.value = e.currentTarget.value.replace(/\D/g, "").slice(0, 6); }}
                     autoFocus
                     className="w-full mt-1.5 rounded-xl border border-white/15 bg-white/5 px-4 py-3.5 text-center text-[20px] tracking-[0.4em] text-white placeholder-white/30 transition focus:outline-none focus:border-[#4FBEB0] focus:ring-4 focus:ring-[#4FBEB0]/15"
                     placeholder="000000"

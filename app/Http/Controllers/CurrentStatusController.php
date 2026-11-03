@@ -21,6 +21,7 @@ class CurrentStatusController extends Controller
 
         $request->validate([
             'label'      => 'required|string|max:50',
+            'category'   => 'nullable|in:' . implode(',', CurrentStatus::CATEGORIES),
             'sort_order' => 'nullable|integer|min:0',
         ]);
 
@@ -32,6 +33,7 @@ class CurrentStatusController extends Controller
 
         $status = CurrentStatus::create([
             'label'      => $request->label,
+            'category'   => $request->category ?: 'other',
             'sort_order' => $request->sort_order ?? ((int) CurrentStatus::max('sort_order') + 1),
         ]);
 
@@ -51,6 +53,7 @@ class CurrentStatusController extends Controller
 
         $request->validate([
             'label'      => 'required|string|max:50',
+            'category'   => 'nullable|in:' . implode(',', CurrentStatus::CATEGORIES),
             'sort_order' => 'nullable|integer|min:0',
         ]);
 
@@ -62,6 +65,7 @@ class CurrentStatusController extends Controller
 
         $status->update([
             'label'      => $request->label,
+            'category'   => $request->category ?: $status->category,
             'sort_order' => $request->sort_order ?? $status->sort_order,
         ]);
 

@@ -189,3 +189,78 @@ html[data-theme="light"] .dash-shortcut{transition:border-color .15s,background-
 html[data-theme="light"] .dash-shortcut:hover{border-color:rgba(46,142,130,.55) !important;background-color:#E6F5F2 !important;box-shadow:0 2px 10px rgba(46,142,130,.14)}
 html[data-theme="light"] .dash-shortcut:hover .dash-shortcut-icon{background-color:rgba(79,190,176,.28) !important}
 html[data-theme="light"] .dash-shortcut:hover .dash-shortcut-label{color:#0F172A !important}
+
+
+/* Card colours for the phone/tablet table layout: the dark theme needs real white lines (the old
+   "currentColor" border was dark-on-dark and vanished); the light theme keeps a soft slate line. */
+:root { --rcard-line: rgba(255, 255, 255, .20); --rcard-bg: rgba(255, 255, 255, .035); --rcard-field-line: rgba(255, 255, 255, .09); }
+html[data-theme="light"] { --rcard-line: rgba(15, 23, 42, .16); --rcard-bg: #ffffff; --rcard-field-line: rgba(15, 23, 42, .08); }
+html[data-theme="light"] table.rtable tbody > tr { box-shadow: 0 1px 2px rgba(15, 23, 42, .06); }
+
+/* Phone and tablet layout for tables marked class="rtable": every row becomes a card and each value
+   is labelled with its column heading (labels are filled in by lib/responsiveTables.ts). Phones stack
+   the cards; tablets lay them out two across. */
+@media screen and (max-width: 1023px) {
+  table.rtable { display: block; width: 100%; min-width: 0 !important; }
+  table.rtable thead { display: none; }
+  table.rtable tbody { display: block; padding: .5rem; }
+  table.rtable tbody > tr {
+    display: block; margin: 0 0 .75rem; padding: .35rem 0; min-width: 0;
+    border: 1px solid var(--rcard-line); border-radius: 1rem;
+    background-color: var(--rcard-bg); box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
+  }
+  /* A hairline between the fields of one card, so each value reads as its own row. */
+  table.rtable tbody > tr > td + td { border-top: 1px solid var(--rcard-field-line) !important; }
+  table.rtable tbody > tr > td {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25rem 1rem;
+    width: auto !important; padding: .5rem 1rem !important; border: 0 !important; text-align: right;
+  }
+  table.rtable tbody > tr > td::before {
+    content: attr(data-label); flex-shrink: 0; text-align: left;
+    font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; opacity: .5;
+  }
+  table.rtable tbody > tr > td:first-child { justify-content: flex-start; text-align: left; }
+  table.rtable tbody > tr > td:first-child::before,
+  table.rtable tbody > tr > td[data-label=""]::before { display: none; }
+  table.rtable tbody > tr > td[data-label=""] { justify-content: flex-start; }
+}
+@media screen and (min-width: 640px) and (max-width: 1023px) {
+  table.rtable tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+  table.rtable tbody > tr { margin: 0; }
+  table.rtable tbody > tr:has(> td[colspan]) { grid-column: 1 / -1; }
+}
+
+
+/* Dark theme, phone and tablet: the faintest dividers (6 percent white) disappear on the navy
+   background, so they are lifted to a visible line. Light theme has its own mapping, untouched. */
+html:not([data-theme="light"]) [class~="divide-white/[0.06]"] > :not([hidden]) ~ :not([hidden]) { border-color: rgba(255, 255, 255, .13); }
+html:not([data-theme="light"]) [class~="border-white/[0.06]"] { border-color: rgba(255, 255, 255, .13); }
+@media screen and (max-width: 1023px) {
+  html:not([data-theme="light"]) [class~="border-white/10"]:not(:hover) { border-color: rgba(255, 255, 255, .16); }
+}
+
+/* Dark theme: default text colour.
+   The app root (Staff.tsx / Members.tsx) sets a dark text colour (text-gray-900) and the base rule above is
+   #1A1A1A, so any text that has no colour class of its own -- table cells, labels, values -- inherited
+   dark-on-dark and vanished on the navy pages. Every dark surface now sets a light default for what it
+   contains; light surfaces inside it (white cards, pickers, light modals) put the dark default back.
+   :where() keeps these rules at zero specificity, so any explicit text-* class still wins. */
+:where(html:not([data-theme="light"]) body) { color: #E8ECF4; }
+:where(html:not([data-theme="light"]) [class~="bg-[#0A0E1A]"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#161C2E]"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#10162a]"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#0F1626]"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#0F1B33]"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#122436]"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#123A38]"]) { color: #E8ECF4; }
+:where(html:not([data-theme="light"]) [class~="bg-white"]),
+:where(html:not([data-theme="light"]) [class~="bg-gray-50"]),
+:where(html:not([data-theme="light"]) [class~="bg-gray-100"]),
+:where(html:not([data-theme="light"]) [class~="bg-gray-200"]),
+:where(html:not([data-theme="light"]) [class~="bg-sage-50"]),
+:where(html:not([data-theme="light"]) [class~="bg-gold-50"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#EEF4F1]"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#FAF9F5]"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#DCEAE5]"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#E6E0D3]"]),
+:where(html:not([data-theme="light"]) [class~="bg-[#ddd5ca]"]) { color: #1A1A1A; }

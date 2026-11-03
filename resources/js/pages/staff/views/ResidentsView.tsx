@@ -1,7 +1,7 @@
 import Portal from "../../../components/ui/Portal";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import SaveButton from "../../../components/ui/SaveButton";
-import { matchesSearch } from "../../../lib/search";
+import useServerMatchIds from "../../../hooks/useServerMatchIds";
 import { highlightMatches } from "../../../lib/highlight";
 import SuffixSelect from "../../../components/ui/SuffixSelect";
 import FilterBar, { type FilterDef, type ExtraChip } from "../../../components/ui/FilterBar";
@@ -58,6 +58,7 @@ import { tc } from "../../../lib/contentTranslations";
 interface Membership {
   id: number;
   name: string;
+  eligible_current_status_id?: number | null;
 }
 
 interface CivilStatusOption {
@@ -68,7 +69,14 @@ interface CivilStatusOption {
 interface CurrentStatusOption {
   id: number;
   label: string;
+  category?: string;
 }
+
+// Display order + pick rule of the Current Status groups. Only "employment"
+// is pick-one (Student / Unemployed / Out-of-School Youth contradict each
+// other); the server enforces the same rule.
+const CS_GROUPS = ["employment", "household", "economic", "sector", "other"] as const;
+const csCategoryOf = (c?: string) => ((CS_GROUPS as readonly string[]).includes(c ?? "") ? (c as string) : "other");
 
 interface AgeBracketOption {
   id: number;
@@ -289,7 +297,15 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   const [newHouseholdContact, setNewHouseholdContact] = useState("");
   const [addHouseholdSaving, setAddHouseholdSaving] = useState(false);
   const [addHouseholdError, setAddHouseholdError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [dirLoading, setLoading] = useState(false);
+  const [pageLoading, setPageLoading] = useState(true);
+  const loading = dirLoading || pageLoading;
+  // The rows of the current page, already filtered/sorted by the server, and the tab sizes.
+  const [pageRows, setPageRows] = useState<ResidentRow[]>([]);
+  const [pageMeta, setPageMeta] = useState({ total: 0, last_page: 1 });
+  const [tabTotals, setTabTotals] = useState({ all: 0, members: 0, not_members: 0 });
+  const [reloadTick, setReloadTick] = useState(0);
+  const pageSeq = useRef(0);
   const [apiError, setApiError] = useState<string | null>(null);
   // Popped up (instead of buried in an inline banner) for every save
   // failure -- validation rejections (e.g. membership eligibility) and
@@ -323,7 +339,7 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
     setCurrentPage(updater as any);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const itemsPerPage = 10;
@@ -613,28 +629,8 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
     }
   };
 
-  // ─── Fetch residents ──────────────────────────────────────────────────────
-  const fetchResidents = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/membership-residents", {
-        headers: { Accept: "application/json" },
-      });
-      const data = await res.json();
-
-      // The endpoint can fail (e.g. a pending migration) and still return
-      // a 200 with a non-array JSON body, or a non-2xx status with an
-      // error payload -- either way, data.map() below would throw and get
-      // silently swallowed by the catch, which used to leave the table
-      // looking like "no records" instead of surfacing what went wrong.
-      if (!res.ok || !Array.isArray(data)) {
-        throw new Error(
-          (data && typeof data === "object" && "message" in data ? data.message : null) ||
-            `HTTP ${res.status}`
-        );
-      }
-
-      const formatted: ResidentRow[] = data.map((item: any) => ({
+  // One server row -> the shape the screen uses.
+  const toResidentRow = (item: any): ResidentRow => ({
         id: item.user_code,
         real_id: item.user_id,
         lastName: item.last_name,
@@ -663,9 +659,36 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
         household: item.household
           ? { id: item.household.id, code: item.household.code, address: item.household.address ?? null }
           : null,
-      }));
+      });
+
+  // ─── Fetch residents ──────────────────────────────────────────────────────
+  // The full list is kept only as a lookup directory (open a profile, household
+  // sizes, duplicate checks). What the table shows -- search, filters, sort,
+  // paging and the tab counts -- comes from the server (fetchPage below).
+  const fetchResidents = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/membership-residents", {
+        headers: { Accept: "application/json" },
+      });
+      const data = await res.json();
+
+      // The endpoint can fail (e.g. a pending migration) and still return
+      // a 200 with a non-array JSON body, or a non-2xx status with an
+      // error payload -- either way, data.map() below would throw and get
+      // silently swallowed by the catch, which used to leave the table
+      // looking like "no records" instead of surfacing what went wrong.
+      if (!res.ok || !Array.isArray(data)) {
+        throw new Error(
+          (data && typeof data === "object" && "message" in data ? data.message : null) ||
+            `HTTP ${res.status}`
+        );
+      }
+
+      const formatted: ResidentRow[] = data.map(toResidentRow);
 
       setResidentsData(formatted);
+      setReloadTick((n) => n + 1); // the table's page may have changed too
       window.dispatchEvent(new Event(OFFICIALS_CHANGED_EVENT));
     } catch (e) {
       console.error("residents load:", e);
@@ -1200,42 +1223,57 @@ const handleDeleteResident = async () => {
   // ─── Filter + Pagination ──────────────────────────────────────────────────
   // One predicate for the table AND the export, so "what you see is what you
   // export" can't drift. `extras` = the FilterBar dropdowns; scope = Members tab.
-  const residentSearchHit = (x: ResidentRow, q: string) =>
-    matchesSearch(q, x.id, x.firstName, x.middleName, x.lastName, x.suffix, x.contactNumber, x.memberships, x.role, x.barangayPosition === "captain" ? "barangay captain punong barangay" : x.barangayPosition === "secretary" ? "barangay secretary kalihim" : "");
-  const matchesExtraFilters = (x: ResidentRow) => {
-    if (ageFilter !== "all" && x.ageGroup !== ageFilter) return false;
-    if (genderFilter !== "all" && x.gender !== genderFilter) return false;
-    if (civilFilter !== "all" && String(x.civilStatusId ?? "") !== civilFilter) return false;
-    if (currentFilter !== "all" && !x.currentStatusIds.includes(Number(currentFilter))) return false;
-    if (membershipNameFilter !== "all" && !membershipListFor(x).includes(membershipNameFilter)) return false;
-    return true;
-  };
   const extraFilterCount = [ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter].filter((v) => v !== "all").length;
-  const sortResidents = (rows: ResidentRow[]) => {
-    const byName = (a: ResidentRow, b: ResidentRow) => a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName);
-    const out = [...rows];
-    switch (sortKey) {
-      case "name-az": return out.sort(byName);
-      case "name-za": return out.sort((a, b) => byName(b, a));
-      case "age-young": return out.sort((a, b) => (a.age ?? 999) - (b.age ?? 999) || byName(a, b));
-      case "age-old": return out.sort((a, b) => (b.age ?? -1) - (a.age ?? -1) || byName(a, b));
-      case "oldest": return out.sort((a, b) => a.real_id - b.real_id);
-      default: return out.sort((a, b) => b.real_id - a.real_id); // recently added
+  // The filters, as the server expects them (shared by the table and the export).
+  const filterParams = (scope: string) => ({
+    scope: scope === "all" ? undefined : scope,
+    search: residentSearch.trim() || undefined,
+    age: ageFilter === "all" ? undefined : ageFilter,
+    gender: genderFilter === "all" ? undefined : genderFilter,
+    civil: civilFilter === "all" ? undefined : civilFilter,
+    current: currentFilter === "all" ? undefined : currentFilter,
+    membership: membershipNameFilter === "all" ? undefined : membershipNameFilter,
+  });
+
+  const fetchPage = async () => {
+    // Only the newest request may update the screen (typing fast fires several).
+    const seq = ++pageSeq.current;
+    setPageLoading(true);
+    try {
+      const qs = new URLSearchParams({ paged: "1", sort: sortKey, page: String(currentPage), per_page: String(itemsPerPage) });
+      Object.entries(filterParams(membershipFilter)).forEach(([k, v]) => { if (v) qs.set(k, String(v)); });
+      const res = await fetch(`/membership-residents?${qs}`, { headers: { Accept: "application/json" } });
+      const body = await res.json();
+      if (seq !== pageSeq.current) return;
+      if (!res.ok || !Array.isArray(body?.data)) throw new Error(body?.message || `HTTP ${res.status}`);
+      // A page past the end (e.g. after the last row of a page was archived): go back.
+      if (body.meta.last_page < currentPage) {
+        setCurrentPage(Math.max(1, body.meta.last_page));
+        return;
+      }
+      setPageRows(body.data.map(toResidentRow));
+      setPageMeta({ total: body.meta.total, last_page: body.meta.last_page });
+      setTabTotals(body.totals ?? { all: 0, members: 0, not_members: 0 });
+    } catch (e) {
+      if (seq !== pageSeq.current) return;
+      console.error("residents page load:", e);
+      setApiErrorTitle(t("errorTitle"));
+      setApiError(t("loadResidentsFailed"));
+    } finally {
+      if (seq === pageSeq.current) setPageLoading(false);
     }
   };
-  const filteredResidents = useMemo(() => {
-    // Archived/trashed residents live on the Archive page now -- this
-    // list only ever shows active records.
-    let r = residentsData.filter((x) => x.deleted_at === null);
 
-    if (membershipFilter === "members") r = r.filter((x) => isActiveMember(x));
-    else if (membershipFilter === "not-members") r = r.filter((x) => !isActiveMember(x));
+  // Any filter change starts again from page 1.
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [residentSearch, membershipFilter, ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter, sortKey]);
 
-    r = r.filter(matchesExtraFilters);
-    if (residentSearch.trim()) r = r.filter((x) => residentSearchHit(x, residentSearch));
-    return sortResidents(r);
+  useEffect(() => {
+    const timer = setTimeout(fetchPage, 120);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [residentsData, membershipFilter, residentSearch, ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter, sortKey]);
+  }, [residentSearch, membershipFilter, ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter, sortKey, currentPage, reloadTick]);
 
   // ─── Export (Excel / PDF) ─────────────────────────────────────────────────
   // Clicking Excel / PDF opens an options dialog: which residents to include
@@ -1270,17 +1308,22 @@ const handleDeleteResident = async () => {
     setExportDialog(format);
   };
 
-  const exportResidentList = useMemo(() => {
-    let r = residentsData.filter((x) => x.deleted_at === null);
-    if (exportScope === "members") r = r.filter((x) => isActiveMember(x));
-    else if (exportScope === "not-members") r = r.filter((x) => !isActiveMember(x));
-    if (exportApplySearch) {
-      r = r.filter(matchesExtraFilters);
-      if (residentSearch.trim()) r = r.filter((x) => residentSearchHit(x, residentSearch));
-    }
-    return r;
+  // The export list comes from the server too, with the same filters as the table
+  // (or without them when "apply search & filters" is off) -- one source of truth.
+  const [exportResidentList, setExportResidentList] = useState<ResidentRow[]>([]);
+  useEffect(() => {
+    if (!exportDialog) return;
+    let cancelled = false;
+    const qs = new URLSearchParams({ filtered: "1", sort: "name-az" });
+    const params = exportApplySearch ? filterParams(exportScope) : { scope: exportScope === "all" ? undefined : exportScope };
+    Object.entries(params).forEach(([k, v]) => { if (v) qs.set(k, String(v)); });
+    fetch(`/membership-residents?${qs}`, { headers: { Accept: "application/json" } })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((d) => { if (!cancelled && Array.isArray(d)) setExportResidentList(d.map(toResidentRow)); })
+      .catch((e) => console.error("residents export list:", e));
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [residentsData, exportScope, exportApplySearch, residentSearch, ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter]);
+  }, [exportDialog, exportScope, exportApplySearch, residentSearch, ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter]);
 
   // Plain-English description of the on-screen filters, printed on the report.
   const onScreenFilterParts = (): string[] => {
@@ -1387,64 +1430,139 @@ const handleDeleteResident = async () => {
     }
   };
 
-  const totalPages = useMemo(() => Math.ceil(filteredResidents.length / itemsPerPage), [filteredResidents]);
-
-  const paginatedResidents = useMemo(
-    () => filteredResidents.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage),
-    [filteredResidents, currentPage]
-  );
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [residentSearch, membershipFilter, ageFilter, genderFilter, civilFilter, currentFilter, membershipNameFilter, sortKey]);
+  const totalPages = Math.max(1, pageMeta.last_page);
+  const paginatedResidents = pageRows;
 
   // ─── Sub-components ───────────────────────────────────────────────────────
-  // Current Status is many-to-many (a resident can be, say, both a Solo
-  // Parent and PWD at once), so this is a checkbox list rather than a
-  // single-select dropdown -- same shape as MembershipCheckboxes below.
+  // Current Status: staff-managed options, shown as chips grouped by
+  // category. A resident can hold several (Solo Parent + PWD), except inside
+  // "employment" where only one applies. The chosen ids still go to the
+  // server as current_status_ids[], and membership eligibility checks them.
   const CurrentStatusCheckboxes = ({ isEdit }: { isEdit: boolean }) => {
-    const selected = isEdit ? editingResident?.currentStatusIds ?? [] : newResident.currentStatusIds;
+    const form = isEdit ? editingResident : newResident;
+    const selected: number[] = form?.currentStatusIds ?? [];
+    const memberIds: number[] = form?.selectedMemberships ?? [];
 
-    const toggle = (id: number) => {
-      if (isEdit) {
-        setEditingResident((p) =>
-          p
-            ? {
-                ...p,
-                currentStatusIds: p.currentStatusIds.includes(id)
-                  ? p.currentStatusIds.filter((x) => x !== id)
-                  : [...p.currentStatusIds, id],
-              }
-            : p
-        );
-      } else {
-        setNewResident((p) => ({
-          ...p,
-          currentStatusIds: p.currentStatusIds.includes(id)
-            ? p.currentStatusIds.filter((x) => x !== id)
-            : [...p.currentStatusIds, id],
-        }));
-      }
+    const setIds = (fn: (ids: number[]) => number[]) => {
+      if (isEdit) setEditingResident((p) => (p ? { ...p, currentStatusIds: fn(p.currentStatusIds) } : p));
+      else setNewResident((p) => ({ ...p, currentStatusIds: fn(p.currentStatusIds) }));
     };
+
+    const toggle = (cs: CurrentStatusOption) => {
+      const cat = csCategoryOf(cs.category);
+      setIds((ids) => {
+        if (ids.includes(cs.id)) return ids.filter((x) => x !== cs.id);
+        if (cat === "employment") {
+          const others = currentStatuses.filter((o) => csCategoryOf(o.category) === "employment").map((o) => o.id);
+          return [...ids.filter((x) => !others.includes(x)), cs.id];
+        }
+        return [...ids, cs.id];
+      });
+    };
+
+    // Memberships already ticked above that need a particular status.
+    const requirements = availableMemberships
+      .filter((m) => memberIds.includes(m.id) && m.eligible_current_status_id)
+      .map((m) => ({
+        name: m.name,
+        status: currentStatuses.find((c) => c.id === m.eligible_current_status_id),
+      }))
+      .filter((r) => r.status);
+
+    const groups = CS_GROUPS.map((g) => ({
+      key: g,
+      items: currentStatuses
+        .filter((c) => csCategoryOf(c.category) === g)
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    })).filter((g) => g.items.length > 0);
 
     return (
       <div>
-        <label className="block text-base font-semibold text-white mb-1.5">{t("currentStatusLabel")}</label>
+        <div className="flex items-center justify-between gap-3 mb-1.5">
+          <label className="block text-base font-semibold text-white">{t("currentStatusLabel")}</label>
+          {currentStatuses.length > 0 && (
+            <span
+              className={`inline-flex items-center rounded-full text-[11px] font-semibold px-2.5 py-1 transition-colors ${
+                selected.length > 0 ? "bg-[#4FBEB0]/10 text-[#7DD8CB]" : "bg-white/[0.05] text-white/40"
+              }`}
+            >
+              {selected.length > 0 ? t("resNSelected").replace("{n}", String(selected.length)) : t("resNoneSelected")}
+            </span>
+          )}
+        </div>
         {currentStatuses.length === 0 ? (
           <p className="text-sm text-white/60 italic">{t("noCurrentStatusesAvailable")}</p>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl border border-white/25 bg-white/10 px-5 py-4">
-            {[...currentStatuses].sort((a, b) => a.label.localeCompare(b.label)).map((cs) => (
-              <label key={cs.id} className="flex items-center gap-2.5 text-base text-white cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(cs.id)}
-                  onChange={() => toggle(cs.id)}
-                  className="w-5 h-5 text-[#4FBEB0]"
-                />
-                <span>{tc(cs.label, language as any)}</span>
-              </label>
+          <div className="rounded-2xl border border-white/25 bg-white/10 p-5 space-y-5">
+            <p className="text-sm text-white/60">{t("csHelper")}</p>
+
+            {groups.map((g) => (
+              <div key={g.key}>
+                <div className={`flex items-center gap-2 ${groups.length === 1 && g.key === "other" ? "hidden" : "mb-2"}`}>
+                  <p className="text-xs font-bold uppercase tracking-wider text-gold-300">{t(`csGroup_${g.key}`)}</p>
+                  {g.key === "employment" && (
+                    <span className="text-[11px] font-medium text-white/45">{t("csPickOne")}</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2" role={g.key === "employment" ? "radiogroup" : "group"}>
+                  {g.items.map((cs) => {
+                    const on = selected.includes(cs.id);
+                    return (
+                      <button
+                        key={cs.id}
+                        type="button"
+                        role={g.key === "employment" ? "radio" : "checkbox"}
+                        aria-checked={on}
+                        onClick={() => toggle(cs)}
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-[15px] font-medium transition-colors ${
+                          on
+                            ? "border-[#4FBEB0]/60 bg-[#4FBEB0]/20 text-[#7DD8CB]"
+                            : "border-white/20 bg-white/[0.04] text-white/80 hover:bg-white/10 hover:text-white"
+                        }`}
+                      >
+                        {on && <Check className="h-3.5 w-3.5" />}
+                        {tc(cs.label, language as any)}
+                      </button>
+                    );
+                  })}
+                </div>
+                {g.key === "sector" && <p className="mt-2 text-xs text-white/45">{t("csPrivacyNote")}</p>}
+              </div>
             ))}
+
+            <div className="flex flex-wrap items-center gap-3 border-t border-white/10 pt-4">
+              <button
+                type="button"
+                onClick={() => setIds(() => [])}
+                aria-pressed={selected.length === 0}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-[15px] font-medium transition-colors ${
+                  selected.length === 0
+                    ? "border-white/40 bg-white/15 text-white"
+                    : "border-white/20 bg-white/[0.04] text-white/70 hover:bg-white/10 hover:text-white"
+                }`}
+              >
+                {selected.length === 0 && <Check className="h-3.5 w-3.5" />}
+                {t("csNone")}
+              </button>
+            </div>
+
+            {requirements.length > 0 && (
+              <ul className="space-y-1.5 border-t border-white/10 pt-4">
+                {requirements.map((r) => {
+                  const met = selected.includes(r.status!.id);
+                  return (
+                    <li key={r.name} className={`flex items-start gap-2 text-sm ${met ? "text-[#7DD8CB]" : "text-amber-300"}`}>
+                      <span className="mt-0.5">{met ? <Check className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}</span>
+                      <span>
+                        {t("csRequiredBy")
+                          .replace("{membership}", tc(r.name, language as any))
+                          .replace("{status}", tc(r.status!.label, language as any))}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         )}
       </div>
@@ -1528,7 +1646,7 @@ const handleDeleteResident = async () => {
         </div>
 
         {form.hasAccount && (
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-base font-semibold text-white mb-1.5">{t("usernameLabel")}</label>
               <input
@@ -1607,8 +1725,10 @@ const handleDeleteResident = async () => {
     const selectedMemberships = availableMemberships
       .filter((m) => selMems.includes(m.id))
       .sort((a, b) => a.name.localeCompare(b.name));
+    // The program search is matched by the server (memberships list endpoint, paged=1).
+    const matchedMembershipIds = useServerMatchIds("/api/memberships", membershipSearch);
     const filteredAvailable = availableMemberships
-      .filter((m) => !selMems.includes(m.id) && matchesSearch(membershipSearch, m.name))
+      .filter((m) => !selMems.includes(m.id) && (matchedMembershipIds === null || matchedMembershipIds.has(String(m.id))))
       .sort((a, b) => a.name.localeCompare(b.name));
 
     return (
@@ -1861,8 +1981,8 @@ const handleDeleteResident = async () => {
     label: `${t("fltMembership")}: ${membershipFilter === "members" ? t("tabMembers") : t("resNotYetMembers")}`,
     onRemove: () => setMembershipFilter("all"),
   }];
-  const activeResidents = residentsData.filter((x) => x.deleted_at === null);
-  const membersCount = activeResidents.filter((x) => isActiveMember(x)).length;
+  // Tab sizes come from the server (all active residents, members, not yet members).
+  const membersCount = tabTotals.members;
 
   return (
     <div className="space-y-5">
@@ -1899,16 +2019,16 @@ const handleDeleteResident = async () => {
           value={membershipFilter}
           onChange={(k) => { setMembershipFilter(k as typeof membershipFilter); goToPage(1); }}
           tabs={[
-            { key: "all", label: t("allRecordsOption"), count: activeResidents.length },
+            { key: "all", label: t("allRecordsOption"), count: tabTotals.all },
             { key: "members", label: t("tabMembers"), count: membersCount },
-            { key: "not-members", label: t("resNotYetMembers"), count: activeResidents.length - membersCount },
+            { key: "not-members", label: t("resNotYetMembers"), count: tabTotals.not_members },
           ]}
         />
         <FilterBar
           search={{ value: residentSearch, onChange: setResidentSearch, placeholder: t("searchByIdNameContactPlaceholder") }}
           filters={residentFilterDefs}
           sort={{ value: sortKey, onChange: setSortKey, options: residentSortOptions }}
-          count={{ shown: filteredResidents.length, total: membershipFilter === "all" ? activeResidents.length : membershipFilter === "members" ? membersCount : activeResidents.length - membersCount }}
+          count={{ shown: pageMeta.total, total: membershipFilter === "all" ? tabTotals.all : membershipFilter === "members" ? membersCount : tabTotals.not_members }}
           extraChips={residentTabChips}
           onClearExtras={() => setMembershipFilter("all")}
         />
@@ -1928,12 +2048,12 @@ const handleDeleteResident = async () => {
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <p className="hidden sm:block text-[13px] text-white/45">{t("resRecordsCount").replace("{n}", String(filteredResidents.length))}</p>
+            <p className="hidden sm:block text-[13px] text-white/45">{t("resRecordsCount").replace("{n}", String(pageMeta.total))}</p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => openExportDialog("excel")}
-                disabled={loading || pageSwitching || residentsData.length === 0}
+                disabled={loading || pageSwitching || tabTotals.all === 0}
                 title={t("resExportExcelTitle")}
                 className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-[13px] font-semibold text-white transition-all duration-300 hover:border-[#1E3A5F] hover:bg-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -1943,7 +2063,7 @@ const handleDeleteResident = async () => {
               <button
                 type="button"
                 onClick={() => openExportDialog("pdf")}
-                disabled={loading || pageSwitching || residentsData.length === 0}
+                disabled={loading || pageSwitching || tabTotals.all === 0}
                 title={t("resExportPdfTitle")}
                 className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-[13px] font-semibold text-white transition-all duration-300 hover:border-[#1E3A5F] hover:bg-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40"
               >
@@ -1954,7 +2074,7 @@ const handleDeleteResident = async () => {
           </div>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-[15px] min-w-[760px]">
+          <table className="rtable w-full text-[15px] min-w-[760px]">
             <thead>
               <tr className="border-b border-white/10">
                 <th className="py-3.5 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{loading || pageSwitching ? <Skeleton className="h-3 w-20" /> : t("residentOption")}</th>
@@ -2042,8 +2162,8 @@ const handleDeleteResident = async () => {
             <p className="text-xs font-medium text-white/45">
               {t("budgetPageRange")
                 .replace("{from}", String((currentPage - 1) * itemsPerPage + 1))
-                .replace("{to}", String(Math.min(currentPage * itemsPerPage, filteredResidents.length)))
-                .replace("{total}", String(filteredResidents.length))}
+                .replace("{to}", String(Math.min(currentPage * itemsPerPage, pageMeta.total)))
+                .replace("{total}", String(pageMeta.total))}
             </p>
             <nav className="flex items-center gap-2" aria-label="Pagination">
               <button
@@ -2479,7 +2599,7 @@ const handleDeleteResident = async () => {
                   {t("resBasicInfo")}
                 </h2>
                 <div className="space-y-4">
-                  <div className="grid md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {(["firstName", "middleName", "lastName"] as const).map((field) => (
                       <div key={field}>
                         <label className="block text-base font-semibold text-white mb-1.5">
@@ -2499,7 +2619,7 @@ const handleDeleteResident = async () => {
                     ))}
                   </div>
 
-                  <div className="grid md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("suffixLabel")}</label>
                       <SuffixSelect
@@ -2564,7 +2684,7 @@ const handleDeleteResident = async () => {
                   {t("profileHouseholdLabel")}
                 </h2>
                 <div className="space-y-4">
-                  <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("birthDateLabel")}</label>
                       <DatePicker
@@ -2778,7 +2898,7 @@ const handleDeleteResident = async () => {
                   {t("resBasicInfo")}
                 </h2>
                 <div className="space-y-4">
-                  <div className="grid md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     {(["firstName", "middleName", "lastName"] as const).map((field) => (
                       <div key={field}>
                         <label className="block text-base font-semibold text-white mb-1.5">
@@ -2800,7 +2920,7 @@ const handleDeleteResident = async () => {
                     ))}
                   </div>
 
-                  <div className="grid md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("suffixLabel")}</label>
                       <SuffixSelect
@@ -2875,7 +2995,7 @@ const handleDeleteResident = async () => {
                   {t("profileHouseholdLabel")}
                 </h2>
                 <div className="space-y-4">
-                  <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("birthDateLabel")}</label>
                       <DatePicker
@@ -3243,7 +3363,7 @@ const handleDeleteResident = async () => {
                     <button type="button" className={exportPresetBtn} onClick={() => setExportCols([])}>{t("resExportClearAll")}</button>
                   </div>
                 </div>
-                <div className="grid gap-2.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   {RESIDENT_EXPORT_COLUMNS.map((c) => {
                     const on = exportCols.includes(c.key);
                     return (
@@ -3268,7 +3388,7 @@ const handleDeleteResident = async () => {
               {/* Other options */}
               <div className="border-t border-white/10 pt-6">
                 <p className="mb-3 text-[15px] font-bold uppercase tracking-wide text-white/80">{t("resExportOther")}</p>
-                <div className="grid gap-2.5 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   <button
                     type="button"
                     onClick={() => setExportMessage((v) => !v)}

@@ -73,7 +73,7 @@ export default function TopHeader({ memberName, role, onMenuClick, userId, userC
                 <DefaultAvatar className="h-11 w-11" title={memberName} />
                 <div className="min-w-0">
                   <p className="truncate text-base font-bold text-white">{memberName}</p>
-                  <p className="flex items-center gap-1.5 text-sm text-white/50">
+                  <p className="flex flex-wrap items-center gap-1.5 text-sm text-white/50">
                     {userCode && <span>{userCode}</span>}
                     <span className="rounded-full bg-gold-400 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#08130F] min-[420px]:hidden">{role}</span>
                     {isHeadStaff && <span className="inline-flex items-center gap-1 rounded-full bg-gold-400/20 px-2 py-0.5 text-[11px] font-bold text-gold-300"><Crown className="h-3 w-3" /> {t("secHeadStaff")}</span>}

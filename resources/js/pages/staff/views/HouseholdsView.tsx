@@ -1,7 +1,6 @@
-import { matchesSearch } from "../../../lib/search";
 import SaveButton from "../../../components/ui/SaveButton";
 import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Home, Users, Plus, Pencil, Trash2, Star, UserPlus, X, AlertCircle, AlertTriangle, ChevronDown, Search, Check } from "lucide-react";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
@@ -75,11 +74,39 @@ function fullName(m: Member) {
   return [m.first_name, m.middle_name, m.last_name].filter(Boolean).join(" ");
 }
 
+// A resident picker backed by the server: the typed search is matched by the database
+// (HouseholdController::unassigned, paged=1) and only the first matches come back.
+function useUnassignedSearch(search: string, enabled: boolean, exclude: number | null = null, reloadKey: unknown = 0) {
+  const [rows, setRows] = useState<Member[]>([]);
+  const [total, setTotal] = useState(0);
+  const seq = useRef(0);
+  useEffect(() => {
+    if (!enabled) return;
+    const timer = setTimeout(async () => {
+      const id = ++seq.current;
+      try {
+        const qs = new URLSearchParams({ paged: "1", per_page: "30" });
+        if (search.trim()) qs.set("search", search.trim());
+        if (exclude) qs.set("exclude", String(exclude));
+        const res = await api(`/households/unassigned?${qs.toString()}`);
+        if (id !== seq.current) return;
+        setRows(Array.isArray(res?.data) ? res.data : []);
+        setTotal(res?.total ?? 0);
+      } catch {
+        if (id === seq.current) { setRows([]); setTotal(0); }
+      }
+    }, 120);
+    return () => clearTimeout(timer);
+  }, [search, enabled, exclude, reloadKey]);
+  return { rows, total };
+}
+
 export default function HouseholdsView() {
   const { t } = useLanguage();
 
   const [households, setHouseholds] = useState<Household[]>([]);
-  const [unassigned, setUnassigned] = useState<Member[]>([]);
+  const [loadTick, setLoadTick] = useState(0); // bumps after every reload so the pickers refetch
+  const [addHeadPicked, setAddHeadPicked] = useState<Member | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   // Server-side size filter + sort (the list is paginated by the API).
@@ -128,16 +155,15 @@ export default function HouseholdsView() {
       if (searchValue) qs.set("search", searchValue);
       if (sizeFilter !== "all") qs.set("size", sizeFilter);
       if (sortKey !== "newest") qs.set("sort", sortKey);
-      const [list, free, warn] = await Promise.all([
+      const [list, warn] = await Promise.all([
         api(`/households?${qs.toString()}`),
-        api(`/households/unassigned`),
         api(`/households/alerts`).catch(() => []),
       ]);
       setAlerts(Array.isArray(warn) ? warn : []);
       setHouseholds(Array.isArray(list?.data) ? list.data : []);
       setLastPage(list?.last_page ?? 1);
       setMatchTotal(typeof list?.total === "number" ? list.total : (Array.isArray(list?.data) ? list.data.length : 0));
-      setUnassigned(Array.isArray(free) ? free : []);
+      setLoadTick((n) => n + 1);
     } catch (e: any) {
       console.error("households load:", e);
       setErrorMessage(e?.message || t("loadHouseholdsFailed"));
@@ -162,10 +188,7 @@ export default function HouseholdsView() {
     window.dispatchEvent(new CustomEvent("household-alerts", { detail: alerts.length }));
   }, [alerts]);
 
-  const filteredUnassigned = useMemo(() => {
-    if (!memberSearch.trim()) return unassigned;
-    return unassigned.filter((m) => matchesSearch(memberSearch, fullName(m), m.user_code));
-  }, [unassigned, memberSearch]);
+  const filteredUnassigned = useUnassignedSearch(memberSearch, pickerFor !== null, null, loadTick).rows;
 
   const resetAdd = () => {
     setAddOpen(false);
@@ -189,20 +212,15 @@ export default function HouseholdsView() {
     else resetAdd();
   };
 
-  const addHead = unassigned.find((m) => m.id === addHeadId) ?? null;
+  const addHead = addHeadId !== null ? addHeadPicked : null;
 
-  const headChoices = useMemo(() => {
-    if (!addHeadSearch.trim()) return unassigned;
-    return unassigned.filter((m) => matchesSearch(addHeadSearch, fullName(m), m.user_code));
-  }, [unassigned, addHeadSearch]);
-
-  const memberChoices = useMemo(() => {
-    const pool = unassigned.filter((m) => m.id !== addHeadId);
-    if (!addMemberSearch.trim()) return pool;
-    return pool.filter((m) => matchesSearch(addMemberSearch, fullName(m), m.user_code));
-  }, [unassigned, addHeadId, addMemberSearch]);
+  const headPick = useUnassignedSearch(addHeadSearch, addOpen, null, loadTick);
+  const headChoices = headPick.rows;
+  const memberPick = useUnassignedSearch(addMemberSearch, addOpen && addHeadId !== null, addHeadId, loadTick);
+  const memberChoices = memberPick.rows;
 
   const pickHead = (id: number) => {
+    setAddHeadPicked(headChoices.find((m) => m.id === id) ?? null);
     setAddHeadId(id);
     // The head is always a member already -- never also list them twice.
     setAddMemberIds((prev) => prev.filter((x) => x !== id));
@@ -673,7 +691,7 @@ export default function HouseholdsView() {
                 </div>
                 <div className="max-h-60 overflow-y-auto rounded-2xl border border-white/10 bg-white/[0.03] p-1.5 space-y-1">
                   {headChoices.length === 0 ? (
-                    <p className="px-4 py-2.5 text-base text-white/40">{unassigned.length === 0 ? t("hhNoAvailableResidents") : t("noUnassignedResidents")}</p>
+                    <p className="px-4 py-2.5 text-base text-white/40">{headPick.total === 0 ? t("hhNoAvailableResidents") : t("noUnassignedResidents")}</p>
                   ) : headChoices.map((m) => {
                     const on = m.id === addHeadId;
                     return (

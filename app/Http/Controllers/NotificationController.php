@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\Paged;
 use App\Models\Notification;
 use App\Models\Membership;
 use App\Models\SmsLog;
@@ -21,6 +22,13 @@ class NotificationController extends Controller
         // (capped); anything that only needs a number should use /notifications/unread-count.
         $perPage = max(1, min(200, (int) $request->query('per_page', 20)));
 
+        // paged=1 (the member's Notifications screen): tab, search, event, status, event timing
+        // and day are filtered by the database; the response also carries the tab badges and
+        // the list of events that have notifications in this tab.
+        if ($request->boolean('paged')) {
+            return $this->pagedMemberNotifications($request);
+        }
+
         $notifications = Notification::where('user_id', Auth::id())
             ->where('type', '!=', self::STAFF_ALERT)
             ->with('event')  // Load event relationship
@@ -31,6 +39,60 @@ class NotificationController extends Controller
             ->paginate($perPage);
 
         return response()->json($notifications);
+    }
+
+    private function pagedMemberNotifications(Request $request)
+    {
+        $mine = fn () => Notification::where('user_id', Auth::id())->where('type', '!=', self::STAFF_ALERT);
+        $feedbackTab = $request->input('tab') === 'feedback';
+        $inTab = fn ($q) => $feedbackTab ? $q->where('type', 'feedback_reply') : $q->where('type', '!=', 'feedback_reply');
+
+        $query = $inTab($mine())->with('event');
+
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $like = Paged::like($word);
+            $query->where(fn ($q) => $q->whereRaw('LOWER(title) LIKE ?', [$like])->orWhereRaw('LOWER(message) LIKE ?', [$like]));
+        }
+        $now = now()->toDateTimeString();
+        $timing = (string) $request->input('date_filter', 'all');
+        if ($timing === 'upcoming') {
+            $query->whereHas('event', fn ($e) => $e->where('event_start', '>', $now));
+        } elseif ($timing === 'ongoing') {
+            $query->whereHas('event', fn ($e) => $e->where('event_start', '<=', $now)->whereRaw('COALESCE(event_end, event_start) >= ?', [$now]));
+        } elseif ($timing === 'past') {
+            $query->whereHas('event', fn ($e) => $e->whereRaw('COALESCE(event_end, event_start) < ?', [$now]));
+        }
+        if ($request->filled('event') && $request->input('event') !== 'all') {
+            $query->where('event_id', (int) $request->input('event'));
+        }
+        if ($request->input('status') === 'unread') {
+            $query->where('read', false);
+        } elseif ($request->input('status') === 'read') {
+            $query->where('read', true);
+        }
+        if ($request->filled('date')) {
+            $query->whereDate('created_at', (string) $request->input('date'));
+        }
+
+        $paginator = $query
+            ->orderBy('read', 'asc')
+            ->orderBy('is_updated', 'desc')
+            ->orderBy('updated_at_notification', 'desc')
+            ->orderBy('created_at', 'desc')
+            ->paginate(Paged::perPage($request, 10, 200), ['*'], 'page', Paged::page($request));
+
+        // Events that have at least one notification in this tab (for the event filter), A-Z.
+        $eventIds = $inTab($mine())->whereNotNull('event_id')->distinct()->pluck('event_id');
+        $eventOptions = \App\Models\Event::withoutTrashed()->whereIn('id', $eventIds)->orderBy('name')->get(['id', 'name'])
+            ->map(fn ($e) => ['value' => (string) $e->id, 'label' => $e->name])->values();
+
+        return response()->json(array_merge($paginator->toArray(), [
+            'counts' => [
+                'events' => $mine()->where('type', '!=', 'feedback_reply')->count(),
+                'feedback_unread' => $mine()->where('type', 'feedback_reply')->where('read', false)->count(),
+            ],
+            'event_options' => $eventOptions,
+        ]));
     }
 
     // For Staff - grouped by event (one notification per event)
@@ -68,12 +130,22 @@ class NotificationController extends Controller
         if ($request->has('target_membership_id') && $request->target_membership_id !== 'all-residents') {
             $targetId = (int) $request->target_membership_id;
             $query->whereHas('event', function($q) use ($targetId) {
-                $q->whereJsonContains('membership_ids', $targetId);
+                $q->where(fn ($m) => $m->whereJsonContains('membership_ids', $targetId)->orWhereJsonContains('membership_ids', (string) $targetId));
             });
         }
-        
+
+        // Search: every word must appear in the title, the message or the event's name.
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $like = Paged::like($word);
+            $query->where(function ($q) use ($like) {
+                $q->whereRaw('LOWER(title) LIKE ?', [$like])
+                  ->orWhereRaw('LOWER(message) LIKE ?', [$like])
+                  ->orWhereHas('event', fn ($e) => $e->whereRaw('LOWER(name) LIKE ?', [$like]));
+            });
+        }
+
         $notifications = $query->orderBy('created_at', 'desc')
-            ->paginate(20);
+            ->paginate(Paged::perPage($request, 10), ['*'], 'page', Paged::page($request));
         
         // Get all membership IDs from events
         $allMembershipIds = [];
@@ -107,7 +179,8 @@ class NotificationController extends Controller
             }
         }
         
-        return response()->json($notifications);
+        // `all_total`: the size of the whole list, whatever the filters say (the tab badge).
+        return response()->json(array_merge($notifications->toArray(), ['all_total' => $latestIds->count()]));
     }
 
     public function thisWeek()

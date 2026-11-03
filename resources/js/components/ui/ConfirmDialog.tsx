@@ -2,16 +2,18 @@ import React from "react";
 import { useLanguage } from "../../i18n/LanguageContext";
 import Portal from "./Portal";
 
-type Tone = "brand" | "danger";
+type Tone = "brand" | "danger" | "warning";
 
 const TONE_STYLES: Record<Tone, { icon: string; title: string; button: string }> = {
   brand: { icon: "text-sage-800", title: "text-sage-800", button: "bg-sage-800 hover:bg-sage-900" },
   danger: { icon: "text-red-500", title: "text-red-600", button: "bg-red-600 hover:bg-red-700" },
+  warning: { icon: "text-amber-500", title: "text-amber-600", button: "bg-amber-500 hover:bg-amber-600" },
 };
 
 const TONE_STYLES_DARK: Record<Tone, { icon: string; title: string; button: string }> = {
   brand: { icon: "text-[#4FBEB0]", title: "text-white", button: "bg-sage-700 hover:bg-sage-800 text-white font-semibold shadow-sm" },
   danger: { icon: "text-red-400", title: "text-red-400", button: "bg-red-500 hover:bg-red-600 text-white" },
+  warning: { icon: "text-amber-400", title: "text-amber-300", button: "bg-amber-400 hover:bg-amber-300 text-[#0A0E1A] font-semibold" },
 };
 
 interface ConfirmDialogProps {

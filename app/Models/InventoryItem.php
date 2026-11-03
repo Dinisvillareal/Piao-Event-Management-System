@@ -13,11 +13,9 @@ class InventoryItem extends Model
     protected $fillable = [
         'name',
         'quantity',
-        'condition',
         'storage_location',
         'notes',
         'photo_path',
-        'extra_photo_paths',
         'deleted_by',
         'lost_quantity',
         'lost_pending',
@@ -30,9 +28,10 @@ class InventoryItem extends Model
 
     /**
      * In-stock units are split by condition: an item can hold 45 Good and
-     * 15 New at once. The four counts always add up to `quantity`; the old
-     * single `condition` column is kept as the item's main (largest)
-     * condition so filters and reports that only need one label still work.
+     * 15 New at once. The four counts always add up to `quantity`. There is no
+     * stored `condition` column: the item's main (largest) condition, for the
+     * places that only need one label, is worked out from the counts by the
+     * `condition` accessor below.
      */
     public const CONDITION_COLUMNS = [
         'New' => 'new_quantity',
@@ -50,7 +49,6 @@ class InventoryItem extends Model
         'lost_quantity' => 'integer',
         'lost_pending' => 'integer',
         'disposed_quantity' => 'integer',
-        'extra_photo_paths' => 'array',
     ];
 
     // Same convention as User::validation_id_url and
@@ -59,7 +57,7 @@ class InventoryItem extends Model
     // URL, so it's appended automatically on every JSON response.
     protected $appends = [
         'photo_url',
-        'photo_urls',
+        'condition',
     ];
 
     protected static function booted(): void
@@ -85,9 +83,7 @@ class InventoryItem extends Model
             if ($countsEdited && ! $item->isDirty('quantity')) {
                 $quantity = array_sum($counts);
             } elseif ($quantityEdited || $countsEdited) {
-                $main = $countsEdited
-                    ? self::mainColumn($counts, $item->condition)
-                    : (self::CONDITION_COLUMNS[$item->condition] ?? 'good_quantity');
+                $main = self::mainColumn($counts, 'Good');
                 $delta = $quantity - array_sum($counts);
 
                 if ($delta > 0) {
@@ -112,15 +108,6 @@ class InventoryItem extends Model
             }
             $item->setAttribute('quantity', $quantity);
 
-            // The main condition is re-picked only when the counts themselves
-            // were edited; a loan or return keeps it, so returned units go
-            // back to where they came from.
-            if ($countsEdited) {
-                $flip = array_flip(self::CONDITION_COLUMNS);
-                if (array_sum($counts) > 0) {
-                    $item->setAttribute('condition', $flip[self::mainColumn($counts, $item->condition)]);
-                }
-            }
         });
     }
 
@@ -139,6 +126,21 @@ class InventoryItem extends Model
         }
 
         return $best;
+    }
+
+    /**
+     * The item's main condition: the one holding the most in-stock units (ties go to
+     * the worse condition). Derived from the counts, never stored; an item with no
+     * units in stock reads as Good.
+     */
+    public function getConditionAttribute(): string
+    {
+        $counts = [];
+        foreach (self::CONDITION_COLUMNS as $col) {
+            $counts[$col] = max(0, (int) $this->getAttribute($col));
+        }
+
+        return array_flip(self::CONDITION_COLUMNS)[self::mainColumn($counts, 'Good')];
     }
 
     /** In-stock units per condition, e.g. ['New' => 15, 'Good' => 45, 'Fair' => 0, 'Poor' => 0]. */
@@ -201,18 +203,6 @@ class InventoryItem extends Model
         return $this->photo_path
             ? Storage::disk('public')->url($this->photo_path)
             : null;
-    }
-
-    /** Every photo path, cover first (photo_path, then the extras). */
-    public function allPhotoPaths(): array
-    {
-        return array_values(array_filter(array_merge([$this->photo_path], $this->extra_photo_paths ?? [])));
-    }
-
-    /** Public URLs of every photo, cover first. */
-    public function getPhotoUrlsAttribute(): array
-    {
-        return array_map(fn ($p) => Storage::disk('public')->url($p), $this->allPhotoPaths());
     }
 
     // Outstanding "borrowed for an event" rows -- see EventInventoryItem.

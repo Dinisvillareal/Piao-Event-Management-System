@@ -1,7 +1,6 @@
 import Portal from "../../../components/ui/Portal";
 import { scrollListIntoView } from "../../../lib/scrollToList";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import { matchesSearch } from "../../../lib/search";
 import { makeEventTiming, STATUS_META } from "../../../lib/eventTiming";
 import FormSelect from "../../../components/ui/FormSelect";
 import React, { useEffect, useMemo, useState, useRef } from "react";
@@ -164,6 +163,7 @@ export function EventsView({
   // Quick tabs (Today / This week / Has feedback) and sort, on top of the status + membership + date filters.
   const [eventTab, setEventTab] = useState<"all" | "today" | "week" | "feedback">("all");
   const [eventSort, setEventSort] = useState("default");
+  const [pageLoading, setPageLoading] = useState(true); // the server page of cards is loading
   const [viewEv, setViewEv] = useState<MyEvent | null>(null);
   // Tab to land on when the detail view opens (set by a bell notification).
   const pendingSubRef = useRef<"ratings" | "reasons" | null>(null);
@@ -283,10 +283,10 @@ export function EventsView({
   const pageSwitching = pageSwitchingRaw || filterSwitching;
   // Page-open skeleton -- `loading` is only true during Staff's very first
   // fetch, so without this, opening Events later showed the cards instantly.
-  const openSkeleton = usePageOpenSkeleton(loading);
+  const openSkeleton = usePageOpenSkeleton(pageLoading, 0);
   // While the page is still showing its skeleton the counters read 0, not the
   // numbers of a list that has not loaded yet.
-  const countsLoading = openSkeleton || loading;
+  const countsLoading = openSkeleton || pageLoading;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (page: number) => {
@@ -294,7 +294,7 @@ export function EventsView({
     scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   // Same brief flash inside an event's detail view (tab switch, attendance /
@@ -322,6 +322,14 @@ export function EventsView({
 
   const initialLoadDone = useRef(false);
   const [localEvents, setLocalEvents] = useState<MyEvent[]>([]);
+  // What the cards show: one page, already filtered and sorted by the server, plus the
+  // size of every tab and status (so the numbers always match the filters).
+  const [pageEvents, setPageEvents] = useState<MyEvent[]>([]);
+  const [eventMeta, setEventMeta] = useState({ total: 0, last_page: 1 });
+  const [eventTabCounts, setEventTabCounts] = useState({ all: 0, today: 0, week: 0, feedback: 0 });
+  const [statusCounts, setStatusCounts] = useState({ all: 0, ongoing: 0, upcoming: 0, past: 0 });
+  const [eventsReloadTick, setEventsReloadTick] = useState(0);
+  const eventsSeq = useRef(0);
 
   // Bell notification -> open that event on the requested tab. Waits for the
   // events to be loaded, then clears the request so it only fires once.
@@ -459,7 +467,7 @@ export function EventsView({
     };
   };
 
-  const refreshEventsFromAPI = async () => {
+  const refreshEventsFromAPI = async (reloadPage = true) => {
     try {
       const response = await api.get('/events-data');
       const result = response.data;
@@ -471,6 +479,7 @@ export function EventsView({
       if (rawEvents.length > 0 || initialLoadDone.current) {
         setLocalEvents(rawEvents.map(formatDbEvent));
       }
+      if (reloadPage) setEventsReloadTick((n) => n + 1); // the page of cards may have changed too
     } catch (error) {
       console.error("Error refreshing events:", error);
     }
@@ -482,7 +491,7 @@ export function EventsView({
       if (allEvents.length > 0) {
         setLocalEvents(allEvents);
       }
-      refreshEventsFromAPI();
+      refreshEventsFromAPI(false); // the first page of cards is already being fetched
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -817,114 +826,60 @@ export function EventsView({
     return true;
   };
 
-  // Everything except the Ongoing/Upcoming/Past tab, so the tab counts stay
-  // truthful for the current search / membership / date.
-  const baseScopedEvents = useMemo(() => {
-    let result = [...localEvents];
-
-    if (membershipFilter !== "all") {
-      result = result.filter((e) =>
-        (e.membershipIds || []).some((id) => String(id) === membershipFilter)
-      );
-    }
-
-    if (eventSearch.trim()) {
-      result = result.filter((e) =>
-        matchesSearch(eventSearch, e.title, e.date, e.location, e.description)
-      );
-    }
-
-    if (selectedDate) {
-      const chosen = new Date(selectedDate);
-      chosen.setHours(0, 0, 0, 0);
-      const nextDay = new Date(chosen);
-      nextDay.setDate(chosen.getDate() + 1);
-
-      result = result.filter((e) => {
-        let dateValue = e.event_start || e.date || e.startDate;
-        if (!dateValue) return false;
-        if (typeof dateValue === 'string' && dateValue.includes(" ")) {
-          dateValue = dateValue.split(" ")[0];
-        }
-        if (dateValue.includes("T")) {
-          dateValue = dateValue.split("T")[0];
-        }
-        const eventDate = new Date(dateValue);
-        return eventDate >= chosen && eventDate < nextDay;
+  // Search, membership, date, quick tab, status, sort and paging are all done by the
+  // server (EventController::pagedEvents), so the cards, counts and pages agree.
+  const fetchEventsPage = async (silent = false) => {
+    const seq = ++eventsSeq.current;
+    if (!silent) setPageLoading(true);
+    try {
+      const response = await api.get("/events-data", {
+        params: {
+          paged: 1,
+          search: eventSearch.trim() || undefined,
+          membership: membershipFilter === "all" ? undefined : membershipFilter,
+          date: selectedDate || undefined,
+          tab: eventTab,
+          status: eventFilter,
+          sort: eventSort,
+          page: currentPage,
+          per_page: itemsPerPage,
+        },
       });
+      if (seq !== eventsSeq.current) return;
+      const body = response.data;
+      // A page past the end (e.g. after the last event of a page was archived): go back.
+      if (body.meta.last_page < currentPage) {
+        setCurrentPage(Math.max(1, body.meta.last_page));
+        return;
+      }
+      setPageEvents((body.data ?? []).map(formatDbEvent));
+      setEventMeta({ total: body.meta.total, last_page: body.meta.last_page });
+      setEventTabCounts(body.counts.tabs);
+      setStatusCounts(body.counts.status);
+    } catch (error) {
+      if (seq === eventsSeq.current) console.error("Error loading events page:", error);
+    } finally {
+      if (seq === eventsSeq.current) setPageLoading(false);
     }
-
-    return result;
-  }, [localEvents, membershipFilter, eventSearch, selectedDate]);
-
-  // Quick-tab tests. "Today" = the event runs at any point today; "This week"
-  // = it starts Monday-Sunday of the current week; "Has feedback" = at least
-  // one rating or non-attendance reason came in.
-  const eventTabTest = (tab: typeof eventTab, e: MyEvent): boolean => {
-    if (tab === "all") return true;
-    if (tab === "feedback") return (e.feedbackCount ?? 0) > 0;
-    const start = parseEventDateTime(e.event_start) ?? parseEventDateTime(e.date) ?? parseEventDateTime(e.startDate);
-    if (!start) return false;
-    const end = parseEventDateTime(e.event_end) ?? start;
-    const now = new Date();
-    if (tab === "today") {
-      const d0 = new Date(now); d0.setHours(0, 0, 0, 0);
-      const d1 = new Date(d0); d1.setDate(d0.getDate() + 1);
-      return start < d1 && end >= d0;
-    }
-    const w0 = new Date(now); w0.setHours(0, 0, 0, 0); w0.setDate(w0.getDate() - ((w0.getDay() + 6) % 7));
-    const w1 = new Date(w0); w1.setDate(w0.getDate() + 7);
-    return start >= w0 && start < w1;
   };
-  const eventTabCounts = useMemo(() => ({
-    all: baseScopedEvents.length,
-    today: baseScopedEvents.filter((e) => eventTabTest("today", e)).length,
-    week: baseScopedEvents.filter((e) => eventTabTest("week", e)).length,
-    feedback: baseScopedEvents.filter((e) => eventTabTest("feedback", e)).length,
-  }), [baseScopedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
-  const scopedEvents = useMemo(
-    () => baseScopedEvents.filter((e) => eventTabTest(eventTab, e)),
-    [baseScopedEvents, eventTab] // eslint-disable-line react-hooks/exhaustive-deps
-  );
 
-  const filteredEvents = useMemo(
-    () => scopedEvents.filter((event) => getFilterStatus(event, eventFilter)),
-    [scopedEvents, eventFilter] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  const statusCounts = useMemo(() => {
-    const c = { all: scopedEvents.length, ongoing: 0, upcoming: 0, past: 0 };
-    scopedEvents.forEach((e) => {
-      const l = getEventStatus(e).label;
-      if (l === "Ongoing") c.ongoing++;
-      else if (l === "Upcoming") c.upcoming++;
-      else c.past++;
-    });
-    return c;
-  }, [scopedEvents]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Ongoing first, then Upcoming (soonest first), then Past (most recent first).
-  const sortedFilteredEvents = useMemo(() => {
-    const order = { Ongoing: 0, Upcoming: 1, Past: 2 } as const;
-    const startOf = (e: MyEvent) => (parseEventDateTime(e.event_start) ?? parseEventDateTime(e.date) ?? parseEventDateTime(e.startDate))?.getTime() ?? 0;
-    return [...filteredEvents]
-      .map((e) => ({ e, label: getEventStatus(e).label, start: startOf(e) }))
-      .sort((x, y) => {
-        if (order[x.label] !== order[y.label]) return order[x.label] - order[y.label];
-        // Sections stay grouped by status; the sort picks the order inside each one.
-        if (eventSort === "soonest") return x.start - y.start;
-        if (eventSort === "latest") return y.start - x.start;
-        if (eventSort === "name-az") return String(x.e.title).localeCompare(String(y.e.title));
-        return x.label === "Past" ? y.start - x.start : x.start - y.start;
-      })
-      .map((x) => x.e);
-  }, [filteredEvents, eventSort]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const totalPages = Math.ceil(sortedFilteredEvents.length / itemsPerPage);
-  const paginatedEvents = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return sortedFilteredEvents.slice(startIndex, startIndex + itemsPerPage);
-  }, [sortedFilteredEvents, currentPage, itemsPerPage]);
+  const totalPages = Math.max(1, eventMeta.last_page);
+  const paginatedEvents = pageEvents;
+  // Typing waits a moment so one request covers a burst of keystrokes; tabs, filters and
+  // paging fetch straight away.
+  const lastEventSearch = useRef(eventSearch);
+  useEffect(() => {
+    const typed = lastEventSearch.current !== eventSearch;
+    lastEventSearch.current = eventSearch;
+    const timer = setTimeout(() => fetchEventsPage(), typed ? 200 : 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventSearch, eventFilter, membershipFilter, selectedDate, eventTab, eventSort, currentPage]);
+  // Background refreshes / saves: update the page quietly, no skeleton.
+  useEffect(() => {
+    if (eventsReloadTick > 0) fetchEventsPage(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventsReloadTick]);
 
   // The cards on the visible page show an attendee count, so load just those
   // few events' attendance, in parallel, once each (cached afterwards).
@@ -957,7 +912,7 @@ export function EventsView({
     if (!filtersMounted.current) { filtersMounted.current = true; return; }
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
   }, [eventSearch, eventFilter, membershipFilter, selectedDate, eventTab, eventSort]);
 
   // Runs the field-level checks that used to live at the top of the old
@@ -1303,36 +1258,59 @@ export function EventsView({
     ];
   })();
 
-  const getFilteredAttendance = (fullList: any[]) => {
-    return fullList.filter((record) => {
-      const matchesName = matchesSearch(attendanceSearch, record.residentName, record.userCode);
-      const status = getAttendanceStatus(record).label.toLowerCase();
-      const offered = attendanceFilterOptions.some((o) => o.value === attendanceStatusFilter);
-      const matchesStatus = attendanceStatusFilter === "all" || !offered || status === attendanceStatusFilter;
-      return matchesName && matchesStatus;
-    });
-  };
-
   // Attendance tab data -- keyed off the event currently open in the detail
   // view (`viewEv`) instead of a separate modal's own state, now that the
   // attendance table lives inside the Attendance tab rather than its own
   // popup.
-  const paginatedAttendance = useMemo(() => {
-    if (!viewEv) return [];
-    const eligibleMembers = getMembersForEvent(viewEv);
-    const fullList = getFullAttendanceList(viewEv.id, eligibleMembers);
-    const filtered = getFilteredAttendance(fullList);
-    const startIndex = (attendanceCurrentPage - 1) * attendanceItemsPerPage;
-    return filtered.slice(startIndex, startIndex + attendanceItemsPerPage);
-  }, [viewEv, attendanceSearch, attendanceStatusFilter, attendanceCurrentPage, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const attendanceTotalPages = useMemo(() => {
-    if (!viewEv) return 0;
-    const eligibleMembers = getMembersForEvent(viewEv);
-    const fullList = getFullAttendanceList(viewEv.id, eligibleMembers);
-    const filtered = getFilteredAttendance(fullList);
-    return Math.ceil(filtered.length / attendanceItemsPerPage);
-  }, [viewEv, attendanceSearch, attendanceStatusFilter, liveAttendances]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The roster table is one server query (EventAttendanceController::getEventAttendees, paged=1):
+  // name / ID search, status filter and paging all happen in the database.
+  const [rosterRows, setRosterRows] = useState<any[]>([]);
+  const [rosterPages, setRosterPages] = useState(1);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const rosterSeq = useRef(0);
+  const fetchRoster = async (silent = false) => {
+    if (!viewEv) return;
+    const seq = ++rosterSeq.current;
+    if (!silent) setRosterLoading(true);
+    try {
+      const res = await api.get(`/events/${viewEv.id}/attendances`, {
+        params: {
+          paged: 1,
+          search: attendanceSearch.trim() || undefined,
+          status: attendanceFilterOptions.some((o) => o.value === attendanceStatusFilter) ? attendanceStatusFilter : "all",
+          page: attendanceCurrentPage,
+          per_page: attendanceItemsPerPage,
+        },
+      });
+      if (seq !== rosterSeq.current) return;
+      const body = res.data;
+      if (body.meta.last_page < attendanceCurrentPage) {
+        setAttendanceCurrentPage(Math.max(1, body.meta.last_page));
+        return;
+      }
+      setRosterRows((body.data ?? []).map((r: any) => ({ ...r, eventId: viewEv.id, timeIn: r.timeIn || "", timeOut: r.timeOut || "" })));
+      setRosterPages(body.meta.last_page);
+    } catch (error) {
+      if (seq === rosterSeq.current) console.error("Failed to load the roster:", error);
+    } finally {
+      if (seq === rosterSeq.current) setRosterLoading(false);
+    }
+  };
+  const fetchRosterRef = useRef(fetchRoster);
+  fetchRosterRef.current = fetchRoster;
+  useEffect(() => {
+    if (!viewEv) return;
+    const timer = setTimeout(() => fetchRosterRef.current(), 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewEv?.id, attendanceSearch, attendanceStatusFilter, attendanceCurrentPage]);
+  // A scan lands (or the 20 s refresh brings new rows): refresh the table quietly.
+  useEffect(() => {
+    if (viewEv) fetchRosterRef.current(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveAttendances]);
+  const paginatedAttendance = rosterRows;
+  const attendanceTotalPages = viewEv ? rosterPages : 0;
 
   const fullAttendanceCountForTab = useMemo(() => {
     if (!viewEv) return 0;
@@ -1766,7 +1744,7 @@ export function EventsView({
                   </div>
 
                   <div className="rounded-xl border border-white/10 w-full overflow-x-auto">
-                    <table className="w-full text-base min-w-[680px]">
+                    <table className="rtable w-full text-base min-w-[680px]">
                       <thead className="bg-white/[0.06] sticky top-0 z-10">
                         <tr>
                           <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[20%]">{t("idNumberColumn")}</th>
@@ -1777,7 +1755,7 @@ export function EventsView({
                         </tr>
                       </thead>
                       <tbody>
-                        {detailSwitching || attendanceFiltering ? (
+                        {detailSwitching || attendanceFiltering || rosterLoading ? (
                           Array.from({ length: 6 }).map((_, i) => (
                             <tr key={`sk-${i}`} className="border-t border-white/[0.06]">
                               <td className="px-5 py-4"><Skeleton className="h-4 w-8" /></td>
@@ -2304,7 +2282,7 @@ export function EventsView({
                   { value: "name-az", label: t("sortNameAZ") },
                 ],
               }}
-              count={{ shown: countsLoading ? 0 : filteredEvents.length, total: countsLoading ? 0 : localEvents.length }}
+              count={{ shown: countsLoading ? 0 : eventMeta.total, total: countsLoading ? 0 : localEvents.length }}
               extraChips={[
                 ...(eventTab !== "all" ? [{ key: "tab", label: eventTab === "today" ? t("tabToday") : eventTab === "week" ? t("tabThisWeek") : t("tabNeedsFeedback"), onRemove: () => setEventTab("all") }] : []),
                 ...(selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString(language === "tl" ? "fil-PH" : language === "ceb" ? "fil-PH" : "en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []),
@@ -2319,7 +2297,7 @@ export function EventsView({
 
           <div className="flex min-h-8 flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-white/40">
-              {t("showingLabel")} {itemsPerPage} {t("perPage")}
+              {t("showingPerPage").replace("{n}", String(itemsPerPage))}
             </p>
             {totalPages > 1 && ((openSkeleton || filterSwitching || loading) ? null : (
               <div className="flex items-center gap-2">
@@ -2345,7 +2323,7 @@ export function EventsView({
           </div>
 
           <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
-          {loading || pageSwitching || openSkeleton ? (
+          {pageLoading || openSkeleton ? (
             <div className="space-y-3">
               <Skeleton className="h-4 w-40" />
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
@@ -2540,7 +2518,7 @@ export function EventsView({
                     />
                   </div>
 
-                  <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("startTimeRequired")}</label>
                       <TimePicker required value={newEvent.time} onChange={(v) => handleTimeFieldChange("time", v)} className="px-5 py-3.5" error={!!timeFieldErrors.time} dark />
@@ -2556,7 +2534,7 @@ export function EventsView({
                   {/* Call time: sign-in/out attendance window, separate from the event's own start/end */}
                   <div className="rounded-2xl border border-dashed border-white/20 bg-white/[0.02] p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-wide text-white/50">{t("callTimeSectionTitle")}</p>
-                    <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-white/70 mb-1">{t("callTimeStartLabel")}</label>
                         <TimePicker required value={newEvent.callTimeStart} onChange={(v) => handleTimeFieldChange("callTimeStart", v)} className="px-5 py-3.5" error={!!timeFieldErrors.callTimeStart} dark />
@@ -2649,7 +2627,7 @@ export function EventsView({
                                   <Trash2 className="h-4 w-4" />
                                 </button>
                               </div>
-                              <div className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                              <div className="mt-2 grid grid-cols-2 xl:grid-cols-4 gap-2">
                                 {BORROW_CONDITIONS.map((c) => {
                                   const label = c.label.replace("condition", "");
                                   const max = availableUnitsFor(row.inventoryItemId, label);

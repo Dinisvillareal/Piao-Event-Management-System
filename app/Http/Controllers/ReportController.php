@@ -521,12 +521,10 @@ class ReportController extends Controller
 
         // An item can hold units in several conditions at once (e.g. 45 Good
         // + 15 New), so each condition counts the items that have units in it
-        // and sums those units. An item with nothing in stock is counted
-        // under its main condition.
+        // and sums those units.
         $byCondition = collect(\App\Models\InventoryItem::CONDITION_COLUMNS)
             ->map(function ($column, $label) use ($items) {
-                $has = $items->filter(fn ($i) => (int) $i->{$column} > 0
-                    || ((int) $i->quantity === 0 && $i->condition === $label));
+                $has = $items->filter(fn ($i) => (int) $i->{$column} > 0);
 
                 return ['condition' => $label, 'count' => $has->count(), 'quantity' => (int) $items->sum($column)];
             })

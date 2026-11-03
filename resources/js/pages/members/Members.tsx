@@ -870,6 +870,7 @@ export default function MemberDashboard() {
                 <AttendanceView
                   loading={attendanceLoading || navSwitching}
                   attendanceRecords={attendanceRecords}
+                  memberId={member.id}
                   highlightText={highlightText}
                   allEvents={allEvents}
                   userMemberships={userMemberships}

@@ -54,7 +54,10 @@ const TYPE_BADGE_STYLES: Record<TrashedItem["type"], string> = {
 
 export default function ArchiveView() {
   const { t } = useLanguage();
+  // One page of archived records, already filtered/sorted by the server, and the archive's own figures.
   const [allTrashedItems, setAllTrashedItems] = useState<TrashedItem[]>([]);
+  const [archiveMeta, setArchiveMeta] = useState({ total: 0, last_page: 1 });
+  const [archiveStats, setArchiveStats] = useState({ total: 0, distinct_types: 0, newest_at: null as string | null, oldest_days: 0 });
   const [loading, setLoading] = useState(true);
   // Page-open skeleton for the KPI strip (first load only -- never returns on polls).
   const statsLoading = usePageOpenSkeleton(loading);
@@ -79,7 +82,7 @@ export default function ArchiveView() {
     setCurrentPage(updater as any);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
     topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
@@ -115,7 +118,10 @@ export default function ArchiveView() {
   const fetchArchivedItems = async (background = false) => {
     if (!background) setLoading(true);
     try {
-      const response = await fetch('/api/archived', {
+      const qs = new URLSearchParams({ paged: '1', sort: archiveSort, page: String(currentPage), per_page: String(itemsPerPage) });
+      if (typeFilter !== 'all') qs.set('type', typeFilter);
+      if (searchQuery.trim()) qs.set('search', searchQuery.trim());
+      const response = await fetch(`/api/archived?${qs}`, {
         credentials: 'include',
         headers: {
           'Accept': 'application/json',
@@ -124,8 +130,15 @@ export default function ArchiveView() {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        const normalized = data.map((item: any) => {
+        const body = await response.json();
+        // A page past the end (e.g. after the last record of a page was restored): go back.
+        if (body.meta.last_page < currentPage) {
+          setCurrentPage(Math.max(1, body.meta.last_page));
+          return;
+        }
+        setArchiveMeta({ total: body.meta.total, last_page: body.meta.last_page });
+        setArchiveStats(body.stats);
+        const normalized = (body.data as any[]).map((item: any) => {
           const raw = item.deleted_at || item.deletedAt || '';
           return {
             id: item.id,
@@ -194,37 +207,26 @@ export default function ArchiveView() {
     }
   };
 
-  const filteredItems = useMemo(() => {
-    let filtered = allTrashedItems;
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(item => item.type === typeFilter);
-    }
-    if (searchQuery.trim()) {
-      filtered = filtered.filter(item =>
-        matchesSearch(searchQuery, item.name, item.type, item.deletedBy)
-      );
-    }
-    const sorted = [...filtered];
-    if (archiveSort === 'oldest') sorted.sort((a, b) => String(a.deletedAtRaw).localeCompare(String(b.deletedAtRaw)));
-    else if (archiveSort === 'name-az') sorted.sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    else sorted.sort((a, b) => String(b.deletedAtRaw).localeCompare(String(a.deletedAtRaw)));
-    return sorted;
-  }, [allTrashedItems, typeFilter, searchQuery, archiveSort]);
+  const totalPages = Math.max(1, archiveMeta.last_page);
+  const paginatedItems = allTrashedItems;
 
-  const totalPages = Math.ceil(filteredItems.length / itemsPerPage);
-  const paginatedItems = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredItems.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredItems, currentPage, itemsPerPage]);
+  // The background poll must refresh with the filters of the moment, not those of an older render.
+  const fetchRef = useRef(fetchArchivedItems);
+  fetchRef.current = fetchArchivedItems;
 
+  // Any filter change starts again from page 1; every change (or page) asks the server.
   useEffect(() => { setCurrentPage(1); }, [typeFilter, searchQuery, archiveSort]);
-  useEffect(() => { fetchArchivedItems(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(() => fetchArchivedItems(), 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typeFilter, searchQuery, archiveSort, currentPage]);
 
   // Quiet background poll -- paused while a restore/success/error modal is
   // open so the list doesn't reshuffle under the staff member's cursor.
   useEffect(() => {
     const poll = setInterval(() => {
-      if (!restoreItem && !showSuccessModal && !showErrorModal) fetchArchivedItems(true);
+      if (!restoreItem && !showSuccessModal && !showErrorModal) fetchRef.current(true);
     }, 20000);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -245,24 +247,14 @@ export default function ArchiveView() {
       ? t("updatedSecondsAgoLabel").replace("{n}", String(secondsSinceUpdate))
       : t("updatedMinutesAgoLabel").replace("{n}", String(Math.floor(secondsSinceUpdate / 60)));
 
-  // Portfolio-wide KPIs across every trashed record, independent of the
-  // current search/type filter -- gives staff the scale of what's sitting
-  // in the trash before they drill into any one type.
-  const stats = useMemo(() => {
-    const distinctTypes = new Set(allTrashedItems.map((i) => i.type)).size;
-    let newestAt = 0;
-    let oldestDays = 0;
-    const now = Date.now();
-    allTrashedItems.forEach((item) => {
-      const d = new Date(item.deletedAtRaw).getTime();
-      if (!isNaN(d)) {
-        if (d > newestAt) newestAt = d;
-        const days = Math.floor((now - d) / (1000 * 60 * 60 * 24));
-        if (days > oldestDays) oldestDays = days;
-      }
-    });
-    return { totalItems: allTrashedItems.length, distinctTypes, newestAt: newestAt || null, oldestDays };
-  }, [allTrashedItems]);
+  // Portfolio-wide KPIs across every trashed record (from the server), independent of
+  // the current search/type filter.
+  const stats = {
+    totalItems: archiveStats.total,
+    distinctTypes: archiveStats.distinct_types,
+    newestAt: archiveStats.newest_at ? new Date(archiveStats.newest_at).getTime() : null,
+    oldestDays: archiveStats.oldest_days,
+  };
 
   const relativeTimeLabel = (timestamp: number | null) => {
     if (!timestamp) return "--";
@@ -387,13 +379,13 @@ export default function ArchiveView() {
               { value: 'name-az', label: t("sortNameAZ") },
             ],
           }}
-          count={loading ? undefined : { shown: filteredItems.length, total: allTrashedItems.length }}
+          count={loading ? undefined : { shown: archiveMeta.total, total: archiveStats.total }}
         />
       </div>
 
-      <p className="text-xs text-white/45">{t("showingLabel")} {itemsPerPage} {t("perPage")}</p>
+      <p className="text-xs text-white/45">{t("showingPerPage").replace("{n}", String(itemsPerPage))}</p>
 
-      {filteredItems.length === 0 && !loading ? (
+      {allTrashedItems.length === 0 && !loading ? (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-12 text-center text-white/45">
           <svg className="w-16 h-16 mx-auto mb-4 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
@@ -403,7 +395,7 @@ export default function ArchiveView() {
       ) : (
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="rtable w-full text-sm">
               <thead>
                 <tr className="border-b border-white/10">
                   <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("typeColumn")}</th>

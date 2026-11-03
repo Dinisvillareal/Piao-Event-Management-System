@@ -5,6 +5,7 @@ import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 import NumberStepper from "../../../components/ui/NumberStepper";
+import FormSelect from "../../../components/ui/FormSelect";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
 import { tc } from "../../../lib/contentTranslations";
@@ -38,8 +39,11 @@ interface CivilStatus {
 interface CurrentStatus {
   id: number;
   label: string;
+  category?: string;
   sort_order: number;
 }
+
+const CS_CATEGORIES = ["employment", "household", "economic", "sector", "other"] as const;
 
 const csrfToken = () =>
   decodeURIComponent(
@@ -58,10 +62,10 @@ export default function ProfilingSettingsView() {
 
   const [bracketForm, setBracketForm] = useState({ id: null as number | null, label: "", min_age: "", max_age: "" });
   const [statusForm, setStatusForm] = useState({ id: null as number | null, label: "" });
-  const [currentStatusForm, setCurrentStatusForm] = useState({ id: null as number | null, label: "" });
+  const [currentStatusForm, setCurrentStatusForm] = useState({ id: null as number | null, label: "", category: "other" });
   const [originalBracketForm, setOriginalBracketForm] = useState({ id: null as number | null, label: "", min_age: "", max_age: "" });
   const [originalStatusForm, setOriginalStatusForm] = useState({ id: null as number | null, label: "" });
-  const [originalCurrentStatusForm, setOriginalCurrentStatusForm] = useState({ id: null as number | null, label: "" });
+  const [originalCurrentStatusForm, setOriginalCurrentStatusForm] = useState({ id: null as number | null, label: "", category: "other" });
   const [savingBracket, setSavingBracket] = useState(false);
   const [savingStatus, setSavingStatus] = useState(false);
   const [savingCurrentStatus, setSavingCurrentStatus] = useState(false);
@@ -175,7 +179,7 @@ export default function ProfilingSettingsView() {
     setOriginalStatusForm(empty);
   };
   const resetCurrentStatusForm = () => {
-    const empty = { id: null, label: "" };
+    const empty = { id: null, label: "", category: "other" };
     setCurrentStatusForm(empty);
     setOriginalCurrentStatusForm(empty);
   };
@@ -189,7 +193,8 @@ export default function ProfilingSettingsView() {
     statusForm.label === originalStatusForm.label;
   const isCurrentStatusFormUnchanged =
     !!currentStatusForm.id &&
-    currentStatusForm.label === originalCurrentStatusForm.label;
+    currentStatusForm.label === originalCurrentStatusForm.label &&
+    currentStatusForm.category === originalCurrentStatusForm.category;
 
   // The form now carries noValidate (see below), so the browser's own
   // "please enter a valid value" bubble never fires for the age fields --
@@ -384,7 +389,7 @@ export default function ProfilingSettingsView() {
           Accept: "application/json",
           "X-XSRF-TOKEN": csrfToken(),
         },
-        body: JSON.stringify({ label: currentStatusForm.label }),
+        body: JSON.stringify({ label: currentStatusForm.label, category: currentStatusForm.category }),
       });
       if (!res.ok) {
         // Surface the backend's specific reason (e.g. a duplicate label)
@@ -601,7 +606,7 @@ export default function ProfilingSettingsView() {
                 <p className="text-xs font-bold uppercase tracking-wide text-white/40">
                   {bracketForm.id ? t("editAgeBracketLabel") : t("addAgeBracketLabel")}
                 </p>
-                <div className="grid sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <input
                     value={bracketForm.label}
                     onChange={(e) => setBracketForm((p) => ({ ...p, label: e.target.value }))}
@@ -768,13 +773,16 @@ export default function ProfilingSettingsView() {
                         <div className="shrink-0 h-10 w-10 rounded-full bg-sage-400/10 text-sage-300 flex items-center justify-center">
                           <Tag className="h-4 w-4" />
                         </div>
-                        <p className="text-[15px] font-semibold text-white truncate">{tc(s.label, language as any)}</p>
+                        <div className="min-w-0">
+                          <p className="text-[15px] font-semibold text-white truncate">{tc(s.label, language as any)}</p>
+                          <p className="text-xs text-white/45 truncate">{t(`csGroup_${s.category ?? "other"}`)}</p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
                           onClick={() => {
-                            const initial = { id: s.id, label: s.label };
+                            const initial = { id: s.id, label: s.label, category: s.category ?? "other" };
                             setCurrentStatusForm(initial);
                             setOriginalCurrentStatusForm(initial);
                           }}
@@ -810,6 +818,17 @@ export default function ProfilingSettingsView() {
                     className="flex-1 rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-400/20 focus:border-sage-400/50"
                     required
                   />
+                  <div className="sm:w-60">
+                    <FormSelect
+                      value={currentStatusForm.category}
+                      onChange={(e) => setCurrentStatusForm((p) => ({ ...p, category: e.target.value }))}
+                      className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white focus:outline-none focus:ring-2 focus:ring-sage-400/20 focus:border-sage-400/50"
+                    >
+                      {CS_CATEGORIES.map((c) => (
+                        <option key={c} value={c} className="bg-[#0A0E1A] text-white">{t(`csGroup_${c}`)}</option>
+                      ))}
+                    </FormSelect>
+                  </div>
                   <div className="flex gap-2 justify-end">
                     {currentStatusForm.id && (
                       <button type="button" onClick={resetCurrentStatusForm} className="px-5 py-2.5 rounded-full border border-white/15 text-white text-[15px] hover:bg-white/10 transition">
@@ -819,6 +838,7 @@ export default function ProfilingSettingsView() {
                     <SaveButton size="sm" className="whitespace-nowrap" active={!(savingCurrentStatus || isCurrentStatusFormUnchanged)} title={isCurrentStatusFormUnchanged ? t("noChangesToSaveHint") : undefined}>{currentStatusForm.id ? t("saveChanges") : t("addCurrentStatusLabel")}</SaveButton>
                   </div>
                 </div>
+                <p className="text-xs text-white/45">{t("csCategoryHint")}</p>
               </form>
             </>
           )}

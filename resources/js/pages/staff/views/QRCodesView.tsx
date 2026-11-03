@@ -2,7 +2,6 @@ import { scrollListIntoView } from "../../../lib/scrollToList";
 import SaveButton from "../../../components/ui/SaveButton";
 import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import { matchesSearch } from "../../../lib/search";
 import FormSelect from "../../../components/ui/FormSelect";
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -48,6 +47,7 @@ interface QRCodesViewProps {
 // an older, differently-themed page bolted on.
 export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   const { t, language } = useLanguage();
+  const itemsPerPage = 6;
   const [memberships, setMemberships] = useState<any[]>([]);
   const [allResidents, setAllResidents] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -65,7 +65,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
-    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 350);
+    pageSwitchTimer.current = setTimeout(() => setPageSwitching(false), 0);
   };
   useEffect(() => () => { if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current); }, []);
   const [loading, setLoading] = useState(true);
@@ -150,7 +150,6 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       .catch((e) => console.error("current statuses load:", e));
   }, []);
 
-  const itemsPerPage = 6;
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -164,10 +163,20 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     };
   }, [showModal, showAddModal, showEditModal, showDeleteConfirm, showDeleteFailed, showAddSuccess, showDeleteSuccess, showUpdateSuccess, genericError]);
 
+  // Search and paging are done by the server (MembershipController::index, paged=1).
+  const [membershipMeta, setMembershipMeta] = useState({ total: 0, last_page: 1 });
+  const membershipQueryRef = useRef({ search: "", page: 1 });
+  membershipQueryRef.current = { search: searchQuery, page: currentPage };
+  const membershipSeq = useRef(0);
+
   const fetchMemberships = async (silent = false) => {
+    const seq = ++membershipSeq.current;
     if (!silent) setLoading(true);
     try {
-      const response = await fetch('/api/memberships', {
+      const q = membershipQueryRef.current;
+      const qs = new URLSearchParams({ paged: '1', page: String(q.page), per_page: String(itemsPerPage) });
+      if (q.search.trim()) qs.set('search', q.search.trim());
+      const response = await fetch(`/api/memberships?${qs.toString()}`, {
         headers: {
           'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest'
@@ -177,14 +186,21 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       if (!response.ok) throw new Error('Failed to fetch');
 
-      const membershipsData = await response.json();
-      setMemberships(membershipsData);
+      const body = await response.json();
+      if (seq !== membershipSeq.current) return;
+      // A page past the end (the last card of a page was deleted): step back.
+      if (body.meta.last_page < q.page) {
+        setCurrentPage(Math.max(1, body.meta.last_page));
+        return;
+      }
+      setMemberships(body.data ?? []);
+      setMembershipMeta({ total: body.meta.total, last_page: body.meta.last_page });
 
     } catch (error) {
       console.error('Error fetching memberships:', error);
-      if (!silent) setMemberships([]);
+      if (!silent && seq === membershipSeq.current) setMemberships([]);
     } finally {
-      if (!silent) setLoading(false);
+      if (seq === membershipSeq.current) setLoading(false);
     }
   };
 
@@ -490,20 +506,23 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     };
   }, []);
 
-  const filteredMemberships = useMemo(() => {
-    if (!searchQuery.trim()) return memberships;
-    return memberships.filter(m => matchesSearch(searchQuery, m.name, m.description));
-  }, [memberships, searchQuery]);
+  const filteredMemberships = { length: membershipMeta.total };
+  const totalPages = Math.max(1, membershipMeta.last_page);
+  const paginatedMemberships = memberships;
 
-  const totalPages = Math.ceil(filteredMemberships.length / itemsPerPage);
-  const paginatedMemberships = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredMemberships.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredMemberships, currentPage, itemsPerPage]);
-
+  // A new search starts again from page 1; any search / page change reloads from the server.
+  const membershipFirstLoad = useRef(true);
+  const prevSearch = useRef(searchQuery);
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery]);
+    if (membershipFirstLoad.current) { membershipFirstLoad.current = false; return; }
+    if (prevSearch.current !== searchQuery) {
+      prevSearch.current = searchQuery;
+      if (currentPage !== 1) { setCurrentPage(1); return; }
+    }
+    const timer = setTimeout(() => fetchMemberships(), 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, currentPage]);
 
   const getResidentsByMembership = (membershipName: string) => {
     if (!allResidents.length) return [];
@@ -991,7 +1010,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           </FormSection>
 
           <FormSection title={t("eligibilityRequirementsLabel")} className="space-y-3">
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleAgeBracketLabel")}</label>
                 <div className="relative">
@@ -1113,7 +1132,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           </FormSection>
 
           <FormSection title={t("eligibilityRequirementsLabel")} className="space-y-3">
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleAgeBracketLabel")}</label>
                 <div className="relative">

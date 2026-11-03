@@ -1,4 +1,3 @@
-import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
@@ -246,8 +245,55 @@ export default function ScanView({ events, residents, memberships }: any) {
   };
   useEffect(() => { setRosterPage(1); setRosterSearch(""); }, [eventId]);
   useEffect(() => { setRosterPage(1); }, [rosterSearch]);
-  // Brief skeleton flash whenever the roster page, search or event changes.
-  const rosterSwitching = useFilterSwitching([rosterPage, rosterSearch, eventId]);
+
+  // The roster is one server query per page (EventAttendanceController::getEventAttendees, paged=1):
+  // name / ID search and paging happen in the database.
+  const [rosterRows, setRosterRows] = useState<AttendanceEntry[]>([]);
+  const [rosterTotal, setRosterTotal] = useState(0);
+  const [rosterAll, setRosterAll] = useState(0);
+  const [rosterLastPage, setRosterLastPage] = useState(1);
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const rosterSeq = useRef(0);
+  const fetchRosterPage = async (silent = false) => {
+    if (!eventId) return;
+    const seq = ++rosterSeq.current;
+    if (!silent) setRosterLoading(true);
+    try {
+      const response = await fetch(`/events/${eventId}/attendances?${new URLSearchParams({ paged: "1", page: String(rosterPage), per_page: String(ROSTER_PER_PAGE), ...(rosterSearch.trim() ? { search: rosterSearch.trim() } : {}) })}`, {
+        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!response.ok || seq !== rosterSeq.current) return;
+      const body = await response.json();
+      if (body.meta.last_page < rosterPage) { setRosterPage(Math.max(1, body.meta.last_page)); return; }
+      setRosterRows((body.data ?? []).map((r: any) => ({
+        residentId: r.residentId,
+        residentName: r.residentName,
+        timeIn: r.timeIn,
+        timeOut: r.timeOut,
+        status: r.timeIn && r.timeOut ? "complete" : r.timeIn || r.timeOut ? "in" : "pending",
+      })));
+      setRosterTotal(body.meta.total);
+      setRosterAll(body.counts?.all ?? body.meta.total);
+      setRosterLastPage(body.meta.last_page);
+    } catch (error) {
+      if (seq === rosterSeq.current) console.error("Failed to fetch roster:", error);
+    } finally {
+      if (seq === rosterSeq.current) setRosterLoading(false);
+    }
+  };
+  const fetchRosterPageRef = useRef(fetchRosterPage);
+  fetchRosterPageRef.current = fetchRosterPage;
+  useEffect(() => {
+    const timer = setTimeout(() => fetchRosterPageRef.current(), 120);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventId, rosterPage, rosterSearch]);
+  // A scan just landed (or the live refresh brought new rows): refresh the page quietly.
+  useEffect(() => {
+    if (eventId) fetchRosterPageRef.current(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [attendance[eventId]]);
+  const rosterSwitching = rosterLoading;
 
   const ev = events?.find((e: any) => String(e.id) === String(eventId));
 
@@ -300,10 +346,31 @@ export default function ScanView({ events, residents, memberships }: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, currentHHMM]);
 
-  const filteredEventOptions = useMemo(() => {
-    if (!eventSearchQuery.trim()) return upcomingEvents;
-    return upcomingEvents.filter((e: any) => matchesSearch(eventSearchQuery, e.title));
-  }, [upcomingEvents, eventSearchQuery]);
+  // The event picker's search is matched by the server (the events list endpoint); the scannable
+  // events are then narrowed to the ids it returns.
+  const [eventSearchIds, setEventSearchIds] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    const q = eventSearchQuery.trim();
+    if (!q) { setEventSearchIds(null); return; }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/events-data?${new URLSearchParams({ paged: "1", search: q, per_page: "100" })}`, {
+          headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        });
+        if (!res.ok || cancelled) return;
+        const body = await res.json();
+        if (!cancelled) setEventSearchIds(new Set((body.data ?? []).map((e: any) => String(e.id))));
+      } catch {
+        if (!cancelled) setEventSearchIds(new Set());
+      }
+    }, 120);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [eventSearchQuery]);
+  const filteredEventOptions = useMemo(
+    () => (eventSearchIds === null ? upcomingEvents : upcomingEvents.filter((e: any) => eventSearchIds.has(String(e.id)))),
+    [upcomingEvents, eventSearchIds]
+  );
 
   useEffect(() => {
     if (upcomingEvents.length > 0 && (!eventId || !upcomingEvents.some((e: any) => String(e.id) === String(eventId)))) {
@@ -713,7 +780,7 @@ export default function ScanView({ events, residents, memberships }: any) {
             <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("scan")}</h1>
             <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("scanSubtitle")}</p>
           </div>
-          <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
               <div className="flex items-center justify-between gap-3 border-b border-white/10 p-5">
                 <div className="min-w-0 flex-1 space-y-2">
@@ -779,7 +846,7 @@ export default function ScanView({ events, residents, memberships }: any) {
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-white/10 p-5">
             <div className="min-w-0">
@@ -1163,7 +1230,7 @@ export default function ScanView({ events, residents, memberships }: any) {
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
             <div className="border-b border-white/10 p-5">
               <h2 className="text-base font-bold text-white">{t("attendanceRosterTitle")}</h2>
-              <p className="mt-0.5 text-sm text-white/50">{attendance[eventId]?.length ?? 0} {t("recordsForThisEvent")}</p>
+              <p className="mt-0.5 text-sm text-white/50">{rosterAll} {t("recordsForThisEvent")}</p>
               <div className="relative mt-3">
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                 <input
@@ -1185,12 +1252,8 @@ export default function ScanView({ events, residents, memberships }: any) {
             </div>
             <div className="p-5">
               {(() => {
-                const all = [...(attendance[eventId] ?? [])].sort((a, b) => rosterKey(a).localeCompare(rosterKey(b)));
-                const q = rosterSearch.trim();
-                const list = q ? all.filter((r) => matchesSearch(q, r.residentName, r.timeIn ?? "", r.timeOut ?? "", rosterStatusLabel(r))) : all;
-                const totalPages = Math.max(1, Math.ceil(list.length / ROSTER_PER_PAGE));
-                const current = Math.min(rosterPage, totalPages);
-                const start = (current - 1) * ROSTER_PER_PAGE;
+                const list = rosterRows;
+                const start = (rosterPage - 1) * ROSTER_PER_PAGE;
                 if (rosterSwitching) {
                   return (
                     <div className="space-y-3">
@@ -1206,7 +1269,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                     </div>
                   );
                 }
-                if (!all.length) {
+                if (!rosterAll) {
                   return <p className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-center text-sm text-white/50">{t("noAttendeesYet")}</p>;
                 }
                 if (!list.length) {
@@ -1214,7 +1277,7 @@ export default function ScanView({ events, residents, memberships }: any) {
                 }
                 return (
                   <div className="space-y-3">
-                    {list.slice(start, start + ROSTER_PER_PAGE).map((rec, i) => (
+                    {list.map((rec, i) => (
                       <div key={rec.residentId} className="p-4 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-between transition-colors">
                         <div>
                           <p className="text-base font-semibold text-white">{start + i + 1}. {highlightMatches(rec.residentName, rosterSearch)}</p>
@@ -1233,10 +1296,8 @@ export default function ScanView({ events, residents, memberships }: any) {
               })()}
             </div>
             {(() => {
-              const allRec = attendance[eventId] ?? [];
-              const qq = rosterSearch.trim();
-              const total = qq ? allRec.filter((r) => matchesSearch(qq, r.residentName, r.timeIn ?? "", r.timeOut ?? "", rosterStatusLabel(r))).length : allRec.length;
-              const totalPages = Math.max(1, Math.ceil(total / ROSTER_PER_PAGE));
+              const total = rosterTotal;
+              const totalPages = Math.max(1, rosterLastPage);
               if (totalPages <= 1) return null;
               if (rosterSwitching) return <PagerSkeleton withLabel className="px-5 py-3 border-t border-white/10" />;
               const current = Math.min(rosterPage, totalPages);

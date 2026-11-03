@@ -22,7 +22,7 @@ export default function StatCardSkeleton() {
  * skeleton for a single frame). Once it flips to false it stays false --
  * later background refreshes or polls never bring the skeleton back.
  */
-export function usePageOpenSkeleton(dataLoading: boolean, minMs = 450): boolean {
+export function usePageOpenSkeleton(dataLoading: boolean, minMs = 0): boolean {
   const [minElapsed, setMinElapsed] = useState(false);
   const [loadedOnce, setLoadedOnce] = useState(false);
   useEffect(() => {
