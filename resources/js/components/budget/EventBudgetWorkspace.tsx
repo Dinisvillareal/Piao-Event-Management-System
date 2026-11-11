@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import SaveButton from "../ui/SaveButton";
 import FormDrawer, { FormSection } from "../ui/FormDrawer";
-import { Wallet, Plus, X, AlertTriangle, CheckCircle, Lock, Trash2, Pencil, Paperclip, FileText, Download, FileSpreadsheet, Banknote, PiggyBank, Search, Eye, RefreshCw, Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { Wallet, Plus, X, AlertTriangle, CheckCircle, Lock, Trash2, Pencil, Paperclip, FileText, Download, FileSpreadsheet, Banknote, PiggyBank, Search, Eye, RefreshCw, History, Check, ChevronLeft, ChevronRight } from "lucide-react";
 import StatusModal from "../ui/StatusModal";
 import api, { apiErrorMessage } from "../../lib/api";
 import { exportExpenseReportXlsx } from "../../lib/expenseReportExport";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import NumberStepper from "../ui/NumberStepper";
+import ActivityLog, { type ActivityEntry } from "../ui/ActivityLog";
+import PhotoViewer from "../ui/PhotoViewer";
 import ReceiptField, { ReceiptItem, receiptItemsFromUrls, appendReceiptFields, receiptItemsChanged } from "../ui/ReceiptField";
 import Skeleton from "../ui/Skeleton";
 import { useLanguage } from "../../i18n/LanguageContext";
@@ -22,7 +24,7 @@ export interface ExpenseSummary {
   is_over_budget: boolean;
   remaining?: number | null;
   over_by?: number;
-  expenses: { id: number; item: string; amount: string | number; notes: string | null; recorded_by?: string | null; created_at: string; receipt_url: string | null; receipt_urls?: string[] }[];
+  expenses: { id: number; item: string; amount: string | number; notes: string | null; recorded_by?: string | null; created_at: string; receipt_url: string | null; receipt_urls?: string[]; activity_log_urls?: ActivityEntry[] }[];
 }
 
 // ---- budget helpers -------------------------------------------------------
@@ -112,19 +114,15 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
   const [receiptItems, setReceiptItems] = useState<ReceiptItem[]>([]);
   const [editReceiptItems, setEditReceiptItems] = useState<ReceiptItem[]>([]);
   const [editReceiptSavedCount, setEditReceiptSavedCount] = useState(0);
+  const [editHistory, setEditHistory] = useState<ActivityEntry[]>([]);
+  // Read-only history of one expense -- reachable even when the event is finished and editing is locked.
+  const [historyExpense, setHistoryExpense] = useState<{ item: string; amount: number; notes: string | null; receipts: string[]; entries: ActivityEntry[] } | null>(null);
   // Receipt viewer -- "View receipt" opens this instead of a raw new-tab
   // link, so images preview inline and PDFs render in an embedded viewer
   // rather than dumping the visitor onto a bare file URL.
   // `local` = a just-picked file shown via a blob: URL (not uploaded yet), so
   // it has no file extension (use `mime`) and nothing to download.
   const [viewingReceipt, setViewingReceipt] = useState<{ url: string; item: string; mime?: string; local?: boolean; files?: { url: string; name: string; mime?: string }[] } | null>(null);
-  // Confirm-before / success-after around the receipt download button
-  // itself, same pattern as the rest of the app (Add/Update/Delete Expense
-  // below, the Reports page's Word/PDF download) instead of the plain
-  // silent <a download> this used to be.
-  const [confirmDownloadReceipt, setConfirmDownloadReceipt] = useState(false);
-  const [downloadingReceipt, setDownloadingReceipt] = useState(false);
-  const [receiptDownloadSuccess, setReceiptDownloadSuccess] = useState(false);
   // One shared success modal for Add/Update/Delete expense -- mirrors the
   // confirm-before / success-after pattern used elsewhere in the app
   // (e.g. Returns), so a completed action is never silent.
@@ -169,60 +167,16 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
   // Open a saved expense's receipt (all of its files).
   const openSavedReceipt = (urls: string[], eventItem: string) =>
     setViewingReceipt({ url: urls[0], item: eventItem, files: urls.map((u) => ({ url: u, name: eventItem })) });
+  // Opens one of an expense's earlier (replaced) receipt files.
+  const openEarlierReceipt = (url: string, urls: string[], eventItem: string) =>
+    setViewingReceipt({ url, item: eventItem, files: urls.map((u) => ({ url: u, name: eventItem })) });
   const closeReceiptViewer = () => setViewingReceipt(null);
-  // Prev/next through an expense's attached files (wraps) + ←/→ keys.
-  const stepReceipt = (dir: 1 | -1) => {
-    setViewingReceipt((cur) => {
-      if (!cur || !cur.files || cur.files.length < 2) return cur;
-      const i = Math.max(0, cur.files.findIndex((x) => x.url === cur.url));
-      const f = cur.files[(i + dir + cur.files.length) % cur.files.length];
-      return { ...cur, url: f.url, mime: f.mime };
-    });
-  };
-  useEffect(() => {
-    if (!viewingReceipt || !viewingReceipt.files || viewingReceipt.files.length < 2) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight") stepReceipt(1);
-      else if (e.key === "ArrowLeft") stepReceipt(-1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [viewingReceipt]);
   const viewerKind: "image" | "pdf" | "other" = !viewingReceipt
     ? "other"
     : viewingReceipt.mime
       ? viewingReceipt.mime.startsWith("image/") ? "image" : viewingReceipt.mime === "application/pdf" ? "pdf" : "other"
       : isImageReceipt(receiptExt(viewingReceipt.url)) ? "image" : isPdfReceipt(receiptExt(viewingReceipt.url)) ? "pdf" : "other";
 
-  // Fires only after confirmDownloadReceipt is accepted. Pulls the receipt
-  // as a blob and triggers the save via a throwaway <a download> instead of
-  // just pointing the browser straight at the file URL, the same way
-  // ReportsView's Word/PDF export does -- the fetch actually resolving is
-  // the closest thing the browser gives JS to "the file was downloaded",
-  // so only then do we show the success popup.
-  const handleDownloadReceipt = async () => {
-    if (!viewingReceipt) return;
-    setConfirmDownloadReceipt(false);
-    setDownloadingReceipt(true);
-    try {
-      const response = await fetch(viewingReceipt.url);
-      if (!response.ok) throw new Error("download failed");
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = viewingReceipt.item || "receipt";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      setReceiptDownloadSuccess(true);
-    } catch {
-      setError(t("downloadReceiptFailedMessage"));
-    } finally {
-      setDownloadingReceipt(false);
-    }
-  };
 
   const selectedEventStatus = selectedEvent ? getEventStatus(selectedEvent) : null;
   const isExpenseLocked = selectedEventStatus?.label === "Past" || selectedEventStatus?.label === "Ongoing";
@@ -384,7 +338,8 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
     }
   };
 
-  const openEditExpense = (exp: { id: number; item: string; amount: string | number; notes: string | null; receipt_url: string | null; receipt_urls?: string[] }) => {
+  const openEditExpense = (exp: { id: number; item: string; amount: string | number; notes: string | null; receipt_url: string | null; receipt_urls?: string[]; activity_log_urls?: ActivityEntry[] }) => {
+    setEditHistory(exp.activity_log_urls ?? []);
     const initial = { item: exp.item, amount: String(exp.amount), notes: exp.notes ?? "" };
     setEditingExpense({ id: exp.id, item: exp.item });
     setEditForm(initial);
@@ -988,6 +943,18 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <span className={`mr-2 text-[15px] font-bold [font-variant-numeric:tabular-nums] ${meta?.over ? "text-red-300" : "text-[#7DD8CB]"}`}>{money(amt)}</span>
+                              {(exp.activity_log_urls?.length ?? 0) > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setHistoryExpense({ item: exp.item, amount: amt, notes: exp.notes, receipts, entries: exp.activity_log_urls ?? [] })}
+                                  title={t("expenseHistoryButton").replace("{n}", String(exp.activity_log_urls?.length ?? 0))}
+                                  aria-label={t("expenseHistoryButton").replace("{n}", String(exp.activity_log_urls?.length ?? 0))}
+                                  className="inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-white/60 transition hover:bg-white/10 hover:text-[#7DD8CB]"
+                                >
+                                  <History className="h-3.5 w-3.5" />
+                                  <span className="text-[11px] font-semibold">{exp.activity_log_urls?.length}</span>
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => openEditExpense(exp)}
@@ -1074,6 +1041,42 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
             <p className="mt-2 text-sm text-white/50">{t("fileHintReceipts")}</p>
           </div>
           </FormSection>
+          <ActivityLog entries={editHistory} onOpen={(url, urls) => openEarlierReceipt(url, urls, editForm.item || t("receiptLabel"))} />
+        </FormDrawer>
+      )}
+
+      {/* Read-only history: works for finished events too, where Edit is locked. */}
+      {historyExpense && (
+        <FormDrawer
+          z="z-[55]"
+          title={t("expenseHistoryTitle")}
+          subtitle={tc(historyExpense.item, language as any)}
+          onClose={() => setHistoryExpense(null)}
+          footer={<button type="button" onClick={() => setHistoryExpense(null)} className="w-full rounded-full border border-white/15 bg-white/[0.06] px-6 py-3 text-[15px] font-semibold text-white transition hover:bg-white/10">{t("closeLabel")}</button>}
+        >
+          <FormSection title={t("secExpenseDetails")} className="space-y-3">
+            <p className="flex items-start gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/60">
+              <Lock className="mt-0.5 h-4 w-4 shrink-0 text-white/45" />
+              {isExpenseLocked
+                ? t("expenseHistoryLocked")
+                : t("expenseHistoryOpen")}
+            </p>
+            <div className="flex items-baseline justify-between gap-3 text-[15px]">
+              <span className="font-semibold text-white">{tc(historyExpense.item, language as any)}</span>
+              <span className="font-bold text-[#7DD8CB] [font-variant-numeric:tabular-nums]">{money(historyExpense.amount)}</span>
+            </div>
+            {historyExpense.notes && <p className="whitespace-pre-wrap break-words text-sm text-white/55">{tc(historyExpense.notes, language as any)}</p>}
+            {historyExpense.receipts.length > 0 && (
+              <button
+                type="button"
+                onClick={() => openSavedReceipt(historyExpense.receipts, historyExpense.item)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.05] px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10"
+              >
+                <Paperclip className="h-4 w-4" /> {t("expenseHistoryCurrent")} ({historyExpense.receipts.length})
+              </button>
+            )}
+          </FormSection>
+          <ActivityLog defaultOpen entries={historyExpense.entries} onOpen={(url, urls) => openEarlierReceipt(url, urls, historyExpense.item || t("receiptLabel"))} />
         </FormDrawer>
       )}
 
@@ -1142,124 +1145,16 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
 
       <StatusModal open={!!expenseSuccessMessage} type="success" title={t("expenseSuccessTitle")} message={expenseSuccessMessage || ""} okLabel={t("okLabel")} onClose={() => setExpenseSuccessMessage(null)} />
 
-      {viewingReceipt && (
-        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[70] px-4" onClick={closeReceiptViewer}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="inline-flex items-center justify-center h-9 w-9 rounded-full bg-white/10 text-[#4FBEB0] shrink-0">
-                  <FileText className="h-4 w-4" />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-white truncate">{viewingReceipt.item}</p>
-                  <p className="text-[11px] uppercase tracking-wide text-white/40 font-semibold">
-                    {viewingReceipt.local
-                      ? (viewerKind === "pdf" ? "PDF" : viewerKind === "image" ? "Image" : t("fileLabel"))
-                      : receiptExt(viewingReceipt.url) || t("fileLabel")}
-                  </p>
-                </div>
-              </div>
-              <button onClick={closeReceiptViewer} className="text-white/40 hover:text-white p-1 shrink-0">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="relative flex-1 overflow-auto bg-black/20 flex items-center justify-center p-4">
-              {viewerKind === "image" ? (
-                <img src={viewingReceipt.url} alt={viewingReceipt.item} className="max-w-full max-h-[65vh] rounded-xl shadow-sm" />
-              ) : viewerKind === "pdf" ? (
-                <iframe
-                  src={viewingReceipt.url}
-                  title={viewingReceipt.item}
-                  className="w-full h-[65vh] rounded-xl border border-white/10 bg-white"
-                />
-              ) : (
-                <div className="text-center py-10">
-                  <FileText className="h-10 w-10 mx-auto text-white/40 mb-3" />
-                  <p className="text-sm text-white/40">{t("previewNotAvailableLabel")}</p>
-                </div>
-              )}
-              {viewingReceipt.files && viewingReceipt.files.length > 1 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => stepReceipt(-1)}
-                    aria-label="Previous file"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => stepReceipt(1)}
-                    aria-label="Next file"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </button>
-                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/80">
-                    {Math.max(0, viewingReceipt.files.findIndex((x) => x.url === viewingReceipt.url)) + 1} / {viewingReceipt.files.length}
-                  </span>
-                </>
-              )}
-            </div>
-
-            <div className="px-5 py-4 border-t border-white/10 flex items-center justify-end gap-2">
-              {viewingReceipt.files && viewingReceipt.files.length > 1 && (
-                <div className="mr-auto flex items-center gap-2">
-                  {viewingReceipt.files.map((f, i) => (
-                    <button
-                      key={f.url + i}
-                      type="button"
-                      onClick={() => setViewingReceipt({ ...viewingReceipt, url: f.url, mime: f.mime })}
-                      className={`h-10 w-10 overflow-hidden rounded-lg border transition ${f.url === viewingReceipt.url ? "border-[#7DD8CB]" : "border-white/20 opacity-60 hover:opacity-100"}`}
-                    >
-                      <img src={f.url} alt="" className="h-full w-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              )}
-              {!viewingReceipt.local && (
-              <button
-                type="button"
-                onClick={() => setConfirmDownloadReceipt(true)}
-                disabled={downloadingReceipt}
-                className="inline-flex items-center gap-1.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-semibold px-5 py-2.5 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Download className="h-4 w-4" /> {downloadingReceipt ? t("downloadingLabel") : t("downloadLabel")}
-              </button>
-              )}
-              <button onClick={closeReceiptViewer} className="px-5 py-2.5 rounded-full border border-white/15 text-white text-sm hover:bg-white/10 transition">
-                {t("closeLabel")}
-              </button>
-            </div>
-          </div>
-        </div></Portal>
-      )}
-
-      {/* "Are you sure you want to download?" -- then "Downloaded
-          successfully" -- same confirm-before/success-after pattern as
-          Add/Update/Delete Expense above and the Reports page's Word/PDF
-          download, instead of the receipt silently saving with no feedback. */}
-      <ConfirmDialog
-        open={confirmDownloadReceipt}
-        icon={<Download className="h-9 w-9" />}
-        title={t("confirmDownloadReceiptTitle")}
-        body={t("confirmDownloadReceiptBody")}
-        cancelLabel={t("cancelLabel")}
-        confirmLabel={downloadingReceipt ? t("downloadingLabel") : t("downloadLabel")}
-        onCancel={() => setConfirmDownloadReceipt(false)}
-        onConfirm={handleDownloadReceipt}
-        z={80}
-      />
-      <StatusModal
-        open={receiptDownloadSuccess}
-        type="success"
-        title={t("downloadSuccessTitle")}
-        message={t("downloadReceiptSuccessMessage")}
-        okLabel={t("okLabel")}
-        onClose={() => setReceiptDownloadSuccess(false)}
-        z={80}
+      <PhotoViewer
+        url={viewingReceipt?.url ?? null}
+        name={viewingReceipt?.item ?? ""}
+        label={t("receiptLabel")}
+        urls={viewingReceipt?.files?.map((f) => f.url)}
+        mimes={Object.fromEntries((viewingReceipt?.files ?? []).filter((f) => f.mime).map((f) => [f.url, f.mime as string]).concat(viewingReceipt?.mime ? [[viewingReceipt.url, viewingReceipt.mime]] : []))}
+        allowDownload={!viewingReceipt?.local}
+        onSelect={(u) => setViewingReceipt((cur) => (cur ? { ...cur, url: u, mime: cur.files?.find((f) => f.url === u)?.mime } : cur))}
+        onClose={closeReceiptViewer}
+        z={70}
       />
 
       {/* Same confirm-before/success-after pattern for the expense report

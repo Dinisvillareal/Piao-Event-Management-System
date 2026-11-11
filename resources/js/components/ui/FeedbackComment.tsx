@@ -552,7 +552,7 @@ export default function FeedbackComment({
                     className="h-3.5 w-3.5 inline"
                     fill={replyLiked ? "currentColor" : "none"}
                   />{" "}
-                  {t("Love") || "Like"}
+                  {t("likeLabel")}
                 </button>
               </div>
             )}
@@ -564,7 +564,7 @@ export default function FeedbackComment({
                 {replyLiked && (
                   <span className="flex items-center gap-1 text-red-400 font-medium">
                     <Heart className="h-3.5 w-3.5 fill-current" />
-                    {t("Loved") || "Liked by member"}
+                    {t("likedByMemberLabel")}
                   </span>
                 )}
 

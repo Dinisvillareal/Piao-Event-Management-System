@@ -87,17 +87,10 @@ class ActivityLogSeeder extends Seeder
             $push($actor($i++), 'Create', 'Inventory', "Added inventory item: {$item->name}", $now->copy()->subDays(rand(75, 90)));
         }
 
-        // Lost / disposed units -- reported through Edit Item, same wording
-        // InventoryController::update writes.
-        foreach (InventoryItem::where(function ($q) {
-            $q->where('lost_quantity', '>', 0)->orWhere('disposed_quantity', '>', 0);
-        })->orderBy('id')->get() as $item) {
-            if ($item->lost_quantity > 0) {
-                $push($actor($i++), 'Update', 'Inventory', "Updated lost units for {$item->name}: {$item->lost_quantity} lost", $now->copy()->subDays(rand(8, 30)));
-            }
-            if ($item->disposed_quantity > 0) {
-                $push($actor($i++), 'Update', 'Inventory', "Updated disposed units for {$item->name}: {$item->disposed_quantity} disposed", $now->copy()->subDays(rand(8, 30)));
-            }
+        // Lost units -- reported through the Units drawer, same wording
+        // InventoryController::adjustUnits writes.
+        foreach (InventoryItem::where('lost_quantity', '>', 0)->orderBy('id')->get() as $item) {
+            $push($actor($i++), 'Update', 'Inventory', "Updated lost units for {$item->name}: {$item->lost_quantity} lost", $now->copy()->subDays(rand(8, 30)));
         }
 
         // Returns -- one entry per seeded release, at the release's own time.

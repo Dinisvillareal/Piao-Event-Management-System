@@ -88,6 +88,7 @@ class EventAttendanceController extends Controller
 
             if ($attendance) {
                 if ($attendance->time_in) {
+                    DB::rollBack();
                     return response()->json(['message' => 'Member already signed in.'], 400);
                 }
 

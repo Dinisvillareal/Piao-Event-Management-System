@@ -281,9 +281,9 @@ class StaffAccountController extends Controller
 
     public function resetPassword(Request $request, $id)
     {
-        $request->validate(['password' => 'required|string']);
+        $request->validate(['password' => 'required|string', 'otp' => 'nullable|string|max:20']);
         $me = $request->user();
-        $this->security->requirePassword($me, $request->password);
+        $this->security->requireSensitive($me, $request->password, $request->otp);
 
         $target = $this->staffTarget($id);
         if ($target->id === $me->id) {
@@ -316,9 +316,9 @@ class StaffAccountController extends Controller
 
     public function startTransfer(Request $request)
     {
-        $request->validate(['to_user_id' => 'required|integer', 'password' => 'required|string']);
+        $request->validate(['to_user_id' => 'required|integer', 'password' => 'required|string', 'otp' => 'nullable|string|max:20']);
         $me = $request->user();
-        $this->security->requirePassword($me, $request->password);
+        $this->security->requireSensitive($me, $request->password, $request->otp);
 
         $target = $this->staffTarget($request->to_user_id);
         if ($target->id === $me->id || $target->suspended_at) {
@@ -367,9 +367,9 @@ class StaffAccountController extends Controller
 
     public function acceptTransfer(Request $request)
     {
-        $request->validate(['password' => 'required|string']);
+        $request->validate(['password' => 'required|string', 'otp' => 'nullable|string|max:20']);
         $me = $request->user();
-        $this->security->requirePassword($me, $request->password);
+        $this->security->requireSensitive($me, $request->password, $request->otp);
 
         $transfer = $this->pendingTransfer();
         if (!$transfer || $transfer->to_user_id !== $me->id) {
@@ -405,9 +405,9 @@ class StaffAccountController extends Controller
 
     public function regenerateRecoveryCodes(Request $request)
     {
-        $request->validate(['password' => 'required|string']);
+        $request->validate(['password' => 'required|string', 'otp' => 'nullable|string|max:20']);
         $me = $request->user();
-        $this->security->requirePassword($me, $request->password);
+        $this->security->requireSensitive($me, $request->password, $request->otp);
 
         $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
         $codes = [];

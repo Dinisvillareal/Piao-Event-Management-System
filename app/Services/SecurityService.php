@@ -5,6 +5,9 @@ namespace App\Services;
 use App\Models\SecurityAlert;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use App\Support\Totp;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -117,5 +120,51 @@ class SecurityService
         }
 
         RateLimiter::clear($key);
+    }
+
+    /**
+     * Second factor for the highest-risk Head Staff actions (new recovery codes,
+     * offering or accepting the Head Staff role, resetting someone's password).
+     * A leaked password alone is not enough: the 6-digit code from the person's
+     * authenticator app is needed too. An account without two-step login is told
+     * to turn it on first, so the protection cannot be skipped by never enabling
+     * it. Wrong codes are rate-limited and a code cannot be used twice.
+     */
+    public function requireTwoFactor(User $user, ?string $code, string $field = 'otp'): void
+    {
+        if (!$user->two_factor_confirmed_at || !$user->two_factor_secret) {
+            throw ValidationException::withMessages([
+                $field => ['Turn on two-step login in My Account first. This action needs the code from your authenticator app.'],
+            ]);
+        }
+
+        $key = 'reauth-otp:' . $user->id;
+        if (RateLimiter::tooManyAttempts($key, 5)) {
+            throw ValidationException::withMessages([
+                $field => ['Too many wrong codes. Please wait a few minutes and try again.'],
+            ]);
+        }
+
+        $step = is_string($code) && $code !== ''
+            ? Totp::verify(Crypt::decryptString($user->two_factor_secret), $code)
+            : null;
+        $replayKey = 'totp-used-sensitive:' . $user->id . ':' . $step;
+
+        if ($step === null || Cache::has($replayKey)) {
+            RateLimiter::hit($key, 600);
+            throw ValidationException::withMessages([
+                $field => [$step === null ? 'That code is not valid. Check the 6-digit code in your authenticator app.' : 'That code was just used. Wait for the next one.'],
+            ]);
+        }
+
+        Cache::put($replayKey, true, 180);
+        RateLimiter::clear($key);
+    }
+
+    /** Password + authenticator code, in that order. */
+    public function requireSensitive(User $user, ?string $password, ?string $otp): void
+    {
+        $this->requirePassword($user, $password);
+        $this->requireTwoFactor($user, $otp);
     }
 }

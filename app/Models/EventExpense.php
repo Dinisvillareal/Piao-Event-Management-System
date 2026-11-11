@@ -5,10 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
+use App\Models\Concerns\KeepsActivityLog;
 
 class EventExpense extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, KeepsActivityLog;
 
     protected $fillable = [
         'event_id',
@@ -17,12 +18,14 @@ class EventExpense extends Model
         'notes',
         'receipt_path',
         'extra_receipt_paths',
+        'activity_log',
         'recorded_by',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'extra_receipt_paths' => 'array',
+        'activity_log' => 'array',
     ];
 
     // Same convention as User::validation_id_url -- the stored path is an
@@ -31,6 +34,7 @@ class EventExpense extends Model
     protected $appends = [
         'receipt_url',
         'receipt_urls',
+        'activity_log_urls',
     ];
 
     public function getReceiptUrlAttribute(): ?string

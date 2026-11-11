@@ -51,19 +51,14 @@ class InventoryController extends Controller
     // UC-9: Manage Barangay Inventory
     /**
      * Condition filter shared by the grid and the reports. An item's condition
-     * is New / Good / Fair / Poor; Lost and Disposed are not conditions but
-     * unit counters (lost_quantity, lost_pending, disposed_quantity), so those
-     * two filters match items that have at least one such unit.
+     * is New / Good / Fair / Poor; Lost is not a condition but a unit counter
+     * (lost_quantity), so that filter matches items that have at least one
+     * lost unit.
      */
     public static function applyConditionFilter($query, string $condition): void
     {
         if ($condition === 'Lost') {
-            $query->where(function ($q) {
-                $q->where('lost_quantity', '>', 0)
-                  ->orWhere('lost_pending', '>', 0);
-            });
-        } elseif ($condition === 'Disposed') {
-            $query->where('disposed_quantity', '>', 0);
+            $query->where('lost_quantity', '>', 0);
         } elseif (isset(InventoryItem::CONDITION_COLUMNS[$condition])) {
             // Items hold units in several conditions at once, so match any
             // item with at least one unit in this condition.
@@ -76,7 +71,7 @@ class InventoryController extends Controller
 
     /**
      * Quick tabs of the Inventory list, done in the database so counts, paging
-     * and the shown rows all agree: all | on-loan | low | lost-pending | attention.
+     * and the shown rows all agree: all | on-loan | low | attention.
      */
     private function applyInventoryTab($query, string $tab): void
     {
@@ -86,9 +81,6 @@ class InventoryController extends Controller
                 break;
             case 'low':
                 $query->where('quantity', '<=', self::LOW_STOCK_AT);
-                break;
-            case 'lost-pending':
-                $query->where('lost_pending', '>', 0);
                 break;
             case 'attention':
                 $query->where(function ($q) {
@@ -149,7 +141,7 @@ class InventoryController extends Controller
         $counts = null;
         if ($paged) {
             $counts = [];
-            foreach (['all', 'on-loan', 'low', 'lost-pending', 'attention'] as $tabKey) {
+            foreach (['all', 'on-loan', 'low', 'attention'] as $tabKey) {
                 $tabQuery = clone $query;
                 $this->applyInventoryTab($tabQuery, $tabKey);
                 $counts[$tabKey] = $tabQuery->count();
@@ -225,7 +217,7 @@ class InventoryController extends Controller
     }
 
     // Items selectable when borrowing inventory for an Event (Create/Edit
-    // Event form). Lost and disposed units are already taken out of the
+    // Event form). Lost units are already taken out of the
     // in-stock quantity, so the borrow picker only needs the stock count.
     public function borrowable(Request $request)
     {
@@ -291,7 +283,7 @@ class InventoryController extends Controller
                 response()->json(['message' => $message], $status)
             );
 
-            // Lost / found / disposed units are never edited here -- they are
+            // Lost / found units are never edited here -- they are
             // reported per condition with adjustUnits(), so the stock counts below
             // are only what is physically in stock.
             $data = $request->only(['name', 'quantity', 'storage_location', 'notes']);
@@ -311,7 +303,7 @@ class InventoryController extends Controller
             // What this save changes in stock, per condition (+ added, - removed).
             // It is written to the item's history (who, when, how much) without a
             // photo: the item photo is the record, and evidence photos belong to
-            // the lost / found / disposed / restored and release / return events.
+            // the lost / found and release / return events.
             foreach ($labels as $label => $col) {
                 $after = array_key_exists($col, $data) ? (int) $data[$col] : $before[$label];
                 if ($after !== $before[$label]) {
@@ -358,19 +350,16 @@ class InventoryController extends Controller
     }
 
     /**
-     * Lost / found / disposed / restored units, all in one place. Staff pick
-     * exactly which units, per condition (3 Good + 2 Fair), so nothing is
-     * chosen at random.
-     *  - lost:     units missing from stock leave stock and join the lost count
-     *              (units lost on a loan are reported from Returns instead);
-     *  - found:    lost units that turned up. Units still counted on an open
-     *              loan (lost_pending) simply stop being lost; the rest go into
-     *              stock under the conditions given. Also the fix for a unit
-     *              marked lost by mistake -- it returns to stock, not to the loan;
-     *  - disposed: unusable units leave stock and join the disposed count;
-     *  - restored: disposed units that are usable again go back into stock.
-     * Disposed / restored / found need 1-5 evidence photos. Every report is
-     * kept in inventory_unit_logs and the activity log.
+     * Marks lost units as found. Units are only ever reported lost from an
+     * event's loan (Returns -> Report Lost), so this is the way back for those
+     * units: staff enter how many came back in each condition (3 Good + 2 Fair).
+     * The report belongs to the item, not to an event.
+     * The found units go back into stock in the condition they were lost in:
+     * a condition can't be given more units than were recorded as lost in it
+     * (InventoryItem::lostByCondition), so Good units can't come back as New or
+     * Poor. The total is the sum of the counts. It is also the fix for a unit
+     * marked lost by mistake. Needs 1-5 evidence photos. Every report is kept in
+     * inventory_unit_logs and the activity log.
      */
     public function adjustUnits(Request $request, $id)
     {
@@ -379,12 +368,10 @@ class InventoryController extends Controller
         }
 
         $request->validate([
-            'action' => 'required|in:lost,found,disposed,restored',
+            'action' => 'required|in:found',
             'units' => 'nullable|array',
             'units.*' => 'nullable|integer|min:0',
-            // found only: how many of the lost units were found.
-            'quantity' => 'nullable|integer|min:1',
-            // Evidence photos (up to 5): required for disposed / restored / found.
+            // Evidence photos (up to 5): required for found.
             'photos' => 'nullable|array|max:5',
             'photos.*' => 'image|max:5120',
         ]);
@@ -396,10 +383,10 @@ class InventoryController extends Controller
         foreach ($labels as $label) {
             $units[$label] = max(0, (int) $request->input("units.{$label}", 0));
         }
+
         $total = array_sum($units);
-        // Evidence is required for disposed / restored / found -- checked up front so nothing is locked or uploaded without it.
-        if (in_array($action, ['disposed', 'restored', 'found'], true)
-            && count(array_filter((array) $request->file('photos', []))) < 1) {
+        // Evidence is required -- checked up front so nothing is locked or uploaded without it.
+        if (count(array_filter((array) $request->file('photos', []))) < 1) {
             return response()->json(['message' => 'Attach at least one evidence photo.'], 422);
         }
 
@@ -415,86 +402,46 @@ class InventoryController extends Controller
         try {
             // One transaction on a locked row: the checks and the writes see the same
             // numbers, so two staff acting on the same item at once can't both pass
-            // the checks (e.g. restore the same disposed units twice). The ledger row
+            // the checks (e.g. mark the same lost units as found twice). The ledger row
             // is written in the same transaction, so counts and history never disagree.
             \DB::transaction(function () use ($id, $request, $action, $units, $total, &$quantity, &$photos, &$item, $fail) {
                 $item = InventoryItem::lockForUpdate()->findOrFail($id);
 
-                if ($action === 'lost' || $action === 'disposed') {
-                    if ($total <= 0) {
-                        return $fail('Enter how many units to report.');
-                    }
-                    $have = $item->conditionCounts();
-                    foreach ($units as $label => $n) {
-                        if ($n > $have[$label]) {
-                            return $fail("Can't take {$n} {$label} unit(s) -- only {$have[$label]} {$label} in stock.");
-                        }
-                    }
-                } elseif ($action === 'restored') {
-                    if ($total <= 0) {
-                        return $fail('Enter how many units to put back.');
-                    }
-                    if ($total > (int) $item->disposed_quantity) {
-                        return $fail("Can't restore {$total} -- only {$item->disposed_quantity} are recorded as disposed.");
-                    }
-                    // Only units of the condition they were disposed in can be restored
-                    // (4 Good disposed -> only Good comes back). Units disposed before
-                    // conditions were recorded can go back into any condition.
-                    $b = $this->disposedBreakdown($item);
-                    $overflow = 0;
-                    foreach ($units as $label => $n) {
-                        $overflow += max(0, $n - $b['known'][$label]);
-                    }
-                    if ($overflow > $b['unknown']) {
-                        $parts = [];
-                        foreach ($b['known'] as $label => $n) {
-                            if ($n > 0) {
-                                $parts[] = "{$n} {$label}";
-                            }
-                        }
-                        return $fail("Those units weren't disposed in that condition. Disposed: " . ($parts ? implode(', ', $parts) : 'unknown condition') . '.');
-                    }
-                } else {
-                    $quantity = (int) $request->input('quantity', 0);
-                    $lostNow = (int) $item->lost_quantity;
-                    if ($quantity < 1 || $quantity > $lostNow) {
-                        return $fail($lostNow > 0 ? "Can't mark {$quantity} as found -- only {$lostNow} are recorded as lost." : 'No units are recorded as lost for this item.');
-                    }
-                    $fromPending = min($quantity, (int) $item->lost_pending);
-                    $toStock = $quantity - $fromPending;
-                    if ($total !== $toStock) {
-                        return $fail($toStock > 0
-                            ? "Say which condition the {$toStock} unit(s) coming back to stock are in -- the counts must add up to {$toStock}."
-                            : 'These units are still counted on an open loan, so no condition is needed.');
+                // The found units are entered by condition, so the total is simply their sum.
+                $quantity = $total;
+                $returnable = max(0, (int) $item->lost_quantity);
+                if ($returnable < 1) {
+                    return $fail('No lost units can be returned to stock for this item right now.');
+                }
+                if ($quantity < 1) {
+                    return $fail('Enter how many units were found in each condition.');
+                }
+                if ($quantity > $returnable) {
+                    return $fail("Can't mark {$quantity} as found -- only {$returnable} are recorded as lost.");
+                }
+                // Each condition is limited to what was lost in that condition.
+                foreach ($item->lostByCondition() as $label => $lostHere) {
+                    if (($units[$label] ?? 0) > $lostHere) {
+                        return $fail($lostHere > 0
+                            ? "Can't mark {$units[$label]} {$label} as found -- only {$lostHere} {$label} were recorded as lost."
+                            : "Can't mark {$label} units as found -- none were recorded as lost in that condition.");
                     }
                 }
 
+                // Nobody can prove where a recovered item came from -- a photo of a chair looks the
+                // same for every event -- so a recovery is recorded on the item and is never tied
+                // to an event. Each event keeps the loss exactly as it was recorded at return.
+                $photos = PhotoSet::resolve([], $request, fn ($f) => $this->localUpload($f, 'inventory_unit_photos'))['final'];
 
-                if (in_array($action, ['disposed', 'restored', 'found'], true)) {
-                    $photos = PhotoSet::resolve([], $request, fn ($f) => $this->localUpload($f, 'inventory_unit_photos'))['final'];
-                }
-
-                if ($action === 'lost') {
-                    $item->lost_quantity = (int) $item->lost_quantity + $total;
-                    $item->takeUnits($units);
-                } elseif ($action === 'disposed') {
-                    $item->disposed_quantity = (int) $item->disposed_quantity + $total;
-                    $item->takeUnits($units);
-                } elseif ($action === 'restored') {
-                    $item->disposed_quantity = (int) $item->disposed_quantity - $total;
-                    $item->giveUnits($units);
-                } else {
-                    $fromPending = min($quantity, (int) $item->lost_pending);
-                    $item->lost_quantity = (int) $item->lost_quantity - $quantity;
-                    $item->lost_pending = (int) $item->lost_pending - $fromPending;
-                    $total > 0 ? $item->giveUnits($units) : $item->save();
-                }
+                $item->lost_quantity = (int) $item->lost_quantity - $quantity;
+                $item->giveUnits($units);
 
                 InventoryUnitLog::create([
                     'inventory_item_id' => $item->id,
+                    'event_id' => null,
                     'action' => $action,
                     'quantity' => $quantity,
-                    'units' => $total > 0 ? $units : null,
+                    'units' => $units,
                     'photo_path' => $photos[0] ?? null,
                     'extra_photo_paths' => count($photos) > 1 ? array_slice($photos, 1) : null,
                     'user_code' => auth()->user()?->user_code,
@@ -514,13 +461,212 @@ class InventoryController extends Controller
                 $parts[] = "{$n} {$label}";
             }
         }
-        $verb = ['lost' => 'reported lost', 'found' => 'marked as found', 'disposed' => 'disposed', 'restored' => 'restored from disposed'][$action];
-        $this->createLog('Update', "{$quantity} unit(s) of {$item->name} {$verb}" . ($parts ? ' (' . implode(', ', $parts) . ')' : ' (still on loan)'));
+        $this->createLog('Update', "{$quantity} unit(s) of {$item->name} marked as found" . ($parts ? ' (' . implode(', ', $parts) . ')' : ' (still on loan)'));
 
         return response()->json(['message' => 'Units updated.', 'item' => $item->refresh()]);
     }
 
-    /** The recent lost / found / disposed / restored reports for one item, newest first. */
+    /**
+     * Undoes a "found" report that was entered wrongly (wrong condition split,
+     * wrong item): those units leave stock again, in exactly the conditions they
+     * were found in, and go back to lost. The entry stays in the history marked
+     * as undone (never deleted), so the audit trail stays whole. It is refused
+     * when the units are no longer in stock (an event borrowed them again), the
+     * same rule as undoing a release on the Returns page. To correct a wrong
+     * split, undo it and record the found units again.
+     */
+    public function undoFound(Request $request, $id, $logId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $fail = fn (string $message) => throw new \Illuminate\Http\Exceptions\HttpResponseException(
+            response()->json(['message' => $message], 422)
+        );
+
+        $item = null;
+        $log = null;
+        \DB::transaction(function () use ($id, $logId, &$item, &$log, $fail) {
+            $item = InventoryItem::lockForUpdate()->findOrFail($id);
+            $log = InventoryUnitLog::where('inventory_item_id', $item->id)->lockForUpdate()->findOrFail($logId);
+
+            if ($log->action !== 'found') {
+                return $fail('Only a found report can be undone.');
+            }
+            if ($log->undone_at) {
+                return $fail('This report has already been undone.');
+            }
+
+            $units = [];
+            foreach (array_keys(InventoryItem::CONDITION_COLUMNS) as $label) {
+                $units[$label] = max(0, (int) ($log->units[$label] ?? 0));
+            }
+            $short = $item->shortfall($units);
+            if ($short) {
+                $parts = [];
+                foreach ($short as $label => $n) {
+                    $parts[] = "{$n} {$label}";
+                }
+
+                return $fail('Can\'t undo: ' . implode(', ', $parts) . ' of these units are no longer in stock (they were lent out again). Return them first.');
+            }
+
+            $item->takeUnits($units);
+            $item->lost_quantity = (int) $item->lost_quantity + (int) $log->quantity;
+            $item->save();
+
+            $log->undone_at = now();
+            $log->undone_by = auth()->user()?->user_code;
+            $log->save();
+        });
+
+        $this->createLog('Update', "Undid a found report of {$log->quantity} unit(s) of {$item->name}; they are marked as lost again");
+
+        return response()->json(['message' => 'Found report undone.', 'item' => $item->refresh()]);
+    }
+
+    /**
+     * Corrects how many units a found report covered, per condition (for example 1
+     * found instead of 2), and optionally its evidence photos (kept unless replaced,
+     * 1-5 required, same as on Returns). The old entry is marked undone and a
+     * replacement entry with the corrected units and photos is written in the same
+     * transaction. The old entry keeps its own photos, so the original upload stays
+     * visible in the history and nothing is rewritten.
+     * Rules: each condition can go up only to what is still lost in it, and down only
+     * by units that are still in stock (not lent out again). Fewer found means the
+     * difference is lost again; no units at all is an Undo instead.
+     */
+    public function editFound(Request $request, $id, $logId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'units' => 'required|array',
+            'units.*' => 'nullable|integer|min:0',
+            'photos' => 'nullable|array|max:5',
+            'photos.*' => 'image|max:5120',
+        ]);
+
+        $fail = fn (string $message) => throw new \Illuminate\Http\Exceptions\HttpResponseException(
+            response()->json(['message' => $message], 422)
+        );
+
+        $labels = array_keys(InventoryItem::CONDITION_COLUMNS);
+        $new = [];
+        foreach ($labels as $label) {
+            $new[$label] = max(0, (int) $request->input("units.{$label}", 0));
+        }
+
+        $item = null;
+        $oldQty = 0;
+        $newQty = array_sum($new);
+        $uploaded = [];
+        try {
+        \DB::transaction(function () use ($id, $logId, $labels, $new, $newQty, $request, &$item, &$oldQty, &$uploaded, $fail) {
+            $item = InventoryItem::lockForUpdate()->findOrFail($id);
+            $log = InventoryUnitLog::where('inventory_item_id', $item->id)->lockForUpdate()->findOrFail($logId);
+
+            if ($log->action !== 'found') {
+                return $fail('Only a found report can be edited.');
+            }
+            if ($log->undone_at) {
+                return $fail('This report was already undone or corrected.');
+            }
+
+            $old = [];
+            foreach ($labels as $label) {
+                $old[$label] = max(0, (int) ($log->units[$label] ?? 0));
+            }
+            $oldQty = array_sum($old);
+
+            if ($newQty < 1) {
+                return $fail('Enter how many units were found. To remove this report entirely, use Undo.');
+            }
+            // Photos: kept unless the request describes a new list (keep_photos[] + photos[]).
+            $currentPhotos = array_values(array_filter(array_merge([$log->photo_path], $log->extra_photo_paths ?? [])));
+            $finalPhotos = $currentPhotos;
+            $photosChanged = false;
+            if ($request->boolean('photos_sync')) {
+                $plan = PhotoSet::plan($currentPhotos, $request);
+                $photosChanged = count($plan['files']) > 0 || $plan['kept'] !== $currentPhotos;
+                if (count($plan['kept']) + count($plan['files']) < 1) {
+                    return $fail('Attach at least one evidence photo.');
+                }
+                if ($photosChanged) {
+                    $finalPhotos = PhotoSet::resolve($currentPhotos, $request, fn ($f) => $this->localUpload($f, 'inventory_unit_photos'))['final'];
+                    $uploaded = array_values(array_diff($finalPhotos, $currentPhotos));
+                }
+            }
+
+            if ($new === $old && !$photosChanged) {
+                return $fail('Nothing was changed.');
+            }
+
+            // Up: only what is still lost in that condition. Down: only units still in stock.
+            $lostBy = $item->lostByCondition();
+            $give = [];
+            $take = [];
+            foreach ($labels as $label) {
+                $delta = $new[$label] - $old[$label];
+                if ($delta > 0) {
+                    if ($delta > ($lostBy[$label] ?? 0)) {
+                        return $fail("Can't raise {$label} to {$new[$label]} -- only " . ($lostBy[$label] ?? 0) . " more {$label} are recorded as lost.");
+                    }
+                    $give[$label] = $delta;
+                } elseif ($delta < 0) {
+                    $take[$label] = -$delta;
+                }
+            }
+            if ($short = $item->shortfall($take)) {
+                $parts = [];
+                foreach ($short as $label => $n) {
+                    $parts[] = "{$n} {$label}";
+                }
+
+                return $fail('Can\'t lower this: ' . implode(', ', $parts) . ' of these units are no longer in stock (they were lent out again). Return them first.');
+            }
+
+            if ($take) {
+                $item->takeUnits($take);
+            }
+            if ($give) {
+                $item->giveUnits($give);
+            }
+            $item->lost_quantity = max(0, (int) $item->lost_quantity + $oldQty - $newQty);
+            $item->save();
+
+            $log->undone_at = now();
+            $log->undone_by = auth()->user()?->user_code;
+            $log->save();
+
+            InventoryUnitLog::create([
+                'inventory_item_id' => $item->id,
+                'event_id' => null,
+                'action' => 'found',
+                'quantity' => $newQty,
+                'units' => $new,
+                'photo_path' => $finalPhotos[0] ?? null,
+                'extra_photo_paths' => count($finalPhotos) > 1 ? array_slice($finalPhotos, 1) : null,
+                'user_code' => auth()->user()?->user_code,
+            ]);
+        });
+        } catch (\Throwable $e) {
+            // Don't leave newly uploaded evidence behind when the save didn't go through.
+            foreach ($uploaded as $path) {
+                $this->localDelete($path);
+            }
+            throw $e;
+        }
+
+        $this->createLog('Update', "Corrected a found report for {$item->name}: {$oldQty} -> {$newQty} unit(s) found");
+
+        return response()->json(['message' => 'Found report corrected.', 'item' => $item->refresh()]);
+    }
+
+    /** The recent lost / found reports (lost ones come from event loans) and stock adjustments for one item, newest first. */
     public function unitLogs($id)
     {
         if (!$this->isStaff()) {
@@ -528,49 +674,37 @@ class InventoryController extends Controller
         }
 
         $item = InventoryItem::withTrashed()->findOrFail($id);
-        $logs = InventoryUnitLog::where('inventory_item_id', $item->id)->latest('id')->limit(100)->get();
-        $people = \App\Models\User::whereIn('user_code', $logs->pluck('user_code')->filter()->unique())
+        // Older write-off entries (disposed / restored) are kept in the table but no longer shown.
+        $logs = InventoryUnitLog::where('inventory_item_id', $item->id)
+            ->whereNotIn('action', ['disposed', 'restored'])->latest('id')->limit(100)->get();
+        $people = \App\Models\User::whereIn('user_code', $logs->pluck('user_code')->merge($logs->pluck('undone_by'))->filter()->unique())
             ->get(['user_code', 'first_name', 'last_name'])->keyBy('user_code');
         $events = \App\Models\Event::withTrashed()->whereIn('id', $logs->pluck('event_id')->filter()->unique())->pluck('name', 'id');
 
         return response()->json([
-            // Which conditions the disposed units were in -- the Restore tab only offers those.
-            'disposed' => $this->disposedBreakdown($item),
+            // Lost units still outstanding, per condition -- what the Found form offers.
+            'lost_by' => $item->lostByCondition(),
+            // The whole picture for this item. Recoveries are never tied to an event, so the
+            // event's own "lost" stays as recorded and the item shows what is still missing.
+            'summary' => [
+                'lost' => (int) InventoryUnitLog::where('inventory_item_id', $item->id)->where('action', 'lost')->whereNull('undone_at')->sum('quantity'),
+                'recovered' => $item->recoveredTotal(),
+                'missing' => (int) $item->lost_quantity,
+            ],
             'logs' => $logs->map(fn ($l) => [
                 'id' => $l->id,
                 'action' => $l->action,
                 'quantity' => $l->quantity,
                 'units' => $l->units,
                 'photo_urls' => $l->photo_urls,
+                'undone_at' => $l->undone_at?->toIso8601String(),
+                'undone_by' => $l->undone_by ? (($p = $people->get($l->undone_by)) ? trim($p->first_name . ' ' . $p->last_name) : $l->undone_by) : null,
+                'event_id' => $l->event_id,
                 'event_name' => $l->event_id ? ($events[$l->event_id] ?? null) : null,
                 'by' => ($p = $people->get($l->user_code)) ? trim($p->first_name . ' ' . $p->last_name) : ($l->user_code ?: 'System'),
                 'at' => $l->created_at?->toIso8601String(),
             ])->values(),
         ]);
-    }
-
-    /**
-     * Disposed units per condition, from the disposed / restored reports, plus
-     * how many disposed units have no recorded condition (disposed before
-     * conditions were tracked).
-     *
-     * @return array{known: array<string,int>, unknown: int}
-     */
-    private function disposedBreakdown(InventoryItem $item): array
-    {
-        $known = array_fill_keys(array_keys(InventoryItem::CONDITION_COLUMNS), 0);
-        $logs = InventoryUnitLog::where('inventory_item_id', $item->id)->whereIn('action', ['disposed', 'restored'])->get();
-        foreach ($logs as $log) {
-            $sign = $log->action === 'disposed' ? 1 : -1;
-            foreach ($known as $label => $n) {
-                $known[$label] += $sign * (int) ($log->units[$label] ?? 0);
-            }
-        }
-        foreach ($known as $label => $n) {
-            $known[$label] = max(0, $n);
-        }
-
-        return ['known' => $known, 'unknown' => max(0, (int) $item->disposed_quantity - array_sum($known))];
     }
 
     public function destroy($id)

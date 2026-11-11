@@ -1,3 +1,4 @@
+import PhotoViewer from "../../../components/ui/PhotoViewer";
 import Portal from "../../../components/ui/Portal";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import SaveButton from "../../../components/ui/SaveButton";
@@ -44,6 +45,7 @@ import {
   ShieldCheck,
   Check,
   ListChecks,
+  Eye,
 } from "lucide-react";
 import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
@@ -2304,11 +2306,33 @@ const handleDeleteResident = async () => {
                 )}
 
                 <div className="flex items-center gap-4">
-                  <div className="h-20 w-20 rounded-full bg-[#123A38] border border-white/10 flex items-center justify-center text-lg font-bold text-[#7DD8CB] overflow-hidden shrink-0">
-                    {r.photo ? (
-                      <img src={r.photo} alt="" className="h-full w-full object-cover" />
-                    ) : (
-                      <DefaultAvatar className="h-20 w-20" title={`${r.firstName} ${r.lastName}`} />
+                  <div className="relative h-20 w-20 shrink-0">
+                    <div className="h-20 w-20 rounded-full bg-[#123A38] border border-white/10 flex items-center justify-center text-lg font-bold text-[#7DD8CB] overflow-hidden">
+                      {r.photo ? (
+                        <img src={r.photo} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <DefaultAvatar className="h-20 w-20" title={`${r.firstName} ${r.lastName}`} />
+                      )}
+                    </div>
+                    {r.photo && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPhotoPreviewModal({
+                            url: r.photo,
+                            label: t("idPhotoFieldLabel"),
+                            name: withSuffix(`${r.firstName} ${r.middleName} ${r.lastName}`.replace(/\s+/g, " "), r.suffix),
+                            size: null,
+                          })
+                        }
+                        title={t("photoPreviewBtn")}
+                        aria-label={t("photoPreviewBtn")}
+                        className="absolute inset-0 rounded-full group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4FBEB0]"
+                      >
+                        <span className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white backdrop-blur transition group-hover:bg-[#4FBEB0] group-hover:text-[#0A0E1A]">
+                          <Eye className="h-4 w-4" />
+                        </span>
+                      </button>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -3149,29 +3173,14 @@ const handleDeleteResident = async () => {
       )}
 
       {/* ─── ID Photo preview popup ───────────────────────────────────────────── */}
-      {photoPreviewModal && (
-        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setPhotoPreviewModal(null)}>
-          <div className="bg-white rounded-[24px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-[#E6E0D3] flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
-                <span className="inline-flex items-center rounded-full bg-sage-50 text-sage-800 text-[11px] font-bold uppercase tracking-wide px-3 py-1 shrink-0">
-                  {photoPreviewModal.label}
-                </span>
-                <span className="text-sm font-medium text-[#1A1A1A] truncate">{photoPreviewModal.name}</span>
-                {photoPreviewModal.size !== null && (
-                  <span className="text-xs text-[#6B7280] shrink-0">· {(photoPreviewModal.size / (1024 * 1024)).toFixed(2)} MB</span>
-                )}
-              </div>
-              <button onClick={() => setPhotoPreviewModal(null)} className="text-[#6B7280] hover:text-[#1A1A1A] p-1 shrink-0">
-                <XIcon className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto bg-[#FAF9F5] flex items-center justify-center p-6">
-              <img src={photoPreviewModal.url} alt={photoPreviewModal.name} className="max-w-full max-h-[65vh] rounded-xl shadow-sm" />
-            </div>
-          </div>
-        </div></Portal>
-      )}
+      <PhotoViewer
+        url={photoPreviewModal?.url ?? null}
+        name={photoPreviewModal?.name ?? ""}
+        label={photoPreviewModal?.label}
+        meta={photoPreviewModal?.size != null ? `${(photoPreviewModal.size / (1024 * 1024)).toFixed(2)} MB` : undefined}
+        onSelect={() => {}}
+        onClose={() => setPhotoPreviewModal(null)}
+      />
 
       {/* ─── Validation / save-error popup (replaces the old inline red banner) ── */}
       <StatusModal open={!!apiError} type="error" title={apiErrorTitle || t("errorTitle")} message={apiError || ""} okLabel={t("okLabel")} onClose={() => setApiError(null)} />

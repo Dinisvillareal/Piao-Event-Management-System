@@ -231,9 +231,13 @@ export default function DashboardView({
       .slice(0, 4); // ✅ Changed from 5 to 4
   }, [notifications]);
 
-  // Show upcoming events - show 4 items
+  // The next 4 upcoming events, soonest first.
   const latestEvents = useMemo(() => {
-    return [...upcomingEvents].slice(0, 4); // ✅ Changed from 5 to 4
+    const time = (e: any) => {
+      const n = new Date(e.event_start ?? e.date).getTime();
+      return isNaN(n) ? Infinity : n;
+    };
+    return [...upcomingEvents].sort((a, b) => time(a) - time(b)).slice(0, 4);
   }, [upcomingEvents]);
 
   // ─── "MY ACTIVITY" LIVE SNAPSHOT -- everything below is real, already

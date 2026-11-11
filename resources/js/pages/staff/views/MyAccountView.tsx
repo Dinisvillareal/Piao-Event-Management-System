@@ -103,8 +103,8 @@ export default function MyAccountView() {
     await load();
   };
 
-  const accept = async (password: string) => {
-    await api.post("/staff/head-transfer/accept", { password });
+  const accept = async (password: string, otp: string) => {
+    await api.post("/staff/head-transfer/accept", { password, otp });
     setAcceptOpen(false);
     window.location.reload(); // new role -> reload so the whole page reflects it
   };
@@ -342,7 +342,7 @@ export default function MyAccountView() {
 
       <PasswordConfirmDialog open={askSetupPw} title={t("secSetUpTwoStep")} body={t("secConfirmWithPassword")} confirmLabel={t("secContinue")} onConfirm={startSetup} onClose={() => setAskSetupPw(false)} />
       <PasswordConfirmDialog open={askOffPw} title={t("secTurnOff")} body={t("secTurnOffBody")} confirmLabel={t("secTurnOff")} tone="danger" onConfirm={turnOff} onClose={() => setAskOffPw(false)} />
-      <PasswordConfirmDialog open={acceptOpen} title={t("secAcceptHeadRole")} body={t("secAcceptBody")} confirmLabel={t("secAcceptHeadRole")} onConfirm={accept} onClose={() => setAcceptOpen(false)} />
+      <PasswordConfirmDialog open={acceptOpen} title={t("secAcceptHeadRole")} body={t("secAcceptBody")} confirmLabel={t("secAcceptHeadRole")} requireOtp twoFactorOn={!!me?.two_factor_enabled} onConfirm={accept} onClose={() => setAcceptOpen(false)} />
     </div>
     </div>
   );

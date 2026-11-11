@@ -1,25 +1,24 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, CheckCircle2, Eye, Trash2, RotateCcw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Eye, Pencil, RotateCcw } from "lucide-react";
 import FormDrawer, { FormSection } from "../ui/FormDrawer";
 import SaveButton from "../ui/SaveButton";
 import ConfirmDialog from "../ui/ConfirmDialog";
 import NumberStepper from "../ui/NumberStepper";
 import SimplePager from "../ui/SimplePager";
-import PhotoGallery, { type PhotoItem } from "../ui/PhotoGallery";
+import PhotoGallery, { type PhotoItem, photoItemsFromUrls, appendPhotoFields, photoItemsChanged } from "../ui/PhotoGallery";
 import api, { apiErrorMessage } from "../../lib/api";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { tc } from "../../lib/contentTranslations";
 
-// One place for every unit-level correction on an inventory item:
-//  Lost      units missing from stock          -> leave stock, join the lost count
-//  Found     lost units that turned up         -> back into stock (also fixes a loss marked by mistake)
-//  Disposed  unusable units                    -> leave stock, join the disposed count
-//  Restore   disposed units usable again       -> back into stock
-// Staff pick the units per condition, so nothing is ever chosen at random.
+// Marks lost units as found. Units are only reported lost from an event's loan
+// (Returns -> Report Lost), so this is the way back for those units: they go
+// back into stock (also fixes a loss marked by mistake). Staff pick the units
+// per condition, so nothing is ever chosen at random.
+// The history below also lists the lost reports that came from event loans.
 
-type Action = "lost" | "found" | "disposed" | "restored";
+type Action = "found";
 // History also lists stock changes made from the Add / Edit form.
-type LogAction = Action | "added" | "adjusted";
+type LogAction = Action | "lost" | "added" | "adjusted";
 
 export interface UnitsItem {
   id: number;
@@ -30,19 +29,21 @@ export interface UnitsItem {
   fair_quantity: number;
   poor_quantity: number;
   lost_quantity: number;
-  lost_pending: number;
-  disposed_quantity: number;
 }
 
+/** An event that still has units of this item missing (what the Found form can name). */
 interface UnitLog {
   id: number;
   action: LogAction;
   quantity: number;
   units: Record<string, number> | null;
   photo_urls: string[];
+  event_id?: number | null;
   event_name: string | null;
   by: string;
   at: string | null;
+  undone_at?: string | null;
+  undone_by?: string | null;
 }
 
 const LABELS = ["New", "Good", "Fair", "Poor"] as const;
@@ -58,11 +59,81 @@ const ACTION_STYLE: Record<LogAction, string> = {
   adjusted: "bg-sky-400/15 text-sky-300",
   lost: "bg-red-500/15 text-red-300",
   found: "bg-[#4FBEB0]/15 text-[#7DD8CB]",
-  disposed: "bg-white/10 text-white/60",
-  restored: "bg-gold-400/15 text-gold-300",
 };
 const zero = (): Record<string, number> => ({ New: 0, Good: 0, Fair: 0, Poor: 0 });
 const sum = (u: Record<string, number>) => Object.values(u).reduce((a, b) => a + (Number(b) || 0), 0);
+
+
+const INPUT_CLASS = "border-white/25 bg-white/10 focus:border-[#4FBEB0]/50 focus:ring-[#4FBEB0]/20"
+  + " w-full rounded-full border pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2";
+
+/**
+ * The "how many were found, by condition" entry, shared by the Found form and the
+ * Edit drawer so both look and behave the same: one card per condition that was lost,
+ * each capped at what can still be found in it, plus a total with a progress bar.
+ */
+function FoundCards({ units, caps, onChange }: { units: Record<string, number>; caps: Record<string, number>; onChange: (next: Record<string, number>) => void }) {
+  const { t } = useLanguage();
+  const shown = LABELS.filter((x) => (caps[x] ?? 0) > 0);
+  const total = sum(units);
+  const max = sum(caps);
+  const setOne = (l: string, v: number) => onChange({ ...units, [l]: Math.max(0, Math.min(caps[l] ?? 0, Math.floor(v) || 0)) });
+  return (
+    <div>
+      <label className="mb-2 block text-base font-semibold text-white">{t("foundConditionLabel")} *</label>
+      <p className="mb-3 text-sm text-white/45">{t("foundSameCondition")}</p>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))] gap-3">
+        {shown.map((l) => {
+          const cap = caps[l] ?? 0;
+          const n = units[l] ?? 0;
+          const full = n >= cap;
+          return (
+            <div
+              key={l}
+              className={`space-y-2.5 rounded-2xl border p-3 transition-colors ${full ? "border-[#4FBEB0]/50 bg-[#4FBEB0]/[0.07]" : n > 0 ? "border-white/25 bg-white/[0.05]" : "border-white/10 bg-white/[0.03]"}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${CHIP[l]}`}>{t(KEY[l])}</span>
+                <span className="text-xs font-semibold text-white/55 [font-variant-numeric:tabular-nums]">{t("foundLostCount").replace("{n}", String(cap))}</span>
+              </div>
+              <NumberStepper min={0} max={cap} fullWidth value={String(n)} onChange={(v) => setOne(l, Number(v))} className={INPUT_CLASS} />
+              <div className="flex items-center justify-between gap-2 text-xs [font-variant-numeric:tabular-nums]">
+                <span className={full ? "inline-flex items-center gap-1 font-semibold text-[#7DD8CB]" : "text-white/50"}>
+                  {full && <CheckCircle2 className="h-3.5 w-3.5" />}
+                  {t("foundOfMax").replace("{n}", String(n)).replace("{max}", String(cap))}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setOne(l, full ? 0 : cap)}
+                  className="rounded-full border border-white/15 px-2.5 py-0.5 font-semibold text-white/70 transition hover:bg-white/10 hover:text-white"
+                >
+                  {full ? t("foundClearBtn") : t("foundAllBtn")}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-4">
+        <div className="mb-1.5 flex items-center justify-between text-sm text-white/60 [font-variant-numeric:tabular-nums]">
+          <span>{t("foundTotalLabel").replace("{n}", String(total)).replace("{max}", String(max))}</span>
+          {shown.length > 1 && (
+            <button
+              type="button"
+              onClick={() => onChange(total >= max ? zero() : { ...zero(), ...Object.fromEntries(shown.map((x) => [x, caps[x]])) })}
+              className="text-xs font-semibold text-[#7DD8CB] hover:underline"
+            >
+              {total >= max ? t("foundClearAll") : t("foundAllFound")}
+            </button>
+          )}
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-[#4FBEB0] transition-all" style={{ width: `${max > 0 ? Math.min(100, (total / max) * 100) : 0}%` }} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function UnitsModal({
   item,
@@ -81,37 +152,95 @@ export default function UnitsModal({
   const { t, locale, language } = useLanguage();
   const stock = (label: string) => Number((item as any)[`${label.toLowerCase()}_quantity`]) || 0;
 
+  // Lost units that can go back into stock.
+  const returnable = Math.max(0, item.lost_quantity);
   const available: Record<Action, boolean> = {
-    lost: item.quantity > 0,
-    found: item.lost_quantity > 0,
-    disposed: item.quantity > 0,
-    restored: item.disposed_quantity > 0,
+    found: returnable > 0,
   };
-  const tabs = (["lost", "found", "disposed", "restored"] as Action[]).filter((a) => available[a]);
+  const tabs = (["found"] as Action[]).filter((a) => available[a]);
 
-  const [action, setAction] = useState<Action>(tabs[0] ?? "lost");
+  const [action, setAction] = useState<Action>(tabs[0] ?? "found");
   const [units, setUnits] = useState<Record<string, number>>(zero());
-  const [foundQty, setFoundQty] = useState(1);
   const [busy, setBusy] = useState(false);
   // "Are you sure?" before saving, and before throwing away picked units.
   const [confirm, setConfirm] = useState<"submit" | "cancel" | null>(null);
   const [logs, setLogs] = useState<UnitLog[]>([]);
+  // Lost units still outstanding per condition (from the server). Found units come back
+  // in the condition they were lost in, so this is also the most each box can take.
+  const [lostBy, setLostBy] = useState<Record<string, number> | null>(null);
+  // The item's whole picture: lost at return (all events), recovered later, still missing.
+  // Recoveries belong to the item, never to an event.
+  const [summary, setSummary] = useState<{ lost: number; recovered: number; missing: number } | null>(null);
   const [logPage, setLogPage] = useState(1);
   const LOGS_PER_PAGE = 5;
   const logPages = Math.max(1, Math.ceil(logs.length / LOGS_PER_PAGE));
   const pagedLogs = logs.slice((Math.min(logPage, logPages) - 1) * LOGS_PER_PAGE, Math.min(logPage, logPages) * LOGS_PER_PAGE);
-  // What was disposed, per condition (from the ledger). `unknown` = disposed
-  // before the ledger existed, so its condition can't be known.
-  const [disposedInfo, setDisposedInfo] = useState<{ known: Record<string, number>; unknown: number }>({ known: zero(), unknown: item.disposed_quantity });
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
   const [photoError, setPhotoError] = useState("");
+  // A found report staff are about to undo (asks "Are you sure?" first).
+  const [undoLog, setUndoLog] = useState<UnitLog | null>(null);
+  const [undoBusy, setUndoBusy] = useState(false);
+  // A found report being corrected (e.g. 1 found instead of 2) in its own drawer.
+  const [editLog, setEditLog] = useState<UnitLog | null>(null);
+  const [editUnits, setEditUnits] = useState<Record<string, number>>(zero());
+  const [editPhotos, setEditPhotos] = useState<PhotoItem[]>([]);
+  const [editPhotoError, setEditPhotoError] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editConfirm, setEditConfirm] = useState<"save" | "cancel" | null>(null);
+  const startEdit = (l: UnitLog) => {
+    setEditLog(l);
+    setEditUnits({ ...zero(), ...Object.fromEntries(LABELS.map((x) => [x, Number(l.units?.[x]) || 0])) });
+    setEditPhotos(photoItemsFromUrls(l.photo_urls));
+    setEditPhotoError("");
+    setEditConfirm(null);
+  };
+  const closeEdit = () => {
+    editPhotos.forEach((p) => { if (p.file) URL.revokeObjectURL(p.url); });
+    setEditLog(null);
+    setEditConfirm(null);
+  };
+  // Up to what is still lost in that condition plus what this report already covers.
+  const editCaps: Record<string, number> = Object.fromEntries(LABELS.map((x) => {
+    const own = Number(editLog?.units?.[x]) || 0;
+    return [x, Math.max(0, (lostBy?.[x] ?? 0) + own)];
+  }));
+  const editTotal = sum(editUnits);
+  const editUnitsChanged = editLog ? LABELS.some((x) => (editUnits[x] ?? 0) !== (Number(editLog.units?.[x]) || 0)) : false;
+  const editPhotosChanged = editLog ? photoItemsChanged(editPhotos, editLog.photo_urls.length) : false;
+  const editReady = !editBusy && editTotal >= 1 && editPhotos.length >= 1 && (editUnitsChanged || editPhotosChanged);
+  const requestEditClose = () => {
+    if (editBusy) return;
+    if (editUnitsChanged || editPhotosChanged) setEditConfirm("cancel");
+    else closeEdit();
+  };
+  const saveEdit = async () => {
+    if (!editLog) return;
+    setEditConfirm(null);
+    setEditBusy(true);
+    try {
+      const fd = new FormData();
+      LABELS.forEach((x) => fd.append(`units[${x}]`, String(editUnits[x] ?? 0)));
+      appendPhotoFields(fd, editPhotos);
+      await api.post(`/inventory/${item.id}/unit-logs/${editLog.id}/edit`, fd);
+      const from = editLog.quantity;
+      const to = editTotal;
+      closeEdit();
+      loadLogs();
+      onDone(t("unitEditDone").replace("{from}", String(from)).replace("{to}", String(to)).replace("{item}", tc(item.name, language as any)));
+    } catch (e) {
+      onError(apiErrorMessage(e, t("unitEditFailed")));
+    } finally {
+      setEditBusy(false);
+    }
+  };
 
   const loadLogs = () =>
     api.get(`/inventory/${item.id}/unit-logs`)
       .then((res) => {
         setLogs(res.data?.logs ?? []);
+        setLostBy(res.data?.lost_by ?? null);
+        setSummary(res.data?.summary ?? null);
         setLogPage(1);
-        if (res.data?.disposed) setDisposedInfo({ known: { ...zero(), ...res.data.disposed.known }, unknown: Number(res.data.disposed.unknown) || 0 });
       })
       .catch(() => {});
 
@@ -120,57 +249,34 @@ export default function UnitsModal({
   useEffect(() => () => { photos.forEach((p) => { if (p.file) URL.revokeObjectURL(p.url); }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If the current tab stops being possible after a save (e.g. nothing left
-  // to restore), move to the first tab that still is.
+  // to mark as found), move to the first tab that still is.
   const tabKey = tabs.join(",");
   useEffect(() => {
     if (tabs.length > 0 && !tabs.includes(action)) switchTo(tabs[0]);
   }, [tabKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toStockFor = (qty: number) => qty - Math.min(qty, item.lost_pending ?? 0);
   const switchTo = (next: Action) => {
     setAction(next);
     setPhotos([]);
     setPhotoError("");
     setUnits(zero());
-    if (next === "found") {
-      setFoundQty(1);
-      setUnits({ ...zero(), Good: toStockFor(1) });
-    }
   };
 
-  // Evidence photos are required for dispose / restore / found.
-  const needsPhotos = action !== "lost";
+  // Evidence photos are required.
+  const needsPhotos = true;
 
-  // Restore only what was disposed, in the condition it was disposed in.
-  // Units disposed before the ledger existed (`unknown`) may go to any condition.
-  const restoreCap = (label: string): number => {
-    const known = disposedInfo.known[label] ?? 0;
-    const overflow = LABELS.filter((k) => k !== label).reduce((a, k) => a + Math.max(0, (units[k] ?? 0) - (disposedInfo.known[k] ?? 0)), 0);
-    return known + Math.max(0, disposedInfo.unknown - overflow);
-  };
-
-  // Cap for one condition: lost / disposed from that condition's stock; a
-  // restore only the disposed condition; found up to the units that go to stock.
-  const capFor = (label: string): number => {
-    const others = sum(units) - (units[label] ?? 0);
-    if (action === "restored") return Math.max(0, Math.min(restoreCap(label), item.disposed_quantity - others));
-    if (action === "found") return Math.max(0, toStockFor(foundQty) - others);
-    return stock(label);
-  };
+  // A condition can't take more than was lost in it.
+  const capFor = (label: string): number => Math.max(0, Math.min(returnable, lostBy?.[label] ?? 0));
   const setUnit = (label: string, value: number) =>
     setUnits((prev) => ({ ...prev, [label]: Math.max(0, Math.min(capFor(label), Math.floor(value) || 0)) }));
-  const changeFoundQty = (value: number) => {
-    const qty = Math.max(1, Math.min(item.lost_quantity, Math.floor(value) || 1));
-    setFoundQty(qty);
-    setUnits({ ...zero(), Good: toStockFor(qty) });
-  };
 
-  const total = sum(units);
-  const toStock = toStockFor(foundQty);
-  const onLoan = foundQty - toStock;
-  const count = action === "found" ? foundQty : total;
+  const unitsEff = units;
+  const total = sum(unitsEff);
+  const count = total;
+  // Only the conditions that were actually lost are offered.
+  const lostLabels = LABELS.filter((x) => (lostBy?.[x] ?? 0) > 0);
   const hasPhotos = photos.length >= 1;
-  const ready = !busy && (action === "found" ? total === toStock : total > 0) && (!needsPhotos || hasPhotos);
+  const ready = !busy && total >= 1 && (!needsPhotos || hasPhotos);
 
   const submit = async () => {
     setConfirm(null);
@@ -179,13 +285,11 @@ export default function UnitsModal({
       const fd = new FormData();
       fd.append("action", action);
       LABELS.forEach((l) => { if ((units[l] ?? 0) > 0) fd.append(`units[${l}]`, String(units[l])); });
-      if (action === "found") fd.append("quantity", String(foundQty));
-      if (needsPhotos) photos.forEach((p) => { if (p.file) fd.append("photos[]", p.file); });
+      photos.forEach((p) => { if (p.file) fd.append("photos[]", p.file); });
       await api.post(`/inventory/${item.id}/units`, fd);
       // Stay in the drawer: clear the form, refresh the activity list, and let
       // the parent refresh the stock numbers (the tabs follow the new counts).
       setUnits(zero());
-      setFoundQty(1);
       photos.forEach((p) => { if (p.file) URL.revokeObjectURL(p.url); });
       setPhotos([]);
       setPhotoError("");
@@ -198,12 +302,29 @@ export default function UnitsModal({
     }
   };
 
-  const tabLabel: Record<Action, string> = { lost: t("unitTabLost"), found: t("unitTabFound"), disposed: t("unitTabDisposed"), restored: t("unitTabRestored") };
-  const logLabel: Record<LogAction, string> = { ...tabLabel, added: t("unitsLogAdded"), adjusted: t("unitsLogAdjusted") };
-  const tone = action === "lost" ? "red" : action === "disposed" ? "slate" : "teal";
+  const undoFound = async () => {
+    const log = undoLog;
+    if (!log) return;
+    setUndoBusy(true);
+    try {
+      await api.post(`/inventory/${item.id}/unit-logs/${log.id}/undo`);
+      setUndoLog(null);
+      closeEdit();
+      loadLogs();
+      onDone(t("unitUndoDone").replace("{n}", String(log.quantity)).replace("{item}", tc(item.name, language as any)));
+    } catch (e) {
+      setUndoLog(null);
+      onError(apiErrorMessage(e, t("unitUndoFailed")));
+    } finally {
+      setUndoBusy(false);
+    }
+  };
+
+  const tabLabel: Record<Action, string> = { found: t("unitTabFound") };
+  const logLabel: Record<LogAction, string> = { ...tabLabel, lost: t("unitTabLost"), added: t("unitsLogAdded"), adjusted: t("unitsLogAdjusted") };
   const submitLabel = busy ? t("savingLabel") : count > 0 ? t(`unitsSubmit_${action}`).replace("{n}", String(count)) : tabLabel[action];
-  const Icon = action === "lost" ? AlertTriangle : action === "disposed" ? Trash2 : action === "restored" ? RotateCcw : CheckCircle2;
-  const dirty = count > 0 || photos.length > 0 || (action === "found" && foundQty > 1);
+  const Icon = CheckCircle2;
+  const dirty = total > 0 || photos.length > 0;
   const requestClose = () => {
     if (busy) return;
     if (dirty) setConfirm("cancel");
@@ -213,8 +334,7 @@ export default function UnitsModal({
     try { return iso ? new Date(iso).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" }) : ""; } catch { return iso ?? ""; }
   };
 
-  const inputClass = (tone === "red" ? "border-red-400/30 bg-red-500/10 focus:border-red-400/60 focus:ring-red-400/20" : "border-white/25 bg-white/10 focus:border-[#4FBEB0]/50 focus:ring-[#4FBEB0]/20")
-    + " w-full rounded-full border pl-5 pr-8 py-3.5 text-base font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2";
+  const inputClass = INPUT_CLASS;
 
   return (
     <>
@@ -225,7 +345,7 @@ export default function UnitsModal({
         onClose={requestClose}
         footer={
           tabs.length === 0 ? (
-            <SaveButton type="button" className="w-full" active={false}>{t("unitsNothing")}</SaveButton>
+            <SaveButton type="button" icon={CheckCircle2} className="w-full" onClick={onClose} active>{t("closeLabel")}</SaveButton>
           ) : (
             <SaveButton type="button" icon={Icon} className="w-full" onClick={() => setConfirm("submit")} active={ready}>
               {submitLabel}
@@ -233,12 +353,13 @@ export default function UnitsModal({
           )
         }
       >
-        {tabs.length === 0 ? (
-          <p className="py-10 text-center text-base text-white/50">{t("unitsNothing")}</p>
-        ) : (
+        {tabs.length === 0 && (
+          <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-6 text-center text-base text-white/55">{t("unitsNothing")}</p>
+        )}
+        {tabs.length > 0 && (
           <>
             <FormSection title={t("unitsActionSection")} className="space-y-4">
-              <div className="flex flex-wrap gap-2.5">
+              <div className={tabs.length > 1 ? "flex flex-wrap gap-2.5" : "hidden"}>
                 {tabs.map((a) => (
                   <button
                     key={a}
@@ -254,39 +375,19 @@ export default function UnitsModal({
             </FormSection>
 
             <FormSection title={t("unitsUnitsSection")} className="space-y-5">
-              {action === "found" && (
-                <div>
-                  <label className="mb-1.5 block text-base font-semibold text-white">{t("foundHowMany")}</label>
-                  <NumberStepper min={1} max={item.lost_quantity} fullWidth value={String(foundQty)} onChange={(v) => changeFoundQty(Number(v))} className={inputClass} />
-                  <p className="mt-2 text-sm text-white/45">{t("foundMaxHint").replace("{n}", String(item.lost_quantity))}</p>
-                  {onLoan > 0 && (
-                    <p className="mt-3 rounded-2xl border border-gold-400/25 bg-gold-400/10 px-4 py-2.5 text-sm text-gold-300">{t("foundPendingHint").replace("{n}", String(onLoan))}</p>
-                  )}
-                </div>
-              )}
-
-              {(action !== "found" || toStock > 0) && (
-                <div>
-                  <label className="mb-2 block text-base font-semibold text-white">
-                    {action === "found" ? t("foundConditionLabel") : action === "restored" ? t("unitsRestoreCondition") : t("unitsPickCondition")} *
-                  </label>
-                  <div className="grid grid-cols-[repeat(auto-fit,minmax(7.5rem,1fr))] gap-4">
-                    {LABELS.map((l) => {
-                      const cap = action === "restored" || action === "found" ? capFor(l) + (units[l] ?? 0) : stock(l);
-                      const dim = action === "found" ? false : action === "restored" ? restoreCap(l) === 0 : stock(l) === 0;
-                      return (
-                        <div key={l} className={dim ? "opacity-40" : ""}>
-                          <span className={`mb-1.5 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${CHIP[l]}`}>{t(KEY[l])}</span>
-                          <NumberStepper min={0} max={cap} fullWidth value={String(units[l] ?? 0)} onChange={(v) => setUnit(l, Number(v))} className={inputClass} />
-                          {(action === "lost" || action === "disposed") && <p className="mt-1.5 pl-1 text-xs text-white/45">{t("lostInStockOfN").replace("{n}", String(stock(l)))}</p>}
-                          {action === "restored" && disposedInfo.known[l] > 0 && <p className="mt-1.5 pl-1 text-xs text-white/45">{t("restoreDisposedOfN").replace("{n}", String(disposedInfo.known[l]))}</p>}
-                        </div>
-                      );
-                    })}
+              <FoundCards
+                units={units}
+                caps={Object.fromEntries(LABELS.map((x) => [x, capFor(x)]))}
+                onChange={(next) => setUnits(next)}
+              />
+              {summary && (
+                <div className="space-y-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div><p className="text-xs text-white/45">{t("foundSummaryLost")}</p><p className="text-lg font-bold text-white">{summary.lost}</p></div>
+                    <div><p className="text-xs text-white/45">{t("foundSummaryRecovered")}</p><p className="text-lg font-bold text-emerald-300">{summary.recovered}</p></div>
+                    <div><p className="text-xs text-white/45">{t("foundSummaryMissing")}</p><p className="text-lg font-bold text-rose-300">{summary.missing}</p></div>
                   </div>
-                  <p className="mt-3 text-sm text-white/60 [font-variant-numeric:tabular-nums]">
-                    {t("unitsSelectedLabel")}: <span className="font-semibold text-white">{count}</span>
-                  </p>
+                  <p className="text-xs leading-relaxed text-white/45">{t("foundItemLevelNote")}</p>
                 </div>
               )}
             </FormSection>
@@ -305,42 +406,129 @@ export default function UnitsModal({
               </FormSection>
             )}
 
-            {logs.length > 0 && (
-              <FormSection title={t("unitsHistory")} className="space-y-3">
-                <ul className="space-y-3">
-                  {pagedLogs.map((l) => (
-                    <li key={l.id} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm">
-                      <span className={`mt-0.5 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${ACTION_STYLE[l.action]}`}>{l.action === "adjusted" ? "\u00B1" : l.action === "added" ? "+" : ""}{l.quantity}{l.action === "adjusted" || l.action === "added" ? " " : "\u00D7 "}{logLabel[l.action]}</span>
-                      <div className="min-w-0 flex-1 text-white/60">
-                        <p className="[font-variant-numeric:tabular-nums]">
-                          {l.units
-                            ? LABELS.filter((x) => (l.units?.[x] ?? 0) !== 0).map((x) => `${l.action === "adjusted" && (l.units?.[x] ?? 0) > 0 ? "+" : ""}${l.units?.[x]} ${t(KEY[x])}`).join(", ")
-                            : t("unitsStillOnLoan")}
-                          {l.event_name && <> &bull; {tc(l.event_name, language as any)}</>}
-                        </p>
-                        {l.action === "added" && <p className="mt-0.5 text-xs text-white/45">{t("unitsAddedNote")}</p>}
-                        {l.photo_urls?.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            {l.photo_urls.map((u) => (
-                              <button key={u} type="button" onClick={() => onViewPhotos({ url: u, name: item.name, urls: l.photo_urls })} className="group relative h-10 w-10 overflow-hidden rounded-lg border border-white/15" aria-label={t("viewPhotoLabel")}>
-                                <img src={u} alt="" className="h-full w-full object-cover" />
-                                <span className="absolute bottom-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur"><Eye className="h-2.5 w-2.5" /></span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        <p className="mt-1 text-xs text-white/35">{l.by} &bull; {when(l.at)}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-                <SimplePager page={Math.min(logPage, logPages)} totalPages={logPages} onChange={setLogPage} />
-              </FormSection>
-            )}
           </>
+        )}
+
+        {logs.length > 0 && (
+          <FormSection title={t("unitsHistory")} className="space-y-3">
+            <ul className="space-y-3">
+              {pagedLogs.map((l) => (
+                <li key={l.id} className={`flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm ${l.undone_at ? "opacity-60" : ""}`}>
+                  <span className={`mt-0.5 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-bold ${ACTION_STYLE[l.action]}`}>{l.action === "adjusted" ? "\u00B1" : l.action === "added" ? "+" : ""}{l.quantity}{l.action === "adjusted" || l.action === "added" ? " " : "\u00D7 "}{logLabel[l.action]}</span>
+                  <div className="min-w-0 flex-1 text-white/60">
+                    <p className="[font-variant-numeric:tabular-nums]">
+                      {l.units
+                        ? LABELS.filter((x) => (l.units?.[x] ?? 0) !== 0).map((x) => `${l.action === "adjusted" && (l.units?.[x] ?? 0) > 0 ? "+" : ""}${l.units?.[x]} ${t(KEY[x])}`).join(", ")
+                        : t("unitsStillOnLoan")}
+                      {l.action === "lost" && l.event_name && <> &bull; {tc(l.event_name, language as any)}</>}
+                    </p>
+                    {l.action === "added" && <p className="mt-0.5 text-xs text-white/45">{t("unitsAddedNote")}</p>}
+                    {l.photo_urls?.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {l.photo_urls.map((u) => (
+                          <button key={u} type="button" onClick={() => onViewPhotos({ url: u, name: item.name, urls: l.photo_urls })} className="group relative h-10 w-10 overflow-hidden rounded-lg border border-white/15" aria-label={t("viewPhotoLabel")}>
+                            <img src={u} alt="" className="h-full w-full object-cover" />
+                            <span className="absolute bottom-0.5 right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur"><Eye className="h-2.5 w-2.5" /></span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <p className="mt-1 text-xs text-white/35">{l.by} &bull; {when(l.at)}</p>
+                    {l.action === "found" && l.undone_at && (
+                      <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-semibold text-white/70">
+                        <RotateCcw className="h-3 w-3" /> {t("unitUndoneChip").replace("{by}", l.undone_by ?? "").replace("{when}", when(l.undone_at))}
+                      </p>
+                    )}
+                    {l.action === "found" && !l.undone_at && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEdit(l)}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-3 py-1 text-xs font-semibold text-white/70 transition hover:bg-white/10 hover:text-white"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> {t("unitEditBtn")}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <SimplePager page={Math.min(logPage, logPages)} totalPages={logPages} onChange={setLogPage} />
+          </FormSection>
         )}
       </FormDrawer>
 
+      {editLog && (
+        <FormDrawer
+          z="z-[70]"
+          title={t("unitEditTitle")}
+          subtitle={<span className="text-[#7DD8CB]">{tc(item.name, language as any)}</span>}
+          onClose={requestEditClose}
+          footer={
+            <div className="space-y-3">
+              <SaveButton type="button" icon={CheckCircle2} className="w-full" onClick={() => setEditConfirm("save")} active={editReady}>
+                {editBusy ? t("savingLabel") : t("unitEditSave")}
+              </SaveButton>
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setUndoLog(editLog)}
+                  disabled={editBusy}
+                  className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#E2A088] transition hover:text-white disabled:opacity-50"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {t("unitMoveBackBtn")}
+                </button>
+              </div>
+            </div>
+          }
+        >
+          <FormSection title={t("unitsActionSection")} className="space-y-4">
+            <p className="text-sm leading-relaxed text-white/55">{t("unitEditHint")}</p>
+          </FormSection>
+          <FormSection title={t("unitsUnitsSection")} className="space-y-5">
+            <FoundCards units={editUnits} caps={editCaps} onChange={setEditUnits} />
+          </FormSection>
+          <FormSection title={t("unitsEvidenceSection")} className="space-y-3">
+            <p className="text-sm text-white/55">{t("unitsEvidenceHint")}</p>
+            <PhotoGallery
+              items={editPhotos}
+              onChange={(next) => { setEditPhotos(next); setEditPhotoError(""); }}
+              onPreview={(it) => onViewPhotos({ url: it.url, name: item.name, urls: editPhotos.map((p) => p.url) })}
+              onError={setEditPhotoError}
+              max={5}
+              allowEmpty={false}
+            />
+            {editPhotoError && <p className="text-sm text-red-300">{editPhotoError}</p>}
+            <p className="text-sm text-white/45">{t("unitEditPhotoKept")}</p>
+          </FormSection>
+        </FormDrawer>
+      )}
+
+      <ConfirmDialog
+        open={editConfirm === "save"}
+        icon={<Pencil size={32} />}
+        title={t("unitEditConfirmTitle")}
+        body={t("unitEditConfirmBody").replace("{from}", String(editLog?.quantity ?? 0)).replace("{to}", String(editTotal)).replace("{item}", tc(item.name, language as any))}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("unitEditConfirmYes")}
+        onCancel={() => setEditConfirm(null)}
+        onConfirm={saveEdit}
+        z={90}
+      />
+      <ConfirmDialog
+        open={editConfirm === "cancel"}
+        icon={<AlertTriangle size={32} />}
+        title={t("unitsCancelTitle")}
+        body={t("unitEditCancelBody")}
+        cancelLabel={t("unitsCancelStay")}
+        confirmLabel={t("unitsCancelYes")}
+        onCancel={() => setEditConfirm(null)}
+        onConfirm={closeEdit}
+        tone="warning"
+        z={90}
+      />
       <ConfirmDialog
         open={confirm === "submit"}
         icon={<Icon size={32} />}
@@ -350,7 +538,18 @@ export default function UnitsModal({
         confirmLabel={t(`unitsConfirmYes_${action}`)}
         onCancel={() => setConfirm(null)}
         onConfirm={submit}
-        tone={action === "lost" || action === "disposed" ? "danger" : undefined}
+        z={80}
+      />
+      <ConfirmDialog
+        open={!!undoLog}
+        icon={<RotateCcw size={32} />}
+        title={t("unitUndoTitle")}
+        body={t("unitUndoBody").replace("{n}", String(undoLog?.quantity ?? 0)).replace("{item}", tc(item.name, language as any))}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={undoBusy ? t("savingLabel") : t("unitUndoYes")}
+        onCancel={() => { if (!undoBusy) setUndoLog(null); }}
+        onConfirm={undoFound}
+        tone="warning"
         z={80}
       />
       <ConfirmDialog

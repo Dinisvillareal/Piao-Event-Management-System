@@ -6,8 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 
 /**
- * A lost / found / disposed / restored report on an inventory item.
- * `event_id` is set only for units lost while out on an event's loan.
+ * A lost / found report on an inventory item.
+ * `event_id` is set for units lost while out on an event's loan, and for a found
+ * report when staff named the event the units came back from.
  */
 class InventoryUnitLog extends Model
 {
@@ -20,12 +21,15 @@ class InventoryUnitLog extends Model
         'photo_path',
         'extra_photo_paths',
         'user_code',
+        'undone_at',
+        'undone_by',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'units' => 'array',
         'extra_photo_paths' => 'array',
+        'undone_at' => 'datetime',
     ];
 
     protected $appends = ['photo_url', 'photo_urls'];

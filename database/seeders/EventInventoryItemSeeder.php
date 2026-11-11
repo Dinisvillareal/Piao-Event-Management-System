@@ -20,9 +20,9 @@ class EventInventoryItemSeeder extends Seeder
      * from the InventoryItem row (see applyBorrowedItems() in that
      * controller). Skipping that deduction would leave the Inventory
      * report showing full stock on items that are also "borrowed" by an
-     * event -- a phantom oversupply. Items marked Disposed/Lost, or
+     * event -- a phantom oversupply. Items marked Lost, or
      * already at 0 quantity, are never assigned here, matching what the
-     * real borrow picker would also refuse. (Lost / disposed units are now
+     * real borrow picker would also refuse. (Lost units are now
      * tracked as counts on the item and are never part of `quantity`, so the
      * in-stock number borrowed against here already excludes them.)
      *

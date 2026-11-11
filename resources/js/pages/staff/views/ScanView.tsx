@@ -51,12 +51,10 @@ const SCAN_STATUS_VARIANT: Record<ModalConfig['type'], 'success' | 'warning' | '
   error: 'error',
 };
 
-export default function ScanView({ events, residents, memberships }: any) {
+export default function ScanView({ events, residents, memberships, loading = false, residentsReady = true, residentsFromCache = false }: any) {
           const { t, locale } = useLanguage();
-  // Page-open skeleton: events/residents come in as already-loaded props, so
-  // this is just the short minimum -- opening the scanner reads as a
-  // deliberate load like the other modules instead of popping in.
-  const openSkeleton = usePageOpenSkeleton(false);
+  // Page-open skeleton: shown while the events the scanner lists are loading.
+  const openSkeleton = usePageOpenSkeleton(loading);
   const [eventId, setEventId] = useState("");
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [attendance, setAttendance] = useState<Record<string, AttendanceEntry[]>>({});
@@ -253,6 +251,7 @@ export default function ScanView({ events, residents, memberships }: any) {
   const [rosterAll, setRosterAll] = useState(0);
   const [rosterLastPage, setRosterLastPage] = useState(1);
   const [rosterLoading, setRosterLoading] = useState(false);
+  const [rosterEventLoaded, setRosterEventLoaded] = useState("");
   const rosterSeq = useRef(0);
   const fetchRosterPage = async (silent = false) => {
     if (!eventId) return;
@@ -278,7 +277,7 @@ export default function ScanView({ events, residents, memberships }: any) {
     } catch (error) {
       if (seq === rosterSeq.current) console.error("Failed to fetch roster:", error);
     } finally {
-      if (seq === rosterSeq.current) setRosterLoading(false);
+      if (seq === rosterSeq.current) { setRosterLoading(false); setRosterEventLoaded(eventId); }
     }
   };
   const fetchRosterPageRef = useRef(fetchRosterPage);
@@ -651,13 +650,31 @@ export default function ScanView({ events, residents, memberships }: any) {
   const manualResults = React.useMemo(() => {
     const q = manualQuery.trim().toLowerCase();
     if (!q || !residents) return [];
-    return residents
-      .filter((r: any) => {
-        const name = `${r.first_name ?? ""} ${r.last_name ?? ""}`.toLowerCase();
-        const code = (r.user_code ?? "").toLowerCase();
-        return name.includes(q) || code.includes(q);
-      })
-      .slice(0, 8);
+
+    // IDs are stored zero-padded ("PR-0555") but people type them short ("pr-555",
+    // "pr 555", "555"). Compare the digits as numbers so all of these find the same card.
+    const qDigits = q.replace(/\D/g, "");
+    const looksLikeId = /^(pr)?[\s\-_.]*\d+$/.test(q) && qDigits.length > 0;
+    const qNum = qDigits ? String(parseInt(qDigits, 10)) : "";
+    const words = q.split(/\s+/).filter(Boolean);
+
+    const scored: { r: any; score: number }[] = [];
+    for (const r of residents as any[]) {
+      const code = String(r.user_code ?? "").toLowerCase();
+      const codeDigits = code.replace(/\D/g, "");
+      const codeNum = codeDigits ? String(parseInt(codeDigits, 10)) : "";
+      const haystack = `${r.first_name ?? ""} ${r.middle_name ?? ""} ${r.last_name ?? ""} ${r.suffix ?? ""}`.toLowerCase();
+
+      let score = 0;
+      if (looksLikeId) {
+        if (codeNum === qNum) score = 3;                       // exact number: pr-555 = PR-0555
+        else if (codeDigits.includes(qDigits) || codeNum.startsWith(qNum)) score = 1; // partial: "55"
+      }
+      if (!score && code.includes(q)) score = 2;               // typed the code as stored
+      if (!score && words.every((w) => haystack.includes(w) || code.includes(w))) score = 1; // names, any order
+      if (score) scored.push({ r, score });
+    }
+    return scored.sort((x, y) => y.score - x.score).map((x) => x.r).slice(0, 8);
   }, [manualQuery, residents]);
 
   const handleManualSelect = (resident: any) => {
@@ -772,7 +789,45 @@ export default function ScanView({ events, residents, memberships }: any) {
     }
   };
 
+  // The card headings stay real text; the step labels and everything under them are placeholders.
+  const stepLabel = () => <Skeleton className="mb-2 h-3 w-28" />;
+  const stepsSkeleton = (
+<div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+              <div>
+                {stepLabel()}
+                <Skeleton className="h-11 w-full rounded-xl" />
+              </div>
+              <div>
+                {stepLabel()}
+                <div className="flex gap-2">
+                  <Skeleton className="h-11 flex-1 rounded-xl" />
+                  <Skeleton className="h-11 flex-1 rounded-xl" />
+                </div>
+              </div>
+              <div>
+                {stepLabel()}
+                <div className="flex gap-2">
+                  <Skeleton className="h-11 flex-1 rounded-xl" />
+                  <Skeleton className="h-11 flex-1 rounded-xl" />
+                </div>
+              </div>
+              <div className="border-t border-white/10 pt-4">
+                {stepLabel()}
+                <Skeleton className="h-11 w-full rounded-xl" />
+              </div>
+            </div>
+  );
+  const cameraSkeleton = <Skeleton className="min-h-[380px] w-full rounded-2xl" />;
+  const resultSkeleton = <Skeleton className="h-24 w-full rounded-2xl" />;
+
+  // First load of an event's attendance: the scanner and result bodies show placeholders
+  // too, not just the roster. Later page / search changes in the roster do not touch them,
+  // so a running camera is never restarted by them.
+  const bodyLoading = !!eventId && rosterEventLoaded !== eventId;
+
   if (openSkeleton) {
+    // Same structure as the page below (scanner card on the left; scan result and
+    // attendance roster stacked on the right) so nothing jumps when it loads.
     return (
       <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
         <div className="space-y-6">
@@ -783,51 +838,45 @@ export default function ScanView({ events, residents, memberships }: any) {
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
               <div className="flex items-center justify-between gap-3 border-b border-white/10 p-5">
-                <div className="min-w-0 flex-1 space-y-2">
-                  <Skeleton className="h-4 w-2/5" />
-                  <Skeleton className="h-3 w-3/5" />
+                <div className="min-w-0">
+                  <h2 className="text-[17px] font-bold text-white">{t("cameraScannerLabel")}</h2>
+                  <p className="mt-0.5 text-sm text-white/50">{t("oneQrPerResident")}</p>
                 </div>
                 <Skeleton className="h-11 w-11 rounded-full shrink-0" />
               </div>
               <div className="p-5 space-y-5">
-                <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-                  <div className="space-y-2">
-                    <Skeleton className="h-3 w-1/4" />
-                    <Skeleton className="h-11 w-full rounded-xl" />
-                  </div>
-                  <div className="space-y-2">
-                    <Skeleton className="h-3 w-1/3" />
-                    <div className="flex gap-2">
-                      <Skeleton className="h-10 flex-1 rounded-xl" />
-                      <Skeleton className="h-10 flex-1 rounded-xl" />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Skeleton className="h-3 w-1/4" />
-                    <div className="flex gap-2">
-                      <Skeleton className="h-10 flex-1 rounded-xl" />
-                      <Skeleton className="h-10 flex-1 rounded-xl" />
-                    </div>
-                  </div>
-                </div>
-                <Skeleton className="aspect-video w-full rounded-2xl" />
+                {stepsSkeleton}
+                {cameraSkeleton}
               </div>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
-              <div className="border-b border-white/10 p-5 space-y-2">
-                <Skeleton className="h-4 w-1/3" />
-                <Skeleton className="h-3 w-1/2" />
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+                <div className="border-b border-white/10 p-5">
+                  <h2 className="text-[17px] font-bold text-white">{t("scanResultTitle")}</h2>
+                  <p className="mt-0.5 text-sm text-white/50">{t("scanResultSubtitle")}</p>
+                </div>
+                <div className="p-5">{resultSkeleton}</div>
               </div>
-              <div className="divide-y divide-white/[0.06]">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 px-5 py-3">
-                    <Skeleton className="h-9 w-9 rounded-full shrink-0" />
-                    <div className="min-w-0 flex-1 space-y-1.5">
-                      <Skeleton className="h-4 w-3/5" />
-                      <Skeleton className="h-3 w-2/5" />
+
+              <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+                <div className="border-b border-white/10 p-5">
+                  <h2 className="text-base font-bold text-white">{t("attendanceRosterTitle")}</h2>
+                  <Skeleton className="mt-2 h-3.5 w-2/5" />
+                  <Skeleton className="mt-3 h-10 w-full rounded-full" />
+                </div>
+                <div className="p-5 space-y-3">
+                  {Array.from({ length: 5 }).map((_, k) => (
+                    <div key={k} className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-40" />
+                        <Skeleton className="h-3 w-28" />
+                      </div>
+                      <Skeleton className="h-6 w-20 rounded-full" />
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                <PagerSkeleton withLabel className="px-5 py-3 border-t border-white/10" />
               </div>
             </div>
           </div>
@@ -876,6 +925,7 @@ export default function ScanView({ events, residents, memberships }: any) {
           </div>
 
           <div className="p-5 space-y-5">
+            {bodyLoading ? stepsSkeleton : (
             <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
               <div ref={eventDropdownRef} className="relative">
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("selectEventStep1")}</label>
@@ -983,7 +1033,6 @@ export default function ScanView({ events, residents, memberships }: any) {
                     <IdCard className="h-4 w-4" /> {t("manualPhysicalIdLabel")}
                   </button>
                 </div>
-                <p className="mt-1.5 text-xs text-white/40">{t("adviserTwoInOneNote")}</p>
               </div>
 
               <div>
@@ -1032,8 +1081,9 @@ export default function ScanView({ events, residents, memberships }: any) {
                 </div>
               </div>
             </div>
+            )}
 
-            {checkInMethod === "camera" ? (
+            {bodyLoading && !(checkInMethod === "camera" && isCameraOn) ? cameraSkeleton : checkInMethod === "camera" ? (
               <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black min-h-[380px]">
                 {isCameraOn ? (
                   <div className="absolute inset-0 h-full w-full">
@@ -1102,8 +1152,13 @@ export default function ScanView({ events, residents, memberships }: any) {
                   />
                 </div>
                 <div className="mt-3 space-y-2 max-h-[270px] overflow-y-auto">
+                  {residentsFromCache && (
+                    <p className="text-[12px] text-amber-300/80 text-center pb-1">{t("residentsSavedCopyNote")}</p>
+                  )}
                   {manualQuery.trim() && manualResults.length === 0 && (
-                    <p className="text-[15px] text-white/40 italic text-center py-6">{t("noMatchingResidentFound")}</p>
+                    <p className="text-[15px] text-white/40 italic text-center py-6">
+                      {residentsReady ? t("noMatchingResidentFound") : t("residentsLoadingHint")}
+                    </p>
                   )}
                   {manualResults.map((r: any) => (
                     <button
@@ -1136,7 +1191,7 @@ export default function ScanView({ events, residents, memberships }: any) {
               </div>
             </div>
             <div className="p-5">
-              {!scan ? (
+              {bodyLoading ? resultSkeleton : !scan ? (
                 <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-8 text-center text-sm text-white/50">
                   {t("noScanPerformedYet")}
                 </div>

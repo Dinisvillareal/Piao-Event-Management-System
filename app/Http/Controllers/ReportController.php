@@ -536,8 +536,7 @@ class ReportController extends Controller
                 'total_items' => $items->count(),
                 'total_quantity' => $items->sum('quantity'),
                 // Units written off, so the Inventory report can flag losses at a glance.
-                'lost_units' => (int) $items->sum(fn ($i) => (int) $i->lost_quantity + (int) $i->lost_pending),
-                'disposed_units' => (int) $items->sum(fn ($i) => (int) $i->disposed_quantity),
+                'lost_units' => (int) $items->sum('lost_quantity'),
             ],
             'by_condition' => $byCondition,
             'items' => $items->map(fn ($i) => [
@@ -550,9 +549,7 @@ class ReportController extends Controller
                 // An empty item shows its main condition with 0 units.
                 'condition_units' => $this->conditionUnits($i),
                 'storage_location' => $i->storage_location,
-                // Units written off: lost (confirmed + still pending) and disposed.
-                'lost_quantity' => (int) $i->lost_quantity + (int) $i->lost_pending,
-                'disposed_quantity' => (int) $i->disposed_quantity,
+                'lost_quantity' => (int) $i->lost_quantity,
             ])->values(),
         ];
     }
@@ -779,7 +776,6 @@ class ReportController extends Controller
         if ($request->filled('condition')) {
             return match ($request->condition) {
                 'Lost' => 'inventory items with lost units',
-                'Disposed' => 'inventory items with disposed units',
                 default => "inventory items in {$request->condition} condition",
             };
         }
@@ -1175,8 +1171,8 @@ class ReportController extends Controller
                             $run->addText(' ' . $cu['condition'] . ' ×' . $cu['units'] . ' ', ['size' => 8, 'bold' => true, 'color' => $fg, 'bgColor' => $bg]);
                             $run->addText(' ');
                         }
-                        // Lost / disposed units get their own chips next to the condition.
-                        foreach (['Lost' => $item['lost_quantity'] ?? 0, 'Disposed' => $item['disposed_quantity'] ?? 0] as $label => $units) {
+                        // Lost units get their own chip next to the condition.
+                        foreach (['Lost' => $item['lost_quantity'] ?? 0] as $label => $units) {
                             if ($units > 0) {
                                 [$wbg, $wfg] = $this->conditionColors($label);
                                 $run->addText('  ');
@@ -1714,7 +1710,6 @@ class ReportController extends Controller
             'Good' => ['ECFDF5', '047857'],
             'Fair' => ['FFFBEB', 'B45309'],
             'Poor' => ['FFF7ED', 'C2410C'],
-            'Disposed' => ['F3F4F6', '6B7280'],
             'Lost' => ['FEF2F2', 'DC2626'],
             default => ['F3F4F6', '6B7280'],
         };
@@ -1957,27 +1952,25 @@ class ReportController extends Controller
         } else {
             $columns = [
                 $col('Item'), $col('Quantity', 'int', true), $col('Main condition'), $col('Condition breakdown'),
-                $col('Storage location'), $col('Lost / pending', 'int', true), $col('Disposed', 'int', true),
+                $col('Storage location'), $col('Lost', 'int', true),
             ];
             foreach ($data['items'] as $i) {
                 $rows[] = [
                     $i['name'], $i['quantity'], $i['condition'],
                     collect($i['condition_units'])->map(fn ($c) => "{$c['units']} {$c['condition']}")->implode('; '),
-                    $i['storage_location'], $i['lost_quantity'], $i['disposed_quantity'],
+                    $i['storage_location'], $i['lost_quantity'],
                 ];
             }
             $tiles = [
                 ['label' => 'ITEMS', 'value' => (int) ($s['total_items'] ?? 0), 'format' => 'int', 'tone' => 'sage'],
                 ['label' => 'TOTAL UNITS', 'value' => (int) ($s['total_quantity'] ?? 0), 'format' => 'int', 'tone' => 'green'],
                 ['label' => 'LOST UNITS', 'value' => (int) ($s['lost_units'] ?? 0), 'format' => 'int', 'tone' => ($s['lost_units'] ?? 0) > 0 ? 'red' : 'sage'],
-                ['label' => 'DISPOSED UNITS', 'value' => (int) ($s['disposed_units'] ?? 0), 'format' => 'int', 'tone' => 'gold'],
             ];
             $details = [
                 $detail('Scope', $scope),
                 $detail('Items', $s['total_items'] ?? 0),
                 $detail('Total Units', $s['total_quantity'] ?? 0),
                 $detail('Lost Units', $s['lost_units'] ?? 0),
-                $detail('Disposed Units', $s['disposed_units'] ?? 0),
                 $detail('Generated', $payload['printedOn']),
             ];
         }

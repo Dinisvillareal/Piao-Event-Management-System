@@ -353,7 +353,7 @@ export function MembershipCharts({ t, data, className }: { t: T; data: any; clas
 // ── Inventory ───────────────────────────────────────────────────────────────
 
 const CONDITION_COLORS: Record<string, string> = {
-  New: "#35a597", Good: "#3987e5", Fair: "#b98a22", Poor: "#d9654f", Disposed: CHART_PREVIOUS, Lost: "#9085e9",
+  New: "#35a597", Good: "#3987e5", Fair: "#b98a22", Poor: "#d9654f", Lost: "#9085e9",
 };
 
 export function InventoryCharts({ t, data, conditionLabel, className }: { t: T; data: any; conditionLabel: (c: string) => string; className: string }) {

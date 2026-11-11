@@ -51,7 +51,7 @@ const AGE_GROUPS = [
   { key: "senior", labelKey: "ageSenior" },
 ];
 
-const CONDITIONS = ["New", "Good", "Fair", "Poor", "Disposed", "Lost"];
+const CONDITIONS = ["New", "Good", "Fair", "Poor", "Lost"];
 
 // Attendance and Budget default to the current calendar month instead of
 // "All dates" -- as the barangay's history grows, "All dates" would pull
@@ -642,13 +642,12 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
   // Same mapping as InventoryView's CONDITION_STYLES -- reused as-is so the
   // condition badges look identical between the two pages.
-  const conditionLabel = (c: string) => (["New", "Good", "Fair", "Poor", "Disposed", "Lost"].includes(c) ? t("condition" + c) : c);
+  const conditionLabel = (c: string) => (["New", "Good", "Fair", "Poor", "Lost"].includes(c) ? t("condition" + c) : c);
   const conditionColor: Record<string, string> = {
     New: "bg-[#4FBEB0]/20 text-[#7DD8CB] print:bg-teal-50 print:text-teal-700",
     Good: "bg-[#4FBEB0]/10 text-[#7DD8CB] print:bg-emerald-50 print:text-emerald-700",
     Fair: "bg-gold-400/15 text-gold-300 print:bg-amber-50 print:text-amber-700",
     Poor: "bg-[#8A3D2C]/25 text-[#E2A088] print:bg-orange-50 print:text-orange-700",
-    Disposed: "bg-white/10 text-white/45 print:bg-gray-100 print:text-gray-500",
     Lost: "bg-red-500/15 text-red-400 print:bg-red-50 print:text-red-600",
   };
 
@@ -702,8 +701,6 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         : conditionFilter
         ? conditionFilter === "Lost"
           ? "inventory items with lost units"
-          : conditionFilter === "Disposed"
-          ? "inventory items with disposed units"
           : `inventory items in ${conditionFilter} condition`
         : "all inventory items";
     return buildReportMessage({
@@ -1612,7 +1609,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         </>
       ) : (
         <>
-          <div className={`report-stagger grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3 ${ph("summary")}`}>
+          <div className={`report-stagger grid gap-4 grid-cols-2 lg:grid-cols-3 print:grid-cols-3 print:gap-3 ${ph("summary")}`}>
             <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
               <Package className="h-5 w-5 opacity-80" />
               <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.total_items)}`}><AnimatedNumber value={inventorySummary.total_items} delay={0} /></h2>
@@ -1627,11 +1624,6 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
               <AlertTriangle className="h-5 w-5 opacity-80" />
               <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.lost_units ?? 0)}`}><AnimatedNumber value={inventorySummary.lost_units ?? 0} delay={140} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("lostUnitsLabel")}</p>
-            </div>
-            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-800 to-[#1C2E2B] p-5 text-white shadow-sm">
-              <Package className="h-5 w-5 opacity-80" />
-              <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.disposed_units ?? 0)}`}><AnimatedNumber value={inventorySummary.disposed_units ?? 0} delay={210} /></h2>
-              <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("disposedUnitsLabel")}</p>
             </div>
           </div>
 
@@ -1654,11 +1646,6 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                       {Number(item.lost_quantity) > 0 && (
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${conditionColor.Lost}`}>
                           {conditionLabel("Lost")} ×{item.lost_quantity}
-                        </span>
-                      )}
-                      {Number(item.disposed_quantity) > 0 && (
-                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${conditionColor.Disposed}`}>
-                          {conditionLabel("Disposed")} ×{item.disposed_quantity}
                         </span>
                       )}
                     </div>
