@@ -1121,13 +1121,11 @@ class EventController extends Controller
      */
     private function releaseBorrowedItems(Event $event, bool $logRelease = true): void
     {
-        $touchedItems = [];
         foreach ($event->borrowedItems()->get() as $borrowed) {
             $item = InventoryItem::withTrashed()->find($borrowed->inventory_item_id);
             // The borrowed units go back into the same conditions they came from.
             $units = $borrowed->resolvedUnits($item->condition ?? 'Good');
             if ($item) {
-                $touchedItems[$item->id] = $item;
                 $item->giveUnits($units);
             }
 
@@ -1144,10 +1142,6 @@ class EventController extends Controller
         }
 
         $event->borrowedItems()->delete();
-
-        foreach ($touchedItems as $touched) {
-            $touched->settleLostOnLoan();
-        }
     }
 
     /**
@@ -1247,7 +1241,8 @@ class EventController extends Controller
     /**
      * Everything this event took from Inventory, for the event's Inventory
      * tab: per item, how many units (by condition) are still out, how many
-     * came back (and in what condition), plus each return on record.
+     * came back (and in what condition), how many were reported lost on this
+     * event's loan (Returns -> Report Lost), plus each return on record.
      */
     public function eventInventory($id)
     {
@@ -1275,6 +1270,7 @@ class EventController extends Controller
                 'photo_url' => $photo,
                 'out' => 0, 'out_units' => $zero,
                 'returned' => 0, 'returned_units' => $zero,
+                'lost' => 0, 'lost_units' => $zero,
             ];
         };
 
@@ -1298,9 +1294,29 @@ class EventController extends Controller
             $items[$r->inventory_item_id] = $row;
         }
 
+        // Units reported lost on this event's loan were taken off the outstanding borrow, so
+        // they are counted here from the item's lost reports to keep the borrowed total whole.
+        // The loss stays exactly as it was recorded at return: units found later are not
+        // credited to any event (they cannot be traced to one) -- they are kept on the item.
+        $lostLogs = \App\Models\InventoryUnitLog::where('event_id', $event->id)->where('action', 'lost')
+            ->whereNull('undone_at')->get(['inventory_item_id', 'units']);
+        $lostItems = InventoryItem::withTrashed()->whereIn('id', $lostLogs->pluck('inventory_item_id')->unique())->get()->keyBy('id');
+        foreach ($lostLogs as $lostLog) {
+            $item = $lostItems[$lostLog->inventory_item_id] ?? null;
+            $row = $touch($lostLog->inventory_item_id, $item->name ?? null, $item->photo_url ?? null);
+            foreach ($labels as $label) {
+                $n = (int) ($lostLog->units[$label] ?? 0);
+                $row['lost_units'][$label] += $n;
+                $row['lost'] += $n;
+            }
+            $items[$lostLog->inventory_item_id] = $row;
+        }
+
         $items = collect($items)->map(function ($row) {
-            $row['total'] = $row['out'] + $row['returned'];
-            $row['status'] = $row['out'] === 0 ? 'returned' : ($row['returned'] > 0 ? 'partial' : 'borrowed');
+            $row['total'] = $row['out'] + $row['returned'] + $row['lost'];
+            $row['status'] = $row['out'] === 0
+                ? ($row['lost'] > 0 ? 'settled' : 'returned')
+                : ($row['returned'] > 0 ? 'partial' : 'borrowed');
 
             return $row;
         })->sortBy('name')->values();
@@ -1316,6 +1332,7 @@ class EventController extends Controller
                 'released_at' => $r->created_at,
                 'photo_url' => $r->inventoryItem->photo_url ?? null,
                 'evidence_photo_urls' => $r->evidence_photo_urls,
+                'activity' => $r->activity_log_urls,
             ])->reverse()->values(),
         ]);
     }
@@ -1421,10 +1438,6 @@ class EventController extends Controller
             $borrow->save();
         }
 
-        // Units reported lost while out on loan are settled here once nothing
-        // real is left to return (see InventoryItem::settleLostOnLoan).
-        $item?->settleLostOnLoan();
-
         if ($request->hasFile('photos')) {
             $evidence = PhotoSet::resolve([], $request, fn ($f) => $this->localUpload($f, 'release_evidence_photos'))['final'];
         } else {
@@ -1511,13 +1524,8 @@ class EventController extends Controller
             }
 
             if ($item) {
-                // Units already reported lost from Inventory while this loan was open
-                // ("lost pending") are the same units -- settle those first, no double count.
-                $fromPending = min($lost, (int) $item->lost_pending);
-                $item->lost_pending = (int) $item->lost_pending - $fromPending;
-                $item->lost_quantity = (int) $item->lost_quantity + ($lost - $fromPending);
+                $item->lost_quantity = (int) $item->lost_quantity + $lost;
                 $item->save();
-                $item->settleLostOnLoan();
             }
 
             \App\Models\InventoryUnitLog::create([
@@ -1636,6 +1644,7 @@ class EventController extends Controller
                 'released_at' => $r->created_at,
                 'evidence_photo_url' => $r->evidence_photo_url,
                 'evidence_photo_urls' => $r->evidence_photo_urls,
+                'activity' => $r->activity_log_urls,
             ];
         });
 
@@ -1721,7 +1730,8 @@ class EventController extends Controller
             // evidence for this release" without joining through the log table.
             // The full per-action record (every undo, including earlier partial
             // ones) lives in event_inventory_release_undos, created below.
-            $this->localDelete($release->undo_photo_path);
+            // The earlier undo photo is NOT deleted: the undo it belongs to still
+            // points at it from event_inventory_release_undos.
             $release->undo_photo_path = $undoPhotoPath;
         }
 
@@ -1804,6 +1814,7 @@ class EventController extends Controller
         $item = InventoryItem::withTrashed()->find($release->inventory_item_id);
         $mainCondition = $item->condition ?? 'Good';
 
+        $oldQty = (int) $release->quantity;
         $current = $release->resolvedUnits($mainCondition);
         $stillOut = $borrow ? $borrow->resolvedUnits($mainCondition) : array_fill_keys(array_keys($current), 0);
 
@@ -1891,17 +1902,34 @@ class EventController extends Controller
             $release->addUnits($moreUnits, $mainCondition);
         }
 
+        $replacedPhotos = [];
+        $addedPhotos = [];
+        $photosBefore = $release->allEvidencePhotoPaths();
         if ($request->boolean('photos_sync')) {
             $res = PhotoSet::resolve($release->allEvidencePhotoPaths(), $request, fn ($f) => $this->localUpload($f, 'release_evidence_photos'));
             $release->evidence_photo_path = $res['final'][0];
             $release->extra_evidence_photo_paths = count($res['final']) > 1 ? array_slice($res['final'], 1) : null;
-            foreach ($res['removed'] as $gone) {
-                $this->localDelete($gone);
-            }
+            // Evidence is never deleted: replaced / removed photos stay on disk and are listed in the edit trail.
+            $replacedPhotos = $res['removed'];
+            $addedPhotos = array_values(array_diff($res['final'], $photosBefore));
         } elseif ($request->hasFile('photo')) {
-            $this->localDelete($release->evidence_photo_path);
+            $replacedPhotos = array_filter([$release->evidence_photo_path]);
             $release->evidence_photo_path = $this->localUpload($request->file('photo'), 'release_evidence_photos');
+            $addedPhotos = [$release->evidence_photo_path];
         }
+
+        // The edit trail: which counts changed (from -> to) and any photos that were replaced.
+        $changes = [];
+        if ($target !== null) {
+            foreach ($target as $label => $n) {
+                if ($n !== (int) ($current[$label] ?? 0)) {
+                    $changes[] = ['field' => strtolower($label), 'from' => (int) ($current[$label] ?? 0), 'to' => $n];
+                }
+            }
+        } elseif ($newQty !== $oldQty) {
+            $changes[] = ['field' => 'quantity', 'from' => $oldQty, 'to' => $newQty];
+        }
+        $release->logEdit($changes, $replacedPhotos, $addedPhotos);
 
         $release->quantity = $newQty;
         $release->save();
@@ -1913,60 +1941,6 @@ class EventController extends Controller
             'message' => 'Return updated.',
             'quantity' => $newQty,
             'moved_back_to_pending' => $delta < 0 ? -$delta : 0,
-        ]);
-    }
-
-    /**
-     * Undo actions from roughly the last two weeks, across every event,
-     * newest first -- the permanent "who undid what" record for the
-     * Returns page, same shape and lookback window as recentReleases()
-     * above. Unlike that list (which only shows releases still eligible to
-     * be undone), this one never empties out an entry -- undoing is the
-     * thing being logged here, not something still pending an action.
-     */
-    public function recentUndos(Request $request)
-    {
-        if (!$this->isStaff()) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
-        $perPage = 5;
-        $page = max(1, (int) $request->query('page', 1));
-        $search = trim((string) $request->query('search', ''));
-
-        $base = EventInventoryReleaseUndo::where('created_at', '>=', now()->subDays(14));
-
-        if ($search !== '') {
-            $base->where(function ($query) use ($search) {
-                $query->whereHas('release.event', fn ($q) => $q->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('release.inventoryItem', fn ($q) => $q->where('name', 'like', "%{$search}%"));
-            });
-        }
-
-        $total = (clone $base)->count();
-        $lastPage = max(1, (int) ceil($total / $perPage));
-        $page = min($page, $lastPage);
-
-        $undos = $base->with(['release.event:id,name', 'release.inventoryItem:id,name'])
-            ->latest()
-            ->skip(($page - 1) * $perPage)
-            ->take($perPage)
-            ->get()
-            ->map(fn ($u) => [
-                'id' => $u->id,
-                'event_name' => $u->release?->event?->name ?? 'Deleted event',
-                'item_name' => $u->release?->inventoryItem?->name ?? 'Unknown item',
-                'quantity' => $u->quantity,
-                'undone_by' => $u->undone_by,
-                'undone_at' => $u->created_at,
-                'photo_url' => $u->photo_url,
-            ]);
-
-        return response()->json([
-            'data' => $undos,
-            'current_page' => $page,
-            'last_page' => $lastPage,
-            'total' => $total,
         ]);
     }
 }

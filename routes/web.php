@@ -202,7 +202,6 @@ Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(
     Route::get('/events/borrowed-items/releases/recent', [EventController::class, 'recentReleases']);
     Route::post('/events/borrowed-items/releases/{releaseId}/undo', [EventController::class, 'undoRelease']);
     Route::post('/events/borrowed-items/releases/{releaseId}/update', [EventController::class, 'updateRelease']);
-    Route::get('/events/borrowed-items/undos/recent', [EventController::class, 'recentUndos']);
     Route::post('/events', [EventController::class, 'store']);
     Route::put('/events/{id}', [EventController::class, 'update']);
     Route::delete('/events/{id}', [EventController::class, 'destroy']);  // Now soft deletes
@@ -365,6 +364,8 @@ Route::put('/feedback/{kind}/{id}/reply', [FeedbackController::class, 'reply'])
     Route::put('/inventory/{id}', [InventoryController::class, 'update'])->middleware(EnsureStaff::class);
     Route::post('/inventory/{id}/units', [InventoryController::class, 'adjustUnits'])->middleware(EnsureStaff::class);
     Route::get('/inventory/{id}/unit-logs', [InventoryController::class, 'unitLogs'])->middleware(EnsureStaff::class);
+    Route::post('/inventory/{id}/unit-logs/{logId}/undo', [InventoryController::class, 'undoFound'])->middleware(EnsureStaff::class);
+    Route::post('/inventory/{id}/unit-logs/{logId}/edit', [InventoryController::class, 'editFound'])->middleware(EnsureStaff::class);
     Route::delete('/inventory/{id}', [InventoryController::class, 'destroy'])->middleware(EnsureStaff::class);
 
     /*

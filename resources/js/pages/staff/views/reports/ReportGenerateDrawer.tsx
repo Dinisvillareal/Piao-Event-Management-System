@@ -21,6 +21,8 @@ interface Props {
   onRecordIdsChange: (next: string[]) => void;
   attendeeFilter: AttendeeFilter;
   onAttendeeFilterChange: (next: AttendeeFilter) => void;
+  /** One event only (the event's own page): hides the "pick events" list, keeps the attendee filter. */
+  singleEvent?: boolean;
   /** Query for GET /reports/export/html (type, filters, sections) -- drives the live preview. */
   previewParams: Record<string, string>;
   busy: boolean;
@@ -117,7 +119,7 @@ function LivePreview({ params, t }: { params: Record<string, string>; t: (k: str
 export default function ReportGenerateDrawer({
   initialFormat = "pdf", reportLabel, scopeText, sections, selected, onSelectedChange,
   recordEvents = [], recordIds, onRecordIdsChange, attendeeFilter, onAttendeeFilterChange,
-  previewParams, busy, onClose, onGenerate, t,
+  previewParams, busy, onClose, onGenerate, t, singleEvent = false,
 }: Props) {
   const [format, setFormat] = useState<ReportFormat>(initialFormat);
   const [search, setSearch] = useState("");
@@ -271,6 +273,7 @@ export default function ReportGenerateDrawer({
                   ))}
                 </div>
               </div>
+              {!singleEvent && (<>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-white/40">{recordIds.length} / {recordEvents.length} {t("rptEventsSelected")}</p>
                 <div className="flex gap-2">
@@ -301,6 +304,7 @@ export default function ReportGenerateDrawer({
                   })
                 )}
               </div>
+              </>)}
             </FormSection>
           )}
 

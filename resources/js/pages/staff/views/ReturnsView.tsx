@@ -20,6 +20,8 @@ import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/St
 
 import { tc } from "../../../lib/contentTranslations";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import PhotoViewer from "../../../components/ui/PhotoViewer";
+import ActivityLog, { type ActivityEntry } from "../../../components/ui/ActivityLog";
 interface OverdueEventItem {
   id: number;
   name: string;
@@ -83,6 +85,8 @@ interface RecentRelease {
   evidence_photo_url: string | null;
   // Every evidence photo, cover first.
   evidence_photo_urls: string[];
+  // Edit trail: what changed, who, when (replaced photos are kept, never deleted).
+  activity?: ActivityEntry[];
 }
 
 const ITEMS_PER_PAGE = 6;
@@ -107,16 +111,20 @@ export default function ReturnsView() {
   const [search, setSearch] = useState("");
   const [endedDate, setEndedDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  // Brief skeleton flash on every page switch, same as Activity Logs --
-  // this table paginates client-side so there's nothing to actually wait
-  // on, but the flash keeps page switches feeling consistent app-wide.
+  // Page switches are server requests, so the table and the pager show their
+  // skeleton from the click until the new page arrives (see goToPage below and
+  // the reload effect further down).
   const [pageSwitchingRaw, setPageSwitching] = useState(false);
   const filterSwitching = useFilterSwitching([search, endedDate]);
   const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const listTopRef = useRef<HTMLSpanElement | null>(null);
   const goToPage = (updater: number | ((p: number) => number)) => {
-    setCurrentPage(updater as any);
+    const next = typeof updater === "function" ? updater(currentPage) : updater;
+    if (next === currentPage) return;
+    setCurrentPage(next);
+    // Skeleton right away, until the page has loaded.
+    setLoading(true);
     scrollListIntoView(listTopRef.current);
     setPageSwitching(true);
     if (pageSwitchTimer.current) clearTimeout(pageSwitchTimer.current);
@@ -192,24 +200,6 @@ export default function ReturnsView() {
   // "VIEW PHOTO" badge + card + gold Close button) as Inventory's own photo
   // viewer, for a consistent look across the app.
   const [viewingPhoto, setViewingPhoto] = useState<{ url: string; name: string; urls?: string[] } | null>(null);
-  // Prev/next through a record's photos (wraps around) + ←/→ keys, Esc closes.
-  const stepViewingPhoto = (dir: 1 | -1) => {
-    setViewingPhoto((cur) => {
-      if (!cur || !cur.urls || cur.urls.length < 2) return cur;
-      const i = Math.max(0, cur.urls.indexOf(cur.url));
-      return { ...cur, url: cur.urls[(i + dir + cur.urls.length) % cur.urls.length] };
-    });
-  };
-  useEffect(() => {
-    if (!viewingPhoto) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight") stepViewingPhoto(1);
-      else if (e.key === "ArrowLeft") stepViewingPhoto(-1);
-      else if (e.key === "Escape") setViewingPhoto(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [viewingPhoto]);
 
   // Recent releases -- lets staff catch and fix a mis-entered quantity
   // ("I meant to release 2, not 3") without touching Inventory's raw
@@ -223,6 +213,8 @@ export default function ReturnsView() {
   // and/or replace the saved evidence photo in place.
   const [editTarget, setEditTarget] = useState<RecentRelease | null>(null);
   const [confirmEditSave, setConfirmEditSave] = useState(false);
+  // Brief "saved" note inside the Edit Return drawer (it stays open after Save).
+  const [editSavedNote, setEditSavedNote] = useState(false);
   const [confirmDiscardEdit, setConfirmDiscardEdit] = useState(false);
   const [editUnits, setEditUnits] = useState<Record<string, number>>({ New: 0, Good: 0, Fair: 0, Poor: 0 });
   // A replacement photo, only when one was picked; otherwise the saved
@@ -301,9 +293,11 @@ export default function ReturnsView() {
       setRecentReleasesPage(payload?.current_page ?? 1);
       setRecentReleasesTotalPages(Math.max(1, payload?.last_page ?? 1));
       setRecentReleasesTotal(payload?.total ?? 0);
+      return rows;
     } catch {
       // Silent -- this panel is a convenience, not the page's core data;
       // a failed refresh just leaves the previous list showing.
+      return null;
     } finally {
       if (!background) setRecentReleasesLoading(false);
     }
@@ -384,7 +378,8 @@ export default function ReturnsView() {
   const firstOverdueLoad = useRef(true);
   useEffect(() => {
     if (firstOverdueLoad.current) { firstOverdueLoad.current = false; return; }
-    const timer = setTimeout(() => fetchOverdue(true), 120);
+    // Not a background load: the table and pager show their skeleton until the page arrives.
+    const timer = setTimeout(() => fetchOverdue(false), 120);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, endedDate, currentPage]);
@@ -682,6 +677,7 @@ export default function ReturnsView() {
     setError(null);
     setEditUnits(unitsOfRelease(release));
     setEditPhotos(photoItemsFromUrls(release.evidence_photo_urls?.length ? release.evidence_photo_urls : release.evidence_photo_url ? [release.evidence_photo_url] : []));
+    setEditSavedNote(false);
     setEditTarget(release);
   };
 
@@ -737,30 +733,28 @@ export default function ReturnsView() {
       RETURN_CONDITIONS.forEach((c) => fd.append(`conditions[${c.label}]`, String(editUnits[c.label] ?? 0)));
       appendPhotoFields(fd, editPhotos);
       await api.post(`/events/borrowed-items/releases/${release.id}/update`, fd);
-      const movedBack = qty < release.quantity ? release.quantity - qty : 0;
-      setEditTarget(null);
-      setEditPhotos([]);
-      if (movedBack > 0) {
-        setFlowToast({
-          title: t("editReturnSuccessTitle"),
-          message: t("editMovedBackMessage").replace("{qty}", String(movedBack)).replace("{item}", tc(release.item_name, language as any)),
-          target: "pending",
-          tone: "ok",
-        });
-        setFlashEventIds([release.event_id]);
-        setJumpToEventId(release.event_id);
+      // The drawer stays open: reload this return and show its saved values,
+      // photos and the new Activity entry in place. No result popup.
+      fetchOverdue(true);
+      const rows = await fetchRecentReleases(recentReleasesPage, true);
+      const fresh = rows?.find((r) => r.id === release.id);
+      if (fresh) {
+        setEditUnits(unitsOfRelease(fresh));
+        setEditPhotos(photoItemsFromUrls(fresh.evidence_photo_urls?.length ? fresh.evidence_photo_urls : fresh.evidence_photo_url ? [fresh.evidence_photo_url] : []));
+        setEditTarget(fresh);
+        setEditSavedNote(true);
+        window.setTimeout(() => setEditSavedNote(false), 4000);
       } else {
+        // Not on the refreshed page (for example a search filter): fall back to closing with the usual message.
+        setEditTarget(null);
+        setEditPhotos([]);
         setFlowToast({
           title: t("editReturnSuccessTitle"),
           message: t("editReturnSuccessMessage").replace("{item}", tc(release.item_name, language as any)).replace("{event}", tc(release.event_name, language as any)),
           target: "released",
           tone: "ok",
         });
-        setFlashReleaseIds([release.id]);
       }
-      // Quantities on both sides may have changed -- refresh both quietly.
-      fetchOverdue(true);
-      fetchRecentReleases(recentReleasesPage, true);
     } catch (err) {
       setError(apiErrorMessage(err, t("editReturnFailedMessage")));
     } finally {
@@ -1539,10 +1533,18 @@ export default function ReturnsView() {
               )}
               <p className="text-sm text-white/50">{t("keepPhotoHint")}</p>
               <p className="text-sm text-white/50">{t("fileHintPhotos")}</p>
+              {editSavedNote && (
+                <div role="status" className="rounded-xl border border-[#4FBEB0]/30 bg-[#4FBEB0]/10 px-4 py-2.5 text-sm font-semibold text-[#7DD8CB]">{t("editReturnSuccessTitle")}</div>
+              )}
               {error && (
                 <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2.5 text-sm text-red-400">{error}</div>
               )}
             </FormSection>
+
+            <ActivityLog
+              entries={editTarget.activity}
+              onOpen={(url, urls) => setViewingPhoto({ url, name: editTarget.item_name, urls })}
+            />
           </FormDrawer>,
           document.body
         );
@@ -1603,81 +1605,14 @@ export default function ReturnsView() {
           photo looks and behaves the same everywhere in the app. z above
           the Release Items modal (9999) and the confirm/success dialogs
           (10000) so it can be opened from either. */}
-      {viewingPhoto && createPortal(
-        <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10001] px-4"
-          onClick={() => setViewingPhoto(null)}
-        >
-          <div
-            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] text-[11px] font-bold uppercase tracking-wide px-3 py-1 shrink-0">
-                  <Eye className="h-3 w-3" />
-                  {t("viewPhotoLabel")}
-                </span>
-                <span className="text-sm font-medium text-white truncate">{viewingPhoto.name}</span>
-              </div>
-              <button onClick={() => setViewingPhoto(null)} className="text-white/50 hover:text-white p-1 shrink-0">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="relative flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
-              <img src={viewingPhoto.url} alt={viewingPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-2xl" />
-              {viewingPhoto.urls && viewingPhoto.urls.length > 1 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => stepViewingPhoto(-1)}
-                    aria-label="Previous photo"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => stepViewingPhoto(1)}
-                    aria-label="Next photo"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </button>
-                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/80">
-                    {Math.max(0, viewingPhoto.urls.indexOf(viewingPhoto.url)) + 1} / {viewingPhoto.urls.length}
-                  </span>
-                </>
-              )}
-            </div>
-            <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
-              {viewingPhoto.urls && viewingPhoto.urls.length > 1 ? (
-                <div className="flex items-center gap-2">
-                  {viewingPhoto.urls.map((u, i) => (
-                    <button
-                      key={u + i}
-                      type="button"
-                      onClick={() => setViewingPhoto({ ...viewingPhoto, url: u })}
-                      className={`h-10 w-10 overflow-hidden rounded-lg border transition ${u === viewingPhoto.url ? "border-[#7DD8CB]" : "border-white/20 opacity-60 hover:opacity-100"}`}
-                    >
-                      <img src={u} alt="" className="h-full w-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <span />
-              )}
-              <button
-                onClick={() => setViewingPhoto(null)}
-                className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold transition"
-              >
-                {t("closeLabel")}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      <PhotoViewer
+        url={viewingPhoto?.url ?? null}
+        name={viewingPhoto ? viewingPhoto.name : ""}
+        urls={viewingPhoto?.urls}
+        onSelect={(u) => setViewingPhoto((cur) => (cur ? { ...cur, url: u } : cur))}
+        onClose={() => setViewingPhoto(null)}
+        z={10001}
+      />
     </>
   );
 }

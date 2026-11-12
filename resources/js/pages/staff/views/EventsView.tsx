@@ -1,3 +1,4 @@
+import PhotoViewer from "../../../components/ui/PhotoViewer";
 import Portal from "../../../components/ui/Portal";
 import { scrollListIntoView } from "../../../lib/scrollToList";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
@@ -25,7 +26,8 @@ import EventBudgetWorkspace from "../../../components/budget/EventBudgetWorkspac
 import Skeleton from "../../../components/ui/Skeleton";
 import { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
 import SlideOutGhost from "../../../components/ui/SlideOutGhost";
-import ReportOptionsModal, { type SectionDef, type AttendeeFilter } from "./ReportOptionsModal";
+import ReportGenerateDrawer, { type ReportFormat } from "./reports/ReportGenerateDrawer";
+import type { SectionDef, AttendeeFilter } from "./ReportOptionsModal";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -183,31 +185,19 @@ export function EventsView({
   // The event's Inventory tab: what it borrowed, what is still out, and what
   // came back (and in which condition) -- from /events/{id}/inventory.
   type EventInventoryRow = {
-    inventory_item_id: number; name: string; photo_url?: string | null; total: number; status: "borrowed" | "partial" | "returned";
+    inventory_item_id: number; name: string; photo_url?: string | null; total: number; status: "borrowed" | "partial" | "returned" | "settled";
     out: number; out_units: Record<string, number>; returned: number; returned_units: Record<string, number>;
+    lost: number; lost_units: Record<string, number>;
   };
   const [eventInventory, setEventInventory] = useState<{
     items: EventInventoryRow[];
     returns: { id: number; name: string; photo_url?: string | null; evidence_photo_urls?: string[]; quantity: number; units: Record<string, number>; released_by: string | null; released_at: string }[];
   }>({ items: [], returns: [] });
   const [eventInventoryLoading, setEventInventoryLoading] = useState(false);
+  // Which items the Inventory tab lists: all of them, only those still out, or only those that are done.
+  const [invFilter, setInvFilter] = useState<"all" | "out" | "done">("all");
   // Full-size look at an item photo or a return's evidence photo (prev/next, Esc closes).
   const [invPhoto, setInvPhoto] = useState<{ url: string; name: string; urls: string[] } | null>(null);
-  const stepInvPhoto = (dir: 1 | -1) => setInvPhoto((cur) => {
-    if (!cur || cur.urls.length < 2) return cur;
-    const i = Math.max(0, cur.urls.indexOf(cur.url));
-    return { ...cur, url: cur.urls[(i + dir + cur.urls.length) % cur.urls.length] };
-  });
-  useEffect(() => {
-    if (!invPhoto) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setInvPhoto(null);
-      else if (e.key === "ArrowRight") stepInvPhoto(1);
-      else if (e.key === "ArrowLeft") stepInvPhoto(-1);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [invPhoto]); // eslint-disable-line react-hooks/exhaustive-deps
   const [feedbackCurrentPage, setFeedbackCurrentPage] = useState(1);
 
   // A new feedback arrived for the event on screen: refresh its Feedback tab live.
@@ -647,7 +637,7 @@ export function EventsView({
   };
 
   // UC-9 tie-in: items borrowed from Inventory for this event. Fetched
-  // once (excludes Disposed/Lost condition -- see InventoryController::
+  // once (excludes Lost stock -- see InventoryController::
   // borrowable()) and reused for both Create and Edit, since they share
   // one form.
   const [borrowableItems, setBorrowableItems] = useState<BorrowableInventoryItem[]>([]);
@@ -1339,23 +1329,23 @@ export function EventsView({
 
   // ---- Generate Report (per event) -- same Print & Export Options flow as
   // Reports & Analytics, scoped to the event open in the detail view.
-  const [reportMode, setReportMode] = useState<"print" | "download" | null>(null);
+  const [reportOpen, setReportOpen] = useState(false);
   const [reportSections, setReportSections] = useState<string[]>(EVENT_REPORT_SECTIONS.map((x) => x.key));
   const [reportAttendeeFilter, setReportAttendeeFilter] = useState<AttendeeFilter>("all");
   const [reportBusy, setReportBusy] = useState(false);
-  const [reportConfirm, setReportConfirm] = useState<"pdf" | "word" | null>(null);
-  const [reportSuccess, setReportSuccess] = useState<"pdf" | "word" | null>(null);
+  const [reportConfirm, setReportConfirm] = useState<"pdf" | "word" | "csv" | null>(null);
+  const [reportSuccess, setReportSuccess] = useState<"pdf" | "word" | "csv" | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
 
-  const openEventReport = (mode: "print" | "download") => {
+  const openEventReport = () => {
     setReportSections(EVENT_REPORT_SECTIONS.map((x) => x.key));
     // Start from what the Attendance tab is showing: filtered to "Missed" -> the
     // report starts on "Absent" (the other statuses have no exact match, so "All").
     setReportAttendeeFilter(attendanceStatusFilter === "missed" ? "absent" : "all");
-    setReportMode(mode);
+    setReportOpen(true);
   };
 
-  const fetchEventReportBlob = async (format: "pdf" | "word") => {
+  const fetchEventReportBlob = async (format: "pdf" | "word" | "csv") => {
     if (!viewEv) throw new Error("no event");
     const params: Record<string, string> = {
       type: "attendance",
@@ -1365,6 +1355,12 @@ export function EventsView({
     if (reportSections.includes("records")) {
       params.event_ids = String(viewEv.id);
       params.attendee_filter = reportAttendeeFilter;
+    }
+    // Excel: the server sends this event's data and the browser builds the styled workbook.
+    if (format === "csv") {
+      const res = await api.get("/reports/export/csv", { params: { ...params, as: "json" } });
+      const { buildReportWorkbookBlob } = await import("../../../lib/reportExcelExport");
+      return buildReportWorkbookBlob(res.data);
     }
     const response = await api.get(`/reports/export/${format}`, { params, responseType: "blob" });
     const mime = format === "pdf"
@@ -1412,7 +1408,7 @@ export function EventsView({
         if (win && !win.closed) win.location.href = url;
         else saveBlob(blob, `${reportFileBase()}.pdf`);
         window.setTimeout(() => URL.revokeObjectURL(url), 120000);
-        setReportMode(null);
+        setReportOpen(false);
         return;
       }
       const params: Record<string, string> = {
@@ -1445,7 +1441,7 @@ export function EventsView({
       };
       frame.srcdoc = html;
       document.body.appendChild(frame);
-      setReportMode(null);
+      setReportOpen(false);
     } catch {
       win?.close();
       setReportError(t("downloadFailedMessage"));
@@ -1454,12 +1450,12 @@ export function EventsView({
     }
   };
 
-  const handleEventReportDownload = async (format: "pdf" | "word") => {
+  const handleEventReportDownload = async (format: "pdf" | "word" | "csv") => {
     setReportBusy(true);
     try {
       const blob = await fetchEventReportBlob(format);
-      saveBlob(blob, `${reportFileBase()}.${format === "pdf" ? "pdf" : "docx"}`);
-      setReportMode(null);
+      saveBlob(blob, `${reportFileBase()}.${format === "pdf" ? "pdf" : format === "csv" ? "xlsx" : "docx"}`);
+      setReportOpen(false);
       setReportSuccess(format);
     } catch {
       setReportError(t("downloadFailedMessage"));
@@ -1627,51 +1623,50 @@ export function EventsView({
                     </button>
                     <button
                       type="button"
-                      onClick={() => openEventReport("print")}
+                      onClick={openEventReport}
                       className="inline-flex items-center gap-2 rounded-full bg-[#1E3A5F] px-4 py-2.5 text-[15px] font-semibold text-white transition hover:bg-[#274A77] active:scale-95"
                     >
                       <ClipboardList className="h-4 w-4" /> {t("generateReportButton")}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => openEventReport("download")}
-                      title={t("downloadReportLabel")}
-                      aria-label={t("downloadReportLabel")}
-                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.06] text-white transition hover:bg-white/[0.12] active:scale-95"
-                    >
-                      <Download className="h-5 w-5" />
-                    </button>
 
-                    <ReportOptionsModal
-                      open={reportMode !== null}
-                      mode={reportMode ?? "print"}
-                      reportLabel={viewEv.title}
-                      sections={EVENT_REPORT_SECTIONS}
-                      selected={reportSections}
-                      onSelectedChange={setReportSections}
-                      recordEvents={[{
-                        id: String(viewEv.id),
-                        name: viewEv.title,
-                        date: viewEv.date,
-                        status: status.label,
-                        eligible: fullAttendanceCountForTab,
-                        attended: signedInCount,
-                      }]}
-                      recordIds={[String(viewEv.id)]}
-                      onRecordIdsChange={() => {}}
-                      attendeeFilter={reportAttendeeFilter}
-                      onAttendeeFilterChange={setReportAttendeeFilter}
-                      busy={reportBusy}
-                      onClose={() => setReportMode(null)}
-                      onPrint={handleEventReportPrint}
-                      onDownload={(format) => setReportConfirm(format)}
-                      t={t}
-                    />
+                    {reportOpen && (
+                      <ReportGenerateDrawer
+                        initialFormat="pdf"
+                        reportLabel={viewEv.title}
+                        scopeText={String(viewEv.date ?? "")}
+                        sections={EVENT_REPORT_SECTIONS}
+                        selected={reportSections}
+                        onSelectedChange={setReportSections}
+                        recordEvents={[{
+                          id: String(viewEv.id),
+                          name: viewEv.title,
+                          date: viewEv.date,
+                          status: status.label,
+                          eligible: fullAttendanceCountForTab,
+                          attended: signedInCount,
+                        }]}
+                        recordIds={[String(viewEv.id)]}
+                        onRecordIdsChange={() => {}}
+                        attendeeFilter={reportAttendeeFilter}
+                        onAttendeeFilterChange={setReportAttendeeFilter}
+                        singleEvent
+                        previewParams={{
+                          type: "attendance",
+                          event_id: String(viewEv.id),
+                          sections: reportSections.join(","),
+                          ...(reportSections.includes("records") ? { event_ids: String(viewEv.id), attendee_filter: reportAttendeeFilter } : {}),
+                        }}
+                        busy={reportBusy}
+                        onClose={() => setReportOpen(false)}
+                        onGenerate={(format: ReportFormat) => { if (format === "print") handleEventReportPrint(); else setReportConfirm(format); }}
+                        t={t}
+                      />
+                    )}
                     <ConfirmDialog
                       open={reportConfirm !== null}
                       icon={<Download className="h-9 w-9" />}
                       title={t("confirmDownloadReportTitle")}
-                      body={reportConfirm === "word" ? t("confirmDownloadReportBodyWord") : t("confirmDownloadReportBodyPdf")}
+                      body={reportConfirm === "word" ? t("confirmDownloadReportBodyWord") : reportConfirm === "csv" ? t("confirmDownloadReportBodyCsv") : t("confirmDownloadReportBodyPdf")}
                       cancelLabel={t("cancelLabel")}
                       confirmLabel={t("downloadLabel")}
                       z={9999}
@@ -1686,7 +1681,7 @@ export function EventsView({
                       open={reportSuccess !== null}
                       type="success"
                       title={t("downloadSuccessTitle")}
-                      message={reportSuccess === "word" ? t("downloadSuccessWordMessage") : t("downloadSuccessPdfMessage")}
+                      message={reportSuccess === "word" ? t("downloadSuccessWordMessage") : reportSuccess === "csv" ? t("downloadSuccessCsvMessage") : t("downloadSuccessPdfMessage")}
                       okLabel={t("okLabel")}
                       onClose={() => setReportSuccess(null)}
                     />
@@ -1857,90 +1852,183 @@ export function EventsView({
                     </div>
                   ) : (
                     <>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        {([
-                          { key: "borrowed", label: t("eventInventoryBorrowed"), value: eventInventory.items.reduce((a, r) => a + r.total, 0), bg: "bg-sage-700", Icon: Package },
-                          { key: "out", label: t("eventInventoryStillOut"), value: eventInventory.items.reduce((a, r) => a + r.out, 0), bg: "bg-gold-600", Icon: Clock },
-                          { key: "back", label: t("eventInventoryReturned"), value: eventInventory.items.reduce((a, r) => a + r.returned, 0), bg: "bg-sage-800", Icon: CheckCircle2 },
-                        ] as const).map(({ key, label, value, bg, Icon }) => (
-                          <div key={key} className={`rounded-2xl ${bg} px-5 py-5 flex items-center gap-4`}>
-                            <span className="flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-xl bg-white/20">
-                              <Icon className="h-6 w-6 text-white" />
-                            </span>
-                            <div className="min-w-0">
-                              <p className="text-[13px] font-bold uppercase tracking-wide text-white/85">{label}</p>
-                              <p className="text-3xl font-black text-white leading-none mt-1">{value}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="space-y-3">
-                        {eventInventory.items.map((row) => {
-                          const pct = row.total > 0 ? Math.round((row.returned / row.total) * 100) : 0;
-                          return (
-                            <div key={row.inventory_item_id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-                              <div className="flex flex-wrap items-center gap-3">
-                                {row.photo_url ? (
-                                  <button
-                                    type="button"
-                                    onClick={() => setInvPhoto({ url: row.photo_url!, name: tc(row.name, language as any), urls: [row.photo_url!] })}
-                                    className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 hover:border-[#4FBEB0]/60 transition"
-                                  >
-                                    <img src={row.photo_url} alt={row.name} className="h-full w-full object-cover" />
-                                    <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur"><Eye className="h-3 w-3" /></span>
-                                  </button>
-                                ) : (
-                                  <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/15">
-                                    <Package className="h-6 w-6 text-[#7DD8CB]" />
-                                  </span>
-                                )}
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-base font-bold text-white truncate">{tc(row.name, language as any)}</p>
-                                  <p className="text-xs text-white/50">
-                                    {t("eventInventoryReturned")}: <span className="font-bold text-white">{row.returned}</span> / {row.total}
+                      {(() => {
+                        const items = eventInventory.items;
+                        const totalAll = items.reduce((a, r) => a + r.total, 0);
+                        const outAll = items.reduce((a, r) => a + r.out, 0);
+                        const backAll = items.reduce((a, r) => a + r.returned, 0);
+                        // Units that never came back are shown neutrally: they are tracked on the item (Inventory),
+                        // not held against this event.
+                        const notBackAll = items.reduce((a, r) => a + r.lost, 0);
+                        const pctOf = (n: number, d: number) => (d > 0 ? Math.round((n / d) * 100) : 0);
+                        const doneItems = items.filter((r) => r.out === 0).length;
+                        const visible = items
+                          .filter((r) => (invFilter === "out" ? r.out > 0 : invFilter === "done" ? r.out === 0 : true))
+                          .sort((x, y) => Number(y.out > 0) - Number(x.out > 0)); // items still out first
+                        return (
+                          <>
+                            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                              <div className="flex flex-wrap items-end justify-between gap-3">
+                                <div>
+                                  <p className="text-xs font-bold uppercase tracking-wide text-white/55">{t("eventInventoryProgress")}</p>
+                                  <p className="mt-1 text-3xl font-black leading-none text-white">
+                                    {pctOf(backAll, totalAll)}%
+                                    <span className="ml-2 text-sm font-semibold text-white/50">{t("eventInventoryPctReturned")}</span>
                                   </p>
                                 </div>
-                                <span className={`rounded-full px-3 py-1 text-xs font-bold ${
-                                  row.status === "returned" ? "bg-[#4FBEB0]/15 text-[#7DD8CB]" : row.status === "partial" ? "bg-gold-400/15 text-gold-300" : "bg-[#8A3D2C]/25 text-[#E2A088]"
-                                }`}>
-                                  {row.status === "returned" ? t("eventInventoryStatusReturned") : row.status === "partial" ? t("eventInventoryStatusPartial") : t("eventInventoryStatusBorrowed")}
-                                </span>
+                                <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/60">
+                                  <span>{t("eventInventoryItemsDone").replace("{a}", String(doneItems)).replace("{b}", String(items.length))}</span>
+                                  {notBackAll > 0 && (
+                                    <span
+                                      className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white/70"
+                                      title={t("eventInventoryNotBackNote").replace("{n}", String(notBackAll))}
+                                    >
+                                      {t("eventInventoryNotBackShort").replace("{n}", String(notBackAll))}
+                                    </span>
+                                  )}
+                                </p>
                               </div>
-
-                              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
-                                <div className="h-full rounded-full bg-[#4FBEB0] transition-all" style={{ width: `${pct}%` }} />
+                              <div
+                                role="progressbar"
+                                aria-valuemin={0}
+                                aria-valuemax={100}
+                                aria-valuenow={pctOf(backAll, totalAll)}
+                                className="mt-4 flex h-3 w-full overflow-hidden rounded-full bg-white/10"
+                              >
+                                <div className="h-full bg-[#4FBEB0] transition-all" style={{ width: `${pctOf(backAll, totalAll)}%` }} />
+                                {notBackAll > 0 && <div className="h-full bg-white/25 transition-all" style={{ width: `${pctOf(notBackAll, totalAll)}%` }} />}
                               </div>
-
-                              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                                {([["out", t("eventInventoryStillOut")], ["returned", t("eventInventoryReturned")]] as const).map(([k, title]) => {
-                                  const units = k === "out" ? row.out_units : row.returned_units;
-                                  const total = k === "out" ? row.out : row.returned;
-                                  return (
-                                    <div key={k} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                                      <div className="flex items-center justify-between">
-                                        <p className="text-xs font-bold uppercase tracking-wide text-white/55">{title}</p>
-                                        <p className="text-sm font-bold text-white">{total}</p>
-                                      </div>
-                                      <div className="mt-2 flex flex-wrap gap-1.5 min-h-[26px]">
-                                        {total === 0 ? (
-                                          <span className="text-sm text-white/40">{k === "out" ? t("eventInventoryNoneOut") : t("eventInventoryNoneBack")}</span>
-                                        ) : (
-                                          BORROW_CONDITIONS.filter((c) => (units[c.label.replace("condition", "")] ?? 0) > 0).map((c) => (
-                                            <span key={c.key} className={`rounded-full px-3 py-1 text-xs font-semibold ${c.chip}`}>
-                                              {units[c.label.replace("condition", "")]} {t(c.label)}
-                                            </span>
-                                          ))
-                                        )}
-                                      </div>
+                              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
+                                {([
+                                  { key: "borrowed", label: t("eventInventoryBorrowed"), value: totalAll, bg: "bg-sage-700", Icon: Package },
+                                  { key: "out", label: t("eventInventoryStillOut"), value: outAll, bg: "bg-gold-600", Icon: Clock },
+                                  { key: "back", label: t("eventInventoryReturned"), value: backAll, bg: "bg-sage-800", Icon: CheckCircle2 },
+                                ] as const).map(({ key, label, value, bg, Icon }) => (
+                                  <div key={key} className={`flex items-center gap-4 rounded-2xl ${bg} px-5 py-4`}>
+                                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/20">
+                                      <Icon className="h-6 w-6 text-white" />
+                                    </span>
+                                    <div className="min-w-0">
+                                      <p className="text-[13px] font-bold uppercase tracking-wide text-white/85">{label}</p>
+                                      <p className="mt-1 text-3xl font-black leading-none text-white">{value}</p>
                                     </div>
-                                  );
-                                })}
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
+
+                            <div className="flex flex-wrap gap-2" role="group" aria-label={t("inventoryTabLabel")}>
+                              {([
+                                ["all", t("eventInventoryFilterAll"), items.length],
+                                ["out", t("eventInventoryFilterOut"), items.length - doneItems],
+                                ["done", t("eventInventoryFilterDone"), doneItems],
+                              ] as const).map(([k, label, n]) => (
+                                <button
+                                  key={k}
+                                  type="button"
+                                  aria-pressed={invFilter === k}
+                                  onClick={() => setInvFilter(k)}
+                                  className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
+                                    invFilter === k ? "bg-[#4FBEB0] text-[#0A0E1A]" : "bg-white/[0.06] text-white/70 hover:bg-white/10"
+                                  }`}
+                                >
+                                  {label} <span className="ml-1 opacity-70">{n}</span>
+                                </button>
+                              ))}
+                            </div>
+
+                            <div className="space-y-3">
+                              {visible.length === 0 && (
+                                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center text-white/50">
+                                  {t("eventInventoryFilterEmpty")}
+                                </div>
+                              )}
+                              {visible.map((row) => {
+                                const pct = pctOf(row.returned, row.total);
+                                const notBackPct = pctOf(row.lost, row.total);
+                                return (
+                                  <div key={row.inventory_item_id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                      {row.photo_url ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setInvPhoto({ url: row.photo_url!, name: tc(row.name, language as any), urls: [row.photo_url!] })}
+                                          className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/10 transition hover:border-[#4FBEB0]/60"
+                                        >
+                                          <img src={row.photo_url} alt={row.name} className="h-full w-full object-cover" />
+                                          <span className="absolute bottom-1 right-1 flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-white backdrop-blur"><Eye className="h-3 w-3" /></span>
+                                        </button>
+                                      ) : (
+                                        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/15">
+                                          <Package className="h-6 w-6 text-[#7DD8CB]" />
+                                        </span>
+                                      )}
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate text-base font-bold text-white">{tc(row.name, language as any)}</p>
+                                        <p className="text-xs text-white/50">
+                                          {t("eventInventoryReturned")}: <span className="font-bold text-white">{row.returned}</span> / {row.total}
+                                          <span className="ml-2 text-white/40">{pct}%</span>
+                                        </p>
+                                      </div>
+                                      {row.lost > 0 && (
+                                        <span
+                                          className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white/70"
+                                          title={t("eventInventoryNotBackChip").replace("{n}", String(row.lost))}
+                                        >
+                                          {t("eventInventoryNotBackShort").replace("{n}", String(row.lost))}
+                                        </span>
+                                      )}
+                                      <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+                                        row.status === "returned" ? "bg-[#4FBEB0]/15 text-[#7DD8CB]" : row.status === "settled" ? "bg-white/10 text-white/70" : row.status === "partial" ? "bg-gold-400/15 text-gold-300" : "bg-[#8A3D2C]/25 text-[#E2A088]"
+                                      }`}>
+                                        {row.status === "returned" ? t("eventInventoryStatusReturned") : row.status === "settled" ? t("eventInventoryStatusSettled") : row.status === "partial" ? t("eventInventoryStatusPartial") : t("eventInventoryStatusBorrowed")}
+                                      </span>
+                                    </div>
+
+                                    <div
+                                      role="progressbar"
+                                      aria-valuemin={0}
+                                      aria-valuemax={100}
+                                      aria-valuenow={pct}
+                                      className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-white/10"
+                                    >
+                                      <div className="h-full bg-[#4FBEB0] transition-all" style={{ width: `${pct}%` }} />
+                                      {row.lost > 0 && <div className="h-full bg-white/25 transition-all" style={{ width: `${notBackPct}%` }} />}
+                                    </div>
+
+                                    <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                                      {([["out", t("eventInventoryStillOut")], ["returned", t("eventInventoryReturned")]] as const).map(([k, title]) => {
+                                        const units = k === "out" ? row.out_units : row.returned_units;
+                                        const total = k === "out" ? row.out : row.returned;
+                                        return (
+                                          <div key={k} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                                            <div className="flex items-center justify-between">
+                                              <p className="text-xs font-bold uppercase tracking-wide text-white/55">{title}</p>
+                                              <p className="text-sm font-bold text-white">{total}</p>
+                                            </div>
+                                            <div className="mt-2 flex min-h-[26px] flex-wrap gap-1.5">
+                                              {total === 0 ? (
+                                                <span className="text-sm text-white/40">{k === "out" ? t("eventInventoryNoneOut") : t("eventInventoryNoneBack")}</span>
+                                              ) : (
+                                                BORROW_CONDITIONS.filter((c) => (units[c.label.replace("condition", "")] ?? 0) > 0).map((c) => (
+                                                  <span key={c.key} className={`rounded-full px-3 py-1 text-xs font-semibold ${c.chip}`}>
+                                                    {units[c.label.replace("condition", "")]} {t(c.label)}
+                                                  </span>
+                                                ))
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </>
+                        );
+                      })()}
 
                       {eventInventory.returns.length > 0 && (
                         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
@@ -2599,7 +2687,7 @@ export function EventsView({
                   </div>
 
                   {/* Items borrowed from Inventory for this event -- excludes
-                      Disposed/Lost stock (see InventoryController::borrowable()),
+                      Lost stock (see InventoryController::borrowable()),
                       and deducts the chosen quantity from Inventory on save. */}
                   <div className="rounded-2xl border border-dashed border-white/20 bg-white/[0.02] p-4 space-y-3">
                     <div className="flex items-center gap-1.5">
@@ -2777,81 +2865,14 @@ export function EventsView({
         onClose={() => setDeleteErrorMessage(null)}
         z={9999}
       />
-      {invPhoto && createPortal(
-        <div
-          className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[10001] px-4"
-          onClick={() => setInvPhoto(null)}
-        >
-          <div
-            className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] text-[11px] font-bold uppercase tracking-wide px-3 py-1 shrink-0">
-                  <Eye className="h-3 w-3" />
-                  {t("viewPhotoLabel")}
-                </span>
-                <span className="text-sm font-medium text-white truncate">{invPhoto.name}</span>
-              </div>
-              <button onClick={() => setInvPhoto(null)} className="text-white/50 hover:text-white p-1 shrink-0">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="relative flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
-              <img src={invPhoto.url} alt={invPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-2xl" />
-              {invPhoto.urls.length > 1 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => stepInvPhoto(-1)}
-                    aria-label="Previous photo"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => stepInvPhoto(1)}
-                    aria-label="Next photo"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </button>
-                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/80">
-                    {Math.max(0, invPhoto.urls.indexOf(invPhoto.url)) + 1} / {invPhoto.urls.length}
-                  </span>
-                </>
-              )}
-            </div>
-            <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
-              {invPhoto.urls.length > 1 ? (
-                <div className="flex items-center gap-2">
-                  {invPhoto.urls.map((u, i) => (
-                    <button
-                      key={u + i}
-                      type="button"
-                      onClick={() => setInvPhoto({ ...invPhoto, url: u })}
-                      className={`h-10 w-10 overflow-hidden rounded-lg border transition ${u === invPhoto.url ? "border-[#7DD8CB]" : "border-white/20 opacity-60 hover:opacity-100"}`}
-                    >
-                      <img src={u} alt="" className="h-full w-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <span />
-              )}
-              <button
-                onClick={() => setInvPhoto(null)}
-                className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold transition"
-              >
-                {t("closeLabel")}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
+      <PhotoViewer
+        url={invPhoto?.url ?? null}
+        name={invPhoto ? invPhoto.name : ""}
+        urls={invPhoto?.urls}
+        onSelect={(u) => setInvPhoto((cur) => (cur ? { ...cur, url: u } : cur))}
+        onClose={() => setInvPhoto(null)}
+        z={10001}
+      />
     </div>
   );
 }

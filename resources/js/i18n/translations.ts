@@ -14,6 +14,8 @@ import { feedbackExtrasTranslations } from "./locales/feedbackExtras";
 import { filtersTranslations } from "./locales/filters";
 import { reportsProTranslations } from "./locales/reportsPro";
 import { lostFoundTranslations } from "./locales/lostFound";
+import { photoViewerTranslations } from "./locales/photoViewer";
+import { recoveryPrintTranslations } from "./locales/recoveryPrint";
 
 export type LanguageCode = "en" | "tl" | "ceb";
 
@@ -214,6 +216,22 @@ export const translations: Dict = {
   rateThisEventButton: { en: "Rate this event", tl: "I-rate ang kaganapan", ceb: "I-rate ang kalihokan" },
   optionalCommentPlaceholder: { en: "Optional comment...", tl: "Opsyonal na komento...", ceb: "Opsyonal nga komento..." },
   submittingLabel: { en: "Submitting...", tl: "Isinusumite...", ceb: "Gi-submit..." },
+  // Member feedback / "why couldn't you attend" card, reply box and time picker
+  whyCouldntAttend: { en: "Why couldn't you attend?", tl: "Bakit hindi ka nakadalo?", ceb: "Nganong wala ka nakaapil?" },
+  submitButton: { en: "Submit", tl: "Isumite", ceb: "Isumite" },
+  couldntAttendButton: { en: "I couldn't attend \u2014 tell us why", tl: "Hindi ako nakadalo \u2014 sabihin kung bakit", ceb: "Wala ko nakaapil \u2014 isulti kung ngano" },
+  submitReasonFailed: { en: "Could not save your reason.", tl: "Hindi na-save ang iyong dahilan.", ceb: "Wala ma-save ang imong rason." },
+  reasonSavedConfirmation: { en: "Thank you for letting us know.", tl: "Salamat sa pagpapaalam sa amin.", ceb: "Salamat sa pagpahibalo kanamo." },
+  yourReasonLabel: { en: "Your reason", tl: "Iyong dahilan", ceb: "Imong rason" },
+  submitReviewConfirmTitle: { en: "Submit this review?", tl: "Isumite ang review na ito?", ceb: "I-submit kini nga review?" },
+  submitReviewConfirmBody: { en: "You can still edit or remove it for a short time after submitting.", tl: "Maaari mo pa itong i-edit o alisin sa maikling panahon matapos isumite.", ceb: "Mahimo pa nimo kining usbon o tangtangon sa mubo nga panahon human i-submit." },
+  feedbackSubmittedSuccess: { en: "Thank you for your feedback!", tl: "Salamat sa iyong feedback!", ceb: "Salamat sa imong feedback!" },
+  feedbackUpdatedSuccess: { en: "Feedback updated successfully!", tl: "Matagumpay na na-update ang feedback!", ceb: "Malampuson nga na-update ang feedback!" },
+  doneLabel: { en: "Done", tl: "Tapos na", ceb: "Human na" },
+  sendLabel: { en: "Send", tl: "Ipadala", ceb: "Ipadala" },
+  staffReplyPlaceholder: { en: "Write a reply\u2026", tl: "Sumulat ng sagot\u2026", ceb: "Isulat ang tubag\u2026" },
+  likeLabel: { en: "Like", tl: "I-like", ceb: "I-like" },
+  likedByMemberLabel: { en: "Liked by member", tl: "Na-like ng miyembro", ceb: "Gi-like sa miyembro" },
   submitReviewButton: { en: "Submit Review", tl: "Isumite ang Review", ceb: "I-submit ang Review" },
   submitReviewFailed: { en: "Failed to submit your review. Please try again.", tl: "Nabigong isumite ang iyong review. Pakisubukang muli.", ceb: "Napakyas i-submit ang imong review. Palihug sulayi og balik." },
   editReviewTitle: { en: "Edit your review", tl: "I-edit ang iyong review", ceb: "I-edit ang imong review" },
@@ -273,6 +291,19 @@ export const translations: Dict = {
   eventInventoryBorrowed: { en: "Borrowed", tl: "Hiniram", ceb: "Gihulam" },
   eventInventoryStillOut: { en: "Still out", tl: "Nasa labas pa", ceb: "Gawas pa" },
   eventInventoryReturned: { en: "Returned", tl: "Naibalik", ceb: "Nabalik" },
+  eventInventoryLost: { en: "Lost", tl: "Nawala", ceb: "Nawala" },
+  eventInventoryLostChip: { en: "{n} lost", tl: "{n} nawala", ceb: "{n} nawala" },
+  eventInventoryStatusSettled: { en: "Closed", tl: "Sarado na", ceb: "Sirado na" },
+  eventInventoryProgress: { en: "Return progress", tl: "Progreso ng pagbabalik", ceb: "Pag-uswag sa pagbalik" },
+  eventInventoryPctReturned: { en: "returned", tl: "naibalik", ceb: "nabalik" },
+  eventInventoryItemsDone: { en: "{a} of {b} items fully accounted for", tl: "{a} sa {b} na gamit ay kumpleto na", ceb: "{a} sa {b} ka butang kompleto na" },
+  eventInventoryFilterAll: { en: "All", tl: "Lahat", ceb: "Tanan" },
+  eventInventoryFilterOut: { en: "Still out", tl: "Nasa labas pa", ceb: "Gawas pa" },
+  eventInventoryFilterDone: { en: "Done", tl: "Tapos na", ceb: "Human na" },
+  eventInventoryFilterEmpty: { en: "No items in this view.", tl: "Walang gamit sa view na ito.", ceb: "Walay butang niini nga view." },
+  eventInventoryNotBackNote: { en: "{n} units were not returned when this event closed. They are tracked on the item in Inventory, not on this event.", tl: "{n} na yunit ang hindi naibalik nang magsara ang event. Naka-tala ito sa gamit sa Imbentaryo, hindi sa event na ito.", ceb: "{n} ka yunit ang wala nabalik sa pagsira sa event. Gitala kini sa butang sa Imbentaryo, dili sa kini nga event." },
+  eventInventoryNotBackShort: { en: "{n} not returned", tl: "{n} hindi naibalik", ceb: "{n} wala nabalik" },
+  eventInventoryNotBackChip: { en: "{n} not returned \u00b7 tracked on the item", tl: "{n} hindi naibalik \u00b7 naka-tala sa gamit", ceb: "{n} wala nabalik \u00b7 gitala sa butang" },
   eventInventoryStatusBorrowed: { en: "Borrowed", tl: "Hiniram", ceb: "Gihulam" },
   eventInventoryStatusPartial: { en: "Partly returned", tl: "Bahagyang naibalik", ceb: "Bahin nabalik" },
   eventInventoryStatusReturned: { en: "All returned", tl: "Naibalik lahat", ceb: "Nabalik tanan" },
@@ -746,7 +777,6 @@ export const translations: Dict = {
   conditionGood: { en: "Good", tl: "Mabuti", ceb: "Maayo" },
   conditionFair: { en: "Fair", tl: "Katamtaman", ceb: "Katunga" },
   conditionPoor: { en: "Poor", tl: "Masama", ceb: "Dili Maayo" },
-  conditionDisposed: { en: "Disposed", tl: "Naitapon", ceb: "Gitapon na" },
   conditionLost: { en: "Lost", tl: "Nawala", ceb: "Nawala" },
   noInventoryItems: { en: "No inventory items yet.", tl: "Wala pang item sa imbentaryo.", ceb: "Wala pay item sa imbentaryo." },
   inStock: { en: "in stock", tl: "nasa stock", ceb: "naa sa stock" },
@@ -1206,7 +1236,6 @@ export const translations: Dict = {
   checkinMethodStep2: { en: "2. Check-in Method", tl: "2. Paraan ng Check-in", ceb: "2. Pamaagi sa Check-in" },
   cameraScanLabel: { en: "Camera Scan", tl: "Camera Scan", ceb: "Camera Scan" },
   manualPhysicalIdLabel: { en: "Manual · Physical ID", tl: "Manual · Pisikal na ID", ceb: "Manual · Pisikal nga ID" },
-  adviserTwoInOneNote: { en: "Adviser recommendation: \"2-in-1\" — type a printed ID card's code when a resident has no smartphone or the camera can't scan.", tl: "Rekomendasyon ng adviser: \"2-in-1\" — i-type ang code ng nakalimbag na ID kapag walang smartphone ang residente o hindi ma-scan ng camera.", ceb: "Rekomendasyon sa adviser: \"2-in-1\" — i-type ang code sa naimprinta nga ID kung walay smartphone ang residente o dili ma-scan sa camera." },
   scanModeStep3: { en: "3. Scan Mode", tl: "3. Mode ng Scan", ceb: "3. Scan Mode" },
   signInWord: { en: "Sign In", tl: "Sign In", ceb: "Sign In" },
   signOutWord: { en: "Sign Out", tl: "Sign Out", ceb: "Sign Out" },
@@ -1221,6 +1250,8 @@ export const translations: Dict = {
   manualPhysicalIdCheckin: { en: "Manual / Physical ID Check-in", tl: "Manual / Pisikal na ID Check-in", ceb: "Manual / Pisikal nga ID Check-in" },
   typeResidentIdPlaceholder: { en: "Type Resident ID (e.g. PR-0001) or full name...", tl: "I-type ang Resident ID (hal. PR-0001) o buong pangalan...", ceb: "I-type ang Resident ID (pananglitan PR-0001) o tibuok ngalan..." },
   noMatchingResidentFound: { en: "No matching resident found.", tl: "Walang natagpuang tumugmang residente.", ceb: "Walay nakit-an nga parehas nga residente." },
+  residentsLoadingHint: { en: "Loading the resident list… If you have no internet, connect once so it can be saved on this device.", tl: "Nilo-load ang listahan ng mga residente… Kung walang internet, kumonekta nang isang beses para ma-save ito sa device na ito.", ceb: "Gi-load ang listahan sa mga residente… Kung walay internet, konektar kausa aron ma-save kini sa device." },
+  residentsSavedCopyNote: { en: "Offline: using the resident list saved on this device.", tl: "Offline: gamit ang listahan ng mga residente na naka-save sa device na ito.", ceb: "Offline: gamit ang listahan sa mga residente nga naka-save sa device." },
   selectArrowLabel: { en: "Select", tl: "Piliin", ceb: "Pilia" },
   startTypingToFindResident: { en: "Start typing to find a resident by ID or name.", tl: "Magsimulang mag-type para maghanap ng residente ayon sa ID o pangalan.", ceb: "Sugdi og type aron makapangita og residente pinaagi sa ID o ngalan." },
   scanResultTitle: { en: "Scan Result", tl: "Resulta ng Scan", ceb: "Resulta sa Scan" },
@@ -1766,11 +1797,7 @@ export const translations: Dict = {
   itemArchivedSuccess: { en: "Item marked {condition} and moved to archive.", tl: "Na-mark ang item bilang {condition} at inilipat sa archive.", ceb: "Na-mark ang item nga {condition} ug gibalhin sa archive." },
   itemMarkedOnLoanSuccess: { en: "Item marked {condition}. It stays listed while still on loan and is archived automatically once the loan is closed.", tl: "Na-mark ang item bilang {condition}. Mananatili itong nakalista habang hiniram pa at awtomatikong ia-archive kapag naisara na ang hiram.", ceb: "Na-mark ang item nga {condition}. Magpabilin kini sa lista samtang gihulam pa ug awtomatikong ma-archive kung nahuman na ang hulam." },
   lostUnitsLabel: { en: "Lost units", tl: "Mga nawalang unit", ceb: "Mga nawala nga unit" },
-  disposedUnitsLabel: { en: "Disposed units", tl: "Mga na-dispose na unit", ceb: "Mga na-dispose nga unit" },
-  disposedUnitsBadge: { en: "{n} disposed", tl: "{n} na-dispose", ceb: "{n} na-dispose" },
-  lostUnitsHint: { en: "Press \u25B2 on Lost or Disposed to take units out of Quantity; press \u25BC to put them back. Lost = never came back. Disposed = worn out or used up. Every other unit keeps its condition and stays in Inventory.", tl: "Pindutin ang \u25B2 sa Lost o Disposed para bawasan ang Quantity; \u25BC para ibalik. Lost = hindi na bumalik. Disposed = sira o naubos na. Ang iba pang unit ay mananatili ang kondisyon at nasa Imbentaryo.", ceb: "Pindota ang \u25B2 sa Lost o Disposed aron makuha gikan sa Quantity; \u25BC aron ibalik. Lost = wala na mobalik. Disposed = nadaut o naubos na. Ang uban nga unit magpabilin ang kondisyon ug naa sa Imbentaryo." },
   lostUnitsBadge: { en: "{n} lost", tl: "{n} nawala", ceb: "{n} nawala" },
-  lostUnitsPendingTooltip: { en: "{n} of these were out on loan when reported. They are settled when that loan is closed.", tl: "{n} sa mga ito ay hiniram pa nang iulat. Maaayos ito kapag naisara ang hiram.", ceb: "{n} niini gihulam pa sa dihang gi-report. Maayos kini kung nahuman na ang hulam." },
   itemDeletedSuccess: { en: "Item removed successfully.", tl: "Matagumpay na naalis ang item.", ceb: "Malampuson nga nakuha ang butang." },
   deleteItemFailed: { en: "Failed to remove item.", tl: "Hindi na-alis ang item.", ceb: "Napakyas pagkuha sa butang." },
   itemCurrentlyBorrowedTooltip: { en: "Currently borrowed for an event -- return it to Inventory before deleting.", tl: "Kasalukuyang hiniram para sa isang event -- ibalik muna sa Inventory bago tanggalin.", ceb: "Karon gihulam para sa usa ka event -- ibalik una sa Inventory sa dili pa panason." },
@@ -1819,9 +1846,21 @@ export const translations: Dict = {
   ...filtersTranslations,
   ...reportsProTranslations,
   ...lostFoundTranslations,
+  ...photoViewerTranslations,
+  ...recoveryPrintTranslations,
 
 };
 
+const warnedMissing = new Set<string>();
+
 export function translate(key: string, lang: LanguageCode): string {
-  return translations[key]?.[lang] ?? translations[key]?.en ?? key;
+  const entry = translations[key];
+  if (!entry && !warnedMissing.has(key)) {
+    // Dev only: a key with no entry would show up as raw text (e.g. "whyCouldntAttend") in the UI.
+    warnedMissing.add(key);
+    try {
+      if ((import.meta as any).env?.DEV) console.warn(`[i18n] Missing translation key: "${key}"`);
+    } catch { /* not running under Vite */ }
+  }
+  return entry?.[lang] ?? entry?.en ?? key;
 }

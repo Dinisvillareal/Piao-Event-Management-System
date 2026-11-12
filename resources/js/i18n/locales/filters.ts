@@ -68,7 +68,6 @@ export const filtersTranslations: Dict = {
   tabNeedsFeedback: { en: "Has feedback", tl: "May feedback", ceb: "Naay feedback" },
   tabNoFeedback: { en: "No feedback yet", tl: "Wala pang feedback", ceb: "Wala pay feedback" },
   tabLowStock: { en: "Low stock", tl: "Mababang stock", ceb: "Ubos nga stock" },
-  tabLostPending: { en: "Lost pending", tl: "Nawawala, hinihintay", ceb: "Nawala, gihulat" },
   tabSuspended: { en: "Suspended", tl: "Naka-suspend", ceb: "Gi-suspend" },
   tabNoTwoStep: { en: "No two-step", tl: "Walang two-step", ceb: "Walay two-step" },
   tabActive: { en: "Active", tl: "Aktibo", ceb: "Aktibo" },

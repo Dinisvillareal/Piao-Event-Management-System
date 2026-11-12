@@ -26,6 +26,7 @@ import MyAccountView from "./views/MyAccountView";
 import StaffAccountsView from "./views/StaffAccountsView";
 import OfflineBanner from "../../components/ui/OfflineBanner";
 import api from "../../lib/api";
+import { saveScanCache, loadScanCache, slimResident } from "../../lib/scanCache";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { useThemeScope } from "../../lib/theme";
 import { staffKeyFromPath, staffUrlFor } from "../../lib/staffRoutes";
@@ -64,6 +65,10 @@ export default function StaffDashboard() {
   const [pastEventsCount, setPastEventsCount] = useState(0);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [allResidents, setAllResidents] = useState<any[]>([]);
+  // The Scan screen's resident list: loaded from the server, or from the copy saved on this
+  // device when there is no connection. `ready` stays false until one of the two worked.
+  const [residentsReady, setResidentsReady] = useState(false);
+  const [residentsFromCache, setResidentsFromCache] = useState(false);
 
   // State for refreshing events
   const [refreshEventsTrigger, setRefreshEventsTrigger] = useState(0);
@@ -124,7 +129,11 @@ export default function StaffDashboard() {
 
       if (result.data) {
         const now = new Date();
-        const upcoming = result.data.filter((event: any) => new Date(event.event_start) >= now);
+        // Soonest first, so the Dashboard's "Upcoming Events" list opens with what is next
+        // (the server sends newest-created first, which put the furthest-away events on top).
+        const upcoming = result.data
+          .filter((event: any) => new Date(event.event_start) >= now)
+          .sort((a: any, b: any) => new Date(a.event_start).getTime() - new Date(b.event_start).getTime());
         const past = result.data.filter((event: any) => new Date(event.event_start) < now);
 
         setEventsCount(result.data.length);
@@ -190,18 +199,46 @@ export default function StaffDashboard() {
     fetchMemberships();
   }, []);
 
-  useEffect(() => {
-    const fetchRealResidents = async () => {
-      try {
-        const response = await api.get('/membership-residents');
-        setAllResidents(response.data);
-      } catch (error) {
-        console.error('Error fetching real residents:', error);
+  const loadResidents = React.useCallback(async () => {
+    try {
+      const response = await api.get('/membership-residents');
+      const rows = Array.isArray(response.data) ? response.data : [];
+      setAllResidents(rows);
+      setResidentsReady(true);
+      setResidentsFromCache(false);
+      saveScanCache("residents", rows.map(slimResident));
+      return true;
+    } catch (error) {
+      console.error('Error fetching real residents:', error);
+      // No connection (or a failed request): fall back to the copy saved on this device.
+      const saved = loadScanCache<any[]>("residents");
+      if (saved && saved.length > 0) {
+        setAllResidents((prev) => (prev.length > 0 ? prev : saved));
+        setResidentsReady(true);
+        setResidentsFromCache(true);
       }
-    };
-
-    fetchRealResidents();
+      return false;
+    }
   }, []);
+
+  // Load once at start, retry every 20 s until it works, and refresh when the connection returns
+  // or when the Scan screen is opened (so a resident added a minute ago is found too).
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = async () => {
+      const ok = await loadResidents();
+      if (!ok && !cancelled) timer = setTimeout(attempt, 20000);
+    };
+    attempt();
+    const onOnline = () => { clearTimeout(timer); attempt(); setRefreshEventsTrigger((n) => n + 1); };
+    window.addEventListener('online', onOnline);
+    return () => { cancelled = true; clearTimeout(timer); window.removeEventListener('online', onOnline); };
+  }, [loadResidents]);
+
+  useEffect(() => {
+    if (active === "scan") loadResidents();
+  }, [active, loadResidents]);
 
   // Listen for refreshEvents from Archive
   useEffect(() => {
@@ -270,9 +307,13 @@ export default function StaffDashboard() {
           });
 
           setAllEvents(formattedEvents);
+          saveScanCache("events", formattedEvents);
         }
       } catch (error) {
         console.error("Error fetching events from database:", error);
+        // Offline: keep the last events saved on this device so an event can still be picked at the gate.
+        const saved = loadScanCache<any[]>("events");
+        if (saved && saved.length > 0) setAllEvents((prev) => (prev.length > 0 ? prev : saved));
       }
     };
 
@@ -329,7 +370,7 @@ export default function StaffDashboard() {
               setActive={setActive}
             />
           )}
-         {active === "scan" && <ScanView events={allEvents} residents={allResidents} memberships={membershipOptions} />}
+         {active === "scan" && <ScanView events={allEvents} residents={allResidents} memberships={membershipOptions} loading={loadingEvents} residentsReady={residentsReady} residentsFromCache={residentsFromCache} />}
           {active === "residents" && <ResidentsView isHeadStaff={!!currentUser?.is_head_staff} />}
           {active === "households" && <HouseholdsView />}
           {active === "memberships" && <QRCodesView highlightText={highlightText} />}

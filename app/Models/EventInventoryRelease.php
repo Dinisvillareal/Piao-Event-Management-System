@@ -3,12 +3,13 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasConditionUnits;
+use App\Models\Concerns\KeepsActivityLog;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 
 class EventInventoryRelease extends Model
 {
-    use HasConditionUnits;
+    use HasConditionUnits, KeepsActivityLog;
 
     protected $fillable = [
         'event_id',
@@ -19,12 +20,14 @@ class EventInventoryRelease extends Model
         'evidence_photo_path',
         'extra_evidence_photo_paths',
         'undo_photo_path',
+        'activity_log',
     ];
 
     protected $casts = [
         'quantity' => 'integer',
         'undone_at' => 'datetime',
         'extra_evidence_photo_paths' => 'array',
+        'activity_log' => 'array',
     ];
 
     // Same convention as InventoryItem::photo_url -- the stored path is an
@@ -34,6 +37,7 @@ class EventInventoryRelease extends Model
         'evidence_photo_url',
         'evidence_photo_urls',
         'undo_photo_url',
+        'activity_log_urls',
     ];
 
     public function getEvidencePhotoUrlAttribute(): ?string

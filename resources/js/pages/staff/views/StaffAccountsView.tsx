@@ -13,6 +13,7 @@ import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
 import Portal from "../../../components/ui/Portal";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 
 type Staff = {
   id: number;
@@ -78,7 +79,7 @@ const menuItem = "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-lef
 const menuDanger = "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-red-300 transition hover:bg-red-500/10";
 
 export default function StaffAccountsView() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
@@ -91,6 +92,9 @@ export default function StaffAccountsView() {
   const [tempPw, setTempPw] = useState<{ name: string; value: string } | null>(null);
   const [codes, setCodes] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
+  // "Have you saved these codes?" before the one-time codes window closes.
+  const [confirmDone, setConfirmDone] = useState(false);
+  const [codesCopied, setCodesCopied] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -120,19 +124,19 @@ export default function StaffAccountsView() {
 
   const flash = (msg: string) => { setNotice(msg); setError(""); window.setTimeout(() => setNotice(""), 6000); };
 
-  const run = async (password: string) => {
+  const run = async (password: string, otp: string) => {
     if (!action) return;
     if (action.kind === "promote") {
       await api.post("/staff-accounts/promote", { user_id: action.candidate.id, password });
       setSearch(""); setCandidates([]);
       flash(t("secPromotedNotice").replace("{name}", action.candidate.name));
     } else if (action.kind === "codes") {
-      const res = await api.post("/staff-accounts/recovery-codes", { password });
+      const res = await api.post("/staff-accounts/recovery-codes", { password, otp });
       setCodes(res.data.codes ?? []);
     } else {
       const id = action.staff.id;
       if (action.kind === "reset") {
-        const res = await api.post(`/staff-accounts/${id}/reset-password`, { password });
+        const res = await api.post(`/staff-accounts/${id}/reset-password`, { password, otp });
         setTempPw({ name: action.staff.name, value: res.data.temporary_password });
       } else if (action.kind === "suspend") {
         await api.post(`/staff-accounts/${id}/suspend`, { password });
@@ -144,7 +148,7 @@ export default function StaffAccountsView() {
         await api.post(`/staff-accounts/${id}/demote`, { password });
         flash(t("secDemotedNotice").replace("{name}", action.staff.name));
       } else if (action.kind === "transfer") {
-        await api.post("/staff-accounts/transfer", { to_user_id: id, password });
+        await api.post("/staff-accounts/transfer", { to_user_id: id, password, otp });
         flash(t("secTransferStartedNotice").replace("{name}", action.staff.name));
       }
     }
@@ -169,17 +173,119 @@ export default function StaffAccountsView() {
     try { await navigator.clipboard.writeText(text); setCopied(true); window.setTimeout(() => setCopied(false), 2000); } catch { /* ignore */ }
   };
 
-  const printCodes = () => {
+  // Prints a proper sheet that fits whatever paper the print dialog is set to: who it is for, when, the 8 codes with a "used" line, how to use them, and
+  // a safety note. It prints from a hidden frame instead of a pop-up window, so pop-up blockers can't
+  // swallow it; "Save as PDF" in the print dialog still works for anyone who wants a file.
+  const printCodes = async () => {
     if (!codes) return;
-    const w = window.open("", "_blank", "width=520,height=640");
-    if (!w) return;
-    w.document.write(`<html><head><title>${t("secRecoveryCodesTitle")}</title></head><body style="font-family:Arial,sans-serif;padding:32px">
-      <h2>${t("secRecoveryCodesTitle")}</h2><p>${t("secRecoveryPrintNote")}</p>
-      <ol style="font-size:20px;letter-spacing:2px;line-height:2">${codes.map((c) => `<li>${c}</li>`).join("")}</ol>
-      <p style="margin-top:24px;color:#666;font-size:13px">${new Date().toLocaleString()}</p></body></html>`);
-    w.document.close();
-    w.focus();
-    w.print();
+    const esc = (v: string) => v.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+    const head = data?.staff.find((s) => s.is_head_staff);
+    const when = (() => { try { return new Date().toLocaleString(locale, { dateStyle: "long", timeStyle: "short" }); } catch { return new Date().toLocaleString(); } })();
+    const cells = codes.map((c, i) => `
+      <div class="code"><div class="n">${i + 1}</div><div class="body"><div class="v">${esc(c)}</div><div class="used"><span>${esc(t("rcUsedOn"))}</span><i></i></div></div></div>`).join("");
+    const dateOnly = (() => { try { return new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }); } catch { return new Date().toDateString(); } })();
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(t("rcSheetTitle"))}</title>
+<style>
+  /* No paper size is forced: the sheet fills whatever the print dialog is set to (Short, A4, Legal, Tabloid...).
+     Everything is measured in --u (1/210 of the page width), so it scales with the paper; margin 0 also keeps the browser's own header/footer off it. */
+  @page { margin: 0; }
+  :root { --u: max(calc(100vw / 210), 0.6mm); --teal: #005F63; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #14201E; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .page { width: 100%; min-height: 99.4vh; display: flex; flex-direction: column; overflow: hidden; }
+  /* Letterhead: the same one the official reports carry, at the very top edge of the sheet. */
+  .head { padding: calc(var(--u) * 7) calc(var(--u) * 14) 0; }
+  .hdr { display: flex; align-items: flex-start; gap: calc(var(--u) * 5); }
+  .logo { width: calc(var(--u) * 21); height: calc(var(--u) * 21); flex-shrink: 0; }
+  .logo img { width: 100%; height: 100%; object-fit: contain; }
+  .txt { flex: 1; min-width: 0; align-self: center; }
+  .txt p { margin: 0; color: #222; font-size: calc(var(--u) * 2.999); line-height: 1.35; }
+  .txt p.rp { font-weight: 700; font-size: calc(var(--u) * 2.822); letter-spacing: .06em; text-transform: uppercase; }
+  .txt h1 { margin: calc(var(--u) * 1.4) 0 calc(var(--u) * 1.2); font-size: calc(var(--u) * 5.116); line-height: 1.1; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #000; }
+  .sys { text-align: right; flex-shrink: 0; }
+  .sys p { margin: 0; font-size: calc(var(--u) * 2.999); color: #667777; }
+  .sys .name { color: #4FBEB0; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; font-size: calc(var(--u) * 2.999); }
+  .sys .gen { margin-top: calc(var(--u) * 2.4); }
+  .sys .date { color: var(--teal); font-weight: 700; margin-top: .calc(var(--u) * 3); }
+  .rule { border-top: 3px solid var(--teal); margin-top: calc(var(--u) * 3); }
+  .titlerow { display: flex; align-items: flex-end; justify-content: space-between; gap: calc(var(--u) * 6); margin-top: calc(var(--u) * 3); }
+  .titlerow h2 { margin: 0; color: var(--teal); font-size: calc(var(--u) * 5.292); font-weight: 800; letter-spacing: .03em; text-transform: uppercase; }
+  .titlerow span { color: #667777; font-size: calc(var(--u) * 2.999); text-align: right; }
+  .thin { border-top: 1px solid #ddd5ca; margin-top: calc(var(--u) * 2); }
+  .content { justify-content: space-between; padding: calc(var(--u) * 5.4) calc(var(--u) * 14) 0; flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .meta { display: grid; grid-template-columns: 1.4fr 1fr 1fr; border: 1.5px solid #123A38; border-radius: calc(var(--u) * 3.2); overflow: hidden; }
+  .meta > div { padding: calc(var(--u) * 2.16) calc(var(--u) * 4); min-width: 0; }
+  .meta > div + div { border-left: 1.5px solid #123A38; }
+  .meta span { display: block; font-size: calc(var(--u) * 2.822); letter-spacing: .12em; text-transform: uppercase; color: #5C6B68; font-weight: 700; }
+  .meta b { display: block; margin-top: calc(var(--u) * 1); font-size: calc(var(--u) * 4.057); overflow-wrap: anywhere; }
+  .meta .mono { font-family: "Consolas", "Courier New", monospace; letter-spacing: 1px; }
+  h3 { display: flex; align-items: center; gap: 10px; margin: calc(var(--u) * 6.3) 0 calc(var(--u) * 3.24); font-size: calc(var(--u) * 3.352); letter-spacing: .16em; text-transform: uppercase; color: #123A38; }
+  h3::after { content: ""; flex: 1; height: 1.5px; background: #123A38; opacity: .25; }
+  .codes { display: grid; grid-template-columns: 1fr 1fr; gap: calc(var(--u) * 3.6) calc(var(--u) * 5); }
+  .code { display: flex; align-items: center; gap: calc(var(--u) * 4); border: 1.5px solid #14201E; border-radius: calc(var(--u) * 3.2); padding: calc(var(--u) * 3.24) calc(var(--u) * 4.6); break-inside: avoid; min-width: 0; }
+  .code .n { width: calc(var(--u) * 8); height: calc(var(--u) * 8); border-radius: 50%; background: #123A38; color: #fff; font-size: calc(var(--u) * 3.528); font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .code .body { flex: 1; min-width: 0; }
+  .code .v { font-family: "Consolas", "Courier New", monospace; font-size: calc(var(--u) * 5.998); letter-spacing: 2px; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+  .code .used { display: flex; align-items: flex-end; gap: 8px; margin-top: calc(var(--u) * 2.34); font-size: calc(var(--u) * 2.646); letter-spacing: .08em; text-transform: uppercase; color: #6B7A77; font-weight: 600; }
+  .code .used i { flex: 1; border-bottom: 1.2px solid #9AA6A3; height: 10px; }
+  .steps { display: grid; gap: calc(var(--u) * 2.52); margin: 0; padding: 0; list-style: none; }
+  .steps li { display: flex; gap: calc(var(--u) * 3.4); align-items: flex-start; font-size: calc(var(--u) * 3.704); line-height: 1.45; }
+  .steps li b { width: calc(var(--u) * 6.5); height: calc(var(--u) * 6.5); border-radius: 50%; border: 1.5px solid #123A38; color: #123A38; font-size: calc(var(--u) * 3.352); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: .calc(var(--u) * 4); }
+  .warn { margin-top: calc(var(--u) * 5.4); border: 1.5px solid #8A3D2C; background: #FBF1EE; border-left-width: 6px; border-radius: calc(var(--u) * 2.6); padding: calc(var(--u) * 2.88) calc(var(--u) * 5); font-size: calc(var(--u) * 3.457); line-height: 1.55; }
+  .warn b { display: block; color: #8A3D2C; text-transform: uppercase; letter-spacing: .12em; font-size: calc(var(--u) * 3.105); margin-bottom: calc(var(--u) * 1); }
+  .foot { margin-top: auto; padding: 0 calc(var(--u) * 14) calc(var(--u) * 8); font-size: calc(var(--u) * 2.822); color: #6B7A77; }
+  .foot div { display: flex; justify-content: space-between; border-top: 1px solid #C9D1CF; padding-top: calc(var(--u) * 2.6); }
+</style></head><body><div class="page">
+  <div class="head">
+    <div class="hdr">
+      <div class="logo"><img src="${window.location.origin}/logo-removebg-preview.png" alt=""></div>
+      <div class="txt">
+        <p class="rp">${esc(t("rcRepublic"))}</p>
+        <p>${esc(t("rcProvince"))}</p>
+        <p>${esc(t("rcMunicipality"))}</p>
+        <h1>${esc(t("rcBarangay"))}</h1>
+        <p>${esc(t("rcAddress"))}</p>
+      </div>
+      <div class="sys"><p class="name">${esc(t("rcSystem"))}</p><p class="gen">${esc(t("rcGeneratedOn"))}</p><p class="date">${esc(dateOnly)}</p></div>
+    </div>
+    <div class="rule"></div>
+    <div class="titlerow"><h2>${esc(t("rcDocTitle"))}</h2><span>${esc(t("rcDocRole"))} · ${esc(t("rcConfidential"))}</span></div>
+    <div class="thin"></div>
+  </div>
+  <div class="content">
+    <div class="meta">
+      <div><span>${esc(t("rcAccount"))}</span><b>${esc(head?.name ?? "")}</b></div>
+      <div><span>${esc(t("rcUserCode"))}</span><b class="mono">${esc(head?.user_code ?? "")}</b></div>
+      <div><span>${esc(t("rcGenerated"))}</span><b>${esc(when)}</b></div>
+    </div>
+    <div><h3>${esc(t("rcCodesCount"))}: ${codes.length}</h3>
+    <div class="codes">${cells}</div></div>
+    <div><h3>${esc(t("rcHowTitle"))}</h3>
+    <ol class="steps"><li><b>1</b><span>${esc(t("rcStep1"))}</span></li><li><b>2</b><span>${esc(t("rcStep2"))}</span></li><li><b>3</b><span>${esc(t("rcStep3"))}</span></li></ol></div>
+    <div class="warn"><b>${esc(t("rcWarnTitle"))}</b>${esc(t("rcWarnBody"))}</div>
+  </div>
+  <div class="foot"><div><span>${esc(t("rcOrg"))}</span><span>${esc(t("rcConfidential"))}</span></div></div>
+</div></body></html>`;
+
+    const frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden";
+    document.body.appendChild(frame);
+    const cleanup = () => window.setTimeout(() => frame.remove(), 1000);
+    const doc = frame.contentDocument;
+    const win = frame.contentWindow;
+    if (!doc || !win) { frame.remove(); setError(t("rcPrintFailed")); return; }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    // Give the logo a moment to load so it is on the printed sheet.
+    await Promise.race([
+      Promise.all(Array.from(doc.images).map((img) => (img.complete ? Promise.resolve() : new Promise<void>((r) => { img.onload = () => r(); img.onerror = () => r(); })))),
+      new Promise<void>((r) => window.setTimeout(r, 1500)),
+    ]);
+    win.addEventListener("afterprint", cleanup);
+    try { win.focus(); win.print(); } catch { setError(t("rcPrintFailed")); cleanup(); }
   };
 
   const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : t("secNever"));
@@ -420,6 +526,8 @@ export default function StaffAccountsView() {
           confirmLabel={dialogProps.label}
           tone={dialogProps.tone}
           onConfirm={run}
+          requireOtp={action?.kind === "codes" || action?.kind === "reset" || action?.kind === "transfer"}
+          twoFactorOn={!!data?.staff.find((s) => s.is_head_staff)?.two_factor_enabled}
           onClose={() => setAction(null)}
         />
       )}
@@ -450,14 +558,27 @@ export default function StaffAccountsView() {
               ))}
             </ol>
             <div className="mt-5 flex flex-wrap justify-center gap-3">
-              <button onClick={() => copy(codes.join("\n"))} className={actBtn}>{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied ? t("secCopied") : t("secCopy")}</button>
+              <button onClick={() => { copy(codes.join("\n")); setCodesCopied(true); }} className={actBtn}>{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied ? t("secCopied") : t("secCopy")}</button>
               <button onClick={printCodes} className={actBtn}><Printer className="h-3.5 w-3.5" /> {t("secPrint")}</button>
-              <button onClick={() => { setCodes(null); load(); }} className="rounded-full bg-sage-700 px-6 py-2 text-sm font-semibold text-white transition hover:bg-sage-800">{t("secDone")}</button>
+              <button onClick={() => setConfirmDone(true)} className="rounded-full bg-sage-700 px-6 py-2 text-sm font-semibold text-white transition hover:bg-sage-800">{t("secDone")}</button>
             </div>
+            {codesCopied && <p className="mt-3 text-xs text-gold-300">{t("rcCopyWarn")}</p>}
             <p className="mt-4 text-xs text-white/40">{t("secShownOnce")}</p>
           </div>
         </div></Portal>
       )}
+
+      <ConfirmDialog
+        open={confirmDone && codes !== null}
+        icon={<FileKey2 className="h-9 w-9" />}
+        title={t("rcDoneTitle")}
+        body={t("rcDoneBody")}
+        cancelLabel={t("rcDoneBack")}
+        confirmLabel={t("rcDoneYes")}
+        onCancel={() => setConfirmDone(false)}
+        onConfirm={() => { setConfirmDone(false); setCodes(null); setCodesCopied(false); load(); }}
+        z={10070}
+      />
     </div>
     </div>
   );

@@ -15,6 +15,7 @@ import NumberStepper from "../../../components/ui/NumberStepper";
 import PhotoAttachment from "../../../components/ui/PhotoAttachment";
 import { PhotoItem, photoItemsFromUrls, photoItemsChanged } from "../../../components/ui/PhotoGallery";
 import Skeleton from "../../../components/ui/Skeleton";
+import PhotoViewer from "../../../components/ui/PhotoViewer";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
@@ -23,22 +24,18 @@ import { tc } from "../../../lib/contentTranslations";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import Portal from "../../../components/ui/Portal";
 import UnitsModal from "../../../components/inventory/UnitsModal";
-// An item's condition covers the units still in use. Lost and disposed units
-// are separate counters on the item, so they are only *filters*, not conditions.
+// An item's condition covers the units still in use. Lost units are a separate
+// counter on the item, so "Lost" is only a *filter*, not a condition.
 type Condition = "New" | "Good" | "Fair" | "Poor";
-type ConditionFilter = Condition | "Disposed" | "Lost";
+type ConditionFilter = Condition | "Lost";
 
 interface InventoryItem {
   id: number;
   name: string;
   quantity: number;
   // Units reported lost -- separate from `condition`, so a few lost units
-  // never mark the still-good ones as Lost. lost_pending is the part that
-  // was out on loan when reported (settled once that loan closes).
+  // never mark the still-good ones as Lost.
   lost_quantity: number;
-  lost_pending: number;
-  // Worn-out / used-up units taken out of service (same idea as lost).
-  disposed_quantity: number;
   // Main condition (the one with the most units) -- kept for filters/reports.
   condition: Condition;
   // In-stock units per condition (they add up to `quantity`), so one item can
@@ -106,7 +103,6 @@ const CONDITION_LABEL_KEYS: Record<ConditionFilter, string> = {
   Good: "conditionGood",
   Fair: "conditionFair",
   Poor: "conditionPoor",
-  Disposed: "conditionDisposed",
   Lost: "conditionLost",
 };
 
@@ -138,7 +134,7 @@ export default function InventoryView() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  // Lost / found / disposed / restored units for one item (see UnitsModal).
+  // Marks lost units as found for one item (see UnitsModal).
   const [unitsItem, setUnitsItem] = useState<InventoryItem | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -146,7 +142,7 @@ export default function InventoryView() {
   // this list paginates client-side so there's nothing to actually wait
   // on, but the flash keeps page switches feeling consistent app-wide.
   const [pageSwitchingRaw, setPageSwitching] = useState(false);
-  type InvTab = "all" | "on-loan" | "low" | "lost-pending" | "attention";
+  type InvTab = "all" | "on-loan" | "low" | "attention";
   const [invTab, setInvTab] = useState<InvTab>("all");
   const [sortKey, setSortKey] = useState("name-az");
   const filterSwitching = useFilterSwitching([search, conditionFilter, invTab, sortKey]);
@@ -170,24 +166,6 @@ export default function InventoryView() {
 
   // Full-size photo viewer (dark themed, matching the rest of the app).
   const [viewingPhoto, setViewingPhoto] = useState<{ url: string; name: string; urls?: string[] } | null>(null);
-  // Prev/next through a record's photos (wraps around) + ←/→ keys, Esc closes.
-  const stepViewingPhoto = (dir: 1 | -1) => {
-    setViewingPhoto((cur) => {
-      if (!cur || !cur.urls || cur.urls.length < 2) return cur;
-      const i = Math.max(0, cur.urls.indexOf(cur.url));
-      return { ...cur, url: cur.urls[(i + dir + cur.urls.length) % cur.urls.length] };
-    });
-  };
-  useEffect(() => {
-    if (!viewingPhoto) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight") stepViewingPhoto(1);
-      else if (e.key === "ArrowLeft") stepViewingPhoto(-1);
-      else if (e.key === "Escape") setViewingPhoto(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [viewingPhoto]);
 
   // KPI strip data -- deliberately a SEPARATE, always-unfiltered fetch from
   // the search/condition-filtered `items` list below, so the summary
@@ -293,7 +271,7 @@ export default function InventoryView() {
   const tabCount = (k: InvTab) => tabCounts[k] ?? 0;
   const viewItems = items;
   const tabLabels: Record<InvTab, string> = {
-    all: t("tabAll"), "on-loan": t("tabOnLoan"), low: t("tabLowStock"), "lost-pending": t("tabLostPending"), attention: t("tabNeedsAttention"),
+    all: t("tabAll"), "on-loan": t("tabOnLoan"), low: t("tabLowStock"), attention: t("tabNeedsAttention"),
   };
   const invTabChips: ExtraChip[] = invTab === "all" ? [] : [{ key: "tab", label: tabLabels[invTab], onRemove: () => setInvTab("all") }];
 
@@ -451,8 +429,6 @@ export default function InventoryView() {
     }
   };
 
-  // Units can be adjusted when the item has stock, lost or disposed units.
-  const hasUnits = (i: InventoryItem) => i.quantity > 0 || i.lost_quantity > 0 || i.disposed_quantity > 0;
 
   const handleDelete = async () => {
     if (deleteId === null) return;
@@ -526,7 +502,7 @@ export default function InventoryView() {
           value={invTab}
           onChange={(k) => setInvTab(k as InvTab)}
           tabs={([
-            ["all", false], ["on-loan", false], ["low", true], ["lost-pending", true], ["attention", true],
+            ["all", false], ["on-loan", false], ["low", true], ["attention", true],
           ] as [InvTab, boolean][]).map(([k, alert]) => ({ key: k, label: tabLabels[k], count: tabCount(k), alert }))}
         />
         <FilterBar
@@ -535,7 +511,7 @@ export default function InventoryView() {
             key: "condition", label: t("conditionColumn"), value: conditionFilter, defaultValue: "", onChange: setConditionFilter,
             options: [
               { value: "", label: t("allConditions") },
-              ...(["New", "Good", "Fair", "Poor", "Disposed", "Lost"] as ConditionFilter[]).map((c) => ({ value: c, label: t(CONDITION_LABEL_KEYS[c]) })),
+              ...(["New", "Good", "Fair", "Poor", "Lost"] as ConditionFilter[]).map((c) => ({ value: c, label: t(CONDITION_LABEL_KEYS[c]) })),
             ],
           }]}
           sort={{
@@ -638,15 +614,9 @@ export default function InventoryView() {
                       {item.quantity} <span className="font-normal text-[13px] text-white/45">{t("inStock")}</span>
                       {item.lost_quantity > 0 && (
                         <span
-                          title={item.lost_pending > 0 ? t("lostUnitsPendingTooltip").replace("{n}", String(item.lost_pending)) : undefined}
                           className="ml-2 inline-flex items-center rounded-full bg-red-500/15 px-2 py-0.5 text-xs font-semibold text-red-400 whitespace-nowrap"
                         >
                           {t("lostUnitsBadge").replace("{n}", String(item.lost_quantity))}
-                        </span>
-                      )}
-                      {item.disposed_quantity > 0 && (
-                        <span className="ml-2 inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-xs font-semibold text-white/55 whitespace-nowrap">
-                          {t("disposedUnitsBadge").replace("{n}", String(item.disposed_quantity))}
                         </span>
                       )}
                     </td>
@@ -681,9 +651,8 @@ export default function InventoryView() {
                           InventoryController::destroy). */}
                       <div className="flex items-center justify-end gap-1">
                         <button
-                          onClick={() => hasUnits(item) && setUnitsItem(item)}
-                          disabled={!hasUnits(item)}
-                          className={`p-1.5 rounded-full transition ${hasUnits(item) ? "text-white/50 hover:bg-white/10 hover:text-white" : "text-white/20 cursor-not-allowed"}`}
+                          onClick={() => setUnitsItem(item)}
+                          className="p-1.5 rounded-full transition text-white/50 hover:bg-white/10 hover:text-white"
                           title={t("unitsButtonTitle")}
                         >
                           <Layers className="h-4 w-4" />
@@ -882,74 +851,13 @@ export default function InventoryView() {
       {/* Full-size photo viewer -- dark themed, matching the rest of the
           app (same treatment as the Delete-confirm and Unsaved-changes
           modals: bg-[#0A0E1A] card, white/10 border, teal accents). */}
-      {viewingPhoto && (
-        <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[80] px-4" onClick={() => setViewingPhoto(null)}>
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] text-[11px] font-bold uppercase tracking-wide px-3 py-1 shrink-0">
-                  <Eye className="h-3 w-3" />
-                  {t("viewPhotoLabel")}
-                </span>
-                <span className="text-sm font-medium text-white truncate">{tc(viewingPhoto.name, language as any)}</span>
-              </div>
-              <button onClick={() => setViewingPhoto(null)} className="text-white/50 hover:text-white p-1 shrink-0">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <div className="relative flex-1 overflow-auto bg-black/40 flex items-center justify-center p-6">
-              <img src={viewingPhoto.url} alt={viewingPhoto.name} className="max-w-full max-h-[65vh] rounded-xl shadow-2xl" />
-              {viewingPhoto.urls && viewingPhoto.urls.length > 1 && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => stepViewingPhoto(-1)}
-                    aria-label="Previous photo"
-                    className="absolute left-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
-                  >
-                    <ChevronLeft className="h-5 w-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => stepViewingPhoto(1)}
-                    aria-label="Next photo"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full border border-white/15 bg-black/60 text-white/85 backdrop-blur hover:bg-black/80 hover:text-white flex items-center justify-center transition active:scale-95"
-                  >
-                    <ChevronRight className="h-5 w-5" />
-                  </button>
-                  <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] font-bold text-white/80">
-                    {Math.max(0, viewingPhoto.urls.indexOf(viewingPhoto.url)) + 1} / {viewingPhoto.urls.length}
-                  </span>
-                </>
-              )}
-            </div>
-            <div className="px-5 py-4 border-t border-white/10 flex items-center justify-between gap-3">
-              {viewingPhoto.urls && viewingPhoto.urls.length > 1 ? (
-                <div className="flex items-center gap-2">
-                  {viewingPhoto.urls.map((u, i) => (
-                    <button
-                      key={u + i}
-                      type="button"
-                      onClick={() => setViewingPhoto({ ...viewingPhoto, url: u })}
-                      className={`h-10 w-10 overflow-hidden rounded-lg border transition ${u === viewingPhoto.url ? "border-[#7DD8CB]" : "border-white/20 opacity-60 hover:opacity-100"}`}
-                    >
-                      <img src={u} alt="" className="h-full w-full object-cover" />
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <span />
-              )}
-              <button
-                onClick={() => setViewingPhoto(null)}
-                className="px-5 py-2.5 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold transition"
-              >
-                {t("closeLabel")}
-              </button>
-            </div>
-          </div>
-        </div></Portal>
-      )}
+      <PhotoViewer
+        url={viewingPhoto?.url ?? null}
+        name={viewingPhoto ? tc(viewingPhoto.name, language as any) : ""}
+        urls={viewingPhoto?.urls}
+        onSelect={(u) => setViewingPhoto((cur) => (cur ? { ...cur, url: u } : cur))}
+        onClose={() => setViewingPhoto(null)}
+      />
     </>
   );
 }

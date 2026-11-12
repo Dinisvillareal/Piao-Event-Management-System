@@ -103,6 +103,24 @@ class EventExpenseController extends Controller
             . ' over its approved budget (PHP ' . number_format((float) $event->approved_budget, 2) . ')';
     }
 
+    /**
+     * An event that has ended is closed for money changes: its budget, its expenses and
+     * their receipts can no longer be added, edited, or removed (the history stays readable).
+     * The same rule the Budget screen shows, now enforced on the server so it cannot be
+     * bypassed by calling the API directly.
+     */
+    private function endedGuard(Event $event, string $what)
+    {
+        $end = $event->event_end ?? $event->call_time_end ?? optional($event->event_start)->copy()->endOfDay();
+        if ($end && now()->gt($end)) {
+            return response()->json([
+                'message' => "This event has already ended, so {$what} can no longer be changed.",
+            ], 422);
+        }
+
+        return null;
+    }
+
     // UC-8: Record Event Budget and Expenses
     public function index($eventId)
     {
@@ -140,6 +158,10 @@ class EventExpenseController extends Controller
         ]);
 
         $event = Event::withoutTrashed()->findOrFail($eventId);
+
+        if ($blocked = $this->endedGuard($event, 'its expenses')) {
+            return $blocked;
+        }
 
         if ($request->hasFile('receipts')) {
             $this->checkReceiptSet([], $request);
@@ -196,6 +218,10 @@ class EventExpenseController extends Controller
         $event = Event::withoutTrashed()->findOrFail($eventId);
         $expense = EventExpense::where('event_id', $eventId)->findOrFail($expenseId);
 
+        if ($blocked = $this->endedGuard($event, 'its expenses and receipts')) {
+            return $blocked;
+        }
+
         if ($request->boolean('receipts_sync') && $this->checkReceiptSet($expense->allReceiptPaths(), $request) === 0) {
             return response()->json([
                 'message' => 'A receipt is required. Attach a replacement before removing the current one.',
@@ -215,14 +241,19 @@ class EventExpenseController extends Controller
         // is rejected rather than silently nulling the path, since that
         // would leave the expense with no receipt at all.
         $removedReceipts = [];
+        $addedReceipts = [];
+        $receiptsBefore = $expense->allReceiptPaths();
         if ($request->boolean('receipts_sync')) {
             $res = PhotoSet::resolve($expense->allReceiptPaths(), $request, fn ($f) => $this->localUpload($f), PhotoSet::MAX, 'keep_receipts', 'receipts');
             $updateData['receipt_path'] = $res['final'][0];
             $updateData['extra_receipt_paths'] = count($res['final']) > 1 ? array_slice($res['final'], 1) : null;
             $removedReceipts = $res['removed'];
+            $addedReceipts = array_values(array_diff($res['final'], $receiptsBefore));
         } elseif ($request->hasFile('receipt')) {
-            $this->localDelete($expense->receipt_path);
+            // The old receipt is kept in the expense's photo history, never deleted.
+            $removedReceipts = array_filter([$expense->receipt_path]);
             $updateData['receipt_path'] = $this->localUpload($request->file('receipt'));
+            $addedReceipts = [$updateData['receipt_path']];
         } elseif ($request->boolean('remove_receipt') && $expense->receipt_path) {
             return response()->json([
                 'message' => 'A receipt is required. Attach a replacement before removing the current one.',
@@ -232,10 +263,22 @@ class EventExpenseController extends Controller
         $oldAmount = (float) $expense->amount;
         $wasOver = $event->is_over_budget;
 
-        $expense->update($updateData);
-        foreach ($removedReceipts as $gone) {
-            $this->localDelete($gone);
+        // The edit trail: what changed (from -> to). Receipts are proof of spending, so replaced or
+        // removed ones stay on disk and are listed on this edit's entry (who, when).
+        $changes = [];
+        if ((string) $expense->item !== (string) $request->item) {
+            $changes[] = ['field' => 'item', 'from' => $expense->item, 'to' => $request->item];
         }
+        if (abs($oldAmount - (float) $request->amount) > 0.004) {
+            $changes[] = ['field' => 'amount', 'from' => number_format($oldAmount, 2, '.', ''), 'to' => number_format((float) $request->amount, 2, '.', '')];
+        }
+        if ((string) ($expense->notes ?? '') !== (string) ($request->notes ?? '')) {
+            $changes[] = ['field' => 'notes', 'from' => $expense->notes, 'to' => $request->notes];
+        }
+        $expense->logEdit($changes, $removedReceipts, $addedReceipts);
+        $updateData['activity_log'] = $expense->activity_log;
+
+        $expense->update($updateData);
 
         $event->refresh();
 
@@ -276,6 +319,11 @@ class EventExpenseController extends Controller
 
         $event = Event::withoutTrashed()->findOrFail($eventId);
         $expense = EventExpense::where('event_id', $eventId)->findOrFail($expenseId);
+
+        if ($blocked = $this->endedGuard($event, 'its expenses')) {
+            return $blocked;
+        }
+
         $itemName = $expense->item;
         $amount = $expense->amount;
         $wasOver = $event->is_over_budget;
@@ -317,11 +365,8 @@ class EventExpenseController extends Controller
 
         $event = Event::withoutTrashed()->findOrFail($eventId);
 
-        $end = $event->event_end ?? $event->call_time_end ?? optional($event->event_start)->copy()->endOfDay();
-        if ($end && now()->gt($end)) {
-            return response()->json([
-                'message' => 'This event has already ended, so its approved budget can no longer be changed.',
-            ], 422);
+        if ($blocked = $this->endedGuard($event, 'its approved budget')) {
+            return $blocked;
         }
 
         $old = $event->approved_budget;

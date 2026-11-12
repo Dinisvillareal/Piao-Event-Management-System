@@ -110,6 +110,9 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   const [meta, setMeta] = useState({ total: 0, last_page: 1 });
   const [counts, setCounts] = useState({ status: { all: 0, ongoing: 0, upcoming: 0, past: 0 }, budget: { all: 0, near: 0, over: 0 } });
   const [pageLoading, setPageLoading] = useState(true);
+  // True once the first count has arrived. Until then the tabs show no number at all (never a fake 0),
+  // and after that they keep the last real numbers while a new tab / search is loading.
+  const [countsReady, setCountsReady] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   const pageSeq = useRef(0);
   const prevSearch = useRef(search);
@@ -139,6 +142,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       setPageEvents((body.data ?? []).map((d: any) => ({ ...d, title: d.name, date: d.event_start })));
       setMeta({ total: body.meta.total, last_page: body.meta.last_page });
       setCounts({ status: body.counts.status, budget: body.counts.budget });
+      setCountsReady(true);
     } catch (e) {
       if (seq === pageSeq.current) console.error("Error loading budget events:", e);
     } finally {
@@ -253,10 +257,10 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           value={timeTab}
           onChange={(k) => setTimeTab(k as typeof timeTab)}
           tabs={[
-            { key: "all", label: t("budgetFilterAll"), count: pageLoading ? 0 : counts.status.all },
-            { key: "ongoing", label: t("timeTabOngoing"), count: pageLoading ? 0 : counts.status.ongoing },
-            { key: "upcoming", label: t("timeTabUpcoming"), count: pageLoading ? 0 : counts.status.upcoming },
-            { key: "past", label: t("timeTabPast"), count: pageLoading ? 0 : counts.status.past },
+            { key: "all", label: t("budgetFilterAll"), count: countsReady ? counts.status.all : undefined },
+            { key: "ongoing", label: t("timeTabOngoing"), count: countsReady ? counts.status.ongoing : undefined },
+            { key: "upcoming", label: t("timeTabUpcoming"), count: countsReady ? counts.status.upcoming : undefined },
+            { key: "past", label: t("timeTabPast"), count: countsReady ? counts.status.past : undefined },
           ]}
         />
         <FilterBar
@@ -264,9 +268,9 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           filters={[{
             key: "budget", label: t("budgetFilterLabel"), value: budgetFilter, onChange: (v) => setBudgetFilter(v as typeof budgetFilter),
             options: [
-              { value: "all", label: `${t("budgetFilterAll")} (${counts.budget.all})` },
-              { value: "near", label: `${t("budgetFilterNear")} (${counts.budget.near})` },
-              { value: "over", label: `${t("budgetFilterOver")} (${counts.budget.over})` },
+              { value: "all", label: countsReady ? `${t("budgetFilterAll")} (${counts.budget.all})` : t("budgetFilterAll") },
+              { value: "near", label: countsReady ? `${t("budgetFilterNear")} (${counts.budget.near})` : t("budgetFilterNear") },
+              { value: "over", label: countsReady ? `${t("budgetFilterOver")} (${counts.budget.over})` : t("budgetFilterOver") },
             ],
           }]}
           sort={{
@@ -279,7 +283,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
               { value: "used", label: t("sortUsedHigh") },
             ],
           }}
-          count={pageLoading ? undefined : { shown: meta.total, total: counts.status.all }}
+          count={countsReady && !pageLoading ? { shown: meta.total, total: counts.status.all } : undefined}
           extraChips={[
             ...(timeTab !== "all" ? [{ key: "tab", label: t(timeTab === "ongoing" ? "timeTabOngoing" : timeTab === "upcoming" ? "timeTabUpcoming" : "timeTabPast"), onRemove: () => setTimeTab("all") }] : []),
             ...(selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []),

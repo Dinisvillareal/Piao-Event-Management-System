@@ -1350,7 +1350,7 @@ import {
 } from "lucide-react";
 import FeedbackComment from "../../../components/ui/FeedbackComment";
 import type { ResponseFields } from "../../../components/ui/FeedbackComment";
-import { ABSENCE_REASON_KEYS } from "../../../lib/absence";
+import { ABSENCE_REASON_KEYS, absenceKeyFromLabel } from "../../../lib/absence";
 import SearchBar from "../../../components/ui/SearchBar";
 import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
@@ -1822,15 +1822,15 @@ export default function EventsView({
   return (
     <div
       ref={listTopRef}
-      className="-m-3 sm:-m-5 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8"
+      className="h-[calc(100dvh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8"
     >
       <div className="space-y-6">
-        <div className="px-1 pt-2 pb-4">
+        <div className="pb-2">
           <div className="w-full">
-            <h1 className="text-4xl font-black text-white">{t("eventsAndAttendance")}</h1>
-            <p className="mt-1 text-sm text-white/50">{t("eventsSubtitle")}</p>
+            <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("eventsAndAttendance")}</h1>
+            <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("eventsSubtitle")}</p>
 
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
               <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
                 <div className="flex-1 min-w-[220px]">
                   <SearchBar
@@ -2137,7 +2137,7 @@ export default function EventsView({
                               {isReasoning ? (
                                 <div>
                                   <p className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">
-                                    {t("whyCouldntAttend") || "Why couldn't you attend?"}
+                                    {t("whyCouldntAttend")}
                                   </p>
                                   <div className="flex flex-wrap gap-2">
                                     {ABSENCE_REASON_KEYS.map((k) => (
@@ -2151,7 +2151,7 @@ export default function EventsView({
                                             : "border-white/15 text-white/60 hover:bg-white/5"
                                         }`}
                                       >
-                                        {t(`absenceReason_${k}`) || k}
+                                        {t(`absReason_${k}`)}
                                       </button>
                                     ))}
                                   </div>
@@ -2189,10 +2189,14 @@ export default function EventsView({
                               ) : absence ? (
                                 <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3">
                                   <p className="text-[11px] font-bold uppercase tracking-wide text-white/40 mb-1">
-                                    Your reason
+                                    {t("yourReasonLabel")}
                                   </p>
                                   <p className="text-sm text-white">
-                                    {absence.reason.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                    {(() => {
+                                      // The saved reason is a key (or, for older entries, its English label): show it in the viewer's language.
+                                      const rk = (ABSENCE_REASON_KEYS as readonly string[]).includes(absence.reason) ? absence.reason : absenceKeyFromLabel(absence.reason);
+                                      return rk ? t(`absReason_${rk}`) : absence.reason.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+                                    })()}
                                   </p>
                                   {absence.comment && (
                                     <p className="mt-1 text-sm text-white/70">"{absence.comment}"</p>

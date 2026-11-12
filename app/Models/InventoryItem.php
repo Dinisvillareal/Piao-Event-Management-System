@@ -18,8 +18,6 @@ class InventoryItem extends Model
         'photo_path',
         'deleted_by',
         'lost_quantity',
-        'lost_pending',
-        'disposed_quantity',
         'new_quantity',
         'good_quantity',
         'fair_quantity',
@@ -47,8 +45,6 @@ class InventoryItem extends Model
         'fair_quantity' => 'integer',
         'poor_quantity' => 'integer',
         'lost_quantity' => 'integer',
-        'lost_pending' => 'integer',
-        'disposed_quantity' => 'integer',
     ];
 
     // Same convention as User::validation_id_url and
@@ -64,7 +60,7 @@ class InventoryItem extends Model
     {
         // Keeps `quantity`, the per-condition counts and `condition` in step
         // no matter who changes stock (the inventory form, event loans and
-        // returns, lost / disposed units):
+        // returns, lost units):
         //  - the form sends the per-condition counts -> quantity = their sum;
         //  - anything else changes only `quantity` -> the counts follow it:
         //    units leave the main condition first (then the largest groups)
@@ -213,38 +209,74 @@ class InventoryItem extends Model
         return $this->hasMany(EventInventoryItem::class, 'inventory_item_id');
     }
 
-    /**
-     * Lost units are tracked on the item itself, separate from its condition:
-     *  - lost_quantity: every unit reported lost (shown as "N lost").
-     *  - lost_pending:  the part of those that were still out on loan when
-     *    reported, so they couldn't be taken out of stock yet.
-     * In-stock `quantity` never includes lost units, so the units that are
-     * still good keep their condition untouched.
-     *
-     * This settles the pending part once it is knowable: when everything still
-     * out on loan is lost (nothing real left to return), that loan is cleared
-     * instead of lingering in Pending Returns forever. If more is out than was
-     * reported lost, nothing is touched -- there is no telling which loan lost
-     * the unit, so the loans stay until the rest comes back. Any lost units
-     * that were mistakenly returned to stock are taken back out of stock.
-     */
-    public function settleLostOnLoan(): void
+    // A loss is a fact recorded once, per event, when staff counted what did not come back
+    // (inventory_unit_logs, action "lost"). Units that turn up later cannot be tied to an
+    // event -- a photo of a chair looks the same for every event -- so recoveries are never
+    // subtracted from an event's loss. They live on the item: recoveredTotal() and
+    // lost_quantity (the units still missing).
+
+    /** Units found again so far (found reports that were not undone), all events together. */
+    public function recoveredTotal(): int
     {
-        if ($this->lost_pending <= 0) {
-            return;
+        return (int) InventoryUnitLog::where('inventory_item_id', $this->id)
+            ->where('action', 'found')->whereNull('undone_at')->sum('quantity');
+    }
+
+    /**
+     * The units still recorded as lost, per condition, e.g.
+     * ['New' => 0, 'Good' => 14, 'Fair' => 0, 'Poor' => 0]. They always add up to
+     * lost_quantity.
+     *
+     * Units come back in the condition they went missing in, so a lost unit
+     * can only be found in that same condition. The breakdown is worked out from
+     * the item's lost / found history (inventory_unit_logs): what was lost per
+     * condition minus what was already found per condition. Older records the
+     * history cannot fully account for are squared with lost_quantity: anything
+     * left over is counted under the item's main condition, and any excess is
+     * taken off the largest group first.
+     */
+    public function lostByCondition(): array
+    {
+        $labels = array_keys(self::CONDITION_COLUMNS);
+        $net = array_fill_keys($labels, 0);
+
+        $logs = InventoryUnitLog::where('inventory_item_id', $this->id)
+            ->whereIn('action', ['lost', 'found'])
+            ->whereNull('undone_at') // a found entry that was undone no longer counts
+            ->get(['action', 'units']);
+        foreach ($logs as $log) {
+            $sign = $log->action === 'lost' ? 1 : -1;
+            foreach ($labels as $label) {
+                $net[$label] += $sign * (int) ($log->units[$label] ?? 0);
+            }
         }
 
-        $out = (int) $this->borrows()->sum('quantity');
-        if ($out > $this->lost_pending) {
-            return;
+        // Units found in a different condition than they were lost in (older entries)
+        // are taken off the other groups.
+        $excessFound = 0;
+        foreach ($net as $label => $n) {
+            if ($n < 0) {
+                $excessFound += -$n;
+                $net[$label] = 0;
+            }
+        }
+        $shrink = function (int $by) use (&$net) {
+            while ($by > 0 && array_sum($net) > 0) {
+                $largest = array_keys($net, max($net))[0];
+                $net[$largest]--;
+                $by--;
+            }
+        };
+        $shrink($excessFound);
+
+        $target = max(0, (int) $this->lost_quantity);
+        $diff = $target - array_sum($net);
+        if ($diff > 0) {
+            $net[$this->condition] += $diff;
+        } elseif ($diff < 0) {
+            $shrink(-$diff);
         }
 
-        $this->borrows()->delete();
-
-        $leftover = $this->lost_pending - $out;
-        $fromStock = min($leftover, (int) $this->quantity);
-        $this->quantity -= $fromStock;
-        $this->lost_pending = $leftover - $fromStock;
-        $this->save();
+        return $net;
     }
 }
