@@ -113,41 +113,7 @@ private function filteredQuery(Request $request)
 /** Age group = one of the staff-set age brackets (or the old fixed bands), as a birth-date range. */
 private function applyAgeGroup($query, string $label): void
 {
-    $brackets = AgeBracket::allCached();
-    $inRange = function ($q, ?int $min, ?int $max) {
-        // age >= min  <=>  born on or before today minus min years; age <= max  <=>  born after today minus (max + 1) years.
-        $q->whereNotNull('birth_date')->where('birth_date', '<=', now()->subYears($min ?? 0)->toDateString());
-        if ($max !== null) {
-            $q->where('birth_date', '>', now()->subYears($max + 1)->toDateString());
-        }
-    };
-
-    $target = $brackets->firstWhere('label', $label);
-    if ($target) {
-        $query->where(function ($q) use ($brackets, $target, $inRange) {
-            $inRange($q, $target->min_age, $target->max_age);
-            // A person who fits an earlier bracket belongs to that one (see AgeBracket::resolveForAge).
-            foreach ($brackets as $earlier) {
-                if ($earlier->id === $target->id) {
-                    break;
-                }
-                $q->whereNot(fn ($n) => $inRange($n, $earlier->min_age, $earlier->max_age));
-            }
-        });
-
-        return;
-    }
-
-    if ($brackets->isEmpty()) {
-        $bands = ['Child' => [0, 12], 'Youth' => [13, 17], 'Adult' => [18, 59], 'Senior Citizen' => [60, null]];
-        if (isset($bands[$label])) {
-            $query->where(fn ($q) => $inRange($q, $bands[$label][0], $bands[$label][1]));
-
-            return;
-        }
-    }
-
-    $query->whereRaw('1 = 0'); // an unknown group matches nobody
+    AgeBracket::applyToUserQuery($query, $label);
 }
 
 private function applySort($query, ?string $sort): void

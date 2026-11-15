@@ -37,7 +37,7 @@ class EventController extends Controller
         $path = $file->storeAs($folder, $filename, 'public');
 
         if (!$path) {
-            throw new \Exception('File upload failed');
+            throw new \App\Exceptions\UserFacingException('File upload failed');
         }
 
         return $path;
@@ -473,7 +473,84 @@ class EventController extends Controller
         return response()->json($event->load('borrowedItems.inventoryItem'));
     }
 
+    /** Human-readable description of the clash, for the screen. */
+    private function conflictPayload(\App\Models\Event $conflict): array
+    {
+        $from = $conflict->call_time_start && $conflict->call_time_start->lt($conflict->event_start)
+            ? $conflict->call_time_start : $conflict->event_start;
+
+        return [
+            'id'    => $conflict->id,
+            'name'  => $conflict->name,
+            'venue' => $conflict->location,
+            'from'  => $from->toDateTimeString(),
+            'to'    => $conflict->event_end->toDateTimeString(),
+        ];
+    }
+
+    /** A 422 when the venue is already booked at that time, otherwise null. */
+    private function venueConflictResponse(Request $request, ?int $exceptId)
+    {
+        $venue = trim((string) $request->location);
+        if ($venue === '') {
+            return null;
+        }
+
+        $conflict = Event::venueConflict($venue, $request->call_time_start, $request->event_start, $request->event_end, $exceptId);
+        if (!$conflict) {
+            return null;
+        }
+
+        return response()->json([
+            'message'  => "\"{$venue}\" is already booked for \"{$conflict->name}\" during that time. Please choose a different time or location.",
+            'conflict' => $this->conflictPayload($conflict),
+        ], 422);
+    }
+
+    /**
+     * Live check for the Add / Edit event form: is this venue free at these times?
+     * Same rule as saving, so the screen can warn before staff press Save.
+     */
+    public function venueCheck(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'location'        => 'nullable|string|max:100',
+            'event_start'     => 'nullable|date',
+            'event_end'       => 'nullable|date',
+            'call_time_start' => 'nullable|date',
+            'exclude_id'      => 'nullable|integer',
+        ]);
+
+        $conflict = Event::venueConflict(
+            $request->location, $request->call_time_start, $request->event_start, $request->event_end,
+            $request->filled('exclude_id') ? (int) $request->exclude_id : null
+        );
+
+        return response()->json(['conflict' => $conflict ? $this->conflictPayload($conflict) : null]);
+    }
+
+    /** The "is this venue free?" check and the save must not interleave with another event for the same venue. */
+    private function venueLockKey(Request $request): ?string
+    {
+        // Same spelling-insensitive form the conflict check uses, so "Covered Court" and
+        // "covered  court" queue behind each other instead of racing.
+        $venue = \App\Models\Event::normalizeVenue((string) $request->input('location'));
+
+        return $venue === '' ? null : 'event-venue:' . $venue;
+    }
+
     public function store(Request $request)
+    {
+        $key = $this->venueLockKey($request);
+
+        return $key === null ? $this->storeEvent($request) : $this->exclusively($key, fn () => $this->storeEvent($request));
+    }
+
+    private function storeEvent(Request $request)
     {
         // Only Staff create events -- this was previously reachable by any
         // authenticated Resident (the route only requires 'auth'), letting
@@ -500,7 +577,7 @@ class EventController extends Controller
             'membership_ids'       => 'nullable|array',
             'membership_ids.*'     => 'integer|exists:memberships,id',
             'notification_message' => 'nullable|string|max:500',
-            'approved_budget'      => 'nullable|numeric|min:0',
+            'approved_budget'      => 'nullable|numeric|decimal:0,2|min:0|max:99999999.99',
             'post_to_facebook'     => 'nullable|boolean',
             'borrowed_items'                     => 'nullable|array',
             'borrowed_items.*.inventory_item_id'  => 'required_with:borrowed_items|integer|exists:inventory_items,id',
@@ -511,26 +588,14 @@ class EventController extends Controller
             'borrowed_items.*.conditions.*'       => 'integer|min:0',
         ]);
 
-        // Double-booking guard: two events can't reasonably share the same
-        // physical venue at overlapping times (residents and staff would
-        // have no way to tell which one they're actually at). `location`
-        // is free-typed, not a controlled venue list, so this only catches
-        // an exact match -- still worth catching, since staff usually type
-        // the same handful of venue names ("Barangay Hall", etc.) the same
-        // way each time.
-        $venue = trim((string) $request->location);
-        if ($venue !== '') {
-            $conflict = Event::withoutTrashed()
-                ->where('location', $venue)
-                ->where('event_start', '<', $request->event_end)
-                ->where('event_end', '>', $request->event_start)
-                ->first();
-
-            if ($conflict) {
-                return response()->json([
-                    'message' => "\"{$venue}\" is already booked for \"{$conflict->name}\" during that time. Please choose a different time or location.",
-                ], 422);
-            }
+        // Double-booking guard: two events can't share the same physical venue
+        // at overlapping times (residents and staff would have no way to tell
+        // which one they're actually at). The venue is free-typed, so names are
+        // compared ignoring capitals, spaces and punctuation, and a venue counts
+        // as taken from the call time (when people start gathering), not only
+        // from the printed start time.
+        if ($response = $this->venueConflictResponse($request, null)) {
+            return $response;
         }
 
         DB::beginTransaction();
@@ -603,12 +668,19 @@ class EventController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
-                'message' => 'Failed to create event: ' . $e->getMessage()
+                'message' => 'Failed to create event: ' . $this->safeError($e)
             ], 500);
         }
     }
 
     public function update(Request $request, $id)
+    {
+        $key = $this->venueLockKey($request);
+
+        return $key === null ? $this->updateEvent($request, $id) : $this->exclusively($key, fn () => $this->updateEvent($request, $id));
+    }
+
+    private function updateEvent(Request $request, $id)
     {
         // Only Staff edit events -- same reasoning as store() above. This
         // is separate from the ongoing/already-ended locks below: those
@@ -629,7 +701,7 @@ class EventController extends Controller
             'membership_ids'       => 'nullable|array',
             'membership_ids.*'     => 'integer|exists:memberships,id',
             'notification_message' => 'nullable|string|max:500',
-            'approved_budget'      => 'nullable|numeric|min:0',
+            'approved_budget'      => 'nullable|numeric|decimal:0,2|min:0|max:99999999.99',
             'borrowed_items'                     => 'nullable|array',
             'borrowed_items.*.inventory_item_id'  => 'required_with:borrowed_items|integer|exists:inventory_items,id',
             'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1',
@@ -674,20 +746,8 @@ class EventController extends Controller
         // Same double-booking guard as store(), excluding this event
         // itself so re-saving an event without changing its time/venue
         // doesn't flag a conflict against its own previous record.
-        $venue = trim((string) $request->location);
-        if ($venue !== '') {
-            $conflict = Event::withoutTrashed()
-                ->where('id', '!=', $event->id)
-                ->where('location', $venue)
-                ->where('event_start', '<', $request->event_end)
-                ->where('event_end', '>', $request->event_start)
-                ->first();
-
-            if ($conflict) {
-                return response()->json([
-                    'message' => "\"{$venue}\" is already booked for \"{$conflict->name}\" during that time. Please choose a different time or location.",
-                ], 422);
-            }
+        if ($response = $this->venueConflictResponse($request, $event->id)) {
+            return $response;
         }
 
         $originalMessage = $event->notification_message;
@@ -784,7 +844,7 @@ class EventController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
-                'message' => 'Failed to update event: ' . $e->getMessage()
+                'message' => 'Failed to update event: ' . $this->safeError($e)
             ], 500);
         }
     }
@@ -855,7 +915,7 @@ class EventController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
-                'message' => 'Failed to archive event: ' . $e->getMessage()
+                'message' => 'Failed to archive event: ' . $this->safeError($e)
             ], 500);
         }
     }
@@ -889,7 +949,7 @@ class EventController extends Controller
 
         } catch (\Exception $e) {
             return response()->json([
-                'message' => 'Failed to restore event: ' . $e->getMessage()
+                'message' => 'Failed to restore event: ' . $this->safeError($e)
             ], 500);
         }
     }
@@ -936,7 +996,7 @@ class EventController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
-                'message' => 'Failed to permanently delete event: ' . $e->getMessage()
+                'message' => 'Failed to permanently delete event: ' . $this->safeError($e)
             ], 500);
         }
     }
@@ -1045,6 +1105,9 @@ class EventController extends Controller
      */
     private function applyBorrowedItems(Event $event, array $items): void
     {
+        // Always lock items in the same (id) order, so two requests borrowing the same items can't wait on each other.
+        usort($items, fn ($x, $y) => (int) ($x['inventory_item_id'] ?? 0) <=> (int) ($y['inventory_item_id'] ?? 0));
+
         $labels = array_keys(InventoryItem::CONDITION_COLUMNS);
 
         foreach ($items as $bi) {
@@ -1068,10 +1131,12 @@ class EventController extends Controller
                 continue;
             }
 
-            $item = InventoryItem::findOrFail((int) $bi['inventory_item_id']);
+            // Locked from this check until the caller's transaction ends: a second request borrowing the same item
+            // waits here, then sees the stock AFTER this one's deduction (no two events can both take the last units).
+            $item = InventoryItem::lockForUpdate()->findOrFail((int) $bi['inventory_item_id']);
 
             if ($item->quantity < $quantity) {
-                throw new \Exception("Not enough stock for \"{$item->name}\" (available: {$item->quantity}, requested: {$quantity}).");
+                throw new \App\Exceptions\UserFacingException("Not enough stock for \"{$item->name}\" (available: {$item->quantity}, requested: {$quantity}).");
             }
 
             if (! $units) {
@@ -1098,7 +1163,7 @@ class EventController extends Controller
             if ($short) {
                 $have = $item->conditionCounts();
                 $label = array_key_first($short);
-                throw new \Exception("Not enough {$label} stock for \"{$item->name}\" (available: {$have[$label]}, requested: {$units[$label]}).");
+                throw new \App\Exceptions\UserFacingException("Not enough {$label} stock for \"{$item->name}\" (available: {$have[$label]}, requested: {$units[$label]}).");
             }
             $item->takeUnits($units);
 
@@ -1121,27 +1186,32 @@ class EventController extends Controller
      */
     private function releaseBorrowedItems(Event $event, bool $logRelease = true): void
     {
-        foreach ($event->borrowedItems()->get() as $borrowed) {
-            $item = InventoryItem::withTrashed()->find($borrowed->inventory_item_id);
-            // The borrowed units go back into the same conditions they came from.
-            $units = $borrowed->resolvedUnits($item->condition ?? 'Good');
-            if ($item) {
-                $item->giveUnits($units);
+        // All-or-nothing, on locked rows: either every loan of this event goes back to
+        // stock (with its return record) or none does. Safe to call from inside another
+        // transaction (archive / edit) -- it then simply joins it.
+        \DB::transaction(function () use ($event, $logRelease) {
+            foreach ($event->borrowedItems()->orderBy('inventory_item_id')->lockForUpdate()->get() as $borrowed) {
+                $item = InventoryItem::withTrashed()->lockForUpdate()->find($borrowed->inventory_item_id);
+                // The borrowed units go back into the same conditions they came from.
+                $units = $borrowed->resolvedUnits($item->condition ?? 'Good');
+                if ($item) {
+                    $item->giveUnits($units);
+                }
+
+                if ($logRelease) {
+                    $log = new EventInventoryRelease([
+                        'event_id' => $event->id,
+                        'inventory_item_id' => $borrowed->inventory_item_id,
+                        'quantity' => $borrowed->quantity,
+                        'released_by' => auth()->user()?->user_code,
+                    ]);
+                    $log->setUnits($units);
+                    $log->save();
+                }
             }
 
-            if ($logRelease) {
-                $log = new EventInventoryRelease([
-                    'event_id' => $event->id,
-                    'inventory_item_id' => $borrowed->inventory_item_id,
-                    'quantity' => $borrowed->quantity,
-                    'released_by' => auth()->user()?->user_code,
-                ]);
-                $log->setUnits($units);
-                $log->save();
-            }
-        }
-
-        $event->borrowedItems()->delete();
+            $event->borrowedItems()->delete();
+        });
     }
 
     /**
@@ -1396,65 +1466,92 @@ class EventController extends Controller
             'photos.*' => 'image|max:5120',
             'photo' => 'required_without:photos|image|max:5120',
         ]);
-        $releaseQty = $request->filled('quantity') ? (int) $request->quantity : $borrow->quantity;
 
-        $item = InventoryItem::withTrashed()->find($borrow->inventory_item_id);
-        $mainCondition = $item->condition ?? 'Good';
+        // A return is all-or-nothing: the loan, the stock, the return record and its
+        // evidence photo change together, or none of them do.
+        //  1. The photos are saved first. A file can't be rolled back by the database, so
+        //     if anything below fails they are deleted again and nothing is left behind.
+        //  2. Everything else runs in ONE transaction on locked rows. Two staff returning
+        //     the same loan (or two loans of the same item) at the same moment wait for each
+        //     other, so stock is never credited twice and no update is lost.
+        $evidence = $request->hasFile('photos')
+            ? PhotoSet::resolve([], $request, fn ($f) => $this->localUpload($f, 'release_evidence_photos'))['final']
+            : [$this->localUpload($request->file('photo'), 'release_evidence_photos')];
 
-        // Staff say which condition each returned unit comes back in
-        // (e.g. 3 Good + 1 Poor if one got damaged). Without that, a full
-        // return gives back exactly what was borrowed and a partial one takes
-        // from the largest condition first.
-        $returned = null;
-        if (is_array($request->input('conditions'))) {
-            $returned = [];
-            foreach (array_keys(InventoryItem::CONDITION_COLUMNS) as $label) {
-                $returned[$label] = max(0, (int) ($request->input("conditions.{$label}") ?? 0));
-            }
-            if (array_sum($returned) <= 0) {
+        $fail = fn (string $message) => throw new \Illuminate\Http\Exceptions\HttpResponseException(
+            response()->json(['message' => $message], 422)
+        );
+
+        $release = null;
+        $releaseQty = 0;
+        $item = null;
+
+        try {
+            \DB::transaction(function () use ($request, $event, $borrowId, $evidence, $fail, &$release, &$releaseQty, &$item) {
+                // Locked, and re-read: if someone else already returned this loan, this is a 404.
+                $borrow = $event->borrowedItems()->where('id', $borrowId)->lockForUpdate()->firstOrFail();
+                $item = InventoryItem::withTrashed()->lockForUpdate()->find($borrow->inventory_item_id);
+
+                $releaseQty = $request->filled('quantity') ? (int) $request->quantity : $borrow->quantity;
+                if ($releaseQty > $borrow->quantity) {
+                    return $fail("Can't return {$releaseQty} -- only {$borrow->quantity} of this item is out on loan.");
+                }
+
+                $mainCondition = $item->condition ?? 'Good';
+
+                // Staff say which condition each returned unit comes back in
+                // (e.g. 3 Good + 1 Poor if one got damaged). Without that, a full
+                // return gives back exactly what was borrowed and a partial one takes
+                // from the largest condition first.
                 $returned = null;
-            }
-        }
+                if (is_array($request->input('conditions'))) {
+                    $returned = [];
+                    foreach (array_keys(InventoryItem::CONDITION_COLUMNS) as $label) {
+                        $returned[$label] = max(0, (int) ($request->input("conditions.{$label}") ?? 0));
+                    }
+                    if (array_sum($returned) <= 0) {
+                        $returned = null;
+                    }
+                }
 
-        if ($returned) {
-            $releaseQty = array_sum($returned);
-            if ($releaseQty > $borrow->quantity) {
-                return response()->json([
-                    'message' => "Can't return {$releaseQty} -- only {$borrow->quantity} of this item is out on loan.",
-                ], 422);
+                if ($returned) {
+                    $releaseQty = array_sum($returned);
+                    if ($releaseQty > $borrow->quantity) {
+                        return $fail("Can't return {$releaseQty} -- only {$borrow->quantity} of this item is out on loan.");
+                    }
+                    $borrow->takeOutMatching($returned, $mainCondition);
+                    $releasedUnits = $returned;
+                } else {
+                    $releasedUnits = $borrow->takeOutUnits($releaseQty, $mainCondition);
+                }
+                $item?->giveUnits($releasedUnits);
+
+                if ($borrow->quantity <= 0) {
+                    $borrow->delete();
+                } else {
+                    $borrow->save();
+                }
+
+                $release = new EventInventoryRelease([
+                    'event_id' => $event->id,
+                    'inventory_item_id' => $borrow->inventory_item_id,
+                    'quantity' => $releaseQty,
+                    'released_by' => auth()->user()?->user_code,
+                    'evidence_photo_path' => $evidence[0] ?? null,
+                    'extra_evidence_photo_paths' => count($evidence) > 1 ? array_slice($evidence, 1) : null,
+                ]);
+                $release->setUnits($releasedUnits);
+                $release->save();
+            });
+        } catch (\Throwable $e) {
+            // Nothing was saved, so the photos must not stay on disk either.
+            foreach ($evidence as $path) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($path);
             }
-            $borrow->takeOutMatching($returned, $mainCondition);
-            $releasedUnits = $returned;
-        } else {
-            $releasedUnits = $borrow->takeOutUnits($releaseQty, $mainCondition);
+            throw $e;
         }
-        $item?->giveUnits($releasedUnits);
 
         $itemName = $item->name ?? 'item';
-
-        if ($borrow->quantity <= 0) {
-            $borrow->delete();
-        } else {
-            $borrow->save();
-        }
-
-        if ($request->hasFile('photos')) {
-            $evidence = PhotoSet::resolve([], $request, fn ($f) => $this->localUpload($f, 'release_evidence_photos'))['final'];
-        } else {
-            $evidence = [$this->localUpload($request->file('photo'), 'release_evidence_photos')];
-        }
-
-        $release = new EventInventoryRelease([
-            'event_id' => $event->id,
-            'inventory_item_id' => $borrow->inventory_item_id,
-            'quantity' => $releaseQty,
-            'released_by' => auth()->user()?->user_code,
-            'evidence_photo_path' => $evidence[0] ?? null,
-            'extra_evidence_photo_paths' => count($evidence) > 1 ? array_slice($evidence, 1) : null,
-        ]);
-        $release->setUnits($releasedUnits);
-        $release->save();
-
         $this->createLog('Return Items', 'Inventory', "Returned {$releaseQty}x {$itemName} from event: {$event->name}");
 
         return response()->json([

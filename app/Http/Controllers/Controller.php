@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\MutexBusyException;
+use App\Exceptions\UserFacingException;
+use App\Support\Mutex;
 use App\Models\ActivityLog;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 
 abstract class Controller
 {
@@ -67,5 +71,43 @@ abstract class Controller
         }
 
         ActivityLog::create($row);
+    }
+
+    /**
+     * The text that may be shown to the user for a caught exception.
+     *
+     * A UserFacingException carries a message written for staff, so it is shown as is.
+     * Anything else (database error, bug) is internal: the full detail goes to the server
+     * log only, and the screen gets a generic line. Never put $e->getMessage() into a
+     * response directly -- it can contain table names, SQL and file paths.
+     */
+    protected function safeError(\Throwable $e): string
+    {
+        if ($e instanceof UserFacingException) {
+            return $e->getMessage();
+        }
+
+        Log::error($e->getMessage(), [
+            'exception' => $e,
+            'user_code' => auth()->user()?->user_code,
+            'url' => request()->fullUrl(),
+        ]);
+
+        return 'Something went wrong. Please try again.';
+    }
+
+    /**
+     * Runs a check-then-write job one at a time per $key (see App\Support\Mutex). If another request holds
+     * the same lock for too long the person gets a "try again" answer instead of a half-done save.
+     */
+    protected function exclusively(string $key, callable $callback)
+    {
+        try {
+            return Mutex::run($key, $callback);
+        } catch (MutexBusyException) {
+            return response()->json([
+                'message' => 'The system is busy saving another change to the same record. Please try again in a moment.',
+            ], 503);
+        }
     }
 }

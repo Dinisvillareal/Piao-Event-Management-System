@@ -28,11 +28,13 @@ class MembershipSeeder extends Seeder
             'description' => 'Food security program providing monthly food subsidies and nutrition support to food-poor families'
         ]);
 
-        Membership::create([
+        $seniorProgram = Membership::create([
             'name' => 'Senior Citizen Program',
             'description' => 'Social pension and benefits for Filipino senior citizens aged 60 and above including discounts and monthly stipend',
-            'eligible_age_bracket_id' => $seniorBracketId,
         ]);
+        if ($seniorBracketId) {
+            $seniorProgram->eligibleAgeBrackets()->sync([$seniorBracketId]);
+        }
 
         Membership::create([
             'name' => 'PWD Assistance',

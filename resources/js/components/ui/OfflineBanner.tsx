@@ -1,7 +1,7 @@
 import { WifiOff, RefreshCw, AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useOnlineStatus } from "../../hooks/useOnlineStatus";
-import { flushQueue, queueLength } from "../../lib/offlineQueue";
+import { flushQueue, queueLength, getRejected, clearRejected, type RejectedScan } from "../../lib/offlineQueue";
 import { useLanguage } from "../../i18n/LanguageContext";
 
 /**
@@ -21,7 +21,8 @@ export default function OfflineBanner() {
   // flushQueue() now drops these from the queue instead of retrying them
   // forever, but that means someone needs to be told the scan never made it
   // in, instead of it just silently vanishing.
-  const [justRejected, setJustRejected] = useState<number | null>(null);
+  // Kept (and shown) until dismissed, so a refused scan can never vanish in a few seconds.
+  const [rejected, setRejected] = useState<RejectedScan[]>(() => getRejected());
 
   useEffect(() => {
     setPending(queueLength());
@@ -35,21 +36,18 @@ export default function OfflineBanner() {
     if (current === 0) return;
 
     setSyncing(true);
-    flushQueue().then(({ synced, rejected }) => {
+    flushQueue().then(({ synced, rejected: rejectedCount }) => {
       setSyncing(false);
       setPending(queueLength());
       if (synced > 0) {
         setJustSynced(synced);
         setTimeout(() => setJustSynced(null), 4000);
       }
-      if (rejected > 0) {
-        setJustRejected(rejected);
-        setTimeout(() => setJustRejected(null), 6000);
-      }
+      if (rejectedCount > 0) setRejected(getRejected());
     });
   }, [isOnline]);
 
-  if (isOnline && pending === 0 && justSynced === null && justRejected === null) return null;
+  if (isOnline && pending === 0 && justSynced === null && rejected.length === 0) return null;
 
   if (!isOnline) {
     return (
@@ -72,18 +70,34 @@ export default function OfflineBanner() {
     );
   }
 
-  // Shown ahead of the plain "synced" toast below -- a rejected scan means a
-  // resident's attendance did NOT make it in, which needs to stand out more
-  // than a routine success message, even if other scans in the same batch
-  // synced fine.
-  if (justRejected) {
+  // Shown ahead of the plain "synced" toast below -- a refused scan means a resident's attendance did NOT
+  // make it in, so it stays on screen, with who and why, until staff dismiss it.
+  if (rejected.length > 0) {
+    const shown = rejected.slice(-3);
     return (
-      <div className="print:hidden flex items-center gap-2 bg-amber-600 text-white text-xs sm:text-sm font-medium px-4 py-2 justify-center">
-        <AlertTriangle className="h-4 w-4 shrink-0" />
-        <span>
-          {t("uiScansRejected").replace("{n}", String(justRejected))}
-          {justSynced ? ` ${t("uiOtherScansSynced").replace("{n}", String(justSynced))}` : ""}
-        </span>
+      <div className="print:hidden bg-amber-600 text-white text-xs sm:text-sm font-medium px-4 py-2" role="alert">
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            {t("uiScansRejected").replace("{n}", String(rejected.length))}
+            {justSynced ? ` ${t("uiOtherScansSynced").replace("{n}", String(justSynced))}` : ""}
+          </span>
+          <button
+            type="button"
+            onClick={() => { clearRejected(); setRejected([]); }}
+            className="rounded-full border border-white/60 px-3 py-0.5 text-xs font-semibold hover:bg-white/15"
+          >
+            {t("uiDismiss")}
+          </button>
+        </div>
+        <ul className="mt-1 text-center text-[11px] font-normal text-white/90">
+          {shown.map((r) => (
+            <li key={r.localId}>
+              {r.residentName}
+              {r.reason ? ` — ${r.reason}` : ""}
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }

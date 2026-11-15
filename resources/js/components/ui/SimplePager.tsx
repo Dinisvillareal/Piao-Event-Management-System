@@ -27,9 +27,9 @@ export default function SimplePager({
         {t("pageOfLabel")} {page} {t("ofPagesLabel")} {totalPages}
       </p>
       <div className="flex items-center gap-2">
-        <button onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1} className={btn} aria-label="Previous page">←</button>
+        <button onClick={() => onChange(Math.max(1, page - 1))} disabled={page === 1} className={btn} aria-label={t("previousPageLabel")}>←</button>
         <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">{page}</span>
-        <button onClick={() => onChange(Math.min(totalPages, page + 1))} disabled={page === totalPages} className={btn} aria-label="Next page">→</button>
+        <button onClick={() => onChange(Math.min(totalPages, page + 1))} disabled={page === totalPages} className={btn} aria-label={t("nextPageLabel")}>→</button>
       </div>
     </div>
   );

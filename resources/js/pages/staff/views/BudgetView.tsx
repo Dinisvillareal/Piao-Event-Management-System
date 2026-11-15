@@ -234,7 +234,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       {/* Portfolio KPI strip -- same gradient-card language as the
           Dashboard's stat strip, computed across every event (see
           fetchPortfolio above), not just the one currently selected. */}
-      <div className="report-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
         {[
           { value: Number(portfolioSummary.total_approved_budget || 0), label: t("totalApprovedBudgetStatLabel"), description: t("totalApprovedBudgetStatDesc"), icon: Wallet, gradient: "from-sage-400 to-sage-700" },
           { value: Number(portfolioSummary.total_expenses || 0), label: t("totalSpentStatLabel"), description: t("totalSpentStatDesc"), icon: Banknote, gradient: "from-gold-400 to-gold-700" },
@@ -290,7 +290,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           ] as ExtraChip[]}
           onClearExtras={() => { setTimeTab("all"); setSelectedDate(""); }}
         >
-          <div className="h-11 shrink-0 sm:w-[190px]">
+          <div className="h-11 w-full shrink-0 sm:w-[190px]">
             <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 px-4" dark align="right" />
           </div>
         </FilterBar>
@@ -350,8 +350,8 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                             {locked && <Lock className="h-3 w-3 shrink-0 opacity-70" aria-label={t("expenseAddLockedHint")} />}
                             {relativeLabel(e, status)}
                           </p>
-                          {over && <span className="shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">{t("budgetRowOverTag")}</span>}
-                          {near && <span className="shrink-0 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">{t("budgetRowNearTag")}</span>}
+                          {over && <span className="shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">{t("budgetRowOverTag")}</span>}
+                          {near && <span className="shrink-0 rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">{t("budgetRowNearTag")}</span>}
                         </div>
                         <p className="mt-2 break-words text-base font-semibold leading-snug">{highlightMatches(tc(e.title, language as any), search)}</p>
                         {dateLine && <p className="mt-1 text-xs text-white/45">{dateLine}</p>}

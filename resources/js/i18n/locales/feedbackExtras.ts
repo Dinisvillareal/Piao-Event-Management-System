@@ -2,14 +2,14 @@
 
 // // Non-attendance reasons + staff heart/reply (UC-16 alternate flow).
 // export const feedbackExtrasTranslations: Dict = {
-//   absTitle: { en: "Why couldn't you attend?", tl: "Bakit hindi ka nakadalo?", ceb: "Nganong wala ka nakaanha?" },
+//   absTitle: { en: "Why couldn't you attend?", tl: "Bakit hindi ka nakadalo?", ceb: "Nganong wala ka makatambong?" },
 //   absSubtitle: { en: "This helps the Barangay plan better events. It is not a rating.", tl: "Makakatulong ito sa Barangay para mas mapaganda ang mga event. Hindi ito rating.", ceb: "Makatabang kini sa Barangay aron mas maayo ang mga event. Dili kini rating." },
 //   absTellUs: { en: "Tell us why", tl: "Sabihin kung bakit", ceb: "Sultihi mi kung ngano" },
 //   absYourReason: { en: "Your reason", tl: "Ang iyong dahilan", ceb: "Imong rason" },
 //   absCommentPlaceholder: { en: "Anything else you'd like to add? (optional)", tl: "May gusto ka pang idagdag? (opsyonal)", ceb: "Naa pa bay gusto nimong idugang? (opsyonal)" },
 //   absSubmit: { en: "Send", tl: "Ipadala", ceb: "Ipadala" },
-//   absSent: { en: "Thank you for letting us know.", tl: "Salamat sa pagsabi sa amin.", ceb: "Salamat sa pagsulti namo." },
-//   absFailed: { en: "Could not send your reason. Please try again.", tl: "Hindi naipadala ang iyong dahilan. Subukan muli.", ceb: "Wala mapadala ang imong rason. Sulayi usab." },
+//   absSent: { en: "Thank you for letting us know.", tl: "Salamat sa pagsabi sa amin.", ceb: "Salamat sa pagsulti kanamo." },
+//   absFailed: { en: "Could not send your reason. Please try again.", tl: "Hindi naipadala ang iyong dahilan. Subukan muli.", ceb: "Wala mapadala ang imong rason. Sulayi pag-usab." },
 //   absReason_schedule: { en: "Schedule conflict", tl: "Nagkasabay sa iskedyul", ceb: "Nagbangga ang iskedyul" },
 //   absReason_sick: { en: "Sick or unwell", tl: "May sakit", ceb: "Nagsakit" },
 //   absReason_not_informed: { en: "Didn't know about it", tl: "Hindi alam ang event", ceb: "Wala nahibalo sa event" },
@@ -45,7 +45,7 @@
 //   fbUnitMinutes: { en: "minutes after first sending", tl: "minuto pagkatapos unang magpadala", ceb: "ka minuto human sa unang pagpadala" },
 //   fbRuleRange: { en: "Allowed: {a} to {b}.", tl: "Pinapayagan: {a} hanggang {b}.", ceb: "Gitugotan: {a} hangtod {b}." },
 //   fbRuleZeroNote: { en: "0 means no edits.", tl: "Ang 0 ay walang pag-edit.", ceb: "Ang 0 nagpasabot nga walay pag-edit." },
-//   fbRuleCloseMin: { en: "Enter at least 1 hour.", tl: "Maglagay ng hindi bababa sa 1 oras.", ceb: "Pagbutang ug labing menos 1 ka oras." },
+//   fbRuleCloseMin: { en: "Enter at least 1 hour.", tl: "Maglagay ng hindi bababa sa 1 oras.", ceb: "Palihug butang og labing menos 1 ka oras." },
 //   fbRulePreview: { en: "What members will see", tl: "Ano ang makikita ng mga miyembro", ceb: "Unsay makita sa mga miyembro" },
 //   fbPreviewClose: { en: "Feedback is open for {n} hour(s) after an event ends, then it closes.", tl: "Bukas ang feedback sa loob ng {n} oras pagkatapos ng event, tapos magsasara.", ceb: "Bukas ang feedback sulod sa {n} ka oras human sa event, unya mosira." },
 //   fbPreviewEdit: { en: "After sending, they can edit for {n} minute(s), then it is locked.", tl: "Pagkatapos magpadala, maaari silang mag-edit sa loob ng {n} minuto, tapos naka-lock na.", ceb: "Human sa pagpadala, makapag-edit sila sulod sa {n} ka minuto, unya naka-lock na." },
@@ -55,7 +55,7 @@
 //   fbShortHours: { en: "hrs", tl: "oras", ceb: "oras" },
 //   fbShortMinutes: { en: "min", tl: "min", ceb: "min" },
 //   fbNoEdits: { en: "No edits", tl: "Walang edit", ceb: "Walay edit" },
-//   fbClosedNote: { en: "Feedback closed {n} hour(s) after the event.", tl: "Nagsara ang feedback {n} oras pagkatapos ng event.", ceb: "Nisira ang feedback {n} ka oras human sa event." },
+//   fbClosedNote: { en: "Feedback closed {n} hour(s) after the event.", tl: "Nagsara ang feedback {n} oras pagkatapos ng event.", ceb: "Misira ang feedback {n} ka oras human sa event." },
 //   fbOpenUntil: { en: "Open until {time}", tl: "Bukas hanggang {time}", ceb: "Bukas hangtod {time}" },
 //   fbEditUntil: { en: "You can edit until {time}", tl: "Maaari kang mag-edit hanggang {time}", ceb: "Makapag-edit ka hangtod {time}" },
 //   fbLocked: { en: "Locked", tl: "Naka-lock", ceb: "Naka-lock" },
@@ -72,7 +72,7 @@
 //   respRepliedBy: { en: "Replied by {name}", tl: "Sinagot ni {name}", ceb: "Gitubag ni {name}" },
 //   respStaffReply: { en: "Barangay staff replied", tl: "Sumagot ang staff ng Barangay", ceb: "Mitubag ang staff sa Barangay" },
 //   respStaffLiked: { en: "Barangay staff liked this", tl: "Na-like ito ng staff ng Barangay", ceb: "Gi-like kini sa staff sa Barangay" },
-//   respFailed: { en: "Could not save. Please try again.", tl: "Hindi nai-save. Subukan muli.", ceb: "Wala ma-save. Sulayi usab." },
+//   respFailed: { en: "Could not save. Please try again.", tl: "Hindi nai-save. Subukan muli.", ceb: "Wala ma-save. Sulayi pag-usab." },
 //   alertAbsentVerb: { en: "sent a reason for not attending", tl: "ay nagpadala ng dahilan kung bakit hindi dumalo", ceb: "nagpadala ug rason kung ngano wala motambong" },
 //   fbEdited: { en: "Edited", tl: "Na-edit", ceb: "Gi-edit" },
 //   fbEditHistory: { en: "Edit history", tl: "Kasaysayan ng pag-edit", ceb: "Kasaysayan sa pag-edit" },
@@ -88,7 +88,7 @@
 //   cmtNow: { en: "Just now", tl: "Ngayon lang", ceb: "Karon lang" },
 //   cmtStaff: { en: "Staff", tl: "Staff", ceb: "Staff" },
 //   cmtBarangayStaff: { en: "Barangay Staff", tl: "Staff ng Barangay", ceb: "Staff sa Barangay" },
-//   cmtDelete: { en: "Delete", tl: "Burahin", ceb: "Papason" },
+//   cmtDelete: { en: "Delete", tl: "Burahin", ceb: "Papasa" },
 //   cmtLikedByMember: { en: "Liked by the member", tl: "Na-like ng miyembro", ceb: "Gi-like sa miyembro" },
 // };
 
@@ -96,14 +96,14 @@ import type { Dict } from "../translations";
 
 // Non-attendance reasons + staff heart/reply (UC-16 alternate flow).
 export const feedbackExtrasTranslations: Dict = {
-  absTitle: { en: "Why couldn't you attend?", tl: "Bakit hindi ka nakadalo?", ceb: "Nganong wala ka nakaanha?" },
+  absTitle: { en: "Why couldn't you attend?", tl: "Bakit hindi ka nakadalo?", ceb: "Nganong wala ka makatambong?" },
   absSubtitle: { en: "This helps the Barangay plan better events. It is not a rating.", tl: "Makakatulong ito sa Barangay para mas mapaganda ang mga event. Hindi ito rating.", ceb: "Makatabang kini sa Barangay aron mas maayo ang mga event. Dili kini rating." },
   absTellUs: { en: "Tell us why", tl: "Sabihin kung bakit", ceb: "Sultihi mi kung ngano" },
   absYourReason: { en: "Your reason", tl: "Ang iyong dahilan", ceb: "Imong rason" },
   absCommentPlaceholder: { en: "Anything else you'd like to add? (optional)", tl: "May gusto ka pang idagdag? (opsyonal)", ceb: "Naa pa bay gusto nimong idugang? (opsyonal)" },
   absSubmit: { en: "Send", tl: "Ipadala", ceb: "Ipadala" },
-  absSent: { en: "Thank you for letting us know.", tl: "Salamat sa pagsabi sa amin.", ceb: "Salamat sa pagsulti namo." },
-  absFailed: { en: "Could not send your reason. Please try again.", tl: "Hindi naipadala ang iyong dahilan. Subukan muli.", ceb: "Wala mapadala ang imong rason. Sulayi usab." },
+  absSent: { en: "Thank you for letting us know.", tl: "Salamat sa pagsabi sa amin.", ceb: "Salamat sa pagsulti kanamo." },
+  absFailed: { en: "Could not send your reason. Please try again.", tl: "Hindi naipadala ang iyong dahilan. Subukan muli.", ceb: "Wala mapadala ang imong rason. Sulayi pag-usab." },
   absReason_schedule: { en: "Schedule conflict", tl: "Nagkasabay sa iskedyul", ceb: "Nagbangga ang iskedyul" },
   absReason_sick: { en: "Sick or unwell", tl: "May sakit", ceb: "Nagsakit" },
   absReason_not_informed: { en: "Didn't know about it", tl: "Hindi alam ang event", ceb: "Wala nahibalo sa event" },
@@ -139,7 +139,7 @@ export const feedbackExtrasTranslations: Dict = {
   fbUnitMinutes: { en: "minutes after first sending", tl: "minuto pagkatapos unang magpadala", ceb: "ka minuto human sa unang pagpadala" },
   fbRuleRange: { en: "Allowed: {a} to {b}.", tl: "Pinapayagan: {a} hanggang {b}.", ceb: "Gitugotan: {a} hangtod {b}." },
   fbRuleZeroNote: { en: "0 means no edits.", tl: "Ang 0 ay walang pag-edit.", ceb: "Ang 0 nagpasabot nga walay pag-edit." },
-  fbRuleCloseMin: { en: "Enter at least 1 hour.", tl: "Maglagay ng hindi bababa sa 1 oras.", ceb: "Pagbutang ug labing menos 1 ka oras." },
+  fbRuleCloseMin: { en: "Enter at least 1 hour.", tl: "Maglagay ng hindi bababa sa 1 oras.", ceb: "Palihug butang og labing menos 1 ka oras." },
   fbRulePreview: { en: "What members will see", tl: "Ano ang makikita ng mga miyembro", ceb: "Unsay makita sa mga miyembro" },
   fbPreviewClose: { en: "Feedback is open for {n} hour(s) after an event ends, then it closes.", tl: "Bukas ang feedback sa loob ng {n} oras pagkatapos ng event, tapos magsasara.", ceb: "Bukas ang feedback sulod sa {n} ka oras human sa event, unya mosira." },
   fbPreviewEdit: { en: "After sending, they can edit for {n} minute(s), then it is locked.", tl: "Pagkatapos magpadala, maaari silang mag-edit sa loob ng {n} minuto, tapos naka-lock na.", ceb: "Human sa pagpadala, makapag-edit sila sulod sa {n} ka minuto, unya naka-lock na." },
@@ -149,7 +149,7 @@ export const feedbackExtrasTranslations: Dict = {
   fbShortHours: { en: "hrs", tl: "oras", ceb: "oras" },
   fbShortMinutes: { en: "min", tl: "min", ceb: "min" },
   fbNoEdits: { en: "No edits", tl: "Walang edit", ceb: "Walay edit" },
-  fbClosedNote: { en: "Feedback closed {n} hour(s) after the event.", tl: "Nagsara ang feedback {n} oras pagkatapos ng event.", ceb: "Nisira ang feedback {n} ka oras human sa event." },
+  fbClosedNote: { en: "Feedback closed {n} hour(s) after the event.", tl: "Nagsara ang feedback {n} oras pagkatapos ng event.", ceb: "Misira ang feedback {n} ka oras human sa event." },
   fbOpenUntil: { en: "Open until {time}", tl: "Bukas hanggang {time}", ceb: "Bukas hangtod {time}" },
   fbEditUntil: { en: "You can edit until {time}", tl: "Maaari kang mag-edit hanggang {time}", ceb: "Makapag-edit ka hangtod {time}" },
   fbLocked: { en: "Locked", tl: "Naka-lock", ceb: "Naka-lock" },
@@ -166,7 +166,7 @@ export const feedbackExtrasTranslations: Dict = {
   respRepliedBy: { en: "Replied by {name}", tl: "Sinagot ni {name}", ceb: "Gitubag ni {name}" },
   respStaffReply: { en: "Barangay staff replied", tl: "Sumagot ang staff ng Barangay", ceb: "Mitubag ang staff sa Barangay" },
   respStaffLiked: { en: "Barangay staff liked this", tl: "Na-like ito ng staff ng Barangay", ceb: "Gi-like kini sa staff sa Barangay" },
-  respFailed: { en: "Could not save. Please try again.", tl: "Hindi nai-save. Subukan muli.", ceb: "Wala ma-save. Sulayi usab." },
+  respFailed: { en: "Could not save. Please try again.", tl: "Hindi nai-save. Subukan muli.", ceb: "Wala ma-save. Sulayi pag-usab." },
   alertAbsentVerb: { en: "sent a reason for not attending", tl: "ay nagpadala ng dahilan kung bakit hindi dumalo", ceb: "nagpadala ug rason kung ngano wala motambong" },
   fbEdited: { en: "Edited", tl: "Na-edit", ceb: "Gi-edit" },
   fbEditHistory: { en: "Edit history", tl: "Kasaysayan ng pag-edit", ceb: "Kasaysayan sa pag-edit" },
@@ -182,11 +182,11 @@ export const feedbackExtrasTranslations: Dict = {
   cmtNow: { en: "Just now", tl: "Ngayon lang", ceb: "Karon lang" },
   cmtStaff: { en: "Staff", tl: "Staff", ceb: "Staff" },
   cmtBarangayStaff: { en: "Barangay Staff", tl: "Staff ng Barangay", ceb: "Staff sa Barangay" },
-  cmtDelete: { en: "Delete", tl: "Burahin", ceb: "Papason" },
+  cmtDelete: { en: "Delete", tl: "Burahin", ceb: "Papasa" },
   cmtLikedByMember: { en: "Liked by the member", tl: "Na-like ng miyembro", ceb: "Gi-like sa miyembro" },
 
   // ── Feedback edit window (Files 6 & 7) ────────────────────────────────
-  justNowLabel: {
+  feedbackJustNowLabel: {
     en: "now",
     tl: "ngayon",
     ceb: "karon",
@@ -214,11 +214,11 @@ export const feedbackExtrasTranslations: Dict = {
   removeFeedbackTitle: {
     en: "Remove feedback?",
     tl: "Alisin ang feedback?",
-    ceb: "Tangtangaon ang feedback?",
+    ceb: "Tangtangon ang feedback?",
   },
   removeFeedbackBody: {
     en: 'This will remove your feedback for "{event}". This cannot be undone once the edit window closes.',
     tl: 'Aalisin nito ang iyong feedback para sa "{event}". Hindi na ito maibabalik kapag sarado na ang pag-edit.',
-    ceb: 'Tangtangaon niini ang imong feedback para sa "{event}". Dili na kini maibalik kon sirado na ang pag-edit.',
+    ceb: 'Tangtangon niini ang imong feedback para sa "{event}". Dili na kini maibalik kon sirado na ang pag-edit.',
   },
 };

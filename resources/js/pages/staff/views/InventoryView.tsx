@@ -484,7 +484,7 @@ export default function InventoryView() {
 
       {/* KPI strip -- same gradient-card language as the Dashboard's stat
           strip, so "at a glance" reads the same way on both pages. */}
-      <div className="report-stagger grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {[
           { value: stats.totalItems, label: t("totalItemsStatLabel"), description: t("totalItemsStatDesc"), icon: Package, gradient: "from-sage-400 to-sage-700" },
           { value: stats.totalUnits, label: t("unitsInStockStatLabel"), description: t("unitsInStockStatDesc"), icon: Layers, gradient: "from-sage-800 to-[#1C2E2B]" },
@@ -652,18 +652,18 @@ export default function InventoryView() {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => setUnitsItem(item)}
-                          className="p-1.5 rounded-full transition text-white/50 hover:bg-white/10 hover:text-white"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-full transition sm:h-8 sm:w-8 text-white/50 hover:bg-white/10 hover:text-white"
                           title={t("unitsButtonTitle")}
                         >
                           <Layers className="h-4 w-4" />
                         </button>
-                        <button onClick={() => openEdit(item)} className="p-1.5 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition" title={t("editLabel")}>
+                        <button onClick={() => openEdit(item)} className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white/50 hover:bg-white/10 hover:text-white transition sm:h-8 sm:w-8" title={t("editLabel")}>
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => item.borrowed_quantity === 0 && setDeleteId(item.id)}
                           disabled={item.borrowed_quantity > 0}
-                          className={`p-1.5 rounded-full transition ${
+                          className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition sm:h-8 sm:w-8 ${
                             item.borrowed_quantity > 0
                               ? "text-white/20 cursor-not-allowed"
                               : "text-white/50 hover:bg-red-500/10 hover:text-red-400"

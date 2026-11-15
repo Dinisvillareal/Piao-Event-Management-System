@@ -349,7 +349,7 @@ interface AttendanceViewProps {
 }
 
 export default function AttendanceView({ attendanceRecords, highlightText, allEvents = [], userMemberships = [], loading: parentLoading = false, memberId }: AttendanceViewProps) {
-  const { t, language } = useLanguage();
+  const { t, language, locale } = useLanguage();
   const statusLabel = (status: string) => {
     if (status === "complete") return t("statusComplete");
     if (status === "incomplete") return t("statusIncomplete");
@@ -529,7 +529,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
                 }] : []),
               ]}
               count={loading || pageSwitching ? undefined : { shown: meta.total, total: allTotal }}
-              extraChips={selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []}
+              extraChips={selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []}
               onClearExtras={() => setSelectedDate("")}
             >
               <div className="h-11 shrink-0">

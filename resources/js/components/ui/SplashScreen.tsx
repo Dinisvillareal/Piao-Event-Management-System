@@ -32,10 +32,10 @@ export default function SplashScreen({ visible, variant = "wordmark" }: { visibl
           className="wordmark-logo h-24 w-24 object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.5)] sm:h-32 sm:w-32"
         />
         <div className="flex flex-col items-center gap-4 px-6 text-center sm:gap-5">
-          <h1 className="wordmark-shine font-display text-[40px] font-extrabold uppercase leading-none tracking-[0.18em] sm:text-[64px]">
+          <h1 className="wordmark-shine font-display text-[28px] font-extrabold uppercase leading-none tracking-[0.14em] min-[420px]:text-[34px] min-[420px]:tracking-[0.18em] sm:text-[64px]">
             PIAOCONNECT
           </h1>
-          <p className="wordmark-shine text-[10px] font-semibold uppercase tracking-[0.25em] sm:text-[13px]">
+          <p className="wordmark-shine text-[11px] font-semibold uppercase tracking-[0.2em] sm:text-[13px] sm:tracking-[0.25em]">
             {t("loginTagline")}
           </p>
         </div>

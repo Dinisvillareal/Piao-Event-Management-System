@@ -230,7 +230,7 @@ export function LineChart({
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const fit = () => setW(Math.max(280, el.clientWidth));
+    const fit = () => setW(Math.max(200, el.clientWidth));
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);
@@ -448,13 +448,13 @@ export function RankedBars({
             onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(i); } } : undefined}
           >
             <div className="flex items-baseline justify-between gap-3">
-              <span className={`min-w-0 truncate text-sm font-semibold ${inkMain}`} title={r.label}>{r.label}</span>
+              <span className={`min-w-0 line-clamp-2 break-words text-sm font-semibold print:line-clamp-none ${inkMain}`} title={r.label}>{r.label}</span>
               <span className="shrink-0 text-sm tabular-nums">
                 <span className={`font-bold ${inkMain}`}>{r.valueLabel ?? r.value}</span>
                 {showShare && <span className={`ml-2 text-xs font-semibold ${inkSoft}`}>{Math.round(share)}%</span>}
               </span>
             </div>
-            {r.sub && <p className={`mt-0.5 truncate text-xs ${inkSoft}`}>{r.sub}</p>}
+            {r.sub && <p className={`mt-0.5 line-clamp-2 break-words text-xs print:line-clamp-none ${inkSoft}`}>{r.sub}</p>}
             <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-white/10 print:bg-gray-200">
               <div
                 className="h-full rounded-full transition-[width] duration-[900ms] ease-[cubic-bezier(0.22,1,0.36,1)] print:transition-none"
@@ -506,7 +506,7 @@ export function SegmentDonut({
   const shownLabel = active ? `${active.label} · ${total > 0 ? Math.round((active.value / total) * 100) : 0}%` : centerLabel;
 
   return (
-    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-6 print:flex-col print:items-center print:gap-3">
+    <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 print:flex-col print:flex-nowrap print:items-center print:gap-3">
       <div className="relative shrink-0" style={{ width: size, height: size }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} overflow="visible" role="img" aria-label={segments.map((s) => `${s.label} ${s.value}`).join(", ")}>
           <circle cx={size / 2} cy={size / 2} r={r + stroke / 2 + 7} fill="none" stroke="currentColor" strokeWidth="4" className="text-white/15 print:text-gray-100" />
@@ -540,13 +540,13 @@ export function SegmentDonut({
             );
           })}
         </svg>
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-8 text-center">
           <span className={`text-2xl font-black leading-none ${inkMain}`}>{total > 0 || centerValue ? shownValue : "—"}</span>
-          {shownLabel && <span className={`mt-1 text-[11px] font-medium leading-tight ${inkSoft}`}>{shownLabel}</span>}
+          {shownLabel && <span className={`mt-1 line-clamp-2 text-[10.5px] font-medium leading-tight ${inkSoft}`}>{shownLabel}</span>}
         </div>
       </div>
 
-      <ul className="w-full min-w-0 flex-1 space-y-2.5 print:w-full print:flex-none">
+      <ul className="w-full min-w-[12rem] flex-1 space-y-2.5 print:w-full print:flex-none">
         {segments.map((s, i) => (
           <li
             key={s.label}
@@ -613,9 +613,9 @@ export function PairedBars({
             onClick={clickable ? () => onSelect(i) : undefined}
             onKeyDown={clickable ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(i); } } : undefined}
           >
-            <div className="flex items-baseline justify-between gap-3">
-              <span className={`min-w-0 truncate text-sm font-semibold ${inkMain}`} title={r.label}>{r.label}</span>
-              <span className={`shrink-0 text-xs tabular-nums ${inkSoft}`}>
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span className={`min-w-0 max-w-full break-words text-sm font-semibold ${inkMain}`} title={r.label}>{r.label}</span>
+              <span className={`text-xs tabular-nums ${inkSoft}`}>
                 <span className={`font-bold ${over ? "text-red-400 print:text-red-600" : inkMain}`}>{format(r.actual)}</span> / {format(r.planned)}
                 {over && <span className="ml-1.5 font-semibold text-red-400 print:text-red-600">· {overLabel} {format(r.actual - r.planned)}</span>}
               </span>
@@ -664,6 +664,20 @@ export function RadarChart({
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const grow = useReveal(1200, 150);
+  // The drawing is scaled to fit its card, so on a phone the same 11px label would render at ~6px.
+  // Measure the card and enlarge the text by the amount the drawing shrinks (up to 1.35x).
+  const box = useRef<HTMLDivElement>(null);
+  const [boxW, setBoxW] = useState(380);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const fit = () => setBoxW(el.clientWidth || 380);
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const k = Math.min(1.35, Math.max(1, (380 / Math.max(160, boxW)) * 0.85));
   const W = 380, H = 300, cx = W / 2, cy = H / 2 + 4, R = 92;
   const n = axes.length;
   const max = Math.max(1, ...axes.map((a) => a.value));
@@ -674,7 +688,8 @@ export function RadarChart({
   const clip = (s: string) => (s.length > 16 ? `${s.slice(0, 15)}…` : s);
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="mx-auto block h-auto w-full max-w-[440px] select-none" role="img" aria-label={axes.map((a) => `${a.label} ${a.value}`).join(", ")}>
+    <div ref={box} className="mx-auto w-full max-w-[440px]">
+    <svg viewBox={`0 0 ${W} ${H}`} overflow="visible" className="mx-auto block h-auto w-full select-none" role="img" aria-label={axes.map((a) => `${a.label} ${a.value}`).join(", ")}>
       {Array.from({ length: rings }, (_, k) => (k + 1) / rings).map((f) => (
         <polygon key={f} points={ring(f)} fill="none" stroke="currentColor" strokeWidth="1" className="text-white/15 print:text-gray-200" strokeDasharray={f === 1 ? undefined : "3 4"} />
       ))}
@@ -709,12 +724,13 @@ export function RadarChart({
           >
             <title>{`${a.label}: ${a.display ?? format(a.value)}`}</title>
             <rect x={anchor === "start" ? lx - 4 : anchor === "end" ? lx - 118 : lx - 57} y={yl - 12} width="122" height="32" fill="transparent" />
-            <text x={lx} y={yl} textAnchor={anchor} fontSize="11.5" fill="currentColor" className={hover === i || selectedIndex === i ? inkMain : inkSoft}>{clip(a.label)}</text>
-            <text x={lx} y={yl + 16} textAnchor={anchor} fontSize="14" fontWeight="800" fill="currentColor" className={inkMain}>{a.display ?? format(a.value)}</text>
+            <text x={lx} y={yl} textAnchor={anchor} fontSize={11.5 * k} fill="currentColor" className={hover === i || selectedIndex === i ? inkMain : inkSoft}>{clip(a.label)}</text>
+            <text x={lx} y={yl + 16 * k} textAnchor={anchor} fontSize={14 * k} fontWeight="800" fill="currentColor" className={inkMain}>{a.display ?? format(a.value)}</text>
           </g>
         );
       })}
     </svg>
+    </div>
   );
 }
 
@@ -778,7 +794,9 @@ export function GaugeChart({
 
   return (
     <div className="w-full">
-      <div className="relative mx-auto w-full max-w-[300px]" style={{ aspectRatio: `${W} / ${H}` }}>
+      {/* container-type lets the centre text scale with the dial (cqw = % of this box's width), so on a
+          phone or tablet the number and icon shrink together with the ring instead of spilling over it. */}
+      <div className="relative mx-auto w-full max-w-[300px]" style={{ aspectRatio: `${W} / ${H}`, containerType: "inline-size" }}>
         <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" role="img" aria-label={`${format(Math.round(raw * 10) / 10)}%`}>
           {/* outer hairline + tick bezel */}
           <path d={arc(START, START + SPAN, r + 34)} fill="none" stroke="currentColor" strokeWidth="1.2" className="text-white/15 print:text-gray-200" />
@@ -807,18 +825,23 @@ export function GaugeChart({
         </svg>
         <div className="pointer-events-none absolute left-1/2 flex w-[52%] -translate-x-1/2 -translate-y-1/2 flex-col items-center text-center" style={{ top: `${((cy - 2) / H) * 100}%` }}>
           {icon && (
-            <span className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-white/[0.04] text-white/60 shadow-sm print:border-gray-200 print:bg-white print:text-gray-500">
+            <span
+              className="mb-1 flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-white/[0.04] text-white/60 shadow-sm print:border-gray-200 print:bg-white print:text-gray-500"
+              style={{ width: "clamp(22px, 10cqw, 32px)", height: "clamp(22px, 10cqw, 32px)" }}
+            >
               {icon}
             </span>
           )}
-          <span className={`text-[28px] font-black leading-none tabular-nums ${inkMain}`}>
+          <span className={`text-[24px] font-black leading-none tabular-nums ${inkMain}`} style={{ fontSize: "clamp(18px, 9.4cqw, 30px)" }}>
             <AnimatedNumber value={raw} decimals={1} format={(n) => `${format(n)}%`} delay={150} ms={1300} />
           </span>
-          {centerLabel && <span className={`mt-1.5 text-[11px] font-medium leading-tight ${inkSoft}`}>{centerLabel}</span>}
         </div>
       </div>
+      {/* The caption sits under the dial, not inside it: the ring's hole is only ~half the dial's width, so a
+          sentence like "3 of 106 eligible residents" never fits in there once the card gets narrow. */}
+      {centerLabel && <p className={`mx-auto mt-1 max-w-[18rem] text-center text-xs font-medium leading-snug ${inkSoft}`}>{centerLabel}</p>}
       {(left || right) && (
-        <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-stretch gap-3">
+        <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-stretch gap-3">
           {left ? <GaugeStat side={left} /> : <span />}
           <span className="w-px bg-white/10 print:bg-gray-200" />
           {right ? <GaugeStat side={right} alignRight /> : <span />}
@@ -940,7 +963,7 @@ export function ColumnChart({
         <div className="flex min-w-0 flex-1 gap-2 pt-2.5 sm:gap-4">
           {rows.map((r, i) => (
             <div key={`${r.label}-${i}`} className="min-w-0 flex-1 overflow-hidden text-center">
-              <p className={`truncate text-xs font-semibold ${hasSel && selectedIndex === i ? inkMain : inkSoft}`}>{r.label}</p>
+              <p className={`line-clamp-2 text-[11px] font-semibold leading-tight sm:text-xs print:line-clamp-none ${hasSel && selectedIndex === i ? inkMain : inkSoft}`}>{r.label}</p>
               {r.sub && <p className={`text-[11px] ${inkSoft}`}>{r.sub}</p>}
             </div>
           ))}

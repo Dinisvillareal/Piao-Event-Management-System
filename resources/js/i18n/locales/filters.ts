@@ -8,10 +8,10 @@ export const filtersTranslations: Dict = {
   fltResults: { en: "{n} results", tl: "{n} resulta", ceb: "{n} ka resulta" },
   fltActive: { en: "Active filters", tl: "Mga aktibong filter", ceb: "Mga aktibong filter" },
   fltRemove: { en: "Remove filter", tl: "Alisin ang filter", ceb: "Kuhaa ang filter" },
-  fltSearchChip: { en: "Search", tl: "Hanap", ceb: "Pangita" },
+  fltSearchChip: { en: "Search", tl: "Paghahanap", ceb: "Pangita" },
   fltDateChip: { en: "Date", tl: "Petsa", ceb: "Petsa" },
-  fltSortBy: { en: "Sort by", tl: "Ayusin ayon sa", ceb: "Ilahi suno sa" },
-  fltNoMatches: { en: "Nothing matches these filters.", tl: "Walang tumutugma sa mga filter na ito.", ceb: "Walay motakdo sa mga filter." },
+  fltSortBy: { en: "Sort by", tl: "Ayusin ayon sa", ceb: "Ayusa suno sa" },
+  fltNoMatches: { en: "Nothing matches these filters.", tl: "Walang tumutugma sa mga filter na ito.", ceb: "Walay mohaum sa mga filter." },
 
   // Sort options
   sortNewest: { en: "Newest first", tl: "Pinakabago muna", ceb: "Pinakabag-o una" },
@@ -26,7 +26,7 @@ export const filtersTranslations: Dict = {
   sortMostAttended: { en: "Most attended", tl: "Pinakamaraming dumalo", ceb: "Pinakadaghang mitambong" },
   sortQtyHigh: { en: "Quantity: high to low", tl: "Dami: mataas hanggang mababa", ceb: "Gidaghanon: taas ngadto sa ubos" },
   sortQtyLow: { en: "Quantity: low to high", tl: "Dami: mababa hanggang mataas", ceb: "Gidaghanon: ubos ngadto sa taas" },
-  sortLastSignIn: { en: "Last sign-in", tl: "Huling pag-login", ceb: "Kataposang pag-login" },
+  sortLastSignIn: { en: "Last sign-in", tl: "Huling pag-login", ceb: "Katapusang pag-login" },
   sortMostMembers: { en: "Most members", tl: "Pinakamaraming miyembro", ceb: "Pinakadaghang miyembro" },
 
   // Residents filters
@@ -42,14 +42,14 @@ export const filtersTranslations: Dict = {
 
   // Quick tabs
   tabMembers: { en: "Members", tl: "Mga Miyembro", ceb: "Mga Miyembro" },
-  resExportApplyFilters: { en: "Only those matching my current search and filters", tl: "Yung tumutugma lang sa aking kasalukuyang paghahanap at mga filter", ceb: "Kadtong motugma ra sa akong karon nga pangita ug mga filter" },
+  resExportApplyFilters: { en: "Only those matching my current search and filters", tl: "Yung tumutugma lang sa aking kasalukuyang paghahanap at mga filter", ceb: "Kadtong mohaum ra sa akong karon nga pangita ug mga filter" },
   secSearchStaff: { en: "Search staff by name or ID", tl: "Hanapin ang staff ayon sa pangalan o ID", ceb: "Pangitaa ang staff pinaagi sa ngalan o ID" },
   sortHeadFirst: { en: "Head Staff first", tl: "Head Staff muna", ceb: "Head Staff una" },
   tabOnLoan: { en: "On loan", tl: "Nasa hiram", ceb: "Gihulam" },
   tabNeedsAttention: { en: "Needs attention", tl: "Kailangang tingnan", ceb: "Kinahanglan tutukan" },
   sortEventDefault: { en: "Status groups (default)", tl: "Ayon sa status (default)", ceb: "Suno sa status (default)" },
-  hhSizeLabel: { en: "Size", tl: "Laki", ceb: "Gidak-on" },
-  hhSizeAll: { en: "Any size", tl: "Kahit anong laki", ceb: "Bisan unsang gidak-on" },
+  hhSizeLabel: { en: "Size", tl: "Sukat", ceb: "Gidak-on" },
+  hhSizeAll: { en: "Any size", tl: "Anumang sukat", ceb: "Bisan unsang gidak-on" },
   hhSizeSmall: { en: "Small (1–2 people)", tl: "Maliit (1–2 tao)", ceb: "Gamay (1–2 ka tawo)" },
   hhSizeMedium: { en: "Medium (3–5 people)", tl: "Katamtaman (3–5 tao)", ceb: "Medium (3–5 ka tawo)" },
   hhSizeLarge: { en: "Large (6+ people)", tl: "Malaki (6+ tao)", ceb: "Dako (6+ ka tawo)" },
@@ -60,8 +60,8 @@ export const filtersTranslations: Dict = {
   fltEvent: { en: "Event", tl: "Event", ceb: "Event" },
   sortSpentHigh: { en: "Highest spent", tl: "Pinakamalaking gastos", ceb: "Pinakadako nga gasto" },
   sortUsedHigh: { en: "Most budget used", tl: "Pinakamaraming nagamit", ceb: "Pinakadaghang nagamit" },
-  budgetOpenCard: { en: "Manage budget", tl: "Pamahalaan ang budget", ceb: "Dumala ang budget" },
-  budgetCloseDrawer: { en: "Close", tl: "Isara", ceb: "Sirado" },
+  budgetOpenCard: { en: "Manage budget", tl: "Pamahalaan ang badyet", ceb: "Dumalaha ang badyet" },
+  budgetCloseDrawer: { en: "Close", tl: "Isara", ceb: "Isira" },
   tabAll: { en: "All", tl: "Lahat", ceb: "Tanan" },
   tabToday: { en: "Today", tl: "Ngayon", ceb: "Karon" },
   tabThisWeek: { en: "This week", tl: "Ngayong linggo", ceb: "Karong semana" },
@@ -72,5 +72,5 @@ export const filtersTranslations: Dict = {
   tabNoTwoStep: { en: "No two-step", tl: "Walang two-step", ceb: "Walay two-step" },
   tabActive: { en: "Active", tl: "Aktibo", ceb: "Aktibo" },
   tabHeadStaff: { en: "Head Staff", tl: "Head Staff", ceb: "Head Staff" },
-  tabNoHead: { en: "No head set", tl: "Walang pinuno", ceb: "Walay pangulo" },
+  tabNoHead: { en: "No head set", tl: "Walang puno", ceb: "Walay ulo" },
 };

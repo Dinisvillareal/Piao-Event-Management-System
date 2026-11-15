@@ -1700,7 +1700,7 @@ const handleDeleteResident = async () => {
                     >
                       <span
                         aria-hidden="true"
-                        className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold ${
+                        className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[11px] font-bold ${
                           c.ok ? "bg-[#4FBEB0]/20 text-[#7DD8CB]" : "bg-white/[0.06] text-white/40"
                         }`}
                       >
@@ -1782,8 +1782,8 @@ const handleDeleteResident = async () => {
               <button
                 type="button"
                 onClick={() => setMembershipSearch("")}
-                aria-label="Clear search"
-                title="Clear"
+                aria-label={t("clearSearchAria")}
+                title={t("clearLabel")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
               >
                 {t("clearLabel")}
@@ -2038,10 +2038,10 @@ const handleDeleteResident = async () => {
 
       {/* Table */}
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
-        <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 bg-white/[0.03]">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 sm:px-5 border-b border-white/10 bg-white/[0.03]">
           <div className="flex items-center gap-2.5">
-            <p className="text-xs font-bold uppercase tracking-wide text-white">{t("residentsMasterList")}</p>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">
+            <p className="whitespace-nowrap text-xs font-bold uppercase tracking-wide text-white">{t("residentsMasterList")}</p>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">
               <span className="relative flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
@@ -2128,7 +2128,7 @@ const handleDeleteResident = async () => {
                             <p className="flex items-center gap-2 text-xs text-white/40 font-mono">
                               {r.id}
                               {r.barangayPosition && (
-                                <span className="rounded-full bg-gold-400/15 px-2 py-0.5 font-sans text-[10px] font-bold uppercase tracking-wide text-gold-300">
+                                <span className="rounded-full bg-gold-400/15 px-2 py-0.5 font-sans text-[11px] font-bold uppercase tracking-wide text-gold-300">
                                   {r.barangayPosition === "captain" ? t("positionCaptain") : t("positionSecretary")}
                                 </span>
                               )}
@@ -2167,7 +2167,7 @@ const handleDeleteResident = async () => {
                 .replace("{to}", String(Math.min(currentPage * itemsPerPage, pageMeta.total)))
                 .replace("{total}", String(pageMeta.total))}
             </p>
-            <nav className="flex items-center gap-2" aria-label="Pagination">
+            <nav className="flex items-center gap-2" aria-label={t("paginationAria")}>
               <button
                 type="button"
                 onClick={() => goToPage((p) => Math.max(1, p - 1))}
@@ -2523,7 +2523,7 @@ const handleDeleteResident = async () => {
                           alt={`${r.firstName} ${r.lastName}`}
                           autoFlip
                           intervalMs={10000}
-                          title="Click to flip"
+                          title={t("clickToFlip")}
                           className="w-full"
                         />
                       </div>
@@ -3320,7 +3320,7 @@ const handleDeleteResident = async () => {
                   <p className="mt-0.5 text-[15px] text-white/50">{t("residentsMasterList")} · {t("resExportDialogSubtitle")}</p>
                 </div>
               </div>
-              <button type="button" onClick={() => setExportDialog(null)} disabled={!!exporting} aria-label="Close" className="shrink-0 text-white/50 hover:text-white">
+              <button type="button" onClick={() => setExportDialog(null)} disabled={!!exporting} aria-label={t("closeLabel")} className="shrink-0 text-white/50 hover:text-white">
                 <XIcon size={26} />
               </button>
             </div>

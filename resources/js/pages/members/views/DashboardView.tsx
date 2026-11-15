@@ -7,6 +7,7 @@ import { Award, CheckCircle2, CalendarDays, Clock, QrCode, ClipboardCheck, Bell 
 import type { AttendanceRecord } from "./AttendanceView";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
+import FeedWarning from "../../../components/ui/FeedWarning";
 
 interface Notification {
   id: number;
@@ -41,6 +42,11 @@ interface DashboardViewProps {
   highlightText: (text: string, query: string) => React.ReactNode;
   /** True until events / attendance first load -- shows the skeleton layout. */
   loading?: boolean;
+  /** How many data feeds failed on their last refresh (0 = all good), and the retry for them. */
+  failedFeeds?: number;
+  lastUpdatedAt?: Date;
+  onRetryFeeds?: () => void;
+  retryingFeeds?: boolean;
 }
 
 /**
@@ -167,6 +173,10 @@ export default function DashboardView({
   pastEventsCount,
   highlightText,
   loading = false,
+  failedFeeds = 0,
+  lastUpdatedAt = new Date(),
+  onRetryFeeds = () => {},
+  retryingFeeds = false,
 }: DashboardViewProps) {
   const { t, language, locale } = useLanguage();
 
@@ -285,6 +295,8 @@ export default function DashboardView({
         <div className="space-y-5">
       <MemberDashboardHeader memberName={memberName} />
 
+      <FeedWarning failedCount={failedFeeds} lastOkAt={lastUpdatedAt} onRetry={onRetryFeeds} retrying={retryingFeeds} />
+
       <div className="report-stagger grid grid-cols-1 gap-4 md:grid-cols-3">
         <SummaryCard
           value={membershipsCount}
@@ -322,7 +334,7 @@ export default function DashboardView({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="font-display text-xl font-bold text-white">{t("myActivityTitle")}</h2>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">
                   <span className="relative flex h-1.5 w-1.5">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
                     <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
@@ -423,7 +435,7 @@ export default function DashboardView({
             </div>
             <button
               onClick={() => setActive("notify")}
-              className="text-sm text-[#7DD8CB] hover:underline font-semibold transition-colors flex-shrink-0"
+              className="-mr-2 inline-flex min-h-10 items-center px-2 text-sm text-[#7DD8CB] hover:underline font-semibold transition-colors flex-shrink-0"
             >
               {t("viewAll")}
             </button>
@@ -511,7 +523,7 @@ export default function DashboardView({
             </div>
             <button
               onClick={() => setActive("events")}
-              className="text-sm text-[#7DD8CB] hover:underline font-semibold transition-colors flex-shrink-0"
+              className="-mr-2 inline-flex min-h-10 items-center px-2 text-sm text-[#7DD8CB] hover:underline font-semibold transition-colors flex-shrink-0"
             >
               {t("viewAll")}
             </button>

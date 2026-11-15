@@ -392,7 +392,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                            },
                        ]}
                        count={loading || pageSwitching ? undefined : { shown: filteredNotifications.length }}
-                       extraChips={selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []}
+                       extraChips={selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []}
                        onClearExtras={() => setSelectedDate("")}
                    >
                        <div className="h-11 shrink-0">

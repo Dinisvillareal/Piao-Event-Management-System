@@ -264,7 +264,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
       >
         <button
           onClick={onCloseMobile}
-          className="xl:hidden absolute top-4 right-4 z-10 text-white/50 hover:text-white"
+          className="xl:hidden absolute top-3 right-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full text-white/50 hover:bg-white/10 hover:text-white"
         >
           <XIcon size={20} />
         </button>
@@ -299,8 +299,8 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
               <button
                 type="button"
                 onClick={() => setNavQuery("")}
-                aria-label="Clear search"
-                title="Clear"
+                aria-label={t("clearSearchAria")}
+                title={t("clearLabel")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
               >
                 {t("clearLabel")}

@@ -253,7 +253,7 @@
 //                       <p className="flex flex-wrap items-center gap-1.5 text-[13px] font-semibold text-white">
 //                         {isStaff && by ? `${by.first_name} ${by.last_name}` : t("cmtBarangayStaff")}
 //                         {isStaff ? (
-//                           <span className="rounded-full bg-[#4FBEB0]/20 px-1.5 py-px text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">{t("cmtStaff")}</span>
+//                           <span className="rounded-full bg-[#4FBEB0]/20 px-1.5 py-px text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">{t("cmtStaff")}</span>
 //                         ) : (
 //                           <BadgeCheck className="h-3.5 w-3.5 text-[#7DD8CB]" aria-label={t("cmtStaff")} />
 //                         )}
@@ -436,7 +436,7 @@ export default function FeedbackComment({
                 {member?.first_name ?? ""} {member?.last_name ?? ""}
               </span>
               <span className="text-[11px] text-white/40">
-                {timeAgo(entry.created_at, locale, t("justNowLabel") || "now")}
+                {timeAgo(entry.created_at, locale, t("feedbackJustNowLabel") || "now")}
               </span>
 
               {(entry.edits_count ?? 0) > 0 && (
@@ -448,7 +448,7 @@ export default function FeedbackComment({
               )}
 
               {isLocked && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/50">
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white/50">
                   <Lock className="h-3 w-3" />
                   {t("fbLocked") || "Locked"}
                 </span>
@@ -532,7 +532,7 @@ export default function FeedbackComment({
                     : t("staffReplyLabel") || "Barangay Staff"}
                 </span>
                 <span className="text-[11px] text-white/40">
-                  {timeAgo(entry.staff_replied_at, locale, t("justNowLabel") || "now")}
+                  {timeAgo(entry.staff_replied_at, locale, t("feedbackJustNowLabel") || "now")}
                 </span>
               </div>
               <div className="mt-1 text-sm text-white/80 break-words">
@@ -574,7 +574,7 @@ export default function FeedbackComment({
                   onClick={startReply}
                   className="text-white/50 hover:text-white transition"
                 >
-                  {t("Edit Reply") || "Edit reply"}
+                  {t("respEditReply")}
                 </button>
               </div>
             )}

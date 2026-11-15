@@ -182,8 +182,9 @@ function LiveClock() {
 
   return (
     <div className="text-right">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45">{t("loginPhilTime")}</p>
-      <p className="mt-0.5 text-[13px] font-medium text-white/90 [font-variant-numeric:tabular-nums]">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">{t("loginPhilTime")}</p>
+      <p className="mt-0.5 text-[13px] font-medium text-white/90 [font-variant-numeric:tabular-nums] sm:hidden">{timeLabel}</p>
+      <p className="mt-0.5 hidden text-[13px] font-medium text-white/90 [font-variant-numeric:tabular-nums] sm:block">
         {t("loginDateAtTime").replace("{date}", dateLabel).replace("{time}", timeLabel)}
       </p>
     </div>
@@ -514,16 +515,16 @@ export default function LoginPage() {
         </div>
 
         {/* Slim top bar -- logo on the left, the only real-time chrome on the right */}
-        <div className="relative z-10 flex items-center justify-between border-b border-white/10 px-6 py-4 sm:px-10">
-          <div className="flex items-center gap-2.5">
+        <div className="relative z-10 flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-10 sm:py-4">
+          <div className="flex min-w-0 items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10">
               <img src="/logo-removebg-preview.png" alt={t("loginLogoAlt")} className="h-full w-full object-contain" />
             </div>
-            <span className="text-[13px] font-extrabold tracking-wide text-white">
+            <span className="truncate text-[13px] font-extrabold tracking-wide text-white">
               PIAO<span className="text-white/40">CONNECT</span>
             </span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-4">
             <div className="hidden items-center gap-2 sm:flex">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
@@ -537,13 +538,13 @@ export default function LoginPage() {
         </div>
 
         {/* Wording on the left, the sign-in card on the right */}
-        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center gap-10 px-6 py-14 sm:px-10 lg:flex-row lg:items-center lg:justify-between lg:gap-16">
+        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center gap-10 px-5 py-10 sm:px-10 sm:py-14 lg:flex-row lg:items-center lg:justify-between lg:gap-16">
           {/* Left: branding + wording */}
           <div className="w-full max-w-2xl text-center lg:text-left">
             <p className="text-[12px] font-semibold uppercase tracking-[0.3em] text-white/60 sm:text-[15px]">
               {t("loginWelcomeTo")}
             </p>
-            <p className="mt-2 font-display text-[40px] font-extrabold uppercase leading-none tracking-tight sm:text-[60px]">
+            <p className="mt-2 font-display text-[32px] font-extrabold uppercase leading-none tracking-tight min-[400px]:text-[40px] sm:text-[60px]">
               <span
                 className="bg-clip-text text-transparent"
                 style={{

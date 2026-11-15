@@ -61,6 +61,53 @@ class Event extends Model
         $this->_cachedFormattedUpdatedNotification = null;
     }
 
+    /**
+     * A venue name reduced to its letters and digits, so "Covered Court", "covered  court",
+     * "Covered-Court." and "coveredcourt" are all the same place.
+     */
+    public static function normalizeVenue(?string $venue): string
+    {
+        $v = mb_strtolower((string) $venue);
+        $v = preg_replace('/[^\p{L}\p{N}]+/u', '', $v);
+
+        return (string) $v;
+    }
+
+    /**
+     * The event that already occupies this venue during the given time, or null when it is free.
+     *
+     * A venue is occupied from the moment people gather (the call time, when sign-in opens) until
+     * the event ends, not only from the printed start time, so an event whose sign-in opens at
+     * 6:00 for a 7:00 start still blocks a 6:30 event in the same place. Back-to-back is fine:
+     * one event ending at 9:00 does not block another that starts gathering at 9:00.
+     *
+     * Venue names are compared without caring about capitals, spaces or punctuation.
+     */
+    public static function venueConflict(?string $venue, $callStart, $start, $end, ?int $exceptId = null): ?self
+    {
+        $wanted = self::normalizeVenue($venue);
+        if ($wanted === '' || !$start || !$end) {
+            return null;
+        }
+
+        $start = \Illuminate\Support\Carbon::parse($start);
+        $end = \Illuminate\Support\Carbon::parse($end);
+        $from = $callStart ? \Illuminate\Support\Carbon::parse($callStart) : $start;
+        if ($from->gt($start)) {
+            $from = $start;
+        }
+
+        $occupiedFrom = 'CASE WHEN call_time_start IS NOT NULL AND call_time_start < event_start THEN call_time_start ELSE event_start END';
+
+        return self::withoutTrashed()
+            ->when($exceptId, fn ($q) => $q->where('id', '!=', $exceptId))
+            ->whereRaw("($occupiedFrom) < ?", [$end->toDateTimeString()])
+            ->where('event_end', '>', $from->toDateTimeString())
+            ->orderBy('event_start')
+            ->get()
+            ->first(fn (self $e) => self::normalizeVenue($e->location) === $wanted);
+    }
+
     public function attendances()
     {
         return $this->hasMany(EventAttendance::class);
@@ -231,7 +278,25 @@ class Event extends Model
      * eligible (e.g. staff on events created before staff counted as
      * eligible) and never removes or edits an existing row.
      */
-    public function addMissingAttendanceRecords(): int
+    /**
+     * True once the event is over: money records (budget, expenses) are locked from then on.
+     * One rule, used by the expense screens and by the Archive's restore.
+     */
+    public function hasEnded(): bool
+    {
+        $end = $this->event_end ?? $this->call_time_end ?? optional($this->event_start)->copy()->endOfDay();
+
+        return $end !== null && now()->gt($end);
+    }
+
+    /**
+     * Ids of the people who are eligible for this event but have no attendance
+     * row yet (for example a resident registered after the event was posted).
+     * Read-only: it never writes anything, so reports can use it safely.
+     *
+     * @return int[]
+     */
+    public function missingAttendanceUserIds(): array
     {
         $existingIds = $this->attendances()->pluck('user_id')->toArray();
         $membershipIds = $this->membership_ids ?? [];
@@ -243,7 +308,13 @@ class Event extends Model
         }
         // Ids only -- avoids hydrating every user model on each attendance load.
         $eligibleIds = $eligibleQuery->pluck('id')->toArray();
-        $missing = array_diff($eligibleIds, $existingIds);
+
+        return array_values(array_diff($eligibleIds, $existingIds));
+    }
+
+    public function addMissingAttendanceRecords(): int
+    {
+        $missing = $this->missingAttendanceUserIds();
         $now = now();
 
         $rows = [];

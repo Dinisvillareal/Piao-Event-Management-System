@@ -764,7 +764,7 @@
 //                   ) : (
 //                     <div className="flex flex-col items-center justify-center" style={{ width: qrSize, height: qrSize }}>
 //                       <QrCode className="text-gray-300" size={32} />
-//                       <p className="text-gray-400 text-[10px] mt-1 text-center px-1">{t("unableToGenerateQr")}</p>
+//                       <p className="text-gray-400 text-[11px] mt-1 text-center px-1">{t("unableToGenerateQr")}</p>
 //                     </div>
 //                   )}
 //                 </div>
@@ -973,13 +973,13 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     const qrCanvasEl = (hiResQrRef.current?.querySelector("canvas") ||
       qrCodeRef.current?.querySelector("canvas")) as HTMLCanvasElement | null;
     if (!qrCanvasEl) {
-      setDownloadError("QR code not ready. Please try again.");
+      setDownloadError(t("qrNotReadyError"));
       return;
     }
 
     const out = await renderMemberIdCard(qrCanvasEl, fullName || "—", userCode || "—", contactNumber, captainName);
     if (!out) {
-      setDownloadError("Could not create the image.");
+      setDownloadError(t("qrImageFailedError"));
       return;
     }
 
@@ -991,9 +991,9 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
       setDownloadSuccess(true);
     } catch (err) {
       console.error("Download failed:", err);
-      setDownloadError("Failed to download QR ID. Please try again.");
+      setDownloadError(t("qrDownloadFailedError"));
     }
-  }, [userCode, fullName, contactNumber, captainName]);
+  }, [userCode, fullName, contactNumber, captainName, t]);
 
   // Live ID-card preview shown in the left panel.
   const [cardSides, setCardSides] = useState<{ front: string; back: string } | null>(null);
@@ -1127,7 +1127,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   frontUrl={cardSides.front}
                   backUrl={cardSides.back}
                   alt={fullName || "Member ID"}
-                  title="Click to flip"
+                  title={t("clickToFlip")}
                   className="w-full"
                 />
               </div>
@@ -1173,7 +1173,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                     autoFlip
                     intervalMs={10000}
                     onClick={() => setShowCardViewer(true)}
-                    title="Click to view full size"
+                    title={t("clickToViewFull")}
                     className="w-full"
                   />
                 ) : (

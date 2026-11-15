@@ -24,7 +24,7 @@ type Me = {
 type SecAlert = { id: number; type: string; title: string; message: string; read: boolean; created_at: string };
 
 export default function MyAccountView() {
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
   const [me, setMe] = useState<Me | null>(null);
   const [alerts, setAlerts] = useState<SecAlert[]>([]);
   const [transfer, setTransfer] = useState<{ from_name: string | null; expires_at: string } | null>(null);
@@ -109,7 +109,7 @@ export default function MyAccountView() {
     window.location.reload(); // new role -> reload so the whole page reflects it
   };
 
-  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : t("secNever"));
+  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(locale) : t("secNever"));
   const pretty = (s: string) => s.replace(/(.{4})/g, "$1 ").trim();
 
   const initials = me ? `${me.first_name?.[0] ?? ""}${me.last_name?.[0] ?? ""}`.toUpperCase() || "S" : "";
@@ -140,7 +140,7 @@ export default function MyAccountView() {
               <h2 className="text-base font-bold text-white">{t("secTransferOfferedTitle")}</h2>
               <p className="mt-1 text-sm text-white/65">
                 {t("secTransferOfferedBody").replace("{name}", transfer.from_name ?? "")}{" "}
-                {t("secTransferExpires").replace("{when}", new Date(transfer.expires_at).toLocaleString())}
+                {t("secTransferExpires").replace("{when}", new Date(transfer.expires_at).toLocaleString(locale))}
               </p>
             </div>
             <button onClick={() => setAcceptOpen(true)} className="rounded-full bg-gold-400 px-6 py-2.5 text-sm font-bold text-[#08130F] transition hover:opacity-90">
@@ -328,7 +328,7 @@ export default function MyAccountView() {
               <li key={a.id} className={`rounded-xl border px-4 py-3 ${a.read ? "border-white/10 bg-white/[0.03]" : "border-[#4FBEB0]/40 bg-[#4FBEB0]/10"}`}>
                 <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
                   <p className="flex items-center gap-2 text-sm font-bold text-white">{!a.read && <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-red-500" />}{a.title}</p>
-                  <span className="shrink-0 text-xs text-white/40">{new Date(a.created_at).toLocaleString()}</span>
+                  <span className="shrink-0 text-xs text-white/40">{new Date(a.created_at).toLocaleString(locale)}</span>
                 </div>
                 <p className="mt-1 text-sm text-white/65">{a.message}</p>
               </li>

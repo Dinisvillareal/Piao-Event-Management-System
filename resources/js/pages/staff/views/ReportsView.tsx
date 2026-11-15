@@ -43,13 +43,8 @@ interface ReportsViewProps {
   events?: EventOption[];
 }
 
-const AGE_GROUPS = [
-  { key: "", labelKey: "ageAll" },
-  { key: "child", labelKey: "ageChild" },
-  { key: "youth", labelKey: "ageYouth" },
-  { key: "adult", labelKey: "ageAdult" },
-  { key: "senior", labelKey: "ageSenior" },
-];
+type AgeBracketOption = { id: number; label: string; min_age: number; max_age: number | null; sort_order?: number };
+const bracketText = (b: AgeBracketOption) => `${b.label} (${b.max_age === null ? `${b.min_age}+` : `${b.min_age}-${b.max_age}`})`;
 
 const CONDITIONS = ["New", "Good", "Fair", "Poor", "Lost"];
 
@@ -220,6 +215,14 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
   const [dateTo, setDateTo] = useState(() => getThisMonthRange().to);
   const [membershipId, setMembershipId] = useState("");
   const [ageGroup, setAgeGroup] = useState("");
+  // The age groups are the ones staff set up in Profiling Settings (the same list the Residents page uses).
+  const [ageBrackets, setAgeBrackets] = useState<AgeBracketOption[]>([]);
+  useEffect(() => {
+    fetch("/age-brackets", { headers: { Accept: "application/json" } })
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((d: AgeBracketOption[]) => setAgeBrackets(Array.isArray(d) ? d : []))
+      .catch((e) => console.error("age brackets load:", e));
+  }, []);
   // Budget-tab filter -- narrows to one event instead of the date range
   const [eventId, setEventId] = useState("");
   // Inventory-tab filter
@@ -940,7 +943,12 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
     reportType === "attendance"
       ? [
           { key: "membership", label: tUI("reportTypeMembership"), value: membershipId, defaultValue: "", onChange: setMembershipId, options: membershipOptions, searchable: true, icon: filterIcon(Users) },
-          { key: "age", label: tUI("fltAge"), value: ageGroup, defaultValue: "", onChange: setAgeGroup, options: AGE_GROUPS.map((g) => ({ value: g.key, label: tUI(g.labelKey) })), icon: filterIcon(Filter) },
+          { key: "age", label: tUI("fltAge"), value: ageGroup, defaultValue: "", onChange: setAgeGroup, options: [
+            { value: "", label: tUI("ageAll") },
+            ...[...ageBrackets].sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0) || x.min_age - y.min_age).map((b) => ({ value: b.label, label: bracketText(b) })),
+            // A group opened from an older Report History entry that is no longer one of the brackets still shows.
+            ...(ageGroup && !ageBrackets.some((b) => b.label.toLowerCase() === ageGroup.toLowerCase()) ? [{ value: ageGroup, label: ageGroup }] : []),
+          ], icon: filterIcon(Filter) },
         ]
       : reportType === "membership"
       ? [{ key: "membership", label: tUI("reportTypeMembership"), value: membershipId, defaultValue: "", onChange: setMembershipId, options: membershipOptions, searchable: true, icon: filterIcon(Award) }]
@@ -1662,16 +1670,18 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           by" signature lines so the printed report can double as a signed
           barangay hall record, plus a system attribution/print-date line. */}
       <div className="hidden print:block print:mt-10 pt-4 border-t border-[#ddd5ca] [break-inside:avoid]">
-        <div className="mt-6 grid grid-cols-2 gap-16 px-2">
-          <div>
+        {/* items-stretch + a fixed-height, bottom-aligned name box: a long name that wraps to two lines grows
+            upward, so both signature lines (and their titles) always sit on the same level. */}
+        <div className="mt-6 grid grid-cols-2 gap-10 px-2">
+          <div className="flex flex-col">
             <p className="text-[12px] font-bold text-[#1a1a1a]">{t("rbPreparedBy")}</p>
-            <div className="mt-12 mx-8 min-h-[1.25rem] pb-0.5 text-center text-[13px] font-black uppercase tracking-wide text-black">{officials.secretary?.name ?? ""}</div>
-            <div className="mx-8 border-t border-[#667777] pt-1 text-center text-[12px] font-normal text-[#1a1a1a]">{t("rbBrgySecretary")}</div>
+            <div className="mx-2 mt-4 flex min-h-[3.25rem] items-end justify-center pb-0.5 text-center text-[13px] font-black uppercase leading-snug tracking-wide text-black [text-wrap:balance]">{officials.secretary?.name ?? ""}</div>
+            <div className="mx-2 border-t border-[#667777] pt-1 text-center text-[12px] font-normal text-[#1a1a1a]">{t("rbBrgySecretary")}</div>
           </div>
-          <div>
+          <div className="flex flex-col">
             <p className="text-[12px] font-bold text-[#1a1a1a]">{t("rbNoted")}</p>
-            <div className="mt-12 mx-8 min-h-[1.25rem] pb-0.5 text-center text-[13px] font-black uppercase tracking-wide text-black">{officials.captain?.name ?? ""}</div>
-            <div className="mx-8 border-t border-[#667777] pt-1 text-center text-[12px] font-normal text-[#1a1a1a]">{t("printBarangayCaptainLabel")}</div>
+            <div className="mx-2 mt-4 flex min-h-[3.25rem] items-end justify-center pb-0.5 text-center text-[13px] font-black uppercase leading-snug tracking-wide text-black [text-wrap:balance]">{officials.captain?.name ?? ""}</div>
+            <div className="mx-2 border-t border-[#667777] pt-1 text-center text-[12px] font-normal text-[#1a1a1a]">{t("printBarangayCaptainLabel")}</div>
           </div>
         </div>
         <p className="mt-6 text-center text-[9px] text-[#999]">{t("printFooterAttributionLabel")} · {printedOn}</p>

@@ -256,8 +256,8 @@ export default function ReportOptionsModal({
                   <button
                     type="button"
                     onClick={() => setSearch("")}
-                    aria-label="Clear search"
-                    title="Clear"
+                    aria-label={t("clearSearchAria")}
+                    title={t("clearLabel")}
                     className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
                   >
                     {t("clearLabel")}

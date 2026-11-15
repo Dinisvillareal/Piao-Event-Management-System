@@ -36,8 +36,8 @@ export default function SearchBar({ value, onChange, placeholder, className = ""
         <button
           type="button"
           onClick={() => onChange("")}
-          aria-label="Clear search"
-          title="Clear"
+          aria-label={t("clearSearchAria")}
+          title={t("clearLabel")}
           className={`absolute top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full transition ${
             dark
               ? "right-3 border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm hover:bg-[#161C2E]"

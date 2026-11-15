@@ -179,19 +179,36 @@ class InventoryItem extends Model
         return $short;
     }
 
+    /**
+     * Moves units in or out of stock. The counts are re-read from the database under a row lock first, so
+     * this object's copy (which may have been loaded a moment ago, before someone else changed the stock)
+     * can never overwrite another request's change: two requests moving units at once add up instead of
+     * the second one silently undoing the first.
+     */
     private function moveUnits(array $units, int $sign): void
     {
-        $total = 0;
-        foreach (self::CONDITION_COLUMNS as $label => $col) {
-            $n = max(0, (int) ($units[$label] ?? 0));
-            if ($n === 0) {
-                continue;
+        \Illuminate\Support\Facades\DB::transaction(function () use ($units, $sign) {
+            if ($this->exists) {
+                $fresh = static::withTrashed()->lockForUpdate()->find($this->getKey());
+                if ($fresh) {
+                    foreach (array_merge(array_values(self::CONDITION_COLUMNS), ['quantity']) as $col) {
+                        $this->setAttribute($col, (int) $fresh->getAttribute($col));
+                    }
+                }
             }
-            $this->{$col} = max(0, (int) $this->{$col} + $sign * $n);
-            $total += $n;
-        }
-        $this->quantity = max(0, (int) $this->quantity + $sign * $total);
-        $this->save();
+
+            $total = 0;
+            foreach (self::CONDITION_COLUMNS as $label => $col) {
+                $n = max(0, (int) ($units[$label] ?? 0));
+                if ($n === 0) {
+                    continue;
+                }
+                $this->{$col} = max(0, (int) $this->{$col} + $sign * $n);
+                $total += $n;
+            }
+            $this->quantity = max(0, (int) $this->quantity + $sign * $total);
+            $this->save();
+        });
     }
 
     public function getPhotoUrlAttribute(): ?string

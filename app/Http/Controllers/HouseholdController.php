@@ -82,6 +82,15 @@ class HouseholdController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        // One household is created at a time: the next HH-#### code is derived
+        // from the latest row, so two parallel creates would otherwise both
+        // pick the same code and one would fail with a raw database error.
+        return $this->exclusively('household-create', fn () => $this->storeHousehold($request));
+    }
+
+    private function storeHousehold(Request $request)
+    {
+
         // A household must be created WITH a head -- the head is the one
         // person event SMS is sent to, so a headless household silently
         // receives nothing. Members are optional extras; the head always
@@ -126,10 +135,20 @@ class HouseholdController extends Controller
 
             // A resident being linked in never carries a stale
             // is_household_head flag from wherever they were before.
-            User::whereIn('id', $memberIds)->update([
+            // This is a CLAIM, not a blind write: it only touches people who
+            // still have no household. If someone else grabbed one of them
+            // after the check above, fewer rows change and we roll back,
+            // instead of silently pulling them out of the other household.
+            $claimed = User::whereIn('id', $memberIds)->whereNull('household_id')->update([
                 'household_id'      => $household->id,
                 'is_household_head' => false,
             ]);
+            if ($claimed !== $memberIds->count()) {
+                DB::rollBack();
+                return response()->json([
+                    'message' => 'One or more selected residents already belong to a household. Please refresh and try again.',
+                ], 422);
+            }
 
             $head = User::find($request->head_user_id);
             $head->update(['is_household_head' => true]);
@@ -152,7 +171,7 @@ class HouseholdController extends Controller
                 ], 409);
             }
 
-            return response()->json(['message' => 'Failed to create household: ' . $e->getMessage()], 500);
+            return response()->json(['message' => 'Failed to create household: ' . $this->safeError($e)], 500);
         }
     }
 
@@ -249,10 +268,22 @@ class HouseholdController extends Controller
         // (set via the star button) is exactly how a household ends up
         // with two heads. "Head of THIS household" is a fresh decision
         // staff make afterward with the star button, never inherited.
-        $user->update([
-            'household_id'      => $household->id,
-            'is_household_head' => false,
-        ]);
+        // Conditional claim: only a resident who has no household yet can be
+        // added. Two staff adding the same person to two households at once no
+        // longer ends with the second one silently stealing them from the first.
+        // (Already in THIS household is a harmless no-op.)
+        if ((int) $user->household_id !== (int) $household->id) {
+            $claimed = User::where('id', $user->id)->whereNull('household_id')->update([
+                'household_id'      => $household->id,
+                'is_household_head' => false,
+            ]);
+            if (!$claimed) {
+                return response()->json([
+                    'message' => 'One or more selected residents already belong to a household. Please refresh and try again.',
+                ], 422);
+            }
+            $user->refresh();
+        }
 
         $this->createLog('Update', "Added {$user->first_name} {$user->last_name} to household '{$household->code}'");
 
@@ -330,7 +361,7 @@ class HouseholdController extends Controller
                 ], 409);
             }
 
-            return response()->json(['message' => 'Failed to set household head: ' . $e->getMessage()], 500);
+            return response()->json(['message' => 'Failed to set household head: ' . $this->safeError($e)], 500);
         }
 
         return response()->json($household->load('members'));

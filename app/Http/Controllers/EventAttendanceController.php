@@ -18,6 +18,50 @@ class EventAttendanceController extends Controller
         return 'Incomplete';
     }
 
+    /** A scan taken offline may be synced late, but not forever: older than this it is refused. */
+    public const OFFLINE_MAX_AGE_HOURS = 72;
+
+    /** How far ahead of the server a phone's clock may run before its scan time is not believed. */
+    public const CLOCK_SKEW_MINUTES = 5;
+
+    /**
+     * The moment a scan really happened. Normally that is "now". A scan queued while offline sends the
+     * time it was taken (scanned_at), and THAT time -- not the time the phone got signal again -- decides
+     * whether the sign-in/out window was open and is what gets recorded. The time is only believed within
+     * limits: not in the future (beyond a few minutes of clock difference) and not older than 72 hours.
+     *
+     * @return array{0: \Carbon\Carbon|null, 1: \Illuminate\Http\JsonResponse|null} [moment, error]
+     */
+    private function scanMoment(Request $request): array
+    {
+        if (!$request->filled('scanned_at')) {
+            return [now(), null];
+        }
+
+        $at = \Carbon\Carbon::parse($request->input('scanned_at'))->timezone(config('app.timezone'));
+        $now = now();
+
+        if ($at->gt($now->copy()->addMinutes(self::CLOCK_SKEW_MINUTES))) {
+            return [null, response()->json(['message' => 'The scan time is in the future. Check the clock of the device that scanned.'], 422)];
+        }
+        if ($at->lt($now->copy()->subHours(self::OFFLINE_MAX_AGE_HOURS))) {
+            return [null, response()->json(['message' => 'This scan is too old to sync (more than 72 hours). Record the attendance again.'], 422)];
+        }
+
+        // A few minutes of clock difference must not push a scan into the future.
+        return [$at->gt($now) ? $now : $at, null];
+    }
+
+    /** " (scanned offline at 8:55 AM, synced 9:10 AM)" when the scan was taken earlier than it was received, else "". */
+    private function offlineNote(Request $request, \Carbon\Carbon $at): string
+    {
+        if (!$request->filled('scanned_at') || $at->diffInSeconds(now()) < 120) {
+            return '';
+        }
+
+        return ' (scanned offline at ' . $at->format('g:i A') . ', synced ' . now()->format('g:i A') . ')';
+    }
+
     // =========================
     // TIME IN - updates status from 'missed' to 'Incomplete'
     // =========================
@@ -36,7 +80,14 @@ class EventAttendanceController extends Controller
         $request->validate([
             'event_id' => 'required|exists:events,id',
             'user_id' => 'required|exists:users,id',
+            'scanned_at' => 'nullable|date',
         ]);
+
+        [$scannedAt, $badTime] = $this->scanMoment($request);
+        if ($badTime) {
+            return $badTime;
+        }
+        $note = $this->offlineNote($request, $scannedAt);
 
         // ✅ Fetch the event AND the user to get their actual names
         $event = Event::findOrFail($request->event_id);
@@ -63,7 +114,7 @@ class EventAttendanceController extends Controller
         // have no early bound at all (sign-in just stays open any time up
         // to event_start) -- NOT the same instant as event_start, which
         // would make the window zero-width.
-        $currentTime = time();
+        $currentTime = $scannedAt->timestamp;
         $windowOpen = $event->call_time_start ? strtotime($event->call_time_start) : null;
         $windowClose = strtotime($event->event_start);
 
@@ -82,17 +133,21 @@ class EventAttendanceController extends Controller
         DB::beginTransaction();
 
         try {
+            // lockForUpdate: a second scan of the same person waits here until
+            // the first is committed, so it sees "already signed in" instead
+            // of both reading an empty time_in and both writing.
             $attendance = EventAttendance::where('event_id', $request->event_id)
                 ->where('user_id', $request->user_id)
+                ->lockForUpdate()
                 ->first();
 
             if ($attendance) {
                 if ($attendance->time_in) {
                     DB::rollBack();
-                    return response()->json(['message' => 'Member already signed in.'], 400);
+                    return response()->json(['message' => 'Member already signed in.', 'code' => 'already_recorded'], 400);
                 }
 
-                $attendance->time_in = now();
+                $attendance->time_in = $scannedAt;
                 $attendance->status = 'Incomplete';
                 $attendance->save();
 
@@ -100,7 +155,7 @@ class EventAttendanceController extends Controller
                 $this->createLog(
                     'Time In',
                     'QR',
-                    "{$userName} signed in to {$event->name}"
+                    "{$userName} signed in to {$event->name}{$note}"
                 );
 
                 DB::commit();
@@ -110,7 +165,7 @@ class EventAttendanceController extends Controller
             $attendance = EventAttendance::create([
                 'event_id' => $request->event_id,
                 'user_id' => $request->user_id,
-                'time_in' => now(),
+                'time_in' => $scannedAt,
                 'status' => 'Incomplete'
             ]);
 
@@ -118,7 +173,7 @@ class EventAttendanceController extends Controller
             $this->createLog(
                 'Time In',
                 'QR',
-                "{$userName} signed in to {$event->name}"
+                "{$userName} signed in to {$event->name}{$note}"
             );
 
             DB::commit();
@@ -137,12 +192,12 @@ class EventAttendanceController extends Controller
             // explicit already-signed-in check gives, instead of leaking the
             // raw SQL error to the UI as an unexplained failure.
             if ($e->getCode() === '23000') {
-                return response()->json(['message' => 'Member already signed in.'], 400);
+                return response()->json(['message' => 'Member already signed in.', 'code' => 'already_recorded'], 400);
             }
-            return response()->json(['message' => 'Time-in failed', 'error' => $e->getMessage()], 500);
+            return response()->json(['message' => 'Time-in failed', 'error' => $this->safeError($e)], 500);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Time-in failed', 'error' => $e->getMessage()], 500);
+            return response()->json(['message' => 'Time-in failed', 'error' => $this->safeError($e)], 500);
         }
     }
 
@@ -157,7 +212,14 @@ class EventAttendanceController extends Controller
         $request->validate([
             'event_id' => 'required|exists:events,id',
             'user_id' => 'required|exists:users,id',
+            'scanned_at' => 'nullable|date',
         ]);
+
+        [$scannedAt, $badTime] = $this->scanMoment($request);
+        if ($badTime) {
+            return $badTime;
+        }
+        $note = $this->offlineNote($request, $scannedAt);
 
         // ✅ Fetch the event AND the user to get their actual names
         $event = Event::findOrFail($request->event_id);
@@ -185,7 +247,7 @@ class EventAttendanceController extends Controller
         // restriction). Events with event_end but no call_time_end get an
         // open-ended window starting at event_end (no upper bound).
         if ($event->event_end) {
-            $currentTime = time();
+            $currentTime = $scannedAt->timestamp;
             $windowOpen = strtotime($event->event_end);
 
             if ($currentTime < $windowOpen) {
@@ -207,15 +269,19 @@ class EventAttendanceController extends Controller
         DB::beginTransaction();
 
         try {
+            // lockForUpdate: a second scan of the same person waits here until
+            // the first is committed, so it sees "already signed in" instead
+            // of both reading an empty time_in and both writing.
             $attendance = EventAttendance::where('event_id', $request->event_id)
                 ->where('user_id', $request->user_id)
+                ->lockForUpdate()
                 ->first();
 
             if (!$attendance) {
                 $attendance = EventAttendance::create([
                     'event_id' => $request->event_id,
                     'user_id' => $request->user_id,
-                    'time_out' => now(),
+                    'time_out' => $scannedAt,
                     'status' => 'Incomplete'
                 ]);
 
@@ -223,7 +289,7 @@ class EventAttendanceController extends Controller
                 $this->createLog(
                     'Time Out',
                     'QR',
-                    "{$userName} timed out without time-in on {$event->name}"
+                    "{$userName} timed out without time-in on {$event->name}{$note}"
                 );
 
                 DB::commit();
@@ -231,10 +297,11 @@ class EventAttendanceController extends Controller
             }
 
             if ($attendance->time_out) {
-                return response()->json(['message' => 'Member already signed out.'], 400);
+                DB::rollBack();
+                return response()->json(['message' => 'Member already signed out.', 'code' => 'already_recorded'], 400);
             }
 
-            $attendance->time_out = now();
+            $attendance->time_out = $scannedAt;
             $attendance->status = ($attendance->time_in && $attendance->time_out) ? 'Complete' : 'Incomplete';
             $attendance->save();
 
@@ -242,7 +309,7 @@ class EventAttendanceController extends Controller
             $this->createLog(
                 'Time Out',
                 'QR',
-                "{$userName} signed out of {$event->name}"
+                "{$userName} signed out of {$event->name}{$note}"
             );
 
             DB::commit();
@@ -256,12 +323,12 @@ class EventAttendanceController extends Controller
             // check above -- report the friendly message instead of a raw
             // SQL error.
             if ($e->getCode() === '23000') {
-                return response()->json(['message' => 'Member already signed out.'], 400);
+                return response()->json(['message' => 'Member already signed out.', 'code' => 'already_recorded'], 400);
             }
-            return response()->json(['message' => 'Time-out failed', 'error' => $e->getMessage()], 500);
+            return response()->json(['message' => 'Time-out failed', 'error' => $this->safeError($e)], 500);
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['message' => 'Time-out failed', 'error' => $e->getMessage()], 500);
+            return response()->json(['message' => 'Time-out failed', 'error' => $this->safeError($e)], 500);
         }
     }
     // =========================

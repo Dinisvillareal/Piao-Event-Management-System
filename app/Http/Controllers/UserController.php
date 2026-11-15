@@ -34,13 +34,6 @@ class UserController extends Controller
         return auth()->id() == $id;
     }
 
-    /** Internal error text is logged, never sent to the browser in production. */
-    private function safeError(\Throwable $e): string
-    {
-        Log::error($e->getMessage(), ['exception' => $e]);
-        return config('app.debug') ? $e->getMessage() : 'Something went wrong. Please try again.';
-    }
-
     private static ?string $dummyHash = null;
 
     /**
@@ -137,7 +130,7 @@ class UserController extends Controller
         $path = $file->storeAs('validation_ids', $filename, 'public');
 
         if (!$path) {
-            throw new \Exception('File upload failed');
+            throw new \App\Exceptions\UserFacingException('File upload failed');
         }
 
         return $path;
@@ -181,12 +174,12 @@ class UserController extends Controller
         $memberships = Membership::withoutTrashed()
             ->whereIn('id', $membershipIds)
             ->where(function ($q) {
-                $q->whereNotNull('eligible_age_bracket_id')
+                $q->whereHas('eligibleAgeBrackets')
                   ->orWhereNotNull('eligible_civil_status_id')
                   ->orWhereNotNull('eligible_current_status_id')
                   ->orWhereNotNull('eligible_gender');
             })
-            ->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
+            ->with(['eligibleAgeBrackets', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
             ->get();
 
         if ($memberships->isEmpty()) {
@@ -207,10 +200,11 @@ class UserController extends Controller
         $violations = [];
 
         foreach ($memberships as $membership) {
-            if ($membership->eligible_age_bracket_id) {
-                $requiredBracket = $membership->eligibleAgeBracket;
-                if (!$residentBracket || $residentBracket->id !== $membership->eligible_age_bracket_id) {
-                    $violations[] = "\"{$membership->name}\" requires age group: {$requiredBracket?->label}.";
+            $requiredBrackets = $membership->eligibleAgeBrackets;
+            if ($requiredBrackets->isNotEmpty()) {
+                if (!$residentBracket || !$requiredBrackets->contains('id', $residentBracket->id)) {
+                    $labels = $requiredBrackets->pluck('label')->implode(' or ');
+                    $violations[] = "\"{$membership->name}\" requires age group: {$labels}.";
                 }
             }
 
@@ -243,6 +237,14 @@ class UserController extends Controller
     // =========================
 
         public function store(StoreUserRequest $request)
+    {
+        // The next PR-#### code is derived from the latest row, so creations
+        // are serialized: two staff adding residents at the same time can no
+        // longer both pick the same code (one used to fail on the unique key).
+        return $this->exclusively('user-create', fn () => $this->storeUser($request));
+    }
+
+    private function storeUser(StoreUserRequest $request)
     {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -431,7 +433,11 @@ class UserController extends Controller
 
         // Same answer whether or not the account exists, so the lock can't be
         // used to discover which user codes are real.
-        if (RateLimiter::tooManyAttempts($limiterKey, 5)) {
+        // Reserve this try BEFORE any password work. The counter is bumped
+        // atomically, so a burst of parallel guesses can't all slip past a
+        // "check, then count later" gap: only the first 5 are ever evaluated.
+        // A successful sign-in clears the counter again.
+        if (RateLimiter::hit($limiterKey, 60) > 5) {
             return $tooMany();
         }
 
@@ -476,14 +482,15 @@ class UserController extends Controller
             }
             $step = Totp::verify(Crypt::decryptString($user->two_factor_secret), (string) $request->otp);
             $replayKey = 'totp-used:' . $user->id . ':' . $step;
-            if ($step === null || Cache::has($replayKey)) {
+            // Cache::add is atomic: only one request can ever claim a code, so
+            // two parallel sign-ins can't both replay the same 6-digit code.
+            if ($step === null || !Cache::add($replayKey, true, 180)) {
                 $this->recordFailedLogin($user, $limiterKey);
                 return response()->json([
                     'message' => 'That code is not valid. Please try again.',
                     'two_factor_required' => true,
                 ], 401);
             }
-            Cache::put($replayKey, true, 180);
         }
 
         RateLimiter::clear($limiterKey);
@@ -529,8 +536,7 @@ class UserController extends Controller
     /** Counts a failed sign-in; locks the account after repeated failures. */
     private function recordFailedLogin(?User $user, string $limiterKey): void
     {
-        RateLimiter::hit($limiterKey, 60);
-
+        // The try was already counted when the sign-in started (see login()).
         if (!$user) {
             return;
         }
@@ -583,17 +589,7 @@ class UserController extends Controller
 
         // Adviser recommendation: "Profiling (Filter for Age)"
         if ($request->filled('age_group')) {
-            $ranges = [
-                'child'  => [0, 12],
-                'youth'  => [13, 17],
-                'adult'  => [18, 59],
-                'senior' => [60, 150],
-            ];
-            $range = $ranges[strtolower($request->age_group)] ?? null;
-            if ($range) {
-                $query->whereNotNull('birth_date')
-                    ->whereRaw('TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN ? AND ?', $range);
-            }
+            \App\Models\AgeBracket::applyToUserQuery($query, (string) $request->age_group);
         }
 
         if ($request->filled('household_id')) {
@@ -622,7 +618,16 @@ class UserController extends Controller
     // UPDATE USER
     // =========================
 
-     public function update(UpdateUserRequest $request, $id)
+
+    public function update(UpdateUserRequest $request, $id)
+    {
+        // One edit of the same person at a time: the membership / status
+        // lists are replaced as a whole (detach + sync), so two parallel
+        // saves must not interleave and leave a mixed result.
+        return $this->exclusively('user-edit:' . (int) $id, fn () => $this->updateUser($request, $id));
+    }
+
+    private function updateUser(UpdateUserRequest $request, $id)
     {
         if (!$this->isOwnProfile($id) && !$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);

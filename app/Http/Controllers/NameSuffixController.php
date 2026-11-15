@@ -22,6 +22,14 @@ class NameSuffixController extends Controller
 
     public function store(Request $request)
     {
+        // One change at a time per list: the "already exists" / "still in use"
+        // checks and the write that follows must not be interleaved with
+        // another staff member's change to the same list.
+        return $this->exclusively('lookup:name_suffixes', fn () => $this->storeLocked($request));
+    }
+
+    private function storeLocked(Request $request)
+    {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
@@ -53,6 +61,14 @@ class NameSuffixController extends Controller
     }
 
     public function destroy($id)
+    {
+        // One change at a time per list: the "already exists" / "still in use"
+        // checks and the write that follows must not be interleaved with
+        // another staff member's change to the same list.
+        return $this->exclusively('lookup:name_suffixes', fn () => $this->destroyLocked($id));
+    }
+
+    private function destroyLocked($id)
     {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);

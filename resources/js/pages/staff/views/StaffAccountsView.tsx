@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Crown, UserPlus, KeyRound, LogOut, Ban, RotateCcw, UserMinus, ArrowRightLeft, Printer, Copy, Check, FileKey2, Users, X, MoreVertical, ShieldCheck, type LucideIcon } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
+import { translate } from "../../../i18n/translations";
 import PasswordConfirmDialog from "../../../components/auth/PasswordConfirmDialog";
 import SearchBar from "../../../components/ui/SearchBar";
 import Skeleton from "../../../components/ui/Skeleton";
@@ -178,13 +179,15 @@ export default function StaffAccountsView() {
   // swallow it; "Save as PDF" in the print dialog still works for anyone who wants a file.
   const printCodes = async () => {
     if (!codes) return;
+    // Printed papers are always English, whatever language the app is set to.
+    const pt = (k: string) => translate(k, "en");
     const esc = (v: string) => v.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
     const head = data?.staff.find((s) => s.is_head_staff);
-    const when = (() => { try { return new Date().toLocaleString(locale, { dateStyle: "long", timeStyle: "short" }); } catch { return new Date().toLocaleString(); } })();
+    const when = (() => { try { return new Date().toLocaleString(locale, { dateStyle: "long", timeStyle: "short" }); } catch { return new Date().toLocaleString(locale); } })();
     const cells = codes.map((c, i) => `
-      <div class="code"><div class="n">${i + 1}</div><div class="body"><div class="v">${esc(c)}</div><div class="used"><span>${esc(t("rcUsedOn"))}</span><i></i></div></div></div>`).join("");
-    const dateOnly = (() => { try { return new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }); } catch { return new Date().toDateString(); } })();
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(t("rcSheetTitle"))}</title>
+      <div class="code"><div class="n">${i + 1}</div><div class="body"><div class="v">${esc(c)}</div><div class="used"><span>${esc(pt("rcUsedOn"))}</span><i></i></div></div></div>`).join("");
+    const dateOnly = (() => { try { return new Date().toLocaleDateString(locale, { year: "numeric", month: "long", day: "numeric" }); } catch { return new Date().toDateString(); } })();
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${esc(pt("rcSheetTitle"))}</title>
 <style>
   /* No paper size is forced: the sheet fills whatever the print dialog is set to (Short, A4, Legal, Tabloid...).
      Everything is measured in --u (1/210 of the page width), so it scales with the paper; margin 0 also keeps the browser's own header/footer off it. */
@@ -241,31 +244,31 @@ export default function StaffAccountsView() {
     <div class="hdr">
       <div class="logo"><img src="${window.location.origin}/logo-removebg-preview.png" alt=""></div>
       <div class="txt">
-        <p class="rp">${esc(t("rcRepublic"))}</p>
-        <p>${esc(t("rcProvince"))}</p>
-        <p>${esc(t("rcMunicipality"))}</p>
-        <h1>${esc(t("rcBarangay"))}</h1>
-        <p>${esc(t("rcAddress"))}</p>
+        <p class="rp">${esc(pt("rcRepublic"))}</p>
+        <p>${esc(pt("rcProvince"))}</p>
+        <p>${esc(pt("rcMunicipality"))}</p>
+        <h1>${esc(pt("rcBarangay"))}</h1>
+        <p>${esc(pt("rcAddress"))}</p>
       </div>
-      <div class="sys"><p class="name">${esc(t("rcSystem"))}</p><p class="gen">${esc(t("rcGeneratedOn"))}</p><p class="date">${esc(dateOnly)}</p></div>
+      <div class="sys"><p class="name">${esc(pt("rcSystem"))}</p><p class="gen">${esc(pt("rcGeneratedOn"))}</p><p class="date">${esc(dateOnly)}</p></div>
     </div>
     <div class="rule"></div>
-    <div class="titlerow"><h2>${esc(t("rcDocTitle"))}</h2><span>${esc(t("rcDocRole"))} · ${esc(t("rcConfidential"))}</span></div>
+    <div class="titlerow"><h2>${esc(pt("rcDocTitle"))}</h2><span>${esc(pt("rcDocRole"))} · ${esc(pt("rcConfidential"))}</span></div>
     <div class="thin"></div>
   </div>
   <div class="content">
     <div class="meta">
-      <div><span>${esc(t("rcAccount"))}</span><b>${esc(head?.name ?? "")}</b></div>
-      <div><span>${esc(t("rcUserCode"))}</span><b class="mono">${esc(head?.user_code ?? "")}</b></div>
-      <div><span>${esc(t("rcGenerated"))}</span><b>${esc(when)}</b></div>
+      <div><span>${esc(pt("rcAccount"))}</span><b>${esc(head?.name ?? "")}</b></div>
+      <div><span>${esc(pt("rcUserCode"))}</span><b class="mono">${esc(head?.user_code ?? "")}</b></div>
+      <div><span>${esc(pt("rcGenerated"))}</span><b>${esc(when)}</b></div>
     </div>
-    <div><h3>${esc(t("rcCodesCount"))}: ${codes.length}</h3>
+    <div><h3>${esc(pt("rcCodesCount"))}: ${codes.length}</h3>
     <div class="codes">${cells}</div></div>
-    <div><h3>${esc(t("rcHowTitle"))}</h3>
-    <ol class="steps"><li><b>1</b><span>${esc(t("rcStep1"))}</span></li><li><b>2</b><span>${esc(t("rcStep2"))}</span></li><li><b>3</b><span>${esc(t("rcStep3"))}</span></li></ol></div>
-    <div class="warn"><b>${esc(t("rcWarnTitle"))}</b>${esc(t("rcWarnBody"))}</div>
+    <div><h3>${esc(pt("rcHowTitle"))}</h3>
+    <ol class="steps"><li><b>1</b><span>${esc(pt("rcStep1"))}</span></li><li><b>2</b><span>${esc(pt("rcStep2"))}</span></li><li><b>3</b><span>${esc(pt("rcStep3"))}</span></li></ol></div>
+    <div class="warn"><b>${esc(pt("rcWarnTitle"))}</b>${esc(pt("rcWarnBody"))}</div>
   </div>
-  <div class="foot"><div><span>${esc(t("rcOrg"))}</span><span>${esc(t("rcConfidential"))}</span></div></div>
+  <div class="foot"><div><span>${esc(pt("rcOrg"))}</span><span>${esc(pt("rcConfidential"))}</span></div></div>
 </div></body></html>`;
 
     const frame = document.createElement("iframe");
@@ -288,7 +291,7 @@ export default function StaffAccountsView() {
     try { win.focus(); win.print(); } catch { setError(t("rcPrintFailed")); cleanup(); }
   };
 
-  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString() : t("secNever"));
+  const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(locale) : t("secNever"));
   const initials = (n: string) => n.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "S";
   // Team list: quick tabs (with counts) + search + sort, then 5 per page.
   const [teamTab, setTeamTab] = useState<"all" | "active" | "suspended" | "no-2fa">("all");
@@ -370,7 +373,7 @@ export default function StaffAccountsView() {
         <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-gold-400/40 bg-gold-400/10 px-5 py-4">
           <ArrowRightLeft className="h-6 w-6 shrink-0 text-gold-300" />
           <p className="min-w-0 flex-1 text-base text-white/80">
-            {t("secTransferPending").replace("{name}", data.transfer.to_name ?? "").replace("{when}", new Date(data.transfer.expires_at).toLocaleString())}
+            {t("secTransferPending").replace("{name}", data.transfer.to_name ?? "").replace("{when}", new Date(data.transfer.expires_at).toLocaleString(locale))}
           </p>
           <button className={actBtn} onClick={cancelTransfer}><X className="h-3.5 w-3.5" /> {t("secCancelTransfer")}</button>
         </div>

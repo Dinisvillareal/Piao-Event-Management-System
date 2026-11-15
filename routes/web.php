@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\MembershipController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\MembershipResidentController;
 use App\Http\Controllers\EventAttendanceController;
@@ -173,6 +174,7 @@ Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(
     | MEMBERSHIPS
     |--------------------------------------------------------------------------
     */
+    Route::post('/memberships/eligibility-preview', [MembershipController::class, 'eligibilityPreview']);
     Route::resource('api/memberships', MembershipController::class);
     Route::get('/memberships/{id}/ineligible-members', [MembershipController::class, 'ineligibleMembers']);
     Route::post('/memberships/{id}/restore', [MembershipController::class, 'restore']);
@@ -196,6 +198,7 @@ Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(
     */
     Route::get('/events-data', [EventController::class, 'data']);
     Route::get('/events/overdue-borrows', [EventController::class, 'overdueBorrows']);
+    Route::get('/events/venue-check', [EventController::class, 'venueCheck']);
     // Declared before the /events/{id} routes below (same reason as
     // overdue-borrows above) so "borrowed-items" is never swallowed as an
     // {id} value.
@@ -239,7 +242,10 @@ Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(
     |--------------------------------------------------------------------------
     */
     Route::get('/activity-logs', [ActivityLogController::class, 'index'])->middleware(EnsureStaff::class);
+    Route::get('/dashboard/stats', [DashboardController::class, 'stats'])->middleware(EnsureStaff::class);
     Route::get('/activity-logs/today', [ActivityLogController::class, 'today'])->middleware(EnsureStaff::class);
+    Route::get('/activity-logs/export/csv', [ActivityLogController::class, 'exportCsv'])->middleware(EnsureStaff::class);
+    Route::post('/activity-logs/export/pdf', [ActivityLogController::class, 'pdf'])->middleware(EnsureStaff::class);
     Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show'])->middleware(EnsureStaff::class);
 
     /*

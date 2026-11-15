@@ -108,14 +108,15 @@ class SecurityService
     {
         $key = 'reauth:' . $user->id;
 
-        if (RateLimiter::tooManyAttempts($key, 5)) {
+        // Count the try first (atomic), then judge it: parallel guesses can't
+        // all pass a "check, then count" gap.
+        if (RateLimiter::hit($key, 600) > 5) {
             throw ValidationException::withMessages([
                 $field => ['Too many wrong attempts. Please wait a few minutes and try again.'],
             ]);
         }
 
         if (!is_string($password) || $password === '' || !Hash::check($password, $user->password)) {
-            RateLimiter::hit($key, 600);
             throw ValidationException::withMessages([$field => ['Incorrect password.']]);
         }
 
@@ -139,7 +140,7 @@ class SecurityService
         }
 
         $key = 'reauth-otp:' . $user->id;
-        if (RateLimiter::tooManyAttempts($key, 5)) {
+        if (RateLimiter::hit($key, 600) > 5) {
             throw ValidationException::withMessages([
                 $field => ['Too many wrong codes. Please wait a few minutes and try again.'],
             ]);
@@ -150,14 +151,13 @@ class SecurityService
             : null;
         $replayKey = 'totp-used-sensitive:' . $user->id . ':' . $step;
 
-        if ($step === null || Cache::has($replayKey)) {
-            RateLimiter::hit($key, 600);
+        // Cache::add is atomic, so a code can be claimed by one request only.
+        if ($step === null || !Cache::add($replayKey, true, 180)) {
             throw ValidationException::withMessages([
                 $field => [$step === null ? 'That code is not valid. Check the 6-digit code in your authenticator app.' : 'That code was just used. Wait for the next one.'],
             ]);
         }
 
-        Cache::put($replayKey, true, 180);
         RateLimiter::clear($key);
     }
 
