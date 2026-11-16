@@ -30,7 +30,7 @@ class InventoryController extends Controller
         $path = $file->storeAs($dir, $filename, 'public');
 
         if (!$path) {
-            throw new \Exception('File upload failed');
+            throw new \App\Exceptions\UserFacingException('File upload failed');
         }
 
         return $path;
@@ -713,25 +713,36 @@ class InventoryController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $item = InventoryItem::findOrFail($id);
+        // The borrow check and the soft delete happen in ONE transaction on a locked row. Without
+        // the lock, an event could borrow the item in the instant between "no borrows found" and
+        // "deleted", leaving that event pointing at a deleted item.
+        $blocked = null;
+        $item = null;
+        \DB::transaction(function () use ($id, &$item, &$blocked) {
+            $item = InventoryItem::lockForUpdate()->findOrFail($id);
 
-        // Block deleting an item that's currently lent out to a live event.
-        // InventoryItem only soft-deletes, so nothing here would actually
-        // cascade-remove the outstanding event_inventory_items row -- the
-        // event would keep pointing at a "deleted" item, and returning it
-        // later (event archived/edited) would silently add its quantity
-        // back onto a record no one can see or manage anymore. Staff need
-        // to return the item to Inventory first (edit or archive the
-        // event) before it can be removed.
-        if ($item->borrows()->exists()) {
-            return response()->json([
-                'message' => '"' . $item->name . '" is currently borrowed for an event and can\'t be deleted until it\'s returned to Inventory.',
-            ], 409);
+            // Block deleting an item that's currently lent out to a live event.
+            // InventoryItem only soft-deletes, so nothing here would actually
+            // cascade-remove the outstanding event_inventory_items row -- the
+            // event would keep pointing at a "deleted" item, and returning it
+            // later (event archived/edited) would silently add its quantity
+            // back onto a record no one can see or manage anymore. Staff need
+            // to return the item to Inventory first (edit or archive the
+            // event) before it can be removed.
+            if ($item->borrows()->exists()) {
+                $blocked = '"' . $item->name . '" is currently borrowed for an event and can\'t be deleted until it\'s returned to Inventory.';
+                return;
+            }
+
+            $item->deleted_by = auth()->user()->user_code;
+            $item->save();
+            $item->delete();
+        });
+
+        if ($blocked !== null) {
+            return response()->json(['message' => $blocked], 409);
         }
 
-        $item->deleted_by = auth()->user()->user_code;
-        $item->save();
-        $item->delete();
         $this->createLog('Delete', "Removed inventory item: {$item->name}");
 
         return response()->json(['message' => 'Item removed']);

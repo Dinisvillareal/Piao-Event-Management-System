@@ -106,18 +106,18 @@ export default function NumberStepper({
           tabIndex={-1}
           disabled={disabled || atMax}
           onClick={() => bump(step)}
-          className="flex h-3 w-4 items-center justify-center text-white/50 hover:text-white disabled:opacity-30 disabled:hover:text-white/50 transition"
+          className="flex h-5 w-6 sm:h-3 sm:w-4 items-center justify-center text-white/50 hover:text-white disabled:opacity-30 disabled:hover:text-white/50 transition"
         >
-          <ChevronUp className="h-2.5 w-2.5" />
+          <ChevronUp className="h-3 w-3 sm:h-2.5 sm:w-2.5" />
         </button>
         <button
           type="button"
           tabIndex={-1}
           disabled={disabled || atMin}
           onClick={() => bump(-step)}
-          className="flex h-3 w-4 items-center justify-center text-white/50 hover:text-white disabled:opacity-30 disabled:hover:text-white/50 transition"
+          className="flex h-5 w-6 sm:h-3 sm:w-4 items-center justify-center text-white/50 hover:text-white disabled:opacity-30 disabled:hover:text-white/50 transition"
         >
-          <ChevronDown className="h-2.5 w-2.5" />
+          <ChevronDown className="h-3 w-3 sm:h-2.5 sm:w-2.5" />
         </button>
       </div>
     </div>

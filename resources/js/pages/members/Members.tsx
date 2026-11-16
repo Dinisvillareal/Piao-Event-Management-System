@@ -480,6 +480,7 @@ import api from "../../lib/api";
 import { memberKeyFromPath, memberUrlFor } from "../../lib/memberRoutes";
 import { attendanceStatus } from "../../lib/attendanceStatus";
 import { useThemeScope } from "../../lib/theme";
+import { useFeedHealth, useVisiblePoll } from "../../hooks/useLiveFeeds";
 
 export default function MemberDashboard() {
   const { t } = useLanguage();
@@ -495,6 +496,9 @@ export default function MemberDashboard() {
     user_code: ""
   });
   const [loading, setLoading] = useState(true);
+  // Which dashboard feeds failed on their last try (kept data stays on screen; the dashboard says so).
+  const { failedCount, lastOkAt, report, completeCycle } = useFeedHealth();
+  const [retryingFeeds, setRetryingFeeds] = useState(false);
   const [memberships, setMemberships] = useState([]);
   const [userMemberships, setUserMemberships] = useState<any[]>([]);
   const [userMembershipsCount, setUserMembershipsCount] = useState(0);
@@ -541,8 +545,10 @@ export default function MemberDashboard() {
         read: notification.read || false,
         updated_at_notification: notification.updated_at_notification,
       })));
+      report('notifications', true);
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
+      report('notifications', false);
     }
   };
 
@@ -558,11 +564,8 @@ export default function MemberDashboard() {
     if (active === "dashboard") fetchNotifications();
   }, [active]);
 
-  useEffect(() => {
-    if (active !== "notify") return;
-    const poll = setInterval(fetchNotifications, 20000);
-    return () => clearInterval(poll);
-  }, [active]);
+  // Re-checks every 20s while the Notifications page is open -- paused while the tab is hidden.
+  useVisiblePoll(() => { void fetchNotifications(); }, 20000, active === "notify");
 
   // Keeps the sidebar's unread badge live on every page: loads once, re-checks
   // every 20s, and refreshes right away when the Notifications page marks
@@ -576,22 +579,24 @@ export default function MemberDashboard() {
     try {
       const res = await api.get('/notifications/unread-count');
       setUnreadNotificationCount(Number(res.data?.count) || 0);
+      report('unread', true);
     } catch (error) {
       console.error('Failed to fetch unread count:', error);
+      report('unread', false);
     }
   };
 
   useEffect(() => {
     fetchNotifications();
     fetchUnreadCount();
-    const poll = setInterval(() => { fetchNotifications(); fetchUnreadCount(); }, 20000);
     const onChanged = () => { fetchNotifications(); fetchUnreadCount(); };
     window.addEventListener("member-notifications-changed", onChanged);
-    return () => {
-      clearInterval(poll);
-      window.removeEventListener("member-notifications-changed", onChanged);
-    };
+    return () => window.removeEventListener("member-notifications-changed", onChanged);
   }, []);
+
+  // The sidebar badge re-checks every 20s -- paused while the tab is hidden, and refreshed
+  // straight away when the tab comes back to the front.
+  useVisiblePoll(() => { void fetchNotifications(); void fetchUnreadCount(); }, 20000);
 
   useEffect(() => {
     api.get('/me')
@@ -646,8 +651,10 @@ export default function MemberDashboard() {
       }));
       setUpcomingEvents(formattedEvents.filter((e: any) => parseApiDate(e.date) >= now));
       setPastEvents(formattedEvents.filter((e: any) => parseApiDate(e.date) < now));
+      report('events', true);
     } catch (err) {
       console.error('Failed to fetch events:', err);
+      report('events', false);
     } finally {
       setEventsLoading(false);
     }
@@ -659,8 +666,10 @@ export default function MemberDashboard() {
       const data = res.data;
       setUserMembershipsCount(data.total || data.memberships?.length || 0);
       setUserMemberships(Array.isArray(data.memberships) ? data.memberships : []);
+      report('memberships', true);
     } catch (err) {
       console.error('Failed to fetch user memberships count:', err);
+      report('memberships', false);
     }
   };
 
@@ -688,8 +697,10 @@ export default function MemberDashboard() {
       sessionStorage.setItem(`attendance_cache_${memberId}`, JSON.stringify({
         records, attended: attendedCount, missed: missedCount
       }));
+      report('attendance', true);
     } catch (err) {
       console.error('Failed to fetch attendance:', err);
+      report('attendance', false);
     } finally {
       setAttendanceLoading(false);
     }
@@ -717,18 +728,26 @@ export default function MemberDashboard() {
     fetchAttendanceRecords(member.id);
   }, [member.id]);
 
-  useEffect(() => {
-    if (active !== "dashboard") return;
-    const poll = setInterval(() => {
-      fetchNotifications();
-      fetchEvents();
-      if (member.id) {
-        fetchUserMembershipsCount(member.id);
-        fetchAttendanceRecords(member.id);
-      }
-    }, 20000);
-    return () => clearInterval(poll);
-  }, [active, member.id]);
+  // One refresh of everything the dashboard shows. "Last updated" only moves forward when
+  // every feed answered, so the page never looks fresh while part of it is stale.
+  const refreshDashboard = async () => {
+    await Promise.all([
+      fetchNotifications(),
+      fetchEvents(),
+      member.id ? fetchUserMembershipsCount(member.id) : Promise.resolve(),
+      member.id ? fetchAttendanceRecords(member.id) : Promise.resolve(),
+    ]);
+    completeCycle();
+  };
+
+  // Every 20s while the dashboard is open -- paused while the tab is hidden, and run
+  // straight away when it is shown again or the connection comes back.
+  useVisiblePoll(() => { void refreshDashboard(); }, 20000, active === "dashboard");
+
+  const retryDashboard = async () => {
+    setRetryingFeeds(true);
+    try { await refreshDashboard(); } finally { setRetryingFeeds(false); }
+  };
 
   useEffect(() => {
     if (!member.id) return;
@@ -854,6 +873,10 @@ export default function MemberDashboard() {
                   upcomingEvents={upcomingEvents}
                   pastEventsCount={pastEvents.length}
                   highlightText={highlightText}
+                  failedFeeds={failedCount}
+                  lastUpdatedAt={lastOkAt}
+                  onRetryFeeds={retryDashboard}
+                  retryingFeeds={retryingFeeds}
                 />
               )}
 

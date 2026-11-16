@@ -247,8 +247,8 @@ export default function FilterDropdown({
                     <button
                       type="button"
                       onClick={() => setQuery("")}
-                      aria-label="Clear search"
-                      title="Clear"
+                      aria-label={t("clearSearchAria")}
+                      title={t("clearLabel")}
                       className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold shadow-sm transition ${dark ? "border border-white/10 bg-[#0A0E1A] text-white hover:bg-[#161C2E]" : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50"}`}
                     >
                       {t("clearLabel")}
@@ -291,7 +291,7 @@ export default function FilterDropdown({
                     {opt.hint ? (
                       <span className="flex items-center justify-between gap-3">
                         <span className="truncate">{opt.label}</span>
-                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${dark ? "bg-white/10 text-white/50" : "bg-gray-100 text-gray-500"}`}>{opt.hint}</span>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${dark ? "bg-white/10 text-white/50" : "bg-gray-100 text-gray-500"}`}>{opt.hint}</span>
                       </span>
                     ) : (
                       opt.label

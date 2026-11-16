@@ -20,6 +20,7 @@ class EventExpense extends Model
         'extra_receipt_paths',
         'activity_log',
         'recorded_by',
+        'deleted_by',
     ];
 
     protected $casts = [

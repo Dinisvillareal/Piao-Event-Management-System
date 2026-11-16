@@ -81,7 +81,10 @@ class FacebookService
 
             return [false, $response->json('error.message') ?? 'Facebook API request failed.'];
         } catch (\Throwable $e) {
-            return [false, $e->getMessage()];
+            // The technical detail (a network error can contain the request URL) goes to the log only.
+            \Illuminate\Support\Facades\Log::warning('Facebook post failed: ' . $e->getMessage());
+
+            return [false, 'Could not reach Facebook. Please try again later.'];
         }
     }
 }

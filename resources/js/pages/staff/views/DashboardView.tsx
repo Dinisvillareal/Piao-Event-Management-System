@@ -12,6 +12,8 @@ import Skeleton from "../../../components/ui/Skeleton";
 
 import { tc } from "../../../lib/contentTranslations";
 import Portal from "../../../components/ui/Portal";
+import FeedWarning from "../../../components/ui/FeedWarning";
+import { useFeedHealth, useVisiblePoll } from "../../../hooks/useLiveFeeds";
 interface DashboardViewProps {
   setActive: (route: string) => void;
   membershipsCount: number;
@@ -29,18 +31,23 @@ export default function DashboardView({
   pastEventsCount = 0
 }: DashboardViewProps) {
   const { t, locale, language } = useLanguage();
+  // Headline numbers, all worked out by the server (GET /dashboard/stats) so they
+  // match the Residents / Memberships / Events pages and the Activity Log exactly.
   const [stats, setStats] = useState({
     residents: 0,
     memberships: 0,
-    events: eventsCount  // ✅ USE THE PASSED EVENTS COUNT
+    events: eventsCount,
+    eventsToday: 0,
+    actionsToday: 0,
+    activeStaffToday: 0,
   });
+  const [lastAction, setLastAction] = useState<{ action: string; user_code: string; created_at: string } | null>(null);
   const [memberName, setMemberName] = useState("");
   const [loading, setLoading] = useState(true);
   // The skeleton shows for the first load only; later re-fetches (e.g. when
   // the events count arrives or changes) refresh the numbers silently.
   const loadedOnceRef = useRef(false);
   const [appUrl, setAppUrl] = useState("");
-  const [recentActivities, setRecentActivities] = useState<any[]>([]);
   // Events that already ended but still hold borrowed inventory --
   // nothing in the system releases these on its own (see
   // EventController::overdueBorrows), so the Dashboard surfaces them
@@ -57,10 +64,11 @@ export default function DashboardView({
   // screenshot of "recent activity".
   const [currentTime, setCurrentTime] = useState(new Date());
   const [clockHour12, toggleClockHour12] = useClockFormat();
-  // Stamped every time the Dashboard's live data feeds are (re)fetched --
-  // powers the "System Status" panel's "synced Xs ago" readout so it's a
-  // real measurement, not a decorative timestamp.
-  const [lastSyncedAt, setLastSyncedAt] = useState(new Date());
+  // Which feeds failed on their last try, and when everything last loaded cleanly --
+  // powers the "synced Xs ago" readout, which only moves forward when NOTHING failed,
+  // so it never claims "synced just now" while a feed is actually down.
+  const { failedCount, lastOkAt: lastSyncedAt, report, completeCycle } = useFeedHealth();
+  const [retrying, setRetrying] = useState(false);
 
   const getCsrfToken = () => {
     const token = document.cookie
@@ -136,26 +144,17 @@ export default function DashboardView({
     }
   };
 
-  const fetchRecentActivities = async () => {
-    try {
-      const response = await api.get('/activity-logs/today');
-      const result = response.data;
-      const logs = result.data ?? result;
-
-      setRecentActivities(Array.isArray(logs) ? logs : []);
-    } catch (error) {
-      console.error('Error fetching activity logs:', error);
-      setRecentActivities([]);
-    }
-  };
-
+  // Every feed below keeps the numbers it already has when a refresh fails (instead of
+  // wiping them to 0 / empty, which looked like "nothing is overdue" when the server was
+  // simply unreachable) and reports the failure so the page can say so.
   const fetchOverdueBorrows = async () => {
     try {
       const response = await api.get('/events/overdue-borrows');
       setOverdueBorrows(Array.isArray(response.data) ? response.data : []);
+      report('overdue', true);
     } catch (error) {
       console.error('Error fetching overdue borrows:', error);
-      setOverdueBorrows([]);
+      report('overdue', false);
     }
   };
 
@@ -164,54 +163,42 @@ export default function DashboardView({
       const { date_from, date_to } = getQuarterInfo();
       const response = await api.get('/reports/budget-summary', { params: { date_from, date_to } });
       setBudgetSummary(response.data);
+      report('budget', true);
     } catch (error) {
       console.error('Error fetching budget summary:', error);
-      setBudgetSummary(null);
+      report('budget', false);
     }
   };
 
   const fetchAllStats = async () => {
     try {
-      const [residentsResponse, membershipsResponse] = await Promise.all([
-        api.get('/users', { params: { per_page: 1 } }),
-        api.get('/api/memberships'),
-      ]);
-
-      const residentsResult = residentsResponse.data;
-      const membershipsResult = membershipsResponse.data;
-
-      const totalResidents = residentsResult.total || residentsResult.data?.length || 0;
-
-      let totalMemberships = 0;
-      if (Array.isArray(membershipsResult)) {
-        totalMemberships = membershipsResult.length;
-      } else if (membershipsResult.data && Array.isArray(membershipsResult.data)) {
-        totalMemberships = membershipsResult.data.length;
-      }
-
+      const { data } = await api.get('/dashboard/stats');
       setStats({
-        residents: totalResidents,
-        memberships: totalMemberships,
-        events: eventsCount  // ✅ USE THE PASSED EVENTS COUNT (from database)
+        residents: Number(data.residents) || 0,
+        memberships: Number(data.memberships) || 0,
+        events: Number(data.events) || 0,
+        eventsToday: Number(data.events_today) || 0,
+        actionsToday: Number(data.actions_today) || 0,
+        activeStaffToday: Number(data.active_staff_today) || 0,
       });
-
+      setLastAction(data.last_action ?? null);
+      report('stats', true);
     } catch (error) {
       console.error('Error fetching stats:', error);
+      report('stats', false);
     }
+  };
+
+  const refreshFeeds = async () => {
+    await Promise.all([fetchAllStats(), fetchOverdueBorrows(), fetchBudgetSummary()]);
+    completeCycle();
   };
 
   useEffect(() => {
     const loadDashboard = async () => {
       if (!loadedOnceRef.current) setLoading(true);
       try {
-        await Promise.all([
-          fetchCurrentUser(),
-          fetchAllStats(),
-          fetchRecentActivities(),
-          fetchOverdueBorrows(),
-          fetchBudgetSummary(),
-        ]);
-        setLastSyncedAt(new Date());
+        await Promise.all([fetchCurrentUser(), refreshFeeds()]);
       } catch (error) {
         console.error('Error loading dashboard:', error);
       } finally {
@@ -221,32 +208,23 @@ export default function DashboardView({
     };
 
     loadDashboard();
-  }, [eventsCount]); // ✅ Re-run when eventsCount changes (e.g., after event deletion)
+  }, [eventsCount]); // Re-run when an event is added / deleted so the cards follow straight away.
 
-  // Keeps the *whole* Dashboard live, not just the "Today's Live Snapshot"
-  // panel: the clock ticks every second, and every data feed the page shows --
-  // today's activity log, overdue borrows, the headline stat cards
-  // (residents/memberships/events) and the quarterly budget summary -- is
-  // silently re-fetched every 30s, so every number on the page moves on its
-  // own without a manual page refresh or navigating away and back.
+  // Keeps the *whole* Dashboard live: the clock ticks every second, and every data feed the
+  // page shows -- the headline cards, today's staff activity, overdue borrows and the quarterly
+  // budget summary -- is silently re-fetched every 30s. The 30s refresh pauses while the tab is
+  // hidden and runs straight away when it is shown again.
   useEffect(() => {
     const clockTimer = setInterval(() => setCurrentTime(new Date()), 1000);
-    const dataTimer = setInterval(async () => {
-      await Promise.all([
-        fetchRecentActivities(),
-        fetchOverdueBorrows(),
-        fetchAllStats(),
-        fetchBudgetSummary(),
-      ]);
-      setLastSyncedAt(new Date());
-    }, 30000);
-    return () => {
-      clearInterval(clockTimer);
-      clearInterval(dataTimer);
-    };
-    // Re-armed when eventsCount changes so fetchAllStats' closure never polls
-    // with a stale eventsCount value (e.g. right after an event is deleted).
-  }, [eventsCount]);
+    return () => clearInterval(clockTimer);
+  }, []);
+
+  useVisiblePoll(() => { void refreshFeeds(); }, 30000);
+
+  const retryFeeds = async () => {
+    setRetrying(true);
+    try { await refreshFeeds(); } finally { setRetrying(false); }
+  };
 
   // Download itself is unchanged -- only wrapped with a confirm step before
   // it runs and a success popup once the file has actually been written,
@@ -390,7 +368,7 @@ export default function DashboardView({
               <Skeleton className="h-[76px] flex-1 rounded-2xl lg:w-72" />
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
               <Skeleton key={i} className="h-28 rounded-2xl" />
             ))}
@@ -412,7 +390,7 @@ export default function DashboardView({
     : t("dashSyncedMinutesAgo").replace("{n}", String(Math.floor(secondsSinceSync / 60)));
 
   const liveBadge = (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">
       <span className="relative flex h-1.5 w-1.5">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
         <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
@@ -457,8 +435,10 @@ export default function DashboardView({
           </div>
         </div>
 
+        <FeedWarning failedCount={failedCount} lastOkAt={lastSyncedAt} onRetry={retryFeeds} retrying={retrying} />
+
         {/* Key numbers */}
-        <div className="report-stagger grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="report-stagger grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           {statsCards.map((item, idx) => (
             <KpiCard key={idx} value={item.value} label={item.label} description={item.description} icon={item.icon} gradient={item.gradient} delay={idx * 70} onClick={() => setActive(item.route)} />
           ))}
@@ -487,12 +467,12 @@ export default function DashboardView({
             <button
               key={action.label}
               onClick={action.onClick}
-              className="dash-shortcut group flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.04] py-2.5 pl-2.5 pr-5 text-left transition hover:border-[#4FBEB0]/40 hover:bg-white/[0.07]"
+              className="dash-shortcut group flex min-h-[52px] items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.04] py-2.5 pl-2.5 pr-4 sm:gap-3 sm:pr-5 text-left transition hover:border-[#4FBEB0]/40 hover:bg-white/[0.07]"
             >
               <span className="dash-shortcut-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/10 text-[#4FBEB0] transition group-hover:bg-[#4FBEB0]/20">
                 <action.icon className="h-[18px] w-[18px]" />
               </span>
-              <span className="dash-shortcut-label min-w-0 truncate text-sm font-semibold text-white/80 group-hover:text-white">{action.label}</span>
+              <span className="dash-shortcut-label min-w-0 line-clamp-2 text-[13px] font-semibold leading-tight sm:text-sm text-white/80 group-hover:text-white">{action.label}</span>
             </button>
           ))}
         </div>
@@ -509,7 +489,7 @@ export default function DashboardView({
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="font-display text-xl font-bold text-white">{t("dashTodaySnapshot")}</h2>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">
                     <span className="relative flex h-1.5 w-1.5">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
                       <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
@@ -525,18 +505,10 @@ export default function DashboardView({
 
             <div className="mt-6 grid grid-cols-2 gap-3.5">
               {(() => {
-                const isSameDay = (a: Date, b: Date) =>
-                  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-                const eventsToday = upcomingEvents.filter((ev) => {
-                  const d = new Date(ev.event_start ?? ev.date);
-                  return !isNaN(d.getTime()) && isSameDay(d, currentTime);
-                }).length;
-                const activeStaffToday = new Set(recentActivities.map((act) => act.user_code)).size;
-
                 const snapshotTiles = [
-                  { label: t("dashStaffActionsToday"), value: recentActivities.length, icon: Activity, tone: "text-[#4FBEB0]" },
-                  { label: t("dashStaffActiveToday"), value: activeStaffToday, icon: Users, tone: "text-[#7DD8CB]" },
-                  { label: t("dashEventsToday"), value: eventsToday, icon: CalendarDays, tone: "text-gold-400" },
+                  { label: t("dashStaffActionsToday"), value: stats.actionsToday, icon: Activity, tone: "text-[#4FBEB0]" },
+                  { label: t("dashStaffActiveToday"), value: stats.activeStaffToday, icon: Users, tone: "text-[#7DD8CB]" },
+                  { label: t("dashEventsToday"), value: stats.eventsToday, icon: CalendarDays, tone: "text-gold-400" },
                   { label: t("dashNeedsAttention"), value: overdueBorrows.length, icon: Bell, tone: overdueBorrows.length > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
                 ];
 
@@ -554,14 +526,14 @@ export default function DashboardView({
 
             <div className="mt-5 border-t border-white/10 pt-4">
               <p className="text-[11px] text-white/35">
-                {recentActivities.length === 0
+                {!lastAction
                   ? t("dashNoStaffActivity")
                   : t("dashLastAction")
-                      .replace("{action}", String(recentActivities[0]?.action ?? "—"))
-                      .replace("{user}", String(recentActivities[0]?.user_code ?? "staff"))
-                      .replace("{time}", formatActivityDate(recentActivities[0]?.created_at))}
+                      .replace("{action}", String(lastAction?.action ?? "—"))
+                      .replace("{user}", String(lastAction?.user_code ?? "staff"))
+                      .replace("{time}", formatActivityDate(lastAction?.created_at ?? ""))}
               </p>
-              <p className="mt-1 text-[10px] uppercase tracking-wide text-white/25">{t("dashAutoRefresh")}</p>
+              <p className="mt-1 text-[11px] uppercase tracking-wide text-white/25">{t("dashAutoRefresh")}</p>
             </div>
           </div>
 
@@ -574,7 +546,7 @@ export default function DashboardView({
                 <CalendarDays className="h-4 w-4 text-white" />
               </span>
               <h2 className="min-w-0 flex-1 truncate font-display text-lg font-bold text-white">{t("dashUpcomingTitle")}</h2>
-              <button onClick={() => setActive("events")} className="shrink-0 text-xs font-bold text-white/70 transition hover:text-white hover:underline">
+              <button onClick={() => setActive("events")} className="-mr-2 inline-flex min-h-10 shrink-0 items-center px-2 text-xs font-bold text-white/70 transition hover:text-white hover:underline">
                 {t("dashViewAll")}
               </button>
             </div>
@@ -595,7 +567,7 @@ export default function DashboardView({
                         <span className="flex w-14 shrink-0 flex-col items-center leading-none">
                           <span className="text-[11px] font-extrabold uppercase text-[#7DD8CB]">{valid ? d.toLocaleDateString(locale, { month: "short" }) : ""}</span>
                           <span className="mt-1 font-display text-3xl font-extrabold tracking-tight text-white [font-variant-numeric:tabular-nums]">{valid ? String(d.getDate()).padStart(2, "0") : "--"}</span>
-                          <span className="mt-1 text-[10px] font-semibold text-white/45">{valid ? d.getFullYear() : ""}</span>
+                          <span className="mt-1 text-[11px] font-semibold text-white/45">{valid ? d.getFullYear() : ""}</span>
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[15px] font-bold text-white">{tc(ev.name ?? ev.title, language as any)}</span>
@@ -722,7 +694,7 @@ export default function DashboardView({
                   <h2 className="font-display text-xl font-bold text-white">{t("dashBudgetSnapshot")}</h2>
                   <p className="mt-1 text-[13px] text-white/50">{t("dashApprovedVsSpent").replace("{quarter}", getQuarterInfo().label)}</p>
                 </div>
-                <button onClick={() => setActive("budget")} className="shrink-0 text-xs font-bold text-[#7DD8CB] hover:underline">
+                <button onClick={() => setActive("budget")} className="-mr-2 inline-flex min-h-10 shrink-0 items-center px-2 text-xs font-bold text-[#7DD8CB] hover:underline">
                   {t("dashViewAll")}
                 </button>
               </div>

@@ -73,7 +73,7 @@ export default function FilterBar({ search, filters = [], sort, count, extraChip
   // dropdowns sit below in an even grid, so the search box is never squeezed.
   // One or two dropdowns fit beside the search box on a single row.
   const stacked = filters.length + (sort ? 1 : 0) > 2;
-  const triggerCls = stacked ? "h-11 w-full pl-10 pr-8" : "h-11 min-w-[11rem] pl-10 pr-8 shrink-0";
+  const triggerCls = stacked ? "h-11 w-full pl-10 pr-8" : "h-11 w-full pl-10 pr-8 sm:w-auto sm:min-w-[11rem] sm:shrink-0";
   const iconCls = "absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none";
 
   const searchBox = search && (
@@ -94,6 +94,7 @@ export default function FilterBar({ search, filters = [], sort, count, extraChip
             onChange={f.onChange}
             options={f.options}
             className={`${triggerCls} ${f.minWidthClass ?? ""}`}
+            wrapperClassName={stacked ? "" : "w-full sm:w-auto"}
             icon={f.icon ?? <Filter className={iconCls} />}
             searchable={searchable}
             searchPlaceholder={t("search")}
@@ -109,6 +110,7 @@ export default function FilterBar({ search, filters = [], sort, count, extraChip
           onChange={sort.onChange}
           options={sort.options}
           className={triggerCls}
+          wrapperClassName={stacked ? "" : "w-full sm:w-auto"}
           icon={<ArrowUpDown className={iconCls} />}
           align="right"
           dark

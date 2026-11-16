@@ -96,7 +96,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
           mobileOpen ? "translate-x-0" : "-translate-x-full xl:translate-x-0"
         }`}
       >
-        <button onClick={onCloseMobile} className="xl:hidden absolute top-4 right-4 z-10 text-white/50 hover:text-white">
+        <button onClick={onCloseMobile} className="xl:hidden absolute top-3 right-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full text-white/50 hover:bg-white/10 hover:text-white">
           <XIcon size={20} />
         </button>
 

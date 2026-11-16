@@ -12,10 +12,11 @@
   h1.brgy { color: #000000; font-size: 12.5px; margin: 4px 0; text-transform: uppercase; letter-spacing: 0.5px; }
   .system { color: #4FBEB0; font-size: 9px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
   h2.title { color: #005F63; font-size: 15px; text-transform: uppercase; margin: 0; }
-  table.list { width: 100%; border-collapse: collapse; margin-top: 8px; table-layout: fixed; }
+  /* separate (not collapsed) borders: same look, a fraction of dompdf's memory for a long list */
+  table.list { width: 100%; border-collapse: separate; border-spacing: 0; border-left: 1px solid #DCEAE5; border-top: 1px solid #DCEAE5; margin-top: 8px; table-layout: fixed; }
   table.list thead { display: table-header-group; }
   table.list tr { page-break-inside: avoid; }
-  table.list th, table.list td { border: 1px solid #DCEAE5; padding: 7px 7px; font-size: 10.5px; line-height: 1.35; text-align: left; word-wrap: break-word; }
+  table.list th, table.list td { border-right: 1px solid #DCEAE5; border-bottom: 1px solid #DCEAE5; padding: 7px 7px; font-size: 10.5px; line-height: 1.35; text-align: left; word-wrap: break-word; }
   table.list th { padding: 9px 7px; background: #0A0E1A; color: #EFCA85; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px; }
   table.list tr.alt td { background: #EEF4F1; }
   .center { text-align: center !important; }
@@ -79,7 +80,7 @@
     <thead>
       <tr>
         @foreach($columns as $i => $col)
-          <th class="{{ in_array($i, $centered, true) ? 'center' : '' }}">{{ $col }}</th>
+          <th class="{{ in_array($i, $centered, true) ? 'center' : '' }}" style="width: {{ $widths[$i] }}%;">{{ $col }}</th>
         @endforeach
       </tr>
     </thead>
@@ -87,7 +88,7 @@
       @forelse($rows as $n => $row)
         <tr class="{{ $n % 2 ? 'alt' : '' }}">
           @foreach($row as $i => $cell)
-            <td class="{{ in_array($i, $centered, true) ? 'center' : '' }}">{{ $cell !== '' ? $cell : '—' }}</td>
+            <td class="{{ in_array($i, $centered, true) ? 'center' : '' }}" style="width: {{ $widths[$i] }}%;">{{ $cell !== '' ? $cell : '—' }}</td>
           @endforeach
         </tr>
       @empty

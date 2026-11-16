@@ -12,6 +12,14 @@ use Illuminate\Support\Facades\Storage;
 
 class EventExpenseController extends Controller
 {
+    /**
+     * One expense must be a real amount: more than zero, at most two decimal
+     * places (so 0.004 can't round down to a PHP 0.00 expense), and no bigger
+     * than the money column can hold (PHP 99,999,999.99). Without the ceiling a
+     * typo such as 15000000000 reached the database and ended as a server error.
+     */
+    private const AMOUNT_RULES = 'required|numeric|decimal:0,2|gt:0|max:99999999.99';
+
     // Same upload convention as UserController::localUpload/localDelete --
     // a receipt is optional proof-of-purchase for transparency, stored on
     // the public disk so it can be viewed/downloaded via receipt_url
@@ -26,7 +34,7 @@ class EventExpenseController extends Controller
         $path = $file->storeAs('expense_receipts', $filename, 'public');
 
         if (!$path) {
-            throw new \Exception('File upload failed');
+            throw new \App\Exceptions\UserFacingException('File upload failed');
         }
 
         return $path;
@@ -111,8 +119,7 @@ class EventExpenseController extends Controller
      */
     private function endedGuard(Event $event, string $what)
     {
-        $end = $event->event_end ?? $event->call_time_end ?? optional($event->event_start)->copy()->endOfDay();
-        if ($end && now()->gt($end)) {
+        if ($event->hasEnded()) {
             return response()->json([
                 'message' => "This event has already ended, so {$what} can no longer be changed.",
             ], 422);
@@ -144,7 +151,7 @@ class EventExpenseController extends Controller
 
         $request->validate([
             'item' => 'required|string|max:150',
-            'amount' => 'required|numeric|min:0',
+            'amount' => self::AMOUNT_RULES,
             'notes' => 'nullable|string|max:255',
             // A receipt is mandatory when recording a new expense --
             // transparency was the whole point of this feature, so an
@@ -203,7 +210,7 @@ class EventExpenseController extends Controller
 
         $request->validate([
             'item' => 'required|string|max:150',
-            'amount' => 'required|numeric|min:0',
+            'amount' => self::AMOUNT_RULES,
             'notes' => 'nullable|string|max:255',
             'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
             // The whole receipt list: keep_receipts[] = indexes of the saved
@@ -327,6 +334,9 @@ class EventExpenseController extends Controller
         $itemName = $expense->item;
         $amount = $expense->amount;
         $wasOver = $event->is_over_budget;
+        // Remember who removed it (the Archive shows this, not who recorded it).
+        $expense->deleted_by = auth()->user()->user_code;
+        $expense->save();
         $expense->delete();
 
         $event->refresh();
@@ -360,7 +370,7 @@ class EventExpenseController extends Controller
         }
 
         $request->validate([
-            'approved_budget' => 'nullable|numeric|min:0|max:99999999.99',
+            'approved_budget' => 'nullable|numeric|decimal:0,2|min:0|max:99999999.99',
         ]);
 
         $event = Event::withoutTrashed()->findOrFail($eventId);

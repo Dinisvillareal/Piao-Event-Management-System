@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Facades\DB;
 use App\Models\AbsenceReason;
 use App\Models\AppSetting;
 use App\Models\Event;
@@ -91,6 +92,17 @@ class FeedbackController extends Controller
 
         $userId = auth()->id();
 
+        // One submit per person per event at a time: a double-tap used to let
+        // both requests see "no feedback yet" and race to insert (one then
+        // failed on the unique index), or both log the same edit twice.
+        return $this->exclusively(
+            'feedback:' . (int) $request->event_id . ':' . $userId,
+            fn () => $this->storeFeedback($request, $userId)
+        );
+    }
+
+    private function storeFeedback(Request $request, $userId)
+    {
         $attendance = $this->attendedScope(
             EventAttendance::with('event')
                 ->where('event_id', $request->event_id)
@@ -391,27 +403,40 @@ class FeedbackController extends Controller
         return response()->json(['message' => 'You attended this event, so you can rate it instead.'], 403);
     }
 
-    $existing = AbsenceReason::where('event_id', $event->id)->where('user_id', $userId)->first();
+    // Read-then-write in one locked transaction: a double-tap or two devices
+    // sending at once can't both see "no answer yet" and both insert (the
+    // second would hit the unique index), and an edit can't record the same
+    // "previous version" twice. If the unique index still wins a true tie, the
+    // loser simply retries and takes the edit path.
+    $save = function () use ($event, $userId, $request) {
+        return DB::transaction(function () use ($event, $userId, $request) {
+            $existing = AbsenceReason::where('event_id', $event->id)->where('user_id', $userId)
+                ->lockForUpdate()->first();
 
-    // if ($existing && $this->editLocked($existing)) {
-    //     $rules = AppSetting::feedbackRules();
-    //     return response()->json(['message' => "You can only change your answer within {$rules['edit_window_minutes']} minute(s) after sending it."], 403);
-    // }
+            $row = AbsenceReason::updateOrCreate(
+                ['event_id' => $event->id, 'user_id' => $userId],
+                ['reason' => $request->reason, 'comment' => $request->comment]
+            );
 
-    $row = AbsenceReason::updateOrCreate(
-        ['event_id' => $event->id, 'user_id' => $userId],
-        ['reason' => $request->reason, 'comment' => $request->comment]
-    );
+            if ($existing) {
+                // keep the pre-edit version for the edit history, same as the rating path
+                FeedbackEdit::create([
+                    'kind' => 'absence',
+                    'item_id' => $row->id,
+                    'reason' => $existing->reason,
+                    'comment' => $existing->comment,
+                    'written_at' => $existing->updated_at ?? $existing->created_at,
+                ]);
+            }
 
-    if ($existing) {
-        // keep the pre-edit version for the edit history, same as the rating path
-        FeedbackEdit::create([
-            'kind' => 'absence',
-            'item_id' => $row->id,
-            'reason' => $existing->reason,
-            'comment' => $existing->comment,
-            'written_at' => $existing->updated_at ?? $existing->created_at,
-        ]);
+            return $row;
+        });
+    };
+
+    try {
+        $row = $save();
+    } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+        $row = $save();
     }
 
     $this->notifyStaffAbsence($row, $event, auth()->user());

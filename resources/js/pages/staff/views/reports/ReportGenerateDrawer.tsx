@@ -92,7 +92,7 @@ function LivePreview({ params, t }: { params: Record<string, string>; t: (k: str
       <div className="relative overflow-hidden rounded-xl border border-white/10 bg-white shadow-lg" style={{ height: PAGE_H * scale }}>
         {html && !failed ? (
           <iframe
-            title="Report preview"
+            title={t("reportPreviewTitle")}
             srcDoc={html}
             sandbox="allow-same-origin"
             tabIndex={-1}

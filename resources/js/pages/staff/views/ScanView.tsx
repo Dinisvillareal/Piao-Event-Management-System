@@ -5,7 +5,7 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Camera, CameraOff, CheckCircle, XCircle, AlertTriangle, LogIn, LogOut, IdCard, ScanLine, Search, ChevronDown } from "lucide-react";
 import { Scanner } from '@yudiel/react-qr-scanner';
 import api from "../../../lib/api";
-import { queueAttendance } from "../../../lib/offlineQueue";
+import { queueAttendance, classifyFailure } from "../../../lib/offlineQueue";
 import { useOnlineStatus } from "../../../hooks/useOnlineStatus";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import Skeleton from "../../../components/ui/Skeleton";
@@ -146,7 +146,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
   const StatusPill = ({ e }: { e: any }) => {
     const st = getEventStatus(e);
     return (
-      <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${statusPillCls[st]}`}>
+      <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${statusPillCls[st]}`}>
         <span className={`h-1.5 w-1.5 rounded-full bg-current ${st === "ongoing" ? "animate-pulse" : ""}`} />
         {statusLabel(st)}
       </span>
@@ -757,7 +757,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
     // the request — queue it straight away so check-in never stalls at a
     // live event waiting for a request that can't reach the server.
     if (!navigator.onLine) {
-      queueAttendance({ endpoint, method, payload, residentName: target.residentName });
+      queueAttendance({ endpoint, method, payload, residentName: target.residentName, scannedAt: d });
       applyLocalAttendance(target.residentId, target.residentName, now);
       if (!auto) setScan(null);
       report('info', t("savedOfflineTitle"), `${target.residentName} — ${scanMode === "in" ? t("signInWord") : t("signOutWord")} ${t("savedOfflineMessageSuffix")}`);
@@ -776,13 +776,15 @@ export default function ScanView({ events, residents, memberships, loading = fal
       // A genuine "not eligible / already signed in" rejection from the
       // server (4xx with a message) should surface as-is; a network-level
       // failure (no response at all) is what gets queued for offline retry.
-      if (error?.response) {
+      // (A temporary failure -- expired session, busy or failing server -- is queued like a lost
+      // connection instead of being shown as a refusal, so the scan is not lost.)
+      if (error?.response && classifyFailure(error.response.status, error.response.data?.code) !== "retry") {
         report('error', t("actionFailedTitle"), error.response.data?.message || t("failedToRecordAttendance"));
         return;
       }
 
       console.error("Attendance Error:", error);
-      queueAttendance({ endpoint, method, payload, residentName: target.residentName });
+      queueAttendance({ endpoint, method, payload, residentName: target.residentName, scannedAt: d });
       applyLocalAttendance(target.residentId, target.residentName, now);
       if (!auto) setScan(null);
       report('info', t("savedOfflineTitle"), `${t("connectionIssuePrefix")} ${target.residentName} — ${scanMode === "in" ? t("signInWord") : t("signOutWord")} ${t("queuedSyncSuffix")}`);
@@ -944,7 +946,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                 {eventDropdownOpen && (
                   <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 rounded-2xl border border-white/10 bg-[#0A0E1A] shadow-2xl overflow-hidden">
                     <div className="flex items-center justify-between border-b border-white/10 bg-white/[0.05] px-4 py-2">
-                      <span className="inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-white/50">
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-white/50">
                         <span className="h-1.5 w-1.5 rounded-full bg-[#4FBEB0] animate-pulse" />
                         {t("currentDateTimeLabel")}
                       </span>
@@ -964,8 +966,8 @@ export default function ScanView({ events, residents, memberships, loading = fal
                           <button
                             type="button"
                             onClick={() => setEventSearchQuery("")}
-                            aria-label="Clear search"
-                            title="Clear"
+                            aria-label={t("clearSearchAria")}
+                            title={t("clearLabel")}
                             className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-sm font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
                           >
                             {t("clearLabel")}
@@ -1211,7 +1213,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                         <img src={scan.photo} alt={scan.residentName} className="w-full h-full object-cover" />
                       ) : (
                         <div className={`w-full h-full flex flex-col items-center justify-center p-2 ${"text-white/40 bg-white/[0.06]"}`}>
-                          <span className="text-[10px] font-bold uppercase text-center leading-tight">{t("noPhotoShort")}</span>
+                          <span className="text-[11px] font-bold uppercase text-center leading-tight">{t("noPhotoShort")}</span>
                         </div>
                       )}
                     </div>
@@ -1366,7 +1368,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                       type="button"
                       onClick={() => setRosterPage(Math.max(1, current - 1))}
                       disabled={current === 1}
-                      aria-label="Previous page"
+                      aria-label={t("previousPageLabel")}
                       className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                     >
                       ←
@@ -1376,7 +1378,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                       type="button"
                       onClick={() => setRosterPage(Math.min(totalPages, current + 1))}
                       disabled={current === totalPages}
-                      aria-label="Next page"
+                      aria-label={t("nextPageLabel")}
                       className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                     >
                       →

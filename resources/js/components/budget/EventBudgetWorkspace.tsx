@@ -18,6 +18,13 @@ import { tc } from "../../lib/contentTranslations";
 import Portal from "../ui/Portal";
 export type EventOption = EventTimingInput;
 
+/** The money columns hold up to PHP 99,999,999.99 and two decimal places. */
+const MAX_MONEY = 99999999.99;
+const hasMoreThanTwoDecimals = (raw: string) => /\.\d{3,}/.test(raw.trim());
+/** An expense must be more than zero, within the limit, with at most two decimals. */
+const isValidExpenseAmount = (raw: string, value: number) =>
+  raw.trim() !== "" && Number.isFinite(value) && value >= 0.01 && value <= MAX_MONEY && !hasMoreThanTwoDecimals(raw);
+
 export interface ExpenseSummary {
   approved_budget: number | null;
   total_expenses: number;
@@ -261,8 +268,8 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
       return;
     }
     const amountValue = Number(form.amount);
-    if (form.amount.trim() === "" || !Number.isFinite(amountValue) || amountValue < 0) {
-      setError(t("invalidAmountError"));
+    if (!isValidExpenseAmount(form.amount, amountValue)) {
+      setError(t("invalidExpenseAmountError"));
       return;
     }
     if (receiptItems.length === 0) {
@@ -374,8 +381,8 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
       return;
     }
     const amountValue = Number(editForm.amount);
-    if (editForm.amount.trim() === "" || !Number.isFinite(amountValue) || amountValue < 0) {
-      setError(t("invalidAmountError"));
+    if (!isValidExpenseAmount(editForm.amount, amountValue)) {
+      setError(t("invalidExpenseAmountError"));
       return;
     }
     if (editReceiptItems.length === 0) {
@@ -574,7 +581,10 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
 
   const openBudgetEdit = () => setBudgetEdit(approvedNum !== null ? String(approvedNum) : "");
   const newBudgetValue = budgetEdit === null || budgetEdit.trim() === "" ? null : Number(budgetEdit);
-  const budgetEditInvalid = budgetEdit !== null && budgetEdit.trim() !== "" && (!Number.isFinite(Number(budgetEdit)) || Number(budgetEdit) < 0);
+  const budgetEditInvalid =
+    budgetEdit !== null &&
+    budgetEdit.trim() !== "" &&
+    (!Number.isFinite(Number(budgetEdit)) || Number(budgetEdit) < 0 || Number(budgetEdit) > MAX_MONEY || hasMoreThanTwoDecimals(budgetEdit));
   const budgetEditUnchanged =
     budgetEdit !== null &&
     ((newBudgetValue === null && approvedNum === null) ||
@@ -583,7 +593,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
   const handleBudgetSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (budgetEditInvalid) {
-      setError(t("invalidAmountError"));
+      setError(t("invalidBudgetAmountError"));
       return;
     }
     if (budgetEditUnchanged) return;
@@ -831,7 +841,8 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                       <NumberStepper
                         required
                         fullWidth
-                        min={0}
+                        min={0.01}
+                        max={MAX_MONEY}
                         step={0.01}
                         value={form.amount}
                         onChange={(v) => setForm((p) => ({ ...p, amount: v }))}
@@ -931,12 +942,12 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                                   </button>
                                 )}
                                 {meta?.crossing && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-red-500 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
                                     <AlertTriangle className="h-3 w-3" /> {t("ledgerPushedOver")}
                                   </span>
                                 )}
                                 {meta?.over && !meta.crossing && (
-                                  <span className="rounded-full border border-red-400/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-300">{t("ledgerOverBudgetTag")}</span>
+                                  <span className="rounded-full border border-red-400/40 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-red-300">{t("ledgerOverBudgetTag")}</span>
                                 )}
                               </div>
                               {exp.notes && <p className="mt-0.5 text-xs text-white/50 whitespace-pre-wrap break-words">{tc(exp.notes, language as any)}</p>}
@@ -1016,7 +1027,8 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
             <NumberStepper
               required
               fullWidth
-              min={0}
+              min={0.01}
+              max={MAX_MONEY}
               step={0.01}
               value={editForm.amount}
               onChange={(v) => setEditForm((p) => ({ ...p, amount: v }))}
@@ -1236,6 +1248,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
             <NumberStepper
               fullWidth
               min={0}
+              max={MAX_MONEY}
               step={0.01}
               value={budgetEdit}
               onChange={(v) => setBudgetEdit(v)}

@@ -25,6 +25,11 @@ class ArchiveController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        // The Archive screen: one filtered, sorted page straight from the database.
+        if ($request->boolean('paged')) {
+            return $this->pagedArchive($request);
+        }
+
         $memberships = Membership::onlyTrashed()
             ->orderBy('deleted_at', 'desc')
             ->get()
@@ -125,7 +130,7 @@ class ArchiveController extends Controller
                 'type'      => 'expense',
                 'name'      => $item->item,
                 'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
-                'deletedBy' => $item->recorded_by ?? 'SYSTEM',
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
             ]);
 
         $households = Household::onlyTrashed()
@@ -156,48 +161,90 @@ class ArchiveController extends Controller
             return strtotime($b['deletedAt']) <=> strtotime($a['deletedAt']);
         });
 
-        // paged=1: the Archive screen asks for one page, already filtered (type,
-        // search) and sorted here, plus the figures of the whole archive.
-        if ($request->boolean('paged')) {
-            return $this->pagedArchive($request, collect($archivedItems));
-        }
-
         return response()->json($archivedItems);
     }
 
-    private function pagedArchive(Request $request, \Illuminate\Support\Collection $all)
+    /**
+     * Every archived record of every kind as ONE list of
+     * { id, type, name, deleted_at, deleted_by } rows, built by the database (a UNION of the
+     * ten tables). Filtering, sorting, counting and paging are then done by the database too,
+     * so the screen never loads the whole archive into memory.
+     */
+    private function archiveUnion(): \Illuminate\Database\Query\Builder
     {
-        $stamps = $all->map(fn ($i) => strtotime($i['deletedAt'] ?? '') ?: null)->filter();
+        $sqlite = DB::connection()->getDriverName() === 'sqlite';
+        $fullName = $sqlite ? "first_name || ' ' || last_name" : "CONCAT(first_name, ' ', last_name)";
+        $by = "COALESCE(NULLIF(deleted_by, ''), 'SYSTEM')";
+
+        $soft = fn (string $table, string $type, string $nameExpr) => DB::table($table)
+            ->whereNotNull('deleted_at')
+            ->selectRaw("id, '{$type}' as type, {$nameExpr} as name, deleted_at, {$by} as deleted_by");
+
+        // An event's "cancelled" announcement, one row per event (the newest wins).
+        $notifications = DB::table('notifications as n')
+            ->where('n.type', 'event_deleted')
+            ->whereNotNull('n.event_id')
+            ->groupBy('n.event_id')
+            ->selectRaw("n.event_id as id, 'notification' as type, MAX(n.title) as name, MAX(n.updated_at) as deleted_at, "
+                . "COALESCE(NULLIF((select e.deleted_by from events e where e.id = n.event_id), ''), 'SYSTEM') as deleted_by");
+
+        return $soft('memberships', 'membership', 'name')
+            ->unionAll($soft('events', 'event', 'name'))
+            ->unionAll($soft('users', 'resident', $fullName))
+            ->unionAll($notifications)
+            ->unionAll($soft('age_brackets', 'age_bracket', 'label'))
+            ->unionAll($soft('civil_statuses', 'civil_status', 'label'))
+            ->unionAll($soft('current_statuses', 'current_status', 'label'))
+            ->unionAll($soft('inventory_items', 'inventory_item', 'name'))
+            ->unionAll($soft('event_expenses', 'expense', 'item'))
+            ->unionAll($soft('households', 'household', 'code'));
+    }
+
+    private function pagedArchive(Request $request)
+    {
+        $source = fn () => DB::query()->fromSub($this->archiveUnion(), 'a');
+
+        // Figures for the whole archive (not narrowed by the filters below).
+        $agg = $source()->selectRaw('COUNT(*) as total, COUNT(DISTINCT type) as kinds, MAX(deleted_at) as newest, MIN(deleted_at) as oldest')->first();
+        $newest = $agg->newest ? strtotime($agg->newest) : null;
+        $oldest = $agg->oldest ? strtotime($agg->oldest) : null;
         $stats = [
-            'total' => $all->count(),
-            'distinct_types' => $all->pluck('type')->unique()->count(),
-            'newest_at' => $stamps->isNotEmpty() ? date('c', $stamps->max()) : null,
-            'oldest_days' => $stamps->isNotEmpty() ? (int) floor((time() - $stamps->min()) / 86400) : 0,
+            'total' => (int) $agg->total,
+            'distinct_types' => (int) $agg->kinds,
+            'newest_at' => $newest ? date('c', $newest) : null,
+            'oldest_days' => $oldest ? (int) floor((time() - $oldest) / 86400) : 0,
         ];
 
-        $rows = $all;
+        $query = $source();
         if ($request->filled('type') && $request->input('type') !== 'all') {
-            $rows = $rows->where('type', $request->input('type'));
+            $query->where('type', (string) $request->input('type'));
         }
+        // Every typed word must appear in the name, the kind or who deleted it.
+        // (Paged::like escapes % and _ with a backslash; MySQL reads that by default, SQLite needs it declared.)
+        $esc = DB::connection()->getDriverName() === 'sqlite' ? " ESCAPE '\\'" : '';
         foreach (Paged::tokens($request->input('search')) as $word) {
-            $rows = $rows->filter(fn ($i) => str_contains(mb_strtolower(($i['name'] ?? '') . ' ' . ($i['type'] ?? '') . ' ' . ($i['deletedBy'] ?? '')), $word));
+            $like = Paged::like($word);
+            $query->where(fn ($q) => $q->whereRaw("LOWER(name) LIKE ?{$esc}", [$like])
+                ->orWhereRaw("LOWER(type) LIKE ?{$esc}", [$like])
+                ->orWhereRaw("LOWER(deleted_by) LIKE ?{$esc}", [$like]));
         }
 
-        $rows = match ($request->input('sort')) {
-            'oldest' => $rows->sortBy(fn ($i) => (string) $i['deletedAt']),
-            'name-az' => $rows->sortBy(fn ($i) => mb_strtolower((string) $i['name'])),
-            default => $rows->sortByDesc(fn ($i) => (string) $i['deletedAt']),
+        match ($request->input('sort')) {
+            'oldest' => $query->orderBy('deleted_at')->orderBy('id'),
+            'name-az' => $query->orderByRaw('LOWER(name)')->orderBy('id'),
+            default => $query->orderByDesc('deleted_at')->orderByDesc('id'),
         };
 
-        $perPage = Paged::perPage($request, 20);
-        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
-            $rows->forPage(Paged::page($request), $perPage)->values(),
-            $rows->count(),
-            $perPage,
-            Paged::page($request)
-        );
+        $paginator = $query->paginate(Paged::perPage($request, 20), ['*'], 'page', Paged::page($request));
+        $rows = collect($paginator->items())->map(fn ($r) => [
+            'id' => (int) $r->id,
+            'type' => $r->type,
+            'name' => $r->name,
+            'deletedAt' => $r->deleted_at ? date('Y-m-d H:i:s', strtotime($r->deleted_at)) : null,
+            'deletedBy' => $r->deleted_by,
+        ])->values();
 
-        return response()->json(Paged::body($paginator, $paginator->getCollection()->values(), ['stats' => $stats]));
+        return response()->json(Paged::body($paginator, $rows, ['stats' => $stats]));
     }
 
     public function restore(Request $request)
@@ -211,6 +258,17 @@ class ArchiveController extends Controller
             'id'   => 'required|integer',
         ]);
 
+        // One restore of the same record at a time. Two staff clicking Restore
+        // together used to both succeed and both write the "restored" log and
+        // notifications; now the second one finds it already restored.
+        return $this->exclusively(
+            'restore:' . $request->type . ':' . (int) $request->id,
+            fn () => $this->restoreLocked($request)
+        );
+    }
+
+    private function restoreLocked(Request $request)
+    {
         try {
             $itemName = '';
 
@@ -226,6 +284,18 @@ class ArchiveController extends Controller
                 case 'expense':
                     $item = EventExpense::onlyTrashed()->findOrFail($request->id);
                     $itemName = $item->item;
+
+                    // An ended event's budget is locked (no adding, editing or deleting
+                    // expenses), so a removed expense can't quietly come back into it either.
+                    $expenseEvent = Event::withTrashed()->find($item->event_id);
+                    if ($expenseEvent && $expenseEvent->hasEnded()) {
+                        return response()->json([
+                            'message' => 'This event has already ended, so its expenses can no longer be changed.',
+                        ], 422);
+                    }
+
+                    $item->deleted_by = null;
+                    $item->save();
                     $item->restore();
                     break;
 
@@ -264,6 +334,12 @@ class ArchiveController extends Controller
                 case 'event':
                     $item = Event::withTrashed()->findOrFail($request->id);
                     $itemName = $item->name;
+
+                    if (!$item->trashed()) {
+                        // Someone else restored it a moment ago: nothing to do,
+                        // and nothing to log or notify a second time.
+                        return response()->json(['message' => 'Item restored successfully']);
+                    }
 
                     DB::beginTransaction();
                     try {
@@ -333,16 +409,19 @@ class ArchiveController extends Controller
                     break;
             }
 
-            $this->createLog(
-                'Restore',
-                'Archive',
-                "Restored {$request->type} '{$itemName}'"
-            );
+            // Events log their own (more detailed) entries above; every other kind is logged here.
+            if ($itemName !== '') {
+                $this->createLog(
+                    'Restore',
+                    'Archive',
+                    "Restored {$request->type} '{$itemName}'"
+                );
+            }
 
             return response()->json(['message' => 'Item restored successfully']);
 
         } catch (\Exception $e) {
-            return response()->json(['message' => config('app.debug') ? $e->getMessage() : 'Something went wrong. Please try again.'], 500);
+            return response()->json(['message' => $this->safeError($e)], 500);
         }
     }
 
@@ -434,7 +513,7 @@ class ArchiveController extends Controller
             return response()->json(['message' => 'Item permanently deleted']);
 
         } catch (\Exception $e) {
-            return response()->json(['message' => config('app.debug') ? $e->getMessage() : 'Something went wrong. Please try again.'], 500);
+            return response()->json(['message' => $this->safeError($e)], 500);
         }
     }
 }

@@ -89,6 +89,18 @@ input[type="password"]::-ms-reveal {
   }
 }
 
+/* Paper has no hover or tooltip, so a name cut off with "..." is simply lost information. On screen the
+   long names stay on one line (truncate); when printing they wrap onto a second line instead, so no
+   event, item or membership name is ever clipped or runs into the column beside it. */
+@media print {
+  .truncate {
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+}
+
 /* "Page X of Y" printed on every physical sheet, in the page's own bottom
    margin (not part of the report content, so it never collides with a
    card or gets caught by a break-inside-avoid rule). This is the browser's

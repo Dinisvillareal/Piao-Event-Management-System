@@ -158,16 +158,15 @@ export function AttendanceCharts({
   const best = [...finished].sort((a, b) => b.percentage - a.percentage || b.attended - a.attended).slice(0, 6);
   const worst = [...finished].sort((a, b) => a.percentage - b.percentage || b.eligible - a.eligible).slice(0, 6);
 
-  const order = ["child", "youth", "adult", "senior"];
-  const ageSorted = [...(data?.age_breakdown ?? [])]
-    .sort((a: any, b: any) => order.indexOf(String(a.group).toLowerCase()) - order.indexOf(String(b.group).toLowerCase()));
+  // The age groups arrive already in order from the server (the staff-set brackets), each with its range.
+  const ageSorted: any[] = [...(data?.age_breakdown ?? [])];
   const ageTotal = ageSorted.reduce((acc: number, a: any) => acc + Number(a.attended), 0);
   const ageRows = ageSorted.map((a: any) => ({
-    label: t(`age${a.group}`),
+    label: a.label ?? a.group,
     value: Number(a.attended),
     sub: ageTotal > 0 ? `${Math.round((Number(a.attended) / ageTotal) * 100)}%` : "0%",
   }));
-  const ageSelected = ageSorted.findIndex((a: any) => ageGroup && String(a.group).toLowerCase() === ageGroup);
+  const ageSelected = ageSorted.findIndex((a: any) => ageGroup && String(a.group).toLowerCase() === ageGroup.toLowerCase());
   const genderSegments = (data?.gender ?? []).map((g: any, i: number) => ({ label: g.label, value: Number(g.value), color: CHART_SOFT_DEEP[i % CHART_SOFT_DEEP.length] }));
 
   return (
@@ -219,8 +218,10 @@ export function AttendanceCharts({
         <ChartCard title={t("attendanceByAgeGroup")} desc={t("rpAgeDesc")} delay={300}>
           {(() => {
             const pick = onAgeSelect ? (i: number) => {
-              const g = String(ageSorted[i].group).toLowerCase();
-              onAgeSelect(g === ageGroup ? "" : g);
+              // Only real age groups can be used as a filter (not "No birth date" etc.).
+              if (ageSorted[i].filterable === false) return;
+              const g = String(ageSorted[i].group);
+              onAgeSelect(g.toLowerCase() === ageGroup.toLowerCase() ? "" : g);
             } : undefined;
             const sel = ageSelected >= 0 ? ageSelected : null;
             return ageRows.length >= 2 ? (

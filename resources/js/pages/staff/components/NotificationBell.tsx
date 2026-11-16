@@ -140,7 +140,7 @@ function ToastItem({ alert: a, subject, verb, handover, onOpen, onRemove }: {
                 {initialsOf(a.title)}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[10px] font-bold uppercase tracking-wide text-[#7DD8CB]">{a.reply_like ? t("alertNewReaction") : t("alertNewFeedback")}</span>
+                <span className="block text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">{a.reply_like ? t("alertNewReaction") : t("alertNewFeedback")}</span>
                 <span className="mt-px block text-[12.5px] leading-snug text-white">
                   <span className="font-bold">{subject}</span> {verb}
                   {a.event_name && <> {t("alertOn")} <span className="font-semibold">{a.event_name}</span></>}
@@ -218,7 +218,7 @@ export default function NotificationBell() {
       if (abs < 86400 * 7) return rtf.format(Math.round(diff / 86400), "day");
       return new Date(iso).toLocaleDateString(locale, { month: "short", day: "numeric" });
     } catch {
-      return new Date(iso).toLocaleString();
+      return new Date(iso).toLocaleString(locale);
     }
   }, [locale, t]);
 
@@ -346,7 +346,7 @@ export default function NotificationBell() {
       >
         <Bell strokeWidth={2.25} className={`h-[18px] w-[18px] ${unread > 0 && !open ? "bell-ring" : ""}`} />
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-[#0A0E1A]">
+          <span className="absolute -top-1 -right-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-[#0A0E1A]">
             {badge}
           </span>
         )}

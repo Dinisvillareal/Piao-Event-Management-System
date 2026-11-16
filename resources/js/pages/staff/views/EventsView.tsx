@@ -11,7 +11,7 @@ import type { ResponseFields } from "../../../components/ui/FeedbackComment";
 import {
   Filter, X, LogIn, LogOut, ChevronLeft, Archive,
   Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown,
-  Megaphone, ClipboardList, Users, ArrowLeft, Save, Download, Printer, CheckCircle2, ChevronRight, Eye,
+  Megaphone, ClipboardList, Users, AlertTriangle, ArrowLeft, Save, Download, Printer, CheckCircle2, ChevronRight, Eye,
 } from "lucide-react";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
@@ -263,6 +263,8 @@ export function EventsView({
   // Whether the Add/Edit Event modal is open (renamed in spirit from the old
   // "formOpen" toggle for the persistent side panel this replaced).
   const [formOpen, setFormOpen] = useState(false);
+  // Live "is this venue free?" answer for the form; the server checks again on save.
+  const [venueConflict, setVenueConflict] = useState<{ name: string; venue: string; from: string; to: string } | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   // Brief skeleton flash whenever the page number is switched, same as the
   // Activity Logs page (which re-fetches per page). This list paginates
@@ -919,6 +921,18 @@ export function EventsView({
       return;
     }
 
+    if (venueConflict) {
+      setErrorMessage(
+        t("venueBookedBody")
+          .replace("{venue}", venueConflict.venue)
+          .replace("{event}", venueConflict.name)
+          .replace("{from}", formatTime12Hour(venueConflict.from))
+          .replace("{to}", formatTime12Hour(venueConflict.to))
+      );
+      setShowErrorModal(true);
+      return;
+    }
+
     if (newEvent.callTimeStart && newEvent.time && newEvent.callTimeStart === newEvent.time) {
       // Call Time Start must be strictly earlier than the event's own
       // Start Time -- equal would leave a zero-length sign-in window
@@ -973,8 +987,8 @@ export function EventsView({
 
     if (newEvent.approvedBudget.trim() !== "") {
       const budgetValue = Number(newEvent.approvedBudget);
-      if (!Number.isFinite(budgetValue) || budgetValue < 0) {
-        setErrorMessage(t("invalidAmountError"));
+      if (!Number.isFinite(budgetValue) || budgetValue < 0 || budgetValue > 99999999.99 || /\.\d{3,}/.test(newEvent.approvedBudget.trim())) {
+        setErrorMessage(t("invalidBudgetAmountError"));
         setShowErrorModal(true);
         return;
       }
@@ -982,6 +996,33 @@ export function EventsView({
 
     setShowSaveConfirm(true);
   };
+
+  useEffect(() => {
+    const { location, date, time, endTime, callTimeStart } = newEvent;
+    if (!formOpen || !location.trim() || !date || !time || !endTime) {
+      setVenueConflict(null);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await api.get("/events/venue-check", {
+          params: {
+            location,
+            event_start: `${date} ${time}:00`,
+            event_end: `${date} ${endTime}:00`,
+            call_time_start: callTimeStart ? `${date} ${callTimeStart}:00` : undefined,
+            exclude_id: editingEvent?.id,
+          },
+          signal: controller.signal,
+        });
+        setVenueConflict(res.data?.conflict ?? null);
+      } catch {
+        // No answer is not a conflict: the server checks again when the event is saved.
+      }
+    }, 350);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [formOpen, newEvent.location, newEvent.date, newEvent.time, newEvent.endTime, newEvent.callTimeStart, editingEvent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const performSaveEvent = async () => {
     setShowSaveConfirm(false);
@@ -1717,8 +1758,8 @@ export function EventsView({
                           <button
                             type="button"
                             onClick={() => setAttendanceSearch("")}
-                            aria-label="Clear search"
-                            title="Clear"
+                            aria-label={t("clearSearchAria")}
+                            title={t("clearLabel")}
                             className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
                           >
                             {t("clearLabel")}
@@ -2077,7 +2118,7 @@ export function EventsView({
                                             <img src={photos[0]} alt="" className="h-full w-full object-cover" />
                                           </div>
                                           {photos.length > 1 && (
-                                            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#4FBEB0] text-[#0A0E1A] text-[10px] font-bold flex items-center justify-center">
+                                            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#4FBEB0] text-[#0A0E1A] text-[11px] font-bold flex items-center justify-center">
                                               {photos.length}
                                             </span>
                                           )}
@@ -2377,7 +2418,7 @@ export function EventsView({
               ] as ExtraChip[]}
               onClearExtras={() => { setSelectedDate(""); setEventTab("all"); }}
             >
-              <div className="h-11 shrink-0">
+              <div className="h-11 w-full shrink-0 sm:w-auto">
                 <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 pl-4 pr-4 py-2.5" dark />
               </div>
             </FilterBar>
@@ -2640,7 +2681,23 @@ export function EventsView({
                   <div>
                     <label className="block text-base font-semibold text-white mb-1.5">{t("locationRequired")}</label>
                     <input type="text" required value={newEvent.location} placeholder={t("locationPlaceholder")} onChange={(e) => setNewEvent({ ...newEvent, location: e.target.value })} className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70" />
-                  </div>
+                  
+                    {venueConflict && (
+                      <div role="alert" className="mt-2 flex items-start gap-2 rounded-2xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                        <div>
+                          <p className="font-semibold">{t("venueBookedTitle")}</p>
+                          <p>
+                            {t("venueBookedBody")
+                              .replace("{venue}", venueConflict.venue)
+                              .replace("{event}", venueConflict.name)
+                              .replace("{from}", formatTime12Hour(venueConflict.from))
+                              .replace("{to}", formatTime12Hour(venueConflict.to))}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+</div>
                 </div>
               </section>
 
@@ -2677,6 +2734,7 @@ export function EventsView({
                     <NumberStepper
                       fullWidth
                       min={0}
+                      max={99999999.99}
                       step={0.01}
                       value={newEvent.approvedBudget}
                       onChange={(v) => setNewEvent({ ...newEvent, approvedBudget: v })}
@@ -2787,10 +2845,10 @@ export function EventsView({
               <div className="sticky bottom-0 z-10 -mx-6 border-t border-white/10 bg-[#0A0E1A] px-6 py-4 sm:-mx-12 sm:px-12">
                 <button
                   type="submit"
-                  disabled={isSubmitting || isEventFormUnchanged}
-                  title={isEventFormUnchanged ? t("noChangesToSaveHint") : undefined}
+                  disabled={isSubmitting || isEventFormUnchanged || !!venueConflict}
+                  title={venueConflict ? t("venueBookedTitle") : isEventFormUnchanged ? t("noChangesToSaveHint") : undefined}
                   className={`group w-full inline-flex items-center justify-center gap-3 rounded-full border pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide shadow-sm transition-all duration-500 ease-out ${
-                    !isSubmitting && !isEventFormUnchanged
+                    !isSubmitting && !isEventFormUnchanged && !venueConflict
                       ? "border-[#1E3A5F] bg-[#1E3A5F] text-white hover:border-[#122436] hover:bg-[#122436] hover:shadow-md"
                       : "border-white/10 bg-white/[0.02] text-white/30 cursor-not-allowed"
                   }`}

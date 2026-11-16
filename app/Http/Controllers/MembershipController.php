@@ -19,7 +19,7 @@ class MembershipController extends Controller
         // ✅ ONLY show active (not archived) memberships
         $query = Membership::withoutTrashed()
             ->where('is_active', true)
-            ->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus']);
+            ->with(['eligibleAgeBrackets', 'eligibleCivilStatus', 'eligibleCurrentStatus']);
 
         // paged=1 (Memberships screen): search, order and page are done here.
         if ($request->boolean('paged')) {
@@ -60,7 +60,8 @@ class MembershipController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'eligible_age_bracket_id' => 'nullable|exists:age_brackets,id',
+            'eligible_age_bracket_ids' => 'nullable|array|max:20',
+            'eligible_age_bracket_ids.*' => 'integer|distinct|exists:age_brackets,id',
             'eligible_civil_status_id' => 'nullable|exists:civil_statuses,id',
             'eligible_current_status_id' => 'nullable|exists:current_statuses,id',
             'eligible_gender' => 'nullable|in:Male,Female',
@@ -73,11 +74,12 @@ class MembershipController extends Controller
                 'name' => $request->name,
                 'description' => $request->description,
                 'is_active' => true,  // ✅ Explicitly set active
-                'eligible_age_bracket_id' => $request->eligible_age_bracket_id ?: null,
                 'eligible_civil_status_id' => $request->eligible_civil_status_id ?: null,
                 'eligible_current_status_id' => $request->eligible_current_status_id ?: null,
                 'eligible_gender' => $request->eligible_gender ?: null,
             ]);
+
+            $membership->eligibleAgeBrackets()->sync($this->ageBracketIds($request));
 
             $this->createLog(
                 'Create Membership',
@@ -86,15 +88,87 @@ class MembershipController extends Controller
             );
 
             DB::commit();
-            return response()->json($membership, 201);
+            return response()->json($membership->load('eligibleAgeBrackets'), 201);
 
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
                 'message' => 'Failed to create membership',
-                'error' => $e->getMessage()
+                'error' => $this->safeError($e),
             ], 500);
         }
+    }
+
+    /**
+     * Live "who would qualify?" check for the Add / Edit form. Applies the same
+     * rule as checkMembershipEligibility(): the resident's age bracket must be
+     * one of the selected brackets (nothing selected = any age), and every other
+     * filter that is set must match too. Nothing is saved.
+     *
+     * Residents with no birth date can never match an age rule, so they are
+     * counted separately (missing_birth_date) for staff to fix.
+     */
+    public function eligibilityPreview(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'eligible_age_bracket_ids' => 'nullable|array|max:20',
+            'eligible_age_bracket_ids.*' => 'integer|exists:age_brackets,id',
+            'eligible_civil_status_id' => 'nullable|integer',
+            'eligible_current_status_id' => 'nullable|integer',
+            'eligible_gender' => 'nullable|in:Male,Female',
+            'membership_id' => 'nullable|integer',
+        ]);
+
+        $bracketIds = $this->ageBracketIds($request);
+        $civil = $request->filled('eligible_civil_status_id') ? (int) $request->eligible_civil_status_id : null;
+        $current = $request->filled('eligible_current_status_id') ? (int) $request->eligible_current_status_id : null;
+        $gender = $request->input('eligible_gender') ?: null;
+
+        $matches = function ($user) use ($bracketIds, $civil, $current, $gender): bool {
+            if (!empty($bracketIds)) {
+                $bracket = AgeBracket::resolveForAge($user->age);
+                if (!$bracket || !in_array((int) $bracket->id, $bracketIds, true)) return false;
+            }
+            if ($civil && (int) $user->civil_status_id !== $civil) return false;
+            if ($current && !$user->currentStatuses->contains('id', $current)) return false;
+            if ($gender && $user->gender !== $gender) return false;
+            return true;
+        };
+
+        $residents = \App\Models\User::where('role', 'Resident')
+            ->with('currentStatuses:id')
+            ->get(['id', 'birth_date', 'civil_status_id', 'gender']);
+
+        $qualify = $residents->filter($matches)->count();
+        $missingBirth = empty($bracketIds) ? 0 : $residents->whereNull('birth_date')->count();
+
+        // Editing a live program: how many CURRENT members would stop matching.
+        $wouldLose = 0;
+        if ($request->filled('membership_id')) {
+            $membership = Membership::withoutTrashed()->find((int) $request->membership_id);
+            if ($membership) {
+                $wouldLose = $membership->users()->with('currentStatuses:id')->get()
+                    ->reject($matches)->count();
+            }
+        }
+
+        return response()->json([
+            'qualify' => $qualify,
+            'total_residents' => $residents->count(),
+            'missing_birth_date' => $missingBirth,
+            'current_members_no_longer_match' => $wouldLose,
+        ]);
+    }
+
+    /** De-duplicated bracket ids from the request (empty = any age). */
+    private function ageBracketIds(Request $request): array
+    {
+        return collect($request->input('eligible_age_bracket_ids', []))
+            ->filter()->map(fn ($v) => (int) $v)->unique()->values()->all();
     }
 
     // =========================
@@ -104,7 +178,7 @@ class MembershipController extends Controller
     {
         return response()->json(
             Membership::withoutTrashed()
-                ->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
+                ->with(['eligibleAgeBrackets', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
                 ->findOrFail($id)
         );
     }
@@ -121,7 +195,8 @@ class MembershipController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'eligible_age_bracket_id' => 'nullable|exists:age_brackets,id',
+            'eligible_age_bracket_ids' => 'nullable|array|max:20',
+            'eligible_age_bracket_ids.*' => 'integer|distinct|exists:age_brackets,id',
             'eligible_civil_status_id' => 'nullable|exists:civil_statuses,id',
             'eligible_current_status_id' => 'nullable|exists:current_statuses,id',
             'eligible_gender' => 'nullable|in:Male,Female',
@@ -130,16 +205,19 @@ class MembershipController extends Controller
         DB::beginTransaction();
 
         try {
-            $membership = Membership::withoutTrashed()->findOrFail($id);
+            // lockForUpdate: two staff saving the same membership at once are serialized, so the
+            // age-bracket list is replaced by one save at a time (no mixed result).
+            $membership = Membership::withoutTrashed()->lockForUpdate()->findOrFail($id);
 
             $membership->update([
                 'name' => $request->name,
                 'description' => $request->description,
-                'eligible_age_bracket_id' => $request->eligible_age_bracket_id ?: null,
                 'eligible_civil_status_id' => $request->eligible_civil_status_id ?: null,
                 'eligible_current_status_id' => $request->eligible_current_status_id ?: null,
                 'eligible_gender' => $request->eligible_gender ?: null,
             ]);
+
+            $membership->eligibleAgeBrackets()->sync($this->ageBracketIds($request));
 
             $this->createLog(
                 'Update Membership',
@@ -154,7 +232,7 @@ class MembershipController extends Controller
             DB::rollBack();
             return response()->json([
                 'message' => 'Failed to update membership',
-                'error' => $e->getMessage()
+                'error' => $this->safeError($e),
             ], 500);
         }
     }
@@ -208,11 +286,11 @@ class MembershipController extends Controller
         $this->createLog(
             'Archive Membership Error',
             'Membership',
-            "Error archiving membership: " . $e->getMessage()
+            "Error archiving membership: " . $this->safeError($e)
         );
         
         return response()->json([
-            'message' => 'Failed to archive membership: ' . $e->getMessage()
+            'message' => 'Failed to archive membership: ' . $this->safeError($e)
         ], 500);
     }
 }
@@ -248,7 +326,7 @@ class MembershipController extends Controller
             DB::rollBack();
             return response()->json([
                 'message' => 'Failed to restore membership',
-                'error' => $e->getMessage()
+                'error' => $this->safeError($e),
             ], 500);
         }
     }
@@ -339,7 +417,9 @@ class MembershipController extends Controller
 
         $membership = Membership::withoutTrashed()->findOrFail($id);
 
-        if (!$membership->eligible_age_bracket_id
+        $requiredBracketIds = $membership->eligibleAgeBracketIds();
+
+        if (empty($requiredBracketIds)
             && !$membership->eligible_civil_status_id
             && !$membership->eligible_current_status_id
             && !$membership->eligible_gender) {
@@ -353,9 +433,9 @@ class MembershipController extends Controller
         foreach ($members as $user) {
             $reasons = [];
 
-            if ($membership->eligible_age_bracket_id) {
+            if (!empty($requiredBracketIds)) {
                 $bracket = AgeBracket::resolveForAge($user->age);
-                if (!$bracket || (int) $bracket->id !== (int) $membership->eligible_age_bracket_id) {
+                if (!$bracket || !in_array((int) $bracket->id, $requiredBracketIds, true)) {
                     $reasons[] = 'no longer in the required age group';
                 }
             }

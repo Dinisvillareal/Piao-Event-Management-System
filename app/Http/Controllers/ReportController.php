@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Support\BarangayOfficials;
+use App\Models\AgeBracket;
 use App\Models\Event;
 use App\Models\EventAttendance;
 use App\Models\EventExpense;
@@ -10,6 +11,7 @@ use App\Models\Feedback;
 use App\Models\InventoryItem;
 use App\Models\GeneratedReport;
 use App\Models\Membership;
+use App\Models\User;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -56,7 +58,7 @@ class ReportController extends Controller
         $dateFrom = $request->filled('date_from') ? $request->date_from : null;
         $dateTo = $request->filled('date_to') ? $request->date_to : null;
         $membershipId = $request->filled('membership_id') ? (int) $request->membership_id : null;
-        $ageGroup = $request->filled('age_group') ? strtolower($request->age_group) : null;
+        $ageGroup = $request->filled('age_group') ? trim((string) $request->age_group) : null;
 
         $eventsQuery = Event::withoutTrashed();
         if ($dateFrom) $eventsQuery->whereDate('event_start', '>=', $dateFrom);
@@ -67,38 +69,44 @@ class ReportController extends Controller
 
         $events = $eventsQuery->orderBy('event_start')->get();
 
-        // Events that haven't ended yet pick up anyone newly eligible (e.g.
-        // staff, who now count as residents) so the eligible count matches
-        // the real list. Finished events keep their record untouched.
-        foreach ($events as $ev) {
-            if (!$ev->event_end || strtotime((string) $ev->event_end) > time()) {
-                $ev->addMissingAttendanceRecords();
-            }
-        }
-
         $eventIds = $events->pluck('id');
 
-        $ageRanges = [
-            'child' => [0, 12],
-            'youth' => [13, 17],
-            'adult' => [18, 59],
-            'senior' => [60, 150],
-        ];
+        // One rule for "who is in this age group", shared with the Residents list: the
+        // staff-set age brackets (see AgeBracket). A report only READS data -- it never
+        // creates attendance rows -- so two people running it get the same numbers.
+        $inAgeGroup = fn ($userQuery) => $ageGroup ? AgeBracket::applyToUserQuery($userQuery, $ageGroup) : null;
 
         $attendanceQuery = EventAttendance::whereIn('event_id', $eventIds)->with('user');
-        if ($ageGroup && isset($ageRanges[$ageGroup])) {
-            [$min, $max] = $ageRanges[$ageGroup];
-            $attendanceQuery->whereHas('user', function ($q) use ($min, $max) {
-                $q->whereNotNull('birth_date')
-                    ->whereRaw('TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN ? AND ?', [$min, $max]);
-            });
+        if ($ageGroup) {
+            $attendanceQuery->whereHas('user', $inAgeGroup);
         }
         $attendances = $attendanceQuery->get();
 
-        $totalEligible = 0;
-        foreach ($events as $event) {
-            $totalEligible += $event->attendances()->count();
+        // Events that have not ended yet: anyone newly eligible (for example a resident
+        // registered after the event was posted) has no attendance row yet. They are
+        // counted here as expected attendees, in memory only, so the eligible count
+        // matches the real list without writing anything.
+        foreach ($events as $ev) {
+            if ($ev->event_end && strtotime((string) $ev->event_end) <= time()) {
+                continue;
+            }
+            $missingIds = $ev->missingAttendanceUserIds();
+            if (!$missingIds) {
+                continue;
+            }
+            $missingUsers = User::whereIn('id', $missingIds)
+                ->when($ageGroup, fn ($q) => $inAgeGroup($q))
+                ->get();
+            foreach ($missingUsers as $u) {
+                $row = new EventAttendance(['event_id' => $ev->id, 'user_id' => $u->id, 'status' => 'missed']);
+                $row->setRelation('user', $u);
+                $attendances->push($row);
+            }
         }
+
+        // Eligible = everyone expected at the event who is in the chosen age group
+        // (all of them when no age group is chosen).
+        $totalEligible = $attendances->count();
 
         // Attended = Complete + Incomplete (any sign-in and/or sign-out on record).
         $attendedCount = $attendances->filter(fn ($a) => $a->time_in || $a->time_out)->count();
@@ -115,7 +123,7 @@ class ReportController extends Controller
 
         $perEvent = $events->map(function ($event) use ($attendances, $includeAttendees, $eventIdFilter, $attendeeFilter) {
             $eventAttendances = $attendances->where('event_id', $event->id);
-            $eligible = $event->attendances()->count();
+            $eligible = $eventAttendances->count();
             $attended = $eventAttendances->filter(fn ($a) => $a->time_in || $a->time_out)->count();
             $status = $this->eventStatusLabel($event);
 
@@ -152,7 +160,8 @@ class ReportController extends Controller
                         $middle = $u && $u->middle_name ? ' ' . mb_substr($u->middle_name, 0, 1) . '.' : '';
 
                         return [
-                            'id' => $a->id,
+                            // A not-yet-saved row (expected attendee) has no id of its own: use a unique negative number.
+                            'id' => $a->id ?? -(int) $a->user_id,
                             'user_code' => $u->user_code ?? null,
                             'name' => $u ? trim(($u->last_name ?? '') . ', ' . ($u->first_name ?? '') . $middle) : '—',
                             'age' => $u->age ?? null,
@@ -180,17 +189,47 @@ class ReportController extends Controller
             ->sortKeys()
             ->values();
 
-        $ageBreakdown = collect($ageRanges)->map(function ($range, $label) use ($eventIds) {
-            [$min, $max] = $range;
-            $count = EventAttendance::whereIn('event_id', $eventIds)
-                ->where(fn ($q) => $q->whereNotNull('time_in')->orWhereNotNull('time_out'))
-                ->whereHas('user', function ($q) use ($min, $max) {
-                    $q->whereNotNull('birth_date')
-                        ->whereRaw('TIMESTAMPDIFF(YEAR, birth_date, CURDATE()) BETWEEN ? AND ?', [$min, $max]);
-                })->count();
-
-            return ['group' => ucfirst($label), 'attended' => $count];
-        })->values();
+        // Who attended, by age group. Built from the same groups the Residents list uses
+        // (the staff-set age brackets), and not narrowed by the age filter so the chart
+        // can show every group. People with no birth date, or whose age no group covers,
+        // get their own bars so the bars always add up to everyone who attended.
+        $attendedUsers = EventAttendance::whereIn('event_id', $eventIds)
+            ->where(fn ($q) => $q->whereNotNull('time_in')->orWhereNotNull('time_out'))
+            ->with('user:id,birth_date')
+            ->get();
+        $ageCounts = array_fill_keys(AgeBracket::groupLabels(), 0);
+        $noBirthDate = 0;
+        $outsideGroups = 0;
+        foreach ($attendedUsers as $a) {
+            $age = $a->user?->age;
+            if ($age === null) {
+                $noBirthDate++;
+                continue;
+            }
+            $label = AgeBracket::labelForAge($age);
+            if ($label === null) {
+                $outsideGroups++;
+            } else {
+                $ageCounts[$label] = ($ageCounts[$label] ?? 0) + 1;
+            }
+        }
+        $ageRangeText = [];
+        foreach (AgeBracket::groupInfo() as [$gLabel, $gMin, $gMax]) {
+            $ageRangeText[$gLabel] = $gMax === null ? "{$gMin}+" : "{$gMin}-{$gMax}";
+        }
+        $ageBreakdown = collect($ageCounts)->map(fn ($count, $label) => [
+            'group' => $label,
+            'label' => $label . (isset($ageRangeText[$label]) ? " ({$ageRangeText[$label]})" : ''),
+            'range' => $ageRangeText[$label] ?? null,
+            'attended' => $count,
+            'filterable' => true,
+        ])->values();
+        if ($outsideGroups > 0) {
+            $ageBreakdown->push(['group' => 'Outside the age groups', 'label' => 'Outside the age groups', 'range' => null, 'attended' => $outsideGroups, 'filterable' => false]);
+        }
+        if ($noBirthDate > 0) {
+            $ageBreakdown->push(['group' => 'No birth date', 'label' => 'No birth date', 'range' => null, 'attended' => $noBirthDate, 'filterable' => false]);
+        }
 
         $avgRating = Feedback::whereIn('event_id', $eventIds)->avg('rating');
 
@@ -290,7 +329,7 @@ class ReportController extends Controller
 
         $query = Membership::withoutTrashed()
             ->where('is_active', true)
-            ->with(['eligibleAgeBracket', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
+            ->with(['eligibleAgeBrackets', 'eligibleCivilStatus', 'eligibleCurrentStatus'])
             ->withCount('users');
 
         if ($membershipId) {
@@ -304,7 +343,7 @@ class ReportController extends Controller
                 'id' => $m->id,
                 'name' => $m->name,
                 'member_count' => $m->users_count,
-                'eligible_age_bracket' => $m->eligibleAgeBracket?->label,
+                'eligible_age_bracket' => $m->eligibleAgeBrackets->pluck('label')->implode(', ') ?: null,
                 'eligible_civil_status' => $m->eligibleCivilStatus?->label,
                 'eligible_current_status' => $m->eligibleCurrentStatus?->label,
                 'eligible_gender' => $m->eligible_gender,
@@ -761,7 +800,21 @@ class ReportController extends Controller
 
             return $event ? "the event \"{$event->name}\"" : $range();
         }
-        if ($type === 'attendance' || $type === 'budget') {
+        if ($type === 'attendance') {
+            $text = $range();
+            if ($request->filled('membership_id')) {
+                $m = Membership::find((int) $request->membership_id);
+                if ($m) {
+                    $text .= ", limited to the \"{$m->name}\" membership";
+                }
+            }
+            if ($request->filled('age_group')) {
+                $text .= ', limited to the age group ' . trim((string) $request->age_group);
+            }
+
+            return $text;
+        }
+        if ($type === 'budget') {
             return $range();
         }
         if ($type === 'membership') {
@@ -892,10 +945,19 @@ class ReportController extends Controller
         if ($type === 'attendance' || $type === 'budget') {
             $from = $request->filled('date_from') ? $request->date_from : null;
             $to = $request->filled('date_to') ? $request->date_to : null;
-            if ($from || $to) {
-                return 'Period: ' . ($from ?: 'Start') . ' – ' . ($to ?: 'Present');
+            $line = ($from || $to) ? 'Period: ' . ($from ?: 'Start') . ' – ' . ($to ?: 'Present') : 'Period: All Dates';
+            if ($type === 'attendance') {
+                if ($request->filled('membership_id')) {
+                    $m = Membership::find((int) $request->membership_id);
+                    if ($m) {
+                        $line .= " · Membership: {$m->name}";
+                    }
+                }
+                if ($request->filled('age_group')) {
+                    $line .= ' · Age group: ' . trim((string) $request->age_group);
+                }
             }
-            return 'Period: All Dates';
+            return $line;
         }
 
         if ($type === 'membership') {
@@ -972,7 +1034,7 @@ class ReportController extends Controller
                 if ($show('age')) {
                     $this->addCardRow($section, [[100, function ($cell, $inner) use ($data) {
                         $this->addCardHeading($cell, 'Attendance by Age Group', 'Adviser recommendation: resident profiling filtered by age.');
-                        $this->addVerticalBarChart($cell, $data['age_breakdown'], 'attended', 'group', 'E8B84A', $inner);
+                        $this->addVerticalBarChart($cell, $data['age_breakdown'], 'attended', 'label', 'E8B84A', $inner);
                     }]]);
                 }
 
@@ -1842,23 +1904,12 @@ class ReportController extends Controller
             ]);
         }
 
-        $header = array_column($table['columns'], 'label');
-        $rows = $table['rows'];
-        $fileName = Str::slug($payload['reportTitle']) . '-' . now()->format('Ymd') . '.csv';
-
-        return response()->streamDownload(function () use ($header, $rows, $payload) {
-            $out = fopen('php://output', 'w');
-            fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads accents and the peso sign correctly
-            fputcsv($out, [$payload['reportTitle']]);
-            fputcsv($out, [$payload['filterSummary'], 'Generated ' . now()->format('F j, Y g:i A')]);
-            fputcsv($out, []);
-            fputcsv($out, $header);
-            foreach ($rows as $row) {
-                // Guard against spreadsheet formula injection from user-typed names.
-                fputcsv($out, array_map(fn ($v) => is_string($v) && $v !== '' && in_array($v[0], ['=', '+', '-', '@'], true) ? "'" . $v : $v, $row));
-            }
-            fclose($out);
-        }, $fileName, ['Content-Type' => 'text/csv; charset=UTF-8']);
+        return \App\Support\CsvReport::stream(
+            $payload['reportTitle'],
+            $payload['filterSummary'],
+            array_column($table['columns'], 'label'),
+            $table['rows']
+        );
     }
 
     /**

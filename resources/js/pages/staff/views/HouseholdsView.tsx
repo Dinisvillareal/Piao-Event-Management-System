@@ -456,7 +456,7 @@ export default function HouseholdsView() {
                   type="button"
                   onClick={() => { setSearch(a.code); setExpandedId(a.id); }}
                   title={t("hhAlertAssign")}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-black/20 px-3 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-400/20 transition"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-amber-400/30 bg-black/20 px-3 py-2 text-xs sm:py-1 font-semibold text-amber-200 hover:bg-amber-400/20 transition"
                 >
                   <Home className="h-3.5 w-3.5" /> {a.code}
                 </button>
@@ -541,7 +541,7 @@ export default function HouseholdsView() {
                           <div key={m.id} className="flex items-center gap-2 rounded-full bg-white/[0.05] border border-white/10 pl-3 pr-1.5 py-1.5 text-sm">
                             <span className="font-medium text-white">{highlightMatches(fullName(m), search)}</span>
                             {m.role === "Staff" && (
-                              <span className="rounded-full bg-gold-400/15 text-gold-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
+                              <span className="rounded-full bg-gold-400/15 text-gold-300 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
                             )}
                             <span className="text-white/40">{highlightMatches(m.user_code, search)}</span>
                             <button
@@ -578,8 +578,8 @@ export default function HouseholdsView() {
                           <button
                             type="button"
                             onClick={() => setMemberSearch("")}
-                            aria-label="Clear search"
-                            title="Clear"
+                            aria-label={t("clearSearchAria")}
+                            title={t("clearLabel")}
                             className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
                           >
                             {t("clearLabel")}
@@ -599,7 +599,7 @@ export default function HouseholdsView() {
                                 <span className="flex items-center gap-1.5 text-white">
                                   {highlightMatches(fullName(m), memberSearch)}
                                   {m.role === "Staff" && (
-                                    <span className="rounded-full bg-gold-400/15 text-gold-300 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
+                                    <span className="rounded-full bg-gold-400/15 text-gold-300 px-1.5 py-0.5 text-[11px] font-bold uppercase tracking-wide">{t("staffBadge")}</span>
                                   )}
                                 </span>
                                 <span className="text-white/40">{highlightMatches(m.user_code, memberSearch)}</span>
@@ -677,7 +677,7 @@ export default function HouseholdsView() {
                 {addHead && (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-500/10 border border-gold-400/25 pl-3.5 pr-2 py-1.5 text-base font-medium text-gold-300">
                     <Star className="h-3.5 w-3.5 fill-gold-300" /> {fullName(addHead)}
-                    <button type="button" onClick={() => setAddHeadId(null)} className="p-1 rounded-full hover:text-white" aria-label="Clear head"><X className="h-3.5 w-3.5" /></button>
+                    <button type="button" onClick={() => setAddHeadId(null)} className="p-1 rounded-full hover:text-white" aria-label={t("clearHeadAria")}><X className="h-3.5 w-3.5" /></button>
                   </span>
                 )}
                 <div className="relative">

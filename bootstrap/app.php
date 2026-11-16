@@ -12,6 +12,11 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->statefulApi();
+
+        // The SPA stores the chosen interface language in a plain (unencrypted)
+        // cookie so the server can answer in the same language.
+        $middleware->encryptCookies(except: ['piao_lang']);
+        $middleware->web(append: [\App\Http\Middleware\LocalizeApi::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

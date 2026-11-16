@@ -18,6 +18,19 @@ const LanguageContext = createContext<LanguageContextValue>({
 });
 
 const STORAGE_KEY = "piao_language";
+const LANG_COOKIE = "piao_lang";
+
+/**
+ * Mirror the chosen language into a plain cookie so the Laravel API can answer
+ * (error / success messages) in the same language. It carries no personal data.
+ */
+function writeLanguageCookie(lang: LanguageCode) {
+  try {
+    document.cookie = `${LANG_COOKIE}=${lang}; path=/; max-age=31536000; SameSite=Lax`;
+  } catch {
+    // ignore (cookies blocked)
+  }
+}
 
 function readInitialLanguage(): LanguageCode {
   try {
@@ -40,6 +53,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   const setLanguage = useCallback((lang: LanguageCode, opts?: { userId?: string | number }) => {
     setLanguageState(lang);
+    writeLanguageCookie(lang);
     try {
       localStorage.setItem(STORAGE_KEY, lang);
     } catch {
@@ -59,6 +73,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     document.documentElement.lang = language === "en" ? "en" : language;
+    writeLanguageCookie(language);
   }, [language]);
 
   return (

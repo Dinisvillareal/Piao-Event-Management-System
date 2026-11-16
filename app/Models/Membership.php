@@ -10,7 +10,7 @@ class Membership extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['name', 'description', 'is_active', 'deactivated_reason','deleted_by', 'eligible_age_bracket_id', 'eligible_civil_status_id', 'eligible_current_status_id', 'eligible_gender'];
+    protected $fillable = ['name', 'description', 'is_active', 'deactivated_reason','deleted_by', 'eligible_civil_status_id', 'eligible_current_status_id', 'eligible_gender'];
 
     public $timestamps = false;
 
@@ -45,9 +45,21 @@ class Membership extends Model
      * gate Staff can attach to a membership under Settings -> Profiling.
      * Null on either side means "no restriction" (open to everyone).
      */
-    public function eligibleAgeBracket()
+    public function eligibleAgeBrackets(): BelongsToMany
     {
-        return $this->belongsTo(AgeBracket::class, 'eligible_age_bracket_id');
+        // withTrashed(): a bracket archived later must still show on (and keep
+        // gating) the programs that use it, instead of silently vanishing and
+        // turning the program into "any age".
+        return $this->belongsToMany(AgeBracket::class, 'membership_age_bracket', 'membership_id', 'age_bracket_id')
+            ->withTrashed()
+            ->orderBy('age_brackets.sort_order')
+            ->orderBy('age_brackets.min_age');
+    }
+
+    /** Ids of the age brackets this program is open to (empty = any age). */
+    public function eligibleAgeBracketIds(): array
+    {
+        return $this->eligibleAgeBrackets->pluck('id')->map(fn ($v) => (int) $v)->all();
     }
 
     public function eligibleCivilStatus()
@@ -64,7 +76,7 @@ class Membership extends Model
     public function archive(?string $reason = null, ?string $deletedBy = null): void
     {
         if ($this->hasResidentsAssigned()) {
-            throw new \Exception('Archive failed: Membership is currently in use');
+            throw new \App\Exceptions\UserFacingException('Archive failed: Membership is currently in use');
         }
         
         $this->update([

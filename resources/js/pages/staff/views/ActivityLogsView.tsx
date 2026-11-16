@@ -15,6 +15,8 @@ import {
   Bell,
   QrCode,
   ArrowUpDown,
+  FileSpreadsheet,
+  FileText,
 } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import StatCardSkeleton, { usePageOpenSkeleton } from "../../../components/ui/StatCardSkeleton";
@@ -22,6 +24,12 @@ import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
+import ExportReportDialog, { ExportBox, type ExportColumnOption } from "../../../components/ui/ExportReportDialog";
+import api, { apiErrorMessage } from "../../../lib/api";
+import { ACTIVITY_EXPORT_COLUMNS, EXCEL_MAX_ROWS, pdfMaxRows, type ActivityExportColumnKey } from "../../../lib/activityLogExport";
+import { MIN_EXPORT_COLUMNS } from "../../../lib/tableExport";
 
 type Activity = {
   id: number;
@@ -34,6 +42,9 @@ type Activity = {
 };
 
 const itemsPerPage = 20;
+
+// Columns ticked by default in the export window: everything but the IP address (a security detail, tick it when needed).
+const DEFAULT_EXPORT_COLUMNS: ActivityExportColumnKey[] = ACTIVITY_EXPORT_COLUMNS.map((c) => c.key).filter((k) => k !== "ip");
 
 // Dark-palette badge colors per module type -- teal for routine records,
 // gold for scans/notifications (worth a glance), rust for auth/system
@@ -104,6 +115,130 @@ export default function ActivityLogsView() {
   // or when a filter changes.
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
+
+  // Export (Excel / PDF): same flow as the Residents Master List. Clicking a button opens an options
+  // window (which entries, which columns, optional message), then a confirm, then the download and a
+  // success message. The server builds the report from the log itself for the SAME filters as the
+  // list, so the file holds every matching entry (not just this page) and never disagrees with the
+  // screen. The files are always English, like the other official reports.
+  type ExportPeriod = "all" | "today" | "7d" | "30d";
+  const [exportDialog, setExportDialog] = useState<"excel" | "pdf" | null>(null);
+  const [exportCols, setExportCols] = useState<ActivityExportColumnKey[]>(DEFAULT_EXPORT_COLUMNS);
+  const [exportPeriod, setExportPeriod] = useState<ExportPeriod>("all");
+  const [exportApply, setExportApply] = useState(true);
+  const [exportMessage, setExportMessage] = useState(true);
+  const [confirmExport, setConfirmExport] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportSuccess, setExportSuccess] = useState<"excel" | "pdf" | null>(null);
+  const [exportError, setExportError] = useState("");
+  const [exportCount, setExportCount] = useState<number | null>(null);
+
+  const hasScreenFilters = searchQuery.trim() !== "" || filterType !== "all" || selectedDate !== "";
+  // A PDF holds fewer entries than an Excel file (limited by rows x columns); say so before downloading, not after.
+  const pdfLimit = pdfMaxRows(exportCols.length);
+  const pdfTooMany = exportDialog === "pdf" && exportCount !== null && exportCount > pdfLimit;
+  const excelTooMany = exportDialog === "excel" && exportCount !== null && exportCount > EXCEL_MAX_ROWS;
+  // A day chosen on the screen wins over the quick period (the server does the same).
+  const periodLocked = exportApply && selectedDate !== "";
+
+  /** The filters the report is built from: the screen's (when ticked) plus the quick period. */
+  const exportParams = () => {
+    const params: Record<string, string> = { sort: sortOrder };
+    if (exportApply) {
+      if (searchQuery.trim()) params.search = searchQuery.trim();
+      if (filterType !== "all") params.type = filterType;
+      if (selectedDate) params.date = selectedDate;
+    }
+    if (!periodLocked && exportPeriod !== "all") params.period = exportPeriod;
+    return params;
+  };
+
+  const openExportDialog = (format: "excel" | "pdf") => {
+    setExportApply(true);
+    setExportPeriod("all");
+    setExportMessage(true);
+    setExportError("");
+    setExportCount(null);
+    setExportDialog(format);
+  };
+
+  // "N entries" in the window, counted by the server for the chosen options.
+  useEffect(() => {
+    if (!exportDialog) return;
+    let cancelled = false;
+    setExportCount(null);
+    api
+      .get("/activity-logs", { params: { ...exportParams(), page: 1 } })
+      .then((res) => {
+        if (!cancelled) setExportCount(typeof res.data?.total === "number" ? res.data.total : 0);
+      })
+      .catch(() => {
+        if (!cancelled) setExportCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exportDialog, exportApply, exportPeriod, searchQuery, filterType, selectedDate, sortOrder]);
+
+  /** A failed download comes back as a Blob when a PDF was asked for -- read the server's message out of it. */
+  const exportFailureText = async (e: unknown) => {
+    const data = (e as any)?.response?.data;
+    if (data instanceof Blob) {
+      try {
+        const text = JSON.parse(await data.text());
+        if (text?.message) return String(text.message);
+      } catch {
+        /* fall through to the generic text */
+      }
+      return t("activityExportFailed");
+    }
+    return apiErrorMessage(e, t("activityExportFailed"));
+  };
+
+  const saveBlob = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const performExport = async () => {
+    const format = exportDialog;
+    if (!format || exporting || exportCols.length < MIN_EXPORT_COLUMNS) return;
+    setExporting(true);
+    setExportError("");
+    try {
+      // Columns in the fixed print order, not the order they were ticked.
+      const columns = ACTIVITY_EXPORT_COLUMNS.filter((c) => exportCols.includes(c.key)).map((c) => c.key);
+      const params = { ...exportParams(), columns, message: exportMessage ? 1 : 0 };
+      if (format === "excel") {
+        const response = await api.get("/activity-logs/export/csv", { params: { ...params, as: "json" } });
+        const { exportActivityXlsx } = await import("../../../lib/activityLogExport");
+        await exportActivityXlsx(response.data);
+      } else {
+        const response = await api.post("/activity-logs/export/pdf", params, { responseType: "blob", headers: { Accept: "application/pdf" } });
+        saveBlob(new Blob([response.data], { type: "application/pdf" }), `activity-log-report-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}.pdf`);
+      }
+      setExportDialog(null);
+      setExportSuccess(format);
+    } catch (e) {
+      // Keep the window open so the staff member can narrow the filters (e.g. "too many entries") and try again.
+      setExportError(await exportFailureText(e));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const columnOptions: ExportColumnOption[] = ACTIVITY_EXPORT_COLUMNS.map((c) => ({
+    key: c.key,
+    label: t(`actCol_${c.key}`),
+    description: t(`actColDesc_${c.key}`),
+  }));
 
   // =========================
   // MAP MODULE TO TYPE
@@ -373,6 +508,29 @@ export default function ActivityLogsView() {
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("activitylogs")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("activityLogsSubtitle")}</p>
         </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => openExportDialog("excel")}
+            disabled={loading || totalRecords === 0}
+            title={t("activityExportExcelTitle")}
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 text-[13px] font-semibold text-white transition-all duration-300 hover:border-[#1E3A5F] hover:bg-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <FileSpreadsheet className="h-4 w-4 text-[#7DD8CB]" />
+            {t("resExportExcel")}
+          </button>
+          <button
+            type="button"
+            onClick={() => openExportDialog("pdf")}
+            disabled={loading || totalRecords === 0}
+            title={t("activityExportPdfTitle")}
+            className="inline-flex h-10 items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 text-[13px] font-semibold text-white transition-all duration-300 hover:border-[#1E3A5F] hover:bg-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <FileText className="h-4 w-4 text-gold-300" />
+            {t("resExportPdf")}
+          </button>
+        </div>
         <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 shrink-0">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
@@ -380,6 +538,7 @@ export default function ActivityLogsView() {
           </span>
           <span className="text-xs font-bold uppercase tracking-wide text-[#7DD8CB]">{t("liveLabel")}</span>
           {lastUpdatedLabel && <span className="text-xs text-white/40">&bull; {lastUpdatedLabel}</span>}
+        </div>
         </div>
       </div>
 
@@ -399,10 +558,10 @@ export default function ActivityLogsView() {
           filters={[{ key: "type", label: t("typeColumn"), value: filterType, onChange: setFilterType, options: typeOptions, searchable: true }]}
           sort={{ value: sortOrder, onChange: (v) => setSortOrder(v as "desc" | "asc"), options: sortOptions }}
           count={loading ? undefined : { shown: totalRecords }}
-          extraChips={(selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []) as ExtraChip[]}
+          extraChips={(selectedDate ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(selectedDate).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setSelectedDate("") }] : []) as ExtraChip[]}
           onClearExtras={() => setSelectedDate("")}
         >
-          <div className="h-11 shrink-0">
+          <div className="h-11 w-full shrink-0 sm:w-auto">
             <DatePicker value={selectedDate} onChange={setSelectedDate} className="h-11 px-4" dark />
           </div>
         </FilterBar>
@@ -456,7 +615,7 @@ export default function ActivityLogsView() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="text-sm font-semibold text-white">{highlightMatches(act.action, searchQuery)}</p>
                               {isFresh && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-[#4FBEB0]/15 text-[#7DD8CB] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[#4FBEB0]/15 text-[#7DD8CB] px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide">
                                   <span className="h-1.5 w-1.5 rounded-full bg-[#4FBEB0] animate-pulse" />
                                   {t("newLabel")}
                                 </span>
@@ -513,6 +672,97 @@ export default function ActivityLogsView() {
       ))}
     </div>
     </div>
+      <ExportReportDialog
+        open={exportDialog !== null}
+        format={exportDialog ?? "excel"}
+        reportName={t("activitylogs")}
+        subtitle={t("activityExportDialogSubtitle")}
+        sectionTitle={t("activityExportEntries")}
+        sectionHint={exportCount === null ? t("activityExportEntriesCounting") : t("activityExportEntriesCount").replace("{n}", exportCount.toLocaleString(locale))}
+        columns={columnOptions}
+        selected={exportCols}
+        onSelectedChange={(keys) => setExportCols(keys as ActivityExportColumnKey[])}
+        minColumns={MIN_EXPORT_COLUMNS}
+        includeMessage={exportMessage}
+        onIncludeMessageChange={setExportMessage}
+        busy={exporting}
+        downloadDisabled={exportCount === 0 || pdfTooMany || excelTooMany}
+        onClose={() => setExportDialog(null)}
+        onDownload={() => setConfirmExport(true)}
+      >
+        <div className="grid grid-cols-2 gap-1 rounded-2xl border border-white/10 bg-white/[0.04] p-1 sm:inline-flex sm:flex-wrap sm:gap-0 sm:rounded-full" role="group">
+          {([
+            { key: "all", label: t("activityPeriodAll") },
+            { key: "today", label: t("activityPeriodToday") },
+            { key: "7d", label: t("activityPeriod7d") },
+            { key: "30d", label: t("activityPeriod30d") },
+          ] as { key: ExportPeriod; label: string }[]).map((opt) => (
+            <button
+              key={opt.key}
+              type="button"
+              onClick={() => setExportPeriod(opt.key)}
+              disabled={periodLocked}
+              aria-pressed={!periodLocked && exportPeriod === opt.key}
+              className={`rounded-full px-3 py-2 text-[13px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-40 sm:px-5 sm:text-[14px] ${
+                !periodLocked && exportPeriod === opt.key ? "bg-sage-700 text-white shadow-sm" : "text-white/55 hover:text-white"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {periodLocked && <p className="mt-2 text-[13px] text-white/40">{t("activityExportPeriodLocked")}</p>}
+        {hasScreenFilters && (
+          <button
+            type="button"
+            onClick={() => setExportApply((v) => !v)}
+            aria-pressed={exportApply}
+            className={`mt-3 flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${
+              exportApply ? "border-[#4FBEB0]/50 bg-[#4FBEB0]/[0.07]" : "border-white/10 bg-white/[0.03] hover:border-white/25 hover:bg-white/[0.06]"
+            }`}
+          >
+            <ExportBox checked={exportApply} />
+            <span className="text-sm font-semibold text-white sm:text-[15px]">{t("activityExportApplyFilters")}</span>
+          </button>
+        )}
+        {excelTooMany && (
+          <p className="mt-3 rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-[14px] text-amber-200" role="alert">
+            {t("activityExportExcelTooMany").replace("{max}", EXCEL_MAX_ROWS.toLocaleString(locale)).replace("{n}", (exportCount ?? 0).toLocaleString(locale))}
+          </p>
+        )}
+        {pdfTooMany && (
+          <p className="mt-3 rounded-2xl border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-[14px] text-amber-200" role="alert">
+            {t("activityExportPdfTooMany").replace("{max}", pdfLimit.toLocaleString(locale)).replace("{cols}", String(exportCols.length)).replace("{n}", (exportCount ?? 0).toLocaleString(locale))}
+          </p>
+        )}
+        {exportError && (
+          <p className="mt-3 rounded-2xl border border-[#8A3D2C]/50 bg-[#8A3D2C]/15 px-4 py-3 text-[14px] text-[#F2A99B]" role="alert">
+            {exportError}
+          </p>
+        )}
+      </ExportReportDialog>
+      <ConfirmDialog
+        open={confirmExport && exportDialog !== null}
+        icon={exportDialog === "pdf" ? <FileText className="h-9 w-9" /> : <FileSpreadsheet className="h-9 w-9" />}
+        title={t("activityConfirmDownloadTitle")}
+        body={exportDialog === "pdf" ? t("activityConfirmBodyPdf") : t("activityConfirmBodyExcel")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("downloadLabel")}
+        z={90}
+        onCancel={() => setConfirmExport(false)}
+        onConfirm={() => {
+          setConfirmExport(false);
+          performExport();
+        }}
+      />
+      <StatusModal
+        open={exportSuccess !== null}
+        type="success"
+        title={t("successTitle")}
+        message={exportSuccess === "pdf" ? t("activityExportSuccessPdf") : t("activityExportSuccessExcel")}
+        okLabel={t("okLabel")}
+        onClose={() => setExportSuccess(null)}
+      />
     </>
   );
 }

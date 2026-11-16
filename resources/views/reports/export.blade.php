@@ -326,10 +326,10 @@
     @endif
 
     @if($show('age'))
-    @php $ageBars = $barItems($data['age_breakdown'], 'attended', 'group'); @endphp
+    @php $ageBars = $barItems($data['age_breakdown'], 'attended', 'label'); @endphp
     <div class="card">
       <h3>Attendance by Age Group</h3>
-      <p class="desc">Adviser recommendation: resident profiling filtered by age.</p>
+      <p class="desc">Attendees grouped by the barangay's age brackets (Profiling Settings).</p>
       @if($ageBars->isEmpty() || $ageBars->sum('value') == 0)
         <p class="empty">No attendance has been recorded yet for the selected filters.</p>
       @else

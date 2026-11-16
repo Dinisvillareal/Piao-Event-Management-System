@@ -38,7 +38,7 @@ export default function TopHeader({ memberName, role, onMenuClick, userId, userC
   return (
     <div className="print:hidden flex items-center justify-between border-b border-white/10 bg-[#0A0E1A] px-3 sm:px-6 h-[73px] box-border gap-2">
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <button onClick={onMenuClick} className="xl:hidden shrink-0 text-white/60 p-1 -ml-1">
+        <button onClick={onMenuClick} className="xl:hidden shrink-0 -ml-2 inline-flex h-10 w-10 items-center justify-center rounded-full text-white/60 hover:bg-white/10">
           <Menu className="h-5 w-5" />
         </button>
         <SquareMenu className="h-5 w-5 shrink-0 text-[#7DD8CB]" />
@@ -75,7 +75,7 @@ export default function TopHeader({ memberName, role, onMenuClick, userId, userC
                   <p className="truncate text-base font-bold text-white">{memberName}</p>
                   <p className="flex flex-wrap items-center gap-1.5 text-sm text-white/50">
                     {userCode && <span>{userCode}</span>}
-                    <span className="rounded-full bg-gold-400 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-[#08130F] min-[420px]:hidden">{role}</span>
+                    <span className="rounded-full bg-gold-400 px-2 py-0.5 text-[11px] font-black uppercase tracking-wide text-[#08130F] min-[420px]:hidden">{role}</span>
                     {isHeadStaff && <span className="inline-flex items-center gap-1 rounded-full bg-gold-400/20 px-2 py-0.5 text-[11px] font-bold text-gold-300"><Crown className="h-3 w-3" /> {t("secHeadStaff")}</span>}
                   </p>
                 </div>

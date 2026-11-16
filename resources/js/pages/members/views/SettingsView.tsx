@@ -204,7 +204,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
                       <button
                         onClick={openEditContact}
                         title={t("editLabel")}
-                        className="p-1 rounded-full text-white/40 hover:text-[#4FBEB0] hover:bg-white/10 transition"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white/40 hover:text-[#4FBEB0] hover:bg-white/10 transition sm:h-8 sm:w-8"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
@@ -263,7 +263,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
                 <span className="flex items-center gap-2 text-sm font-semibold text-white">
                   {profile.household ? profile.household.code : t("notSet")}
                   {profile.is_household_head && (
-                    <span className="rounded-full bg-gold-400/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-300">
+                    <span className="rounded-full bg-gold-400/15 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-gold-300">
                       {t("headBadge")}
                     </span>
                   )}

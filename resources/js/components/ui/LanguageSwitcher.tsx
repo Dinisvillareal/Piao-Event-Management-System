@@ -10,7 +10,7 @@ interface LanguageSwitcherProps {
 
 /** UC-17: Switch Interface Language — compact selector for the top header. */
 export default function LanguageSwitcher({ userId, className = "" }: LanguageSwitcherProps) {
-  const { language, setLanguage } = useLanguage();
+  const { language, setLanguage, t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(() =>
     Math.max(0, LANGUAGES.findIndex((l) => l.code === language))
@@ -73,7 +73,7 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
         onKeyDown={handleTriggerKeyDown}
         aria-haspopup="listbox"
         aria-expanded={open}
-        title="Change interface language"
+        title={t("changeInterfaceLanguage")}
         className="flex h-9 sm:h-10 items-center gap-1.5 sm:gap-2 rounded-full border border-white/40 bg-[#0A0E1A] pl-2.5 pr-2 sm:pl-3.5 sm:pr-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-white/10 hover:border-white/60 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/60"
       >
         <Languages className="h-4 w-4 text-white/70" />
@@ -84,7 +84,7 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
       {open && (
         <ul
           role="listbox"
-          aria-label="Interface language"
+          aria-label={t("interfaceLanguage")}
           tabIndex={-1}
           onKeyDown={handleListKeyDown}
           className="absolute right-0 z-50 mt-1.5 min-w-[10rem] overflow-hidden rounded-2xl border border-white/10 bg-[#0A0E1A] py-1 shadow-xl"

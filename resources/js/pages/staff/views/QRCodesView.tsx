@@ -2,10 +2,10 @@ import { scrollListIntoView } from "../../../lib/scrollToList";
 import SaveButton from "../../../components/ui/SaveButton";
 import FormDrawer, { FormSection } from "../../../components/ui/FormDrawer";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
-import FormSelect from "../../../components/ui/FormSelect";
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Users, Plus, Pencil, Trash2, Search, CheckCircle, AlertCircle, AlertTriangle, Layers, ChevronRight, ChevronDown, X, Save } from "lucide-react";
+import FormSelect from "../../../components/ui/FormSelect";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -22,6 +22,7 @@ export interface Membership {
 interface AgeBracketOption {
   id: number;
   label: string;
+  archived?: boolean;
 }
 
 interface CivilStatusOption {
@@ -37,6 +38,188 @@ interface CurrentStatusOption {
 interface QRCodesViewProps {
   highlightText: (text: string, query: string) => React.ReactNode;
   memberships?: Membership[];
+}
+
+// ---------------------------------------------------------------------------
+// Eligibility fields. All four look like the same dropdown. Civil status,
+// current status and gender are single-select; age bracket is a multi-select
+// dropdown (a program can be open to several age groups, e.g. Youth + Adult).
+// Nothing picked = "Any".
+// ---------------------------------------------------------------------------
+const FIELD_CLASS =
+  "w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70";
+
+function SelectField({ label, value, onChange, options }: {
+  label: string;
+  value: string | number | null | undefined;
+  onChange: (value: string) => void;
+  options: { id: number | string; label: string }[];
+}) {
+  const { t } = useLanguage();
+  return (
+    <div>
+      <label className="block text-base font-semibold text-white mb-1.5">{label}</label>
+      <div className="relative">
+        <FormSelect value={value ?? ""} onChange={(e) => onChange(e.target.value)} className={FIELD_CLASS}>
+          <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
+          {options.map((o) => (
+            <option key={o.id} value={o.id} className="bg-[#0A0E1A] text-white">{o.label}</option>
+          ))}
+        </FormSelect>
+      </div>
+    </div>
+  );
+}
+
+function AgeBracketPicker({ options, selected, onChange }: {
+  options: AgeBracketOption[];
+  selected: number[];
+  onChange: (ids: number[]) => void;
+}) {
+  const { t, language } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); } };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey, true);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey, true); };
+  }, [open]);
+
+  const toggle = (id: number) => onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+  const summary = options.filter((b) => selected.includes(b.id)).map((b) => tc(b.label, language as any)).join(", ");
+
+  return (
+    <div ref={ref} className="relative">
+      <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleAgeBracketLabel")}</label>
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className={`${FIELD_CLASS} relative text-left truncate`}
+      >
+        {summary || t("anyOptionLabel")}
+        <ChevronDown className={`pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div role="listbox" aria-multiselectable="true" className="absolute left-0 right-0 z-30 mt-2 max-h-64 overflow-y-auto rounded-2xl border border-white/15 bg-[#0A0E1A] p-1.5 shadow-2xl">
+          <button
+            type="button"
+            role="option"
+            aria-selected={selected.length === 0}
+            onClick={() => onChange([])}
+            className="flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold text-white hover:bg-white/10"
+          >
+            {t("anyOptionLabel")}
+            {selected.length === 0 && <CheckCircle className="h-4 w-4 text-[#7DD8CB]" />}
+          </button>
+          {options.map((b) => {
+            const on = selected.includes(b.id);
+            return (
+              <button
+                key={b.id}
+                type="button"
+                role="option"
+                aria-selected={on}
+                onClick={() => toggle(b.id)}
+                className="flex w-full items-center justify-between gap-2 rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold text-white hover:bg-white/10"
+              >
+                <span className="flex items-center gap-2">
+                  {tc(b.label, language as any)}
+                  {b.archived && <span className="text-[11px] font-bold uppercase text-white/50">{t("ageBracketArchivedTag")}</span>}
+                </span>
+                <span className={`flex h-5 w-5 items-center justify-center rounded-md border ${on ? "border-[#4FBEB0] bg-[#4FBEB0]/30" : "border-white/30"}`}>
+                  {on && <CheckCircle className="h-3.5 w-3.5 text-[#7DD8CB]" />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <p className="mt-1.5 text-xs text-white/50">{t("eligibleAgeBracketsHint")}</p>
+    </div>
+  );
+}
+
+// Plain-language summary + live count of residents who would qualify, so a
+// mistyped rule (e.g. Child + Senior + Widowed) is caught before it is saved.
+function EligibilityPreview({ form, membershipId, ageBrackets, civilStatuses, currentStatuses }: {
+  form: any;
+  membershipId?: number | string;
+  ageBrackets: AgeBracketOption[];
+  civilStatuses: CivilStatusOption[];
+  currentStatuses: CurrentStatusOption[];
+}) {
+  const { t, language } = useLanguage();
+  const [data, setData] = useState<{ qualify: number; total_residents: number; missing_birth_date: number; current_members_no_longer_match: number } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const ids: number[] = form.eligibleAgeBracketIds ?? [];
+  const key = JSON.stringify([ids, form.eligibleCivilStatusId, form.eligibleCurrentStatusId, form.eligibleGender, membershipId ?? null]);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    setLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const raw = document.cookie.split("; ").find((r) => r.startsWith("XSRF-TOKEN="))?.split("=")[1];
+        const res = await fetch("/memberships/eligibility-preview", {
+          method: "POST",
+          credentials: "include",
+          signal: ctrl.signal,
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+            "X-XSRF-TOKEN": raw ? decodeURIComponent(raw) : "",
+          },
+          body: JSON.stringify({
+            eligible_age_bracket_ids: ids,
+            eligible_civil_status_id: form.eligibleCivilStatusId,
+            eligible_current_status_id: form.eligibleCurrentStatusId,
+            eligible_gender: form.eligibleGender || null,
+            membership_id: membershipId ?? null,
+          }),
+        });
+        if (res.ok) setData(await res.json());
+      } catch {
+        /* aborted or offline: keep the last numbers */
+      } finally {
+        if (!ctrl.signal.aborted) setLoading(false);
+      }
+    }, 350);
+    return () => { ctrl.abort(); window.clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  const ageText = ageBrackets.filter((b) => ids.includes(b.id)).map((b) => tc(b.label, language as any)).join(" / ");
+  const civil = civilStatuses.find((c) => c.id === form.eligibleCivilStatusId)?.label;
+  const current = currentStatuses.find((c) => c.id === form.eligibleCurrentStatusId)?.label;
+  const parts = [ageText, civil && tc(civil, language as any), current && tc(current, language as any), form.eligibleGender].filter(Boolean);
+
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm" aria-live="polite">
+      <p className="font-semibold text-white">
+        {parts.length === 0 ? t("eligOpenToAll") : <>{t("eligOpenTo")} {parts.join(" • ")}</>}
+      </p>
+      <p className="mt-1 text-white/60">
+        {loading && !data ? t("eligChecking") : data ? `${data.qualify} / ${data.total_residents} ${t("eligResidentsQualify")}` : ""}
+      </p>
+      {data && data.qualify === 0 && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-gold-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{t("eligNoneQualify")}</p>
+      )}
+      {data && data.missing_birth_date > 0 && ids.length > 0 && (
+        <p className="mt-1.5 text-white/50">{data.missing_birth_date} {t("eligMissingBirth")}</p>
+      )}
+      {data && data.current_members_no_longer_match > 0 && (
+        <p className="mt-1.5 flex items-start gap-1.5 text-gold-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />{data.current_members_no_longer_match} {t("eligWouldLose")}</p>
+      )}
+    </div>
+  );
 }
 
 // Membership Groups -- the sectoral associations / councils residents can
@@ -112,7 +295,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   const emptyMembership = {
     name: "",
     description: "",
-    eligibleAgeBracketId: null as number | null,
+    eligibleAgeBracketIds: [] as number[],
+    eligibleAgeBracketExtra: [] as AgeBracketOption[],
     eligibleCivilStatusId: null as number | null,
     eligibleCurrentStatusId: null as number | null,
     eligibleGender: "",
@@ -121,7 +305,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
   const [newMembership, setNewMembership] = useState<{
     name: string;
     description: string;
-    eligibleAgeBracketId: number | null;
+    eligibleAgeBracketIds: number[];
+    eligibleAgeBracketExtra: AgeBracketOption[];
     eligibleCivilStatusId: number | null;
     eligibleCurrentStatusId: number | null;
     eligibleGender: string;
@@ -290,7 +475,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         body: JSON.stringify({
           name: newMembership.name,
           description: newMembership.description,
-          eligible_age_bracket_id: newMembership.eligibleAgeBracketId,
+          eligible_age_bracket_ids: newMembership.eligibleAgeBracketIds,
           eligible_civil_status_id: newMembership.eligibleCivilStatusId,
           eligible_current_status_id: newMembership.eligibleCurrentStatusId,
           eligible_gender: newMembership.eligibleGender || null
@@ -301,7 +486,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
       if (response.ok) {
         setShowAddModal(false);
-        setNewMembership({ name: "", description: "", eligibleAgeBracketId: null, eligibleCivilStatusId: null, eligibleCurrentStatusId: null, eligibleGender: "" });
+        setNewMembership({ name: "", description: "", eligibleAgeBracketIds: [], eligibleAgeBracketExtra: [], eligibleCivilStatusId: null, eligibleCurrentStatusId: null, eligibleGender: "" });
         fetchMemberships();
         window.dispatchEvent(new Event('refreshMemberships'));
         setShowAddSuccess(true);
@@ -356,7 +541,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
         body: JSON.stringify({
           name: editingMembership.name,
           description: editingMembership.description,
-          eligible_age_bracket_id: editingMembership.eligibleAgeBracketId,
+          eligible_age_bracket_ids: editingMembership.eligibleAgeBracketIds,
           eligible_civil_status_id: editingMembership.eligibleCivilStatusId,
           eligible_current_status_id: editingMembership.eligibleCurrentStatusId,
           eligible_gender: editingMembership.eligibleGender || null
@@ -436,7 +621,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       id: membership.id,
       name: membership.name,
       description: membership.description || "",
-      eligibleAgeBracketId: membership.eligible_age_bracket_id ?? null,
+      eligibleAgeBracketIds: (membership.eligible_age_brackets ?? []).map((b: any) => Number(b.id)),
+      eligibleAgeBracketExtra: (membership.eligible_age_brackets ?? []).map((b: any) => ({ id: Number(b.id), label: b.label, archived: !!b.deleted_at })),
       eligibleCivilStatusId: membership.eligible_civil_status_id ?? null,
       eligibleCurrentStatusId: membership.eligible_current_status_id ?? null,
       eligibleGender: membership.eligible_gender ?? "",
@@ -564,7 +750,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
     setNewMembership({
       name: "",
       description: "",
-      eligibleAgeBracketId: null,
+      eligibleAgeBracketIds: [],
+      eligibleAgeBracketExtra: [],
       eligibleCivilStatusId: null,
       eligibleCurrentStatusId: null,
       eligibleGender: "",
@@ -711,8 +898,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
             <button
               type="button"
               onClick={() => setSearchQuery("")}
-              aria-label="Clear search"
-              title="Clear"
+              aria-label={t("clearSearchAria")}
+              title={t("clearLabel")}
               className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-full border border-white/10 bg-[#0A0E1A] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#161C2E]"
             >
               {t("clearLabel")}
@@ -748,7 +935,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 type="button"
                 onClick={() => goToPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
-                aria-label="Previous page"
+                aria-label={t("previousPageLabel")}
                 className="h-9 w-9 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
               >
                 &larr;
@@ -763,7 +950,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                 type="button"
                 onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
-                aria-label="Next page"
+                aria-label={t("nextPageLabel")}
                 className="h-9 w-9 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium transition hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
               >
                 &rarr;
@@ -773,7 +960,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
             {paginatedMemberships.map((m) => {
               const residentCount = getResidentsByMembership(m.name).length;
-              const hasEligibility = !!(m.eligible_age_bracket?.label || m.eligible_civil_status?.label || m.eligible_current_status?.label || m.eligible_gender);
+              const hasEligibility = !!((m.eligible_age_brackets?.length > 0) || m.eligible_civil_status?.label || m.eligible_current_status?.label || m.eligible_gender);
 
               return (
                 <div
@@ -787,7 +974,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => openEditModal(m)}
-                        className="p-1.5 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition"
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white/50 hover:bg-white/10 hover:text-white transition sm:h-8 sm:w-8"
                         title={t("editMembershipTitle")}
                       >
                         <Pencil className="h-3.5 w-3.5" />
@@ -807,14 +994,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
 
                   {hasEligibility && (
                     <p className="mt-2.5 inline-flex items-center gap-1 rounded-full bg-gold-400/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold-300">
-                      {t("requiresLabelShort")} {[tc(m.eligible_age_bracket?.label, language as any), tc(m.eligible_civil_status?.label, language as any), tc(m.eligible_current_status?.label, language as any), m.eligible_gender].filter(Boolean).join(" • ")}
+                      {t("requiresLabelShort")} {[(m.eligible_age_brackets ?? []).map((b: any) => tc(b.label, language as any)).join(" / "), tc(m.eligible_civil_status?.label, language as any), tc(m.eligible_current_status?.label, language as any), m.eligible_gender].filter(Boolean).join(" • ")}
                     </p>
                   )}
 
                   <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-2">
                     <button
                       onClick={() => handleViewMembers(m)}
-                      className="inline-flex items-center gap-1 text-sm font-semibold text-[#4FBEB0] hover:text-[#7DD8CB] hover:underline transition"
+                      className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#4FBEB0] hover:text-[#7DD8CB] hover:underline transition"
                     >
                       {t("viewRosterLabel")} <ChevronRight className="h-4 w-4" />
                     </button>
@@ -822,7 +1009,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                       <button
                         onClick={() => checkEligibility(m)}
                         disabled={checkingEligibilityId === m.id}
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-gold-300 hover:underline disabled:opacity-50 shrink-0"
+                        className="inline-flex min-h-10 items-center gap-1 text-xs font-semibold text-gold-300 hover:underline disabled:opacity-50 shrink-0"
                       >
                         <AlertTriangle className="h-3.5 w-3.5" /> {checkingEligibilityId === m.id ? t("checkingEligibility") : t("checkEligibilityLabel")}
                       </button>
@@ -1012,65 +1199,38 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           <FormSection title={t("eligibilityRequirementsLabel")} className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleAgeBracketLabel")}</label>
-                <div className="relative">
-                  <FormSelect
-                    value={newMembership.eligibleAgeBracketId ?? ""}
-                    onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleAgeBracketId: e.target.value ? Number(e.target.value) : null }))}
-                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                  >
-                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                    {ageBrackets.map((b) => (
-                      <option key={b.id} value={b.id} className="bg-[#0A0E1A] text-white">{b.label}</option>
-                    ))}
-                  </FormSelect>
-                </div>
+                <AgeBracketPicker
+                  options={[...ageBrackets, ...(newMembership.eligibleAgeBracketExtra ?? []).filter((x: AgeBracketOption) => !ageBrackets.some((b) => b.id === x.id))]}
+                  selected={newMembership.eligibleAgeBracketIds ?? []}
+                  onChange={(ids) => setNewMembership((prev) => ({ ...prev, eligibleAgeBracketIds: ids }))}
+                />
               </div>
-              <div>
-                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleCivilStatusLabel")}</label>
-                <div className="relative">
-                  <FormSelect
-                    value={newMembership.eligibleCivilStatusId ?? ""}
-                    onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCivilStatusId: e.target.value ? Number(e.target.value) : null }))}
-                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                  >
-                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                    {civilStatuses.map((cs) => (
-                      <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
-                    ))}
-                  </FormSelect>
-                </div>
-              </div>
-              <div>
-                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleCurrentStatusLabel")}</label>
-                <div className="relative">
-                  <FormSelect
-                    value={newMembership.eligibleCurrentStatusId ?? ""}
-                    onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
-                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                  >
-                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                    {currentStatuses.map((cs) => (
-                      <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
-                    ))}
-                  </FormSelect>
-                </div>
-              </div>
-              <div>
-                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleGenderLabel")}</label>
-                <div className="relative">
-                  <FormSelect
-                    value={newMembership.eligibleGender}
-                    onChange={(e) => setNewMembership(prev => ({ ...prev, eligibleGender: e.target.value }))}
-                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                  >
-                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                    <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
-                    <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
-                  </FormSelect>
-                </div>
-              </div>
+              <SelectField
+                label={t("eligibleCivilStatusLabel")}
+                value={newMembership.eligibleCivilStatusId}
+                options={civilStatuses.map((o) => ({ id: o.id, label: tc(o.label, language as any) }))}
+                onChange={(v) => setNewMembership((prev) => ({ ...prev, eligibleCivilStatusId: v ? Number(v) : null }))}
+              />
+              <SelectField
+                label={t("eligibleCurrentStatusLabel")}
+                value={newMembership.eligibleCurrentStatusId}
+                options={currentStatuses.map((o) => ({ id: o.id, label: tc(o.label, language as any) }))}
+                onChange={(v) => setNewMembership((prev) => ({ ...prev, eligibleCurrentStatusId: v ? Number(v) : null }))}
+              />
+              <SelectField
+                label={t("eligibleGenderLabel")}
+                value={newMembership.eligibleGender}
+                options={[{ id: "Male", label: t("maleOption") }, { id: "Female", label: t("femaleOption") }]}
+                onChange={(v) => setNewMembership((prev) => ({ ...prev, eligibleGender: v }))}
+              />
             </div>
+            <EligibilityPreview
+              form={newMembership}
+              membershipId={undefined}
+              ageBrackets={[...ageBrackets, ...(newMembership.eligibleAgeBracketExtra ?? [])]}
+              civilStatuses={civilStatuses}
+              currentStatuses={currentStatuses}
+            />
           </FormSection>
         </FormDrawer>,
         document.body
@@ -1134,65 +1294,38 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           <FormSection title={t("eligibilityRequirementsLabel")} className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleAgeBracketLabel")}</label>
-                <div className="relative">
-                  <FormSelect
-                    value={editingMembership.eligibleAgeBracketId ?? ""}
-                    onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleAgeBracketId: e.target.value ? Number(e.target.value) : null }))}
-                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                  >
-                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                    {ageBrackets.map((b) => (
-                      <option key={b.id} value={b.id} className="bg-[#0A0E1A] text-white">{b.label}</option>
-                    ))}
-                  </FormSelect>
-                </div>
+                <AgeBracketPicker
+                  options={[...ageBrackets, ...(editingMembership.eligibleAgeBracketExtra ?? []).filter((x: AgeBracketOption) => !ageBrackets.some((b) => b.id === x.id))]}
+                  selected={editingMembership.eligibleAgeBracketIds ?? []}
+                  onChange={(ids) => setEditingMembership((prev: any) => ({ ...prev, eligibleAgeBracketIds: ids }))}
+                />
               </div>
-              <div>
-                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleCivilStatusLabel")}</label>
-                <div className="relative">
-                  <FormSelect
-                    value={editingMembership.eligibleCivilStatusId ?? ""}
-                    onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCivilStatusId: e.target.value ? Number(e.target.value) : null }))}
-                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                  >
-                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                    {civilStatuses.map((cs) => (
-                      <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
-                    ))}
-                  </FormSelect>
-                </div>
-              </div>
-              <div>
-                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleCurrentStatusLabel")}</label>
-                <div className="relative">
-                  <FormSelect
-                    value={editingMembership.eligibleCurrentStatusId ?? ""}
-                    onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleCurrentStatusId: e.target.value ? Number(e.target.value) : null }))}
-                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                  >
-                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                    {currentStatuses.map((cs) => (
-                      <option key={cs.id} value={cs.id} className="bg-[#0A0E1A] text-white">{cs.label}</option>
-                    ))}
-                  </FormSelect>
-                </div>
-              </div>
-              <div>
-                <label className="block text-base font-semibold text-white mb-1.5">{t("eligibleGenderLabel")}</label>
-                <div className="relative">
-                  <FormSelect
-                    value={editingMembership.eligibleGender ?? ""}
-                    onChange={(e) => setEditingMembership((prev: any) => ({ ...prev, eligibleGender: e.target.value }))}
-                    className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white font-sans focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
-                  >
-                    <option value="" className="bg-[#0A0E1A] text-white">{t("anyOptionLabel")}</option>
-                    <option value="Male" className="bg-[#0A0E1A] text-white">{t("maleOption")}</option>
-                    <option value="Female" className="bg-[#0A0E1A] text-white">{t("femaleOption")}</option>
-                  </FormSelect>
-                </div>
-              </div>
+              <SelectField
+                label={t("eligibleCivilStatusLabel")}
+                value={editingMembership.eligibleCivilStatusId}
+                options={civilStatuses.map((o) => ({ id: o.id, label: tc(o.label, language as any) }))}
+                onChange={(v) => setEditingMembership((prev: any) => ({ ...prev, eligibleCivilStatusId: v ? Number(v) : null }))}
+              />
+              <SelectField
+                label={t("eligibleCurrentStatusLabel")}
+                value={editingMembership.eligibleCurrentStatusId}
+                options={currentStatuses.map((o) => ({ id: o.id, label: tc(o.label, language as any) }))}
+                onChange={(v) => setEditingMembership((prev: any) => ({ ...prev, eligibleCurrentStatusId: v ? Number(v) : null }))}
+              />
+              <SelectField
+                label={t("eligibleGenderLabel")}
+                value={editingMembership.eligibleGender}
+                options={[{ id: "Male", label: t("maleOption") }, { id: "Female", label: t("femaleOption") }]}
+                onChange={(v) => setEditingMembership((prev: any) => ({ ...prev, eligibleGender: v }))}
+              />
             </div>
+            <EligibilityPreview
+              form={editingMembership}
+              membershipId={editingMembership.id}
+              ageBrackets={[...ageBrackets, ...(editingMembership.eligibleAgeBracketExtra ?? [])]}
+              civilStatuses={civilStatuses}
+              currentStatuses={currentStatuses}
+            />
           </FormSection>
         </FormDrawer>,
         document.body
@@ -1233,7 +1366,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && membershipToDelete && createPortal(
         <div
-          className="fixed inset-0 z-[9999] bg-black/80"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteBackdropClick}
         >
@@ -1336,7 +1469,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Deletion Failed Modal */}
       {showDeleteFailed && createPortal(
         <div
-          className="fixed inset-0 z-[9999] bg-black/80"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleDeleteFailedBackdropClick}
         >
@@ -1360,7 +1493,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Generic Error Modal -- replaces native alert() for add/edit failures */}
       {genericError && createPortal(
         <div
-          className="fixed inset-0 z-[9999] bg-black/80"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleGenericErrorBackdropClick}
         >
@@ -1384,7 +1517,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Cancel Unsaved Changes Confirm Modal -- same pattern as the Residents form */}
       {showCancelConfirm && createPortal(
         <div
-          className="fixed inset-0 z-[9999] bg-black/80"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4"
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowCancelConfirm(null);

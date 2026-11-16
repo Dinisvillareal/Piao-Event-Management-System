@@ -297,7 +297,14 @@ export async function buildReportWorkbookBlob(p: ReportExcelPayload): Promise<Bl
       if (numeric) cell.numFmt = NUM_FORMAT[c.format] as string;
       cell.alignment = { vertical: "middle", horizontal: i === 0 ? "center" : isNumeric(c.format) ? "right" : "left", indent: i === 0 ? 0 : 1, wrapText: !isNumeric(c.format) };
     });
-    ws.getRow(r).height = 22;
+    // Long text (e.g. a log description) wraps, so grow the row to fit it instead of clipping the second line.
+    const wrapLines = cols.reduce((max, c, i) => {
+      if (isNumeric(c.format) || i === 0) return max;
+      const text = String(row[i] ?? "");
+      const perLine = Math.max(8, widths[i] * 1.2);
+      return Math.max(max, text.split("\n").reduce((n, part) => n + Math.max(1, Math.ceil(part.length / perLine)), 0));
+    }, 1);
+    ws.getRow(r).height = Math.max(22, Math.min(180, wrapLines * 13 + 8));
     r++;
   });
 

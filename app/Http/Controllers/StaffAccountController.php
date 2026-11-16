@@ -209,12 +209,14 @@ class StaffAccountController extends Controller
             return response()->json(['message' => 'The Head Staff cannot be removed. Transfer the role first.'], 422);
         }
 
-        DB::transaction(function () use ($target) {
-            $target->role = 'Resident';
-            $target->two_factor_secret = null;
-            $target->two_factor_confirmed_at = null;
-            $target->save();
-        });
+        // Conditional UPDATE: only applies while the person is STILL not the
+        // Head Staff. If a hand-over to them lands at the same moment, this
+        // does nothing instead of demoting the brand-new Head Staff.
+        $changed = User::where('id', $target->id)->where('role', 'Staff')->where('is_head_staff', false)
+            ->update(['role' => 'Resident', 'two_factor_secret' => null, 'two_factor_confirmed_at' => null]);
+        if (!$changed) {
+            return response()->json(['message' => 'The Head Staff cannot be removed. Transfer the role first.'], 422);
+        }
         $this->security->revokeSessions($target);
 
         $this->createLog('Remove Staff', "Removed Staff access from {$target->user_code}");
@@ -235,8 +237,11 @@ class StaffAccountController extends Controller
             return response()->json(['message' => 'The Head Staff cannot be suspended.'], 422);
         }
 
-        $target->suspended_at = now();
-        $target->save();
+        $changed = User::where('id', $target->id)->where('is_head_staff', false)
+            ->update(['suspended_at' => now()]);
+        if (!$changed) {
+            return response()->json(['message' => 'The Head Staff cannot be suspended.'], 422);
+        }
         $this->security->revokeSessions($target);
 
         $this->createLog('Suspend Staff', "Suspended {$target->user_code}");
@@ -382,13 +387,40 @@ class StaffAccountController extends Controller
             return response()->json(['message' => 'This transfer is no longer valid.'], 422);
         }
 
-        DB::transaction(function () use ($from, $me, $transfer) {
-            $from->is_head_staff = false;
-            $from->save();
-            $me->is_head_staff = true;
-            $me->save();
-            $transfer->update(['status' => 'accepted']);
-        });
+        // Claim the offer and swap the role in one transaction. The claim is a
+        // conditional UPDATE (pending -> accepted), so if the sender cancels at
+        // the same moment, or the offer is accepted twice, exactly one wins and
+        // the role can never end up with two Head Staff or none.
+        try {
+            $accepted = DB::transaction(function () use ($from, $me, $transfer) {
+                $claimed = HeadStaffTransfer::where('id', $transfer->id)->where('status', 'pending')
+                    ->update(['status' => 'accepted']);
+                if (!$claimed) {
+                    return false;
+                }
+
+                // Lock both rows and re-check the current roles under the lock.
+                $locked = User::whereIn('id', [$from->id, $me->id])->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+                $fromRow = $locked->get($from->id);
+                $meRow = $locked->get($me->id);
+                if (!$fromRow || !$meRow || !$fromRow->is_head_staff || $meRow->suspended_at) {
+                    throw new \App\Exceptions\TransferNoLongerValidException();
+                }
+
+                $fromRow->is_head_staff = false;
+                $fromRow->save();
+                $meRow->is_head_staff = true;
+                $meRow->save();
+                return true;
+            });
+        } catch (\App\Exceptions\TransferNoLongerValidException) {
+            HeadStaffTransfer::where('id', $transfer->id)->where('status', 'pending')->update(['status' => 'cancelled']);
+            $accepted = false;
+        }
+
+        if (!$accepted) {
+            return response()->json(['message' => 'This transfer is no longer valid.'], 422);
+        }
 
         $this->security->revokeSessions($from);
 
@@ -446,10 +478,10 @@ class StaffAccountController extends Controller
         $fail = fn () => response()->json(['message' => 'Those recovery details are not valid.'], 422);
 
         $key = 'recover:' . $request->ip();
-        if (RateLimiter::tooManyAttempts($key, 5)) {
+        // Count first (atomic), then judge, so parallel guesses can't skip the cap.
+        if (RateLimiter::hit($key, 900) > 5) {
             return response()->json(['message' => 'Too many attempts. Please wait 15 minutes and try again.'], 429);
         }
-        RateLimiter::hit($key, 900);
 
         $head = User::where('user_code', trim($request->user_code))
             ->where('role', 'Staff')->where('is_head_staff', true)->whereNull('suspended_at')->first();
@@ -472,8 +504,14 @@ class StaffAccountController extends Controller
             return $fail();
         }
 
-        DB::transaction(function () use ($head, $match) {
-            $match->update(['used_at' => now()]);
+        $reset = DB::transaction(function () use ($head, $match) {
+            // Burn the code with a conditional UPDATE: of two requests using the
+            // same code at the same moment, only one changes a row and goes on.
+            $burned = StaffRecoveryCode::where('id', $match->id)->whereNull('used_at')
+                ->update(['used_at' => now()]);
+            if (!$burned) {
+                return false;
+            }
             $head->password = Hash::make(request('new_password'));
             $head->must_change_password = false;
             $head->password_changed_at = now();
@@ -484,7 +522,11 @@ class StaffAccountController extends Controller
             $head->two_factor_secret = null;
             $head->two_factor_confirmed_at = null;
             $head->save();
+            return true;
         });
+        if (!$reset) {
+            return $fail();
+        }
         $this->security->revokeSessions($head);
         RateLimiter::clear($key);
 

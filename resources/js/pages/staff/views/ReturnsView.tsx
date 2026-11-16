@@ -889,7 +889,7 @@ export default function ReturnsView() {
       <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
         <FilterBar
           search={{ value: search, onChange: setSearch, placeholder: t("searchReturnsPlaceholder") }}
-          extraChips={endedDate ? [{ key: "ended", label: `${t("filterEndedDateLabel").replace(/:\s*$/, "")}: ${new Date(endedDate).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => { setEndedDate(""); goToPage(1); } }] : []}
+          extraChips={endedDate ? [{ key: "ended", label: `${t("filterEndedDateLabel").replace(/:\s*$/, "")}: ${new Date(endedDate).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => { setEndedDate(""); goToPage(1); } }] : []}
           onClearExtras={() => { setEndedDate(""); goToPage(1); }}
         >
           <div className="flex shrink-0 items-center gap-2">
@@ -1147,7 +1147,7 @@ export default function ReturnsView() {
                           <img src={r.evidence_photo_url} alt="" className="h-full w-full object-cover" />
                         </div>
                         {r.evidence_photo_urls?.length > 1 && (
-                          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#4FBEB0] text-[#0A0E1A] text-[10px] font-bold flex items-center justify-center">
+                          <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#4FBEB0] text-[#0A0E1A] text-[11px] font-bold flex items-center justify-center">
                             {r.evidence_photo_urls.length}
                           </span>
                         )}

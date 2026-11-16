@@ -43,6 +43,14 @@ class AgeBracketController extends Controller
 
     public function store(Request $request)
     {
+        // One change at a time per list: the "already exists" / "still in use"
+        // checks and the write that follows must not be interleaved with
+        // another staff member's change to the same list.
+        return $this->exclusively('lookup:age_brackets', fn () => $this->storeLocked($request));
+    }
+
+    private function storeLocked(Request $request)
+    {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
@@ -76,6 +84,14 @@ class AgeBracketController extends Controller
     }
 
     public function update(Request $request, $id)
+    {
+        // One change at a time per list: the "already exists" / "still in use"
+        // checks and the write that follows must not be interleaved with
+        // another staff member's change to the same list.
+        return $this->exclusively('lookup:age_brackets', fn () => $this->updateLocked($request, $id));
+    }
+
+    private function updateLocked(Request $request, $id)
     {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -113,6 +129,14 @@ class AgeBracketController extends Controller
 
     public function destroy($id)
     {
+        // One change at a time per list: the "already exists" / "still in use"
+        // checks and the write that follows must not be interleaved with
+        // another staff member's change to the same list.
+        return $this->exclusively('lookup:age_brackets', fn () => $this->destroyLocked($id));
+    }
+
+    private function destroyLocked($id)
+    {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
@@ -142,6 +166,14 @@ class AgeBracketController extends Controller
     }
 
     public function restore($id)
+    {
+        // One change at a time per list: the "already exists" / "still in use"
+        // checks and the write that follows must not be interleaved with
+        // another staff member's change to the same list.
+        return $this->exclusively('lookup:age_brackets', fn () => $this->restoreLocked($id));
+    }
+
+    private function restoreLocked($id)
     {
         if (!$this->isStaff()) {
             return response()->json(['message' => 'Unauthorized'], 403);

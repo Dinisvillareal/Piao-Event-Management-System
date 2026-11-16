@@ -125,7 +125,7 @@ export default function ProfilingSettingsView() {
             type="button"
             onClick={() => goPage(tab, Math.max(1, current - 1))}
             disabled={current === 1}
-            aria-label="Previous page"
+            aria-label={t("previousPageLabel")}
             className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
           >
             ←
@@ -135,7 +135,7 @@ export default function ProfilingSettingsView() {
             type="button"
             onClick={() => goPage(tab, Math.min(totalPages, current + 1))}
             disabled={current === totalPages}
-            aria-label="Next page"
+            aria-label={t("nextPageLabel")}
             className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
           >
             →
