@@ -97,7 +97,7 @@ class HouseholdController extends Controller
         // counts as a member of the household.
         $request->validate([
             'address'         => 'nullable|string|max:255',
-            'contact_number'  => 'nullable|string|max:15',
+            'contact_number'  => $this->phoneRule(),
             'head_user_id'    => 'required|integer|exists:users,id',
             'member_ids'      => 'nullable|array',
             'member_ids.*'    => 'integer|exists:users,id',
@@ -130,7 +130,7 @@ class HouseholdController extends Controller
             $household = Household::create([
                 'code'            => Household::generateCode(),
                 'address'         => $request->address,
-                'contact_number'  => $request->contact_number,
+                'contact_number'  => $this->normalizePhone($request->contact_number),
             ]);
 
             // A resident being linked in never carries a stale
@@ -167,12 +167,53 @@ class HouseholdController extends Controller
 
             if ($this->isHeadConflict($e)) {
                 return response()->json([
-                    'message' => 'The chosen head already has a head flag on another household -- please refresh and try again.',
+                    'message' => 'The chosen head already leads another household. Please refresh and try again.',
                 ], 409);
             }
 
             return response()->json(['message' => 'Failed to create household: ' . $this->safeError($e)], 500);
         }
+    }
+
+    /**
+     * Same phone rule the Residents form uses (09xx xxx xxxx, with or without
+     * dashes, spaces or +63). Blank is allowed -- the head's own number is then used.
+     */
+    private function phoneRule(): array
+    {
+        return [
+            'nullable',
+            'string',
+            function ($attribute, $value, $fail) {
+                $digits = preg_replace('/\D/', '', (string) $value);
+                if (trim((string) $value) !== '' && ! preg_match('/^(63|0)9\d{9}$/', $digits)) {
+                    $fail('The contact number format is invalid.');
+                }
+            },
+        ];
+    }
+
+    /** Digits only (what the SMS service is given), or null when blank. */
+    private function normalizePhone(mixed $value): ?string
+    {
+        $digits = preg_replace('/\D/', '', (string) $value);
+
+        return $digits === '' ? null : $digits;
+    }
+
+    private function fullName(User $user): string
+    {
+        return trim($user->first_name . ' ' . $user->last_name);
+    }
+
+    /** "<name> is no longer in this household" -- the answer to a screen that was open too long. */
+    private function notInHouseholdResponse(?User $user)
+    {
+        $name = $user ? $this->fullName($user) : 'This resident';
+
+        return response()->json([
+            'message' => "{$name} is no longer in this household. Please refresh and try again.",
+        ], 422);
     }
 
     public function update(Request $request, $id)
@@ -181,33 +222,40 @@ class HouseholdController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $household = Household::findOrFail($id);
-
         $request->validate([
-            'address'        => 'nullable|string|max:255',
-            'contact_number' => 'nullable|string|max:15',
+            'address'        => 'sometimes|nullable|string|max:255',
+            'contact_number' => array_merge(['sometimes'], $this->phoneRule()),
         ]);
 
-        $household->update([
-            'address'        => $request->address,
-            'contact_number' => $request->contact_number,
-        ]);
+        return $this->exclusively("household-{$id}", fn () => DB::transaction(function () use ($request, $id) {
+            $household = Household::lockForUpdate()->findOrFail($id);
 
-        // Keep the head's own resident record in sync -- an edit here
-        // should also show up as that resident's own address/contact
-        // number on the Residents page, instead of the two silently
-        // drifting apart.
-        $head = User::where('household_id', $household->id)->where('is_household_head', true)->first();
-        if ($head) {
-            $head->update([
-                'address'        => $household->address,
-                'contact_number' => $household->contact_number,
-            ]);
-        }
+            // Only the fields that were actually sent are changed, so a request
+            // that leaves one out can never blank it.
+            $changes = [];
+            if ($request->exists('address')) {
+                $changes['address'] = filled($request->input('address')) ? trim($request->input('address')) : null;
+            }
+            if ($request->exists('contact_number')) {
+                $changes['contact_number'] = $this->normalizePhone($request->input('contact_number'));
+            }
+            if ($changes) {
+                $household->update($changes);
+            }
 
-        $this->createLog('Update', "Updated household '{$household->code}'");
+            // Keep the head's own resident record in step with a NEW address/number,
+            // but a blank never overwrites what the head already has -- clearing the
+            // household's number must not wipe the head's personal one.
+            $head = User::where('household_id', $household->id)->where('is_household_head', true)->lockForUpdate()->first();
+            $sync = array_filter($changes, fn ($v) => filled($v));
+            if ($head && $sync) {
+                $head->update($sync);
+            }
 
-        return response()->json($household->load('members'));
+            $this->createLog('Update', "Updated household '{$household->code}'");
+
+            return response()->json($household->load('members'));
+        }));
     }
 
     public function destroy($id)
@@ -216,34 +264,41 @@ class HouseholdController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $household = Household::findOrFail($id);
+        return $this->exclusively("household-{$id}", fn () => DB::transaction(function () use ($id) {
+            $household = Household::lockForUpdate()->findOrFail($id);
 
-        // Un-link members rather than blocking the delete -- a household
-        // being dissolved shouldn't hold its residents hostage.
-        // NOTE: this is a soft delete (Household uses SoftDeletes) and is
-        // now restorable from the staff Archive page (ArchiveController /
-        // type=household) same as other entities. Restoring only brings
-        // the household row back -- it does NOT re-link the members who
-        // were unassigned here, since that unlink is a permanent field
-        // update, not part of the soft-delete. Whoever restores a
-        // household will need to re-add its members manually.
-        User::where('household_id', $household->id)->update([
-            'household_id'      => null,
-            'is_household_head' => false,
-        ]);
+            // Un-link members rather than blocking the delete -- but remember who
+            // they were (and who the head was), so restoring the household from the
+            // Archive can put them back. Unlinking and archiving happen together or
+            // not at all.
+            $members = User::where('household_id', $household->id)->lockForUpdate()->get(['id', 'is_household_head']);
+            $household->dissolved_members = [
+                'members' => $members->pluck('id')->all(),
+                'head'    => $members->first(fn ($m) => (bool) $m->is_household_head)?->id,
+            ];
 
-        $code = $household->code;
-        $household->deleted_by = auth()->user()->user_code;
-        $household->save();
-        $household->delete();
+            User::where('household_id', $household->id)->update([
+                'household_id'      => null,
+                'is_household_head' => false,
+            ]);
 
-        $this->createLog('Delete', "Deleted household '{$code}'");
+            $code = $household->code;
+            $household->deleted_by = auth()->user()->user_code;
+            $household->save();
+            $household->delete();
 
-        return response()->json(['message' => 'Household deleted successfully']);
+            $this->createLog('Delete', "Deleted household '{$code}'");
+
+            return response()->json(['message' => 'Household deleted successfully']);
+        }));
     }
 
     /**
-     * Add an existing resident to a household.
+     * Add an existing resident to a household. Conditional claim: only a resident
+     * who has no household yet can be added, so two staff adding the same person to
+     * two households at once can't steal them from each other. (Already in THIS
+     * household is a harmless no-op.) A resident coming in never carries a head flag
+     * with them -- who heads THIS household is a fresh decision.
      */
     public function addMember(Request $request, $id)
     {
@@ -251,43 +306,31 @@ class HouseholdController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $household = Household::findOrFail($id);
-
         $request->validate([
             'user_id' => 'required|integer|exists:users,id',
         ]);
 
-        $user = User::findOrFail($request->user_id);
+        return $this->exclusively("household-{$id}", fn () => DB::transaction(function () use ($request, $id) {
+            $household = Household::lockForUpdate()->findOrFail($id);
+            $user = User::findOrFail($request->user_id);
 
-        // A resident being linked in from outside this household never
-        // carries an is_household_head flag with them -- it could be
-        // stale from a pre-Household-module free-text household, or from
-        // being detached without passing through removeMember() /
-        // UserController::update() (both of which clear it). Left alone,
-        // a stale true here plus this household's own existing head
-        // (set via the star button) is exactly how a household ends up
-        // with two heads. "Head of THIS household" is a fresh decision
-        // staff make afterward with the star button, never inherited.
-        // Conditional claim: only a resident who has no household yet can be
-        // added. Two staff adding the same person to two households at once no
-        // longer ends with the second one silently stealing them from the first.
-        // (Already in THIS household is a harmless no-op.)
-        if ((int) $user->household_id !== (int) $household->id) {
-            $claimed = User::where('id', $user->id)->whereNull('household_id')->update([
-                'household_id'      => $household->id,
-                'is_household_head' => false,
-            ]);
-            if (!$claimed) {
-                return response()->json([
-                    'message' => 'One or more selected residents already belong to a household. Please refresh and try again.',
-                ], 422);
+            if ((int) $user->household_id !== (int) $household->id) {
+                $claimed = User::where('id', $user->id)->whereNull('household_id')->update([
+                    'household_id'      => $household->id,
+                    'is_household_head' => false,
+                ]);
+                if (!$claimed) {
+                    return response()->json([
+                        'message' => 'One or more selected residents already belong to a household. Please refresh and try again.',
+                    ], 422);
+                }
+                $user->refresh();
             }
-            $user->refresh();
-        }
 
-        $this->createLog('Update', "Added {$user->first_name} {$user->last_name} to household '{$household->code}'");
+            $this->createLog('Update', "Added {$user->first_name} {$user->last_name} to household '{$household->code}'");
 
-        return response()->json($household->load('members'));
+            return response()->json($household->load('members'));
+        }));
     }
 
     /**
@@ -299,23 +342,30 @@ class HouseholdController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $household = Household::findOrFail($id);
-        $user = User::where('household_id', $household->id)->findOrFail($userId);
+        return $this->exclusively("household-{$id}", fn () => DB::transaction(function () use ($id, $userId) {
+            $household = Household::lockForUpdate()->findOrFail($id);
+            $user = User::findOrFail($userId);
 
-        $wasHead = (bool) $user->is_household_head;
+            $wasHead = (bool) User::where('id', $user->id)->where('household_id', $household->id)->lockForUpdate()->value('is_household_head');
 
-        $user->update([
-            'household_id'      => null,
-            'is_household_head' => false,
-        ]);
+            // Conditional on still being in THIS household: if someone else already
+            // moved or removed them, nothing changes and the staff member is told so.
+            $changed = User::where('id', $user->id)->where('household_id', $household->id)->update([
+                'household_id'      => null,
+                'is_household_head' => false,
+            ]);
+            if (!$changed) {
+                return $this->notInHouseholdResponse($user);
+            }
 
-        $this->createLog('Update', "Removed {$user->first_name} {$user->last_name} from household '{$household->code}'");
+            $this->createLog('Update', "Removed {$user->first_name} {$user->last_name} from household '{$household->code}'");
 
-        if ($wasHead) {
-            $this->createLog('Warning', "Household '{$household->code}' now has no head of household -- event SMS will not reach it until a new head is assigned");
-        }
+            if ($wasHead) {
+                $this->createLog('Warning', "Household '{$household->code}' now has no head of household -- event SMS will not reach it until a new head is assigned");
+            }
 
-        return response()->json($household->load('members'));
+            return response()->json($household->load('members'));
+        }));
     }
 
     /**
@@ -328,25 +378,45 @@ class HouseholdController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $household = Household::findOrFail($id);
-
         $request->validate([
             'user_id' => 'nullable|integer|exists:users,id',
         ]);
 
+        return $this->exclusively("household-{$id}", fn () => $this->setHeadLocked($request, (int) $id));
+    }
+
+    private function setHeadLocked(Request $request, int $id)
+    {
+        $household = Household::findOrFail($id);
+
         DB::beginTransaction();
         try {
             // Lock this household's members for the swap so a concurrent
-            // "set head" request on the same household can't interleave
-            // between the demote and the promote below and leave two
-            // members flagged as head.
+            // "set head" or "remove" on the same household can't interleave
+            // between the demote and the promote below.
             User::where('household_id', $household->id)->lockForUpdate()->get();
+
+            $user = null;
+            if ($request->filled('user_id')) {
+                $user = User::where('household_id', $household->id)->where('id', $request->user_id)->first();
+                if (!$user) {
+                    DB::rollBack();
+
+                    return $this->notInHouseholdResponse(User::find($request->user_id));
+                }
+            }
 
             User::where('household_id', $household->id)->update(['is_household_head' => false]);
 
-            if ($request->filled('user_id')) {
-                $user = User::where('household_id', $household->id)->findOrFail($request->user_id);
-                $user->update(['is_household_head' => true]);
+            if ($user) {
+                // Conditional on still being a member: a head flag can never be
+                // written onto someone who just left.
+                $promoted = User::where('id', $user->id)->where('household_id', $household->id)->update(['is_household_head' => true]);
+                if (!$promoted) {
+                    DB::rollBack();
+
+                    return $this->notInHouseholdResponse($user);
+                }
                 $household->backfillFromHead($user);
                 $this->createLog('Update', "Set {$user->first_name} {$user->last_name} as head of household '{$household->code}'");
             }
@@ -357,7 +427,7 @@ class HouseholdController extends Controller
 
             if ($this->isHeadConflict($e)) {
                 return response()->json([
-                    'message' => 'This household already has a head from another request just now -- please refresh and try again.',
+                    'message' => 'Another staff member just set a head for this household. Please refresh and try again.',
                 ], 409);
             }
 

@@ -88,7 +88,7 @@ export default function PhotoGallery({ items, onChange, onPreview, onError, max 
         rejected = t("photosMaxReached").replace("{n}", String(max));
         break;
       }
-      if (!file.type.startsWith("image/")) {
+      if (!["image/jpeg", "image/png"].includes(file.type)) {
         rejected = t("uploadImageOnly");
         continue;
       }
@@ -115,7 +115,7 @@ export default function PhotoGallery({ items, onChange, onPreview, onError, max 
   };
 
   const input = (
-    <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePick} />
+    <input ref={inputRef} type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" multiple className="hidden" onChange={handlePick} />
   );
 
   if (compact) {

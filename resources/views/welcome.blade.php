@@ -6,7 +6,7 @@
     <title>Barangay e-Membership</title>
 
     {{-- Apply the saved light/dark choice before the first paint, so a reload never flashes dark first. --}}
-    <script>
+    <script nonce="{{ Vite::cspNonce() }}">
         try {
             var m = document.cookie.match(/(?:^|;\s*)piao-theme=(light|dark)/);
             var t = m ? m[1] : localStorage.getItem('piao-theme');

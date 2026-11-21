@@ -152,7 +152,7 @@ class Ch4RecordsTest extends TestCase
     {
         $s = $this->staff(); $e = $this->event(['approved_budget' => 1000]);
         $res = $this->actingAs($s)->post("/events/{$e->id}/expenses", [
-            'item' => 'Tarpaulin', 'amount' => 400, 'receipt' => UploadedFile::fake()->image('r.jpg'),
+            'item' => 'Tarpaulin', 'amount' => 400, 'receipt' => $this->fakeImage('r.jpg'),
         ], ['Accept' => 'application/json'])->assertStatus(201);
         $this->assertEquals(400, $res->json('total_expenses'));
         $this->assertEquals(600, $res->json('remaining'));
@@ -163,7 +163,7 @@ class Ch4RecordsTest extends TestCase
     {
         $s = $this->staff(); $e = $this->event(['approved_budget' => 300]);
         $res = $this->actingAs($s)->post("/events/{$e->id}/expenses", [
-            'item' => 'Sound system', 'amount' => 500, 'receipt' => UploadedFile::fake()->image('r.jpg'),
+            'item' => 'Sound system', 'amount' => 500, 'receipt' => $this->fakeImage('r.jpg'),
         ], ['Accept' => 'application/json'])->assertStatus(201);
         $this->assertTrue($res->json('is_over_budget'));
         $this->assertEquals(200, $res->json('over_by'));
@@ -180,7 +180,7 @@ class Ch4RecordsTest extends TestCase
         $s = $this->staff();
         $e = $this->event(['event_start' => now()->subDays(2), 'event_end' => now()->subDay(), 'call_time_start' => now()->subDays(3), 'call_time_end' => now()->subDay()]);
         $res = $this->actingAs($s)->post("/events/{$e->id}/expenses", [
-            'item' => 'Late receipt', 'amount' => 50, 'receipt' => UploadedFile::fake()->image('r.jpg'),
+            'item' => 'Late receipt', 'amount' => 50, 'receipt' => $this->fakeImage('r.jpg'),
         ], ['Accept' => 'application/json']);
         $this->assertContains($res->status(), [403, 422], 'a finished event must not accept new expenses (got ' . $res->status() . ')');
     }
@@ -190,7 +190,7 @@ class Ch4RecordsTest extends TestCase
         $s = $this->staff();
         $e = $this->event();
         $this->actingAs($s)->post("/events/{$e->id}/expenses", [
-            'item' => 'Tarpaulin', 'amount' => 100, 'receipt' => UploadedFile::fake()->image('r.jpg'),
+            'item' => 'Tarpaulin', 'amount' => 100, 'receipt' => $this->fakeImage('r.jpg'),
         ], ['Accept' => 'application/json'])->assertStatus(201);
         $expense = $e->expenses()->first();
         // the event now ends
@@ -217,7 +217,7 @@ class Ch4RecordsTest extends TestCase
         $s = $this->staff();
         $res = $this->actingAs($s)->post('/inventory', [
             'name' => 'Chairs', 'quantity' => 0, 'new_quantity' => 5, 'good_quantity' => 10, 'fair_quantity' => 3, 'poor_quantity' => 2,
-            'photo' => UploadedFile::fake()->image('c.jpg'),
+            'photo' => $this->fakeImage('c.jpg'),
         ], ['Accept' => 'application/json'])->assertStatus(201);
         $this->assertSame(20, (int) InventoryItem::first()->quantity);
     }
@@ -235,11 +235,13 @@ class Ch4RecordsTest extends TestCase
         $item = InventoryItem::create(['name' => 'Tents', 'quantity' => 0, 'new_quantity' => 0, 'good_quantity' => 0, 'fair_quantity' => 0, 'poor_quantity' => 0]);
         $item->forceFill(['lost_quantity' => 5])->save();
         $first = $this->event(['name' => 'Fiesta']); $second = $this->event(['name' => 'Sports Fest']);
+        $l1 = $this->loanRow($first->id, $item->id, 2); $l2 = $this->loanRow($second->id, $item->id, 3);   // the units were out on loan when they were lost
         InventoryUnitLog::create(['inventory_item_id' => $item->id, 'event_id' => $first->id, 'action' => 'lost', 'quantity' => 2, 'units' => ['New' => 0, 'Good' => 2, 'Fair' => 0, 'Poor' => 0]]);
         InventoryUnitLog::create(['inventory_item_id' => $item->id, 'event_id' => $second->id, 'action' => 'lost', 'quantity' => 3, 'units' => ['New' => 0, 'Good' => 3, 'Fair' => 0, 'Poor' => 0]]);
+        \DB::table('event_inventory_items')->whereIn('id', [$l1, $l2])->delete();   // ...and are no longer on loan
 
         $this->actingAs($s)->post("/inventory/{$item->id}/units", [
-            'action' => 'found', 'units' => ['Good' => 3], 'photos' => [UploadedFile::fake()->image('p.jpg')],
+            'action' => 'found', 'units' => ['Good' => 3], 'photos' => [$this->fakeImage('p.jpg')],
         ], ['Accept' => 'application/json'])->assertSuccessful();
 
         // one found report, on the item only: no event is credited

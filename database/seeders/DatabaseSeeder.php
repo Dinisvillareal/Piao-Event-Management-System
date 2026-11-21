@@ -61,6 +61,10 @@ class DatabaseSeeder extends Seeder
         $this->call([
             EventInventoryReleaseSeeder::class,
         ]);
+        // Opening balance of every item's ledger, after every seeder that changed stock.
+        $this->call([
+            InventoryLedgerSeeder::class,
+        ]);
         $this->call([
             EventExpenseSeeder::class,
         ]);

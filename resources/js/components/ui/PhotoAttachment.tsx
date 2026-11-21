@@ -65,7 +65,7 @@ export default function PhotoAttachment({ file, url, onPick, onPreview, onDelete
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3.5">
-      <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={onPick} />
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" className="hidden" onChange={onPick} />
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <div className="flex min-w-0 flex-1 basis-56 items-center gap-3">
           {has ? (

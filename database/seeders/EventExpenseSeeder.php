@@ -259,23 +259,33 @@ class EventExpenseSeeder extends Seeder
             ],
         ];
 
-        foreach ($expensesByEvent as $eventName => $expenses) {
-            $event = Event::where('name', $eventName)->first();
+        // These expenses belong to events that have already ended, and the database refuses new
+        // expenses on an ended event. History has to be written before it can be locked, so the
+        // lock is lifted for this seeder only and put back (try/finally) whatever happens.
+        $lock = require database_path('migrations/2026_11_19_000013_lock_ended_event_budget_schedule_and_delete.php');
+        $lock->down();
 
-            if (!$event) {
-                continue;
-            }
+        try {
+            foreach ($expensesByEvent as $eventName => $expenses) {
+                $event = Event::where('name', $eventName)->first();
 
-            foreach ($expenses as $expense) {
-                EventExpense::firstOrCreate(
-                    ['event_id' => $event->id, 'item' => $expense['item']],
-                    [
-                        'amount' => $expense['amount'],
-                        'notes' => $expense['notes'],
-                        'recorded_by' => $recordedBy,
-                    ]
-                );
+                if (!$event) {
+                    continue;
+                }
+
+                foreach ($expenses as $expense) {
+                    EventExpense::firstOrCreate(
+                        ['event_id' => $event->id, 'item' => $expense['item']],
+                        [
+                            'amount' => $expense['amount'],
+                            'notes' => $expense['notes'],
+                            'recorded_by' => $recordedBy,
+                        ]
+                    );
+                }
             }
+        } finally {
+            $lock->up();
         }
     }
 }

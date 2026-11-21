@@ -123,7 +123,7 @@ class UserController extends Controller
     private function localUpload($file): string
     {
         $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        $ext      = $file->getClientOriginalExtension();
+        $ext      = \App\Support\Uploads::extension($file, \App\Support\Uploads::IMAGE);
         $clean    = preg_replace('/[^A-Za-z0-9\-_.]/', '_', $original);
         $filename = time() . '_' . $clean . '.' . $ext;
 
@@ -390,7 +390,7 @@ class UserController extends Controller
 
             if ($this->isHeadConflict($e)) {
                 return response()->json([
-                    'message' => 'This household already has a head from another request just now -- please refresh and try again.',
+                    'message' => 'Another staff member just set a head for this household. Please refresh and try again.',
                 ], 409);
             }
 
@@ -879,7 +879,7 @@ class UserController extends Controller
 
             if ($this->isHeadConflict($e)) {
                 return response()->json([
-                    'message' => 'This household already has a head from another request just now -- please refresh and try again.',
+                    'message' => 'Another staff member just set a head for this household. Please refresh and try again.',
                 ], 409);
             }
 

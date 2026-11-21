@@ -14,6 +14,11 @@ class Household extends Model
         'address',
         'contact_number',
         'deleted_by',
+        'dissolved_members',
+    ];
+
+    protected $casts = [
+        'dissolved_members' => 'array',
     ];
 
     // =====================
@@ -62,6 +67,43 @@ class Household extends Model
         if ($dirty) {
             $this->save();
         }
+    }
+
+    /**
+     * Deleting a household unlinks its members. This remembers who they were
+     * (see HouseholdController::destroy), and restoring the household from the
+     * Archive calls this to put them back -- but only those who are still free:
+     * anyone who joined another household or was archived in the meantime is
+     * left where they are. The old head becomes head again only if still free.
+     *
+     * @return array{linked:int, skipped:int}
+     */
+    public function relinkDissolvedMembers(): array
+    {
+        $snap = $this->dissolved_members;
+        if (!is_array($snap) || empty($snap['members'])) {
+            return ['linked' => 0, 'skipped' => 0];
+        }
+
+        $ids = array_map('intval', $snap['members']);
+
+        // The conditional update is the claim: someone grabbed by another household
+        // a moment ago simply isn't counted.
+        $linked = User::whereIn('id', $ids)
+            ->whereNull('household_id')
+            ->whereNull('deleted_at')
+            ->whereIn('role', ['Resident', 'Staff'])
+            ->update(['household_id' => $this->id, 'is_household_head' => false]);
+
+        $headId = isset($snap['head']) ? (int) $snap['head'] : 0;
+        if ($headId > 0) {
+            User::where('id', $headId)->where('household_id', $this->id)->update(['is_household_head' => true]);
+        }
+
+        $this->dissolved_members = null;
+        $this->save();
+
+        return ['linked' => $linked, 'skipped' => count($ids) - $linked];
     }
 
     // =====================

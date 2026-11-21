@@ -57,16 +57,18 @@ class AgeBracketController extends Controller
 
         $request->validate([
             'label'      => 'required|string|max:50',
-            'min_age'    => 'required|integer|min:0|max:150',
-            'max_age'    => 'nullable|integer|min:0|max:150|gte:min_age',
-            'sort_order' => 'nullable|integer|min:0',
+            'min_age'    => 'required|integer|min:0|max:120',
+            'max_age'    => 'nullable|integer|min:0|max:120|gte:min_age',
+            'sort_order' => 'nullable|integer|min:0|max:9999',
         ]);
 
         $conflict = $this->findOverlappingBracket($request->min_age, $request->max_age);
         if ($conflict) {
             $conflictRange = $conflict->min_age . '-' . ($conflict->max_age ?? '∞');
+            $msg = "This age range overlaps with \"{$conflict->label}\" ({$conflictRange}). Adjust the range so it doesn't overlap an existing bracket.";
             return response()->json([
-                'errors' => ['min_age' => ["This age range overlaps with \"{$conflict->label}\" ({$conflictRange}). Adjust the range so it doesn't overlap an existing bracket."]],
+                'message' => $msg,
+                'errors' => ['min_age' => [$msg]],
             ], 422);
         }
 
@@ -101,16 +103,18 @@ class AgeBracketController extends Controller
 
         $request->validate([
             'label'      => 'required|string|max:50',
-            'min_age'    => 'required|integer|min:0|max:150',
-            'max_age'    => 'nullable|integer|min:0|max:150|gte:min_age',
-            'sort_order' => 'nullable|integer|min:0',
+            'min_age'    => 'required|integer|min:0|max:120',
+            'max_age'    => 'nullable|integer|min:0|max:120|gte:min_age',
+            'sort_order' => 'nullable|integer|min:0|max:9999',
         ]);
 
         $conflict = $this->findOverlappingBracket($request->min_age, $request->max_age, $bracket->id);
         if ($conflict) {
             $conflictRange = $conflict->min_age . '-' . ($conflict->max_age ?? '∞');
+            $msg = "This age range overlaps with \"{$conflict->label}\" ({$conflictRange}). Adjust the range so it doesn't overlap an existing bracket.";
             return response()->json([
-                'errors' => ['min_age' => ["This age range overlaps with \"{$conflict->label}\" ({$conflictRange}). Adjust the range so it doesn't overlap an existing bracket."]],
+                'message' => $msg,
+                'errors' => ['min_age' => [$msg]],
             ], 422);
         }
 

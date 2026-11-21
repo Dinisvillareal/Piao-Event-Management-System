@@ -64,12 +64,6 @@ class EventInventoryReleaseSeeder extends Seeder
             }
             $item->giveUnits($units);
 
-            if ($borrow->quantity <= 0) {
-                $borrow->delete();
-            } else {
-                $borrow->save();
-            }
-
             $at = now()->subHours($return['hours_ago']);
 
             // forceFill so the backdated created_at is kept (it isn't mass-assignable).
@@ -82,6 +76,14 @@ class EventInventoryReleaseSeeder extends Seeder
                 'created_at' => $at,
                 'updated_at' => $at,
             ])->save();
+
+            // The return is recorded first and the loan lowered after, as in the app, so the database
+            // can compare the return with what the event still had out.
+            if ($borrow->quantity <= 0) {
+                $borrow->delete();
+            } else {
+                $borrow->save();
+            }
         }
     }
 }

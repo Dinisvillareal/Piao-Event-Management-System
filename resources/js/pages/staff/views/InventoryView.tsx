@@ -313,7 +313,7 @@ export default function InventoryView() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
       setError(t("uploadImageOnly"));
       return;
     }

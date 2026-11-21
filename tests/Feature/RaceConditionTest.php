@@ -485,7 +485,7 @@ class RaceConditionTest extends TestCase
     {
         $staff = $this->staff();
         $hh = Household::create(['code' => 'HH-0001', 'address' => 'Purok 1']);
-        $person = $this->makeUser('Resident', ['is_household_head' => true]);
+        $person = $this->makeUser('Resident');   // a head flag without a household can no longer even be stored (migration 000016)
 
         $this->actingAs($staff)->postJson("/households/{$hh->id}/members", ['user_id' => $person->id])->assertOk();
 

@@ -74,9 +74,9 @@ class ReportAccuracyTest extends TestCase
         EventAttendance::create([
             'event_id' => $e->id,
             'user_id' => $u->id,
-            'time_in' => $in ? now()->subDays(10)->setTime(8, 5) : null,
-            'time_out' => $out ? now()->subDays(10)->setTime(9, 50) : null,
-            'status' => $in || $out ? 'attended' : 'missed',
+            'time_in' => $in ? \Carbon\Carbon::parse($e->event_start)->subMinutes(5) : null,   // sign-in closes when the event starts
+            'time_out' => $out ? \Carbon\Carbon::parse($e->event_end)->addMinutes(5) : null,   // sign-out opens when it ends
+            'status' => $in && $out ? 'Complete' : ($in || $out ? 'Incomplete' : 'missed'),
         ]);
     }
 
@@ -408,14 +408,19 @@ class ReportAccuracyTest extends TestCase
 
     public function test_budget_totals_remaining_and_over_budget_are_exact(): void
     {
-        $a = $this->pastEvent('Fiesta', ['approved_budget' => 10000]);
-        $b = $this->pastEvent('Sports Fest', ['approved_budget' => 5000]);
-        $c = $this->pastEvent('Free Seminar');    // no budget set
+        // expenses are recorded while an event is open; the events end afterwards
+        $open = ['event_start' => now()->addDays(10)->setTime(8, 0), 'event_end' => now()->addDays(10)->setTime(10, 0)];
+        $a = $this->pastEvent('Fiesta', ['approved_budget' => 10000] + $open);
+        $b = $this->pastEvent('Sports Fest', ['approved_budget' => 5000] + $open);
+        $c = $this->pastEvent('Free Seminar', $open);    // no budget set
 
         EventExpense::create(['event_id' => $a->id, 'item' => 'Food', 'amount' => 4000.50]);
         EventExpense::create(['event_id' => $a->id, 'item' => 'Sound system', 'amount' => 2500.25]);
         EventExpense::create(['event_id' => $b->id, 'item' => 'Trophies', 'amount' => 6000]);
         EventExpense::create(['event_id' => $c->id, 'item' => 'Snacks', 'amount' => 300]);
+        foreach ([$a, $b, $c] as $event) {
+            $this->endEvent($event);
+        }
 
         $d = $this->actingAs($this->staff())->getJson('/reports/budget-summary')->assertOk()->json();
         $s = $d['summary'];

@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Check, Circle } from "lucide-react";
+import { AlertTriangle, Check, Circle, KeyRound } from "lucide-react";
 import api, { apiErrorMessage } from "../../lib/api";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { checkPassword, PASSWORD_MAX } from "../../lib/passwordPolicy";
 import PasswordField from "./PasswordField";
 import SaveButton from "../ui/SaveButton";
+import ConfirmDialog from "../ui/ConfirmDialog";
 
 // Change your OWN password: current password + new password twice, with a
 // live checklist. Used by My Account and by the forced "choose a new
@@ -16,6 +17,8 @@ export default function ChangePasswordForm({
   onDone,
   submitLabel,
   split = false,
+  confirmFirst = false,
+  withCancel = false,
 }: {
   userId: number | string;
   minLength?: number;
@@ -24,6 +27,10 @@ export default function ChangePasswordForm({
   submitLabel?: string;
   /** Wide layout: fields on the left, rules + button on the right (from lg up). */
   split?: boolean;
+  /** Ask "are you sure?" before the password is actually changed. */
+  confirmFirst?: boolean;
+  /** Show a Cancel button; when something was typed it asks "discard changes?" first. */
+  withCancel?: boolean;
 }) {
   const { t } = useLanguage();
   const [current, setCurrent] = useState("");
@@ -31,6 +38,8 @@ export default function ChangePasswordForm({
   const [confirm, setConfirm] = useState("");
   const [errors, setErrors] = useState<{ current?: string; next?: string; general?: string }>({});
   const [busy, setBusy] = useState(false);
+  const [askSave, setAskSave] = useState(false);
+  const [askDiscard, setAskDiscard] = useState(false);
 
   const checks = checkPassword(next);
   const longEnough = next.length >= minLength;
@@ -38,8 +47,25 @@ export default function ChangePasswordForm({
   const matches = confirm.length > 0 && next === confirm;
   const ready = !!current && strong && matches && !busy;
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!ready) return;
+    if (confirmFirst) setAskSave(true);
+    else save();
+  };
+
+  const clearAll = () => {
+    setCurrent("");
+    setNext("");
+    setConfirm("");
+    setErrors({});
+  };
+
+  // Always ask first, even when nothing was typed yet.
+  const cancel = () => setAskDiscard(true);
+
+  const save = async () => {
+    setAskSave(false);
     if (!ready) return;
     setBusy(true);
     setErrors({});
@@ -102,7 +128,37 @@ export default function ChangePasswordForm({
     </div>
   );
   const general = errors.general && <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2.5 text-sm text-red-400">{errors.general}</p>;
-  const button = <SaveButton className="w-full" active={ready}>{busy ? t("savingLabel") : (submitLabel ?? t("secUpdatePassword"))}</SaveButton>;
+  const saveButton = <SaveButton className="w-full" active={ready}>{busy ? t("savingLabel") : (submitLabel ?? t("secUpdatePassword"))}</SaveButton>;
+  const button = withCancel ? (
+    <div className="flex flex-wrap items-center gap-3">
+      <div className="min-w-[200px] flex-1">{saveButton}</div>
+      <button type="button" onClick={cancel} disabled={busy} className="rounded-full border border-white/20 px-5 py-3 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-40">{t("cancel")}</button>
+    </div>
+  ) : saveButton;
+  const dialogs = (
+    <>
+      <ConfirmDialog
+        open={askSave}
+        icon={<KeyRound size={36} />}
+        title={t("secAskPwTitle")}
+        body={t("secAskPwBody")}
+        confirmLabel={t("secAskPwYes")}
+        onCancel={() => setAskSave(false)}
+        onConfirm={save}
+      />
+      <ConfirmDialog
+        open={askDiscard}
+        tone="warning"
+        icon={<AlertTriangle size={36} />}
+        title={t("secDiscardTitle")}
+        body={t("secDiscardTypedBody")}
+        cancelLabel={t("secKeepEditing")}
+        confirmLabel={t("secDiscardYes")}
+        onCancel={() => setAskDiscard(false)}
+        onConfirm={() => { setAskDiscard(false); clearAll(); }}
+      />
+    </>
+  );
 
   if (split) {
     return (
@@ -116,6 +172,7 @@ export default function ChangePasswordForm({
           {general}
           <div className="mt-auto">{button}</div>
         </div>
+        {dialogs}
       </form>
     );
   }
@@ -125,6 +182,7 @@ export default function ChangePasswordForm({
       {fieldsBlock}
       {general}
       {button}
+      {dialogs}
     </form>
   );
 }

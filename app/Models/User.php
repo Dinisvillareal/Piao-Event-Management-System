@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Support\Phone;
 use Illuminate\Support\Facades\Storage;
 
 class User extends Authenticatable
@@ -59,6 +60,17 @@ class User extends Authenticatable
         'password_changed_at' => 'datetime',
         'two_factor_confirmed_at' => 'datetime',
     ];
+
+    /**
+     * Store the mobile number in its one canonical form (09XXXXXXXXX) whatever the
+     * way it was typed (0917-123-4567, +63 917 123 4567, ...). A value that is not
+     * a valid mobile number is stored untouched, so the database constraint
+     * refuses it instead of the app silently changing what was entered.
+     */
+    public function setContactNumberAttribute($value): void
+    {
+        $this->attributes['contact_number'] = Phone::canonical($value) ?? $value;
+    }
 
     /**
      * Automatically include in JSON responses

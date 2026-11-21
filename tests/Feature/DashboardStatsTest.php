@@ -23,7 +23,9 @@ class DashboardStatsTest extends TestCase
     {
         return Event::create([
             'name' => $name, 'description' => 'x', 'location' => 'Hall',
-            'event_start' => $start, 'event_end' => $end, 'call_time_start' => $start, 'call_time_end' => $end ?? $start,
+            'event_start' => $start, 'event_end' => $end,
+            'call_time_start' => \Illuminate\Support\Carbon::parse($start)->subHour()->toDateTimeString(),
+            'call_time_end' => \Illuminate\Support\Carbon::parse($end ?? $start)->addHour()->toDateTimeString(),
         ]);
     }
 
@@ -48,8 +50,8 @@ class DashboardStatsTest extends TestCase
         $staff = $this->staff();
         $this->makeUser('Resident');
         $this->makeUser('Resident');
-        $this->makeUser('Resident')->delete();       // archived: must not count
-        $this->makeUser('Staff')->delete();          // archived staff: must not count
+        $this->archived($this->makeUser('Resident'));       // archived: must not count
+        $this->archived($this->makeUser('Staff'));          // archived staff: must not count
 
         $this->assertSame(3, $this->stats($staff)['residents']);   // 2 residents + the logged-in staff
     }
@@ -59,7 +61,7 @@ class DashboardStatsTest extends TestCase
         Membership::create(['name' => 'Seniors', 'description' => 'x', 'is_active' => true]);
         Membership::create(['name' => 'Youth', 'description' => 'x', 'is_active' => true]);
         Membership::create(['name' => 'Paused', 'description' => 'x', 'is_active' => false]);
-        Membership::create(['name' => 'Gone', 'description' => 'x', 'is_active' => true])->delete();
+        $this->archived(Membership::create(['name' => 'Gone', 'description' => 'x', 'is_active' => true]));
 
         $this->assertSame(2, $this->stats()['memberships']);
     }
@@ -68,7 +70,7 @@ class DashboardStatsTest extends TestCase
     {
         $this->event(now()->addDays(3)->toDateTimeString());
         $this->event(now()->subDays(3)->toDateTimeString());
-        $this->event(now()->addDays(5)->toDateTimeString())->delete();
+        $this->archived($this->event(now()->addDays(5)->toDateTimeString()));
 
         $this->assertSame(2, $this->stats()['events']);
     }

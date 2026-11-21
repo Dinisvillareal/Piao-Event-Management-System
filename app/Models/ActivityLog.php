@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\JoinsHashChain;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class ActivityLog extends Model
 {
-    use HasFactory;
+    use HasFactory, JoinsHashChain;
 
     protected $table = 'activity_logs';
 
@@ -18,11 +19,13 @@ class ActivityLog extends Model
         'action',
         'module',
         'description',
-        'ip_address',
-    ];
+    ];   // the time and the IP address are written by the system only, never from a request
 
     // IMPORTANT: ensure timestamps are enabled
     public $timestamps = true;
+
+    /** The chain fingerprints are for verification only; they never leave the server in a response. */
+    protected $hidden = ['prev_hash', 'row_hash'];
 
     /**
      * Screen filter name => the module name stored in the log. One list, used by the
@@ -42,6 +45,14 @@ class ActivityLog extends Model
         'archive'      => 'Archive',
         'report'       => 'Reports',
     ];
+
+    /** Filled in before the chain fingerprint is calculated: the device the action came from. */
+    protected function beforeChain(): void
+    {
+        if ($this->ip_address === null && app()->bound('request')) {
+            $this->ip_address = request()->ip();
+        }
+    }
 
     protected static function booted(): void
     {

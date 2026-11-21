@@ -17,7 +17,7 @@ class LocalizedApiMessagesTest extends TestCase
     private function staff(): User
     {
         return User::create([
-            'user_code' => 'STAFF-' . uniqid(), 'first_name' => 'Staff', 'last_name' => 'Tester',
+            'user_code' => 'PR-' . random_int(10000, 99999), 'first_name' => 'Staff', 'last_name' => 'Tester',
             'contact_number' => '09171234567', 'role' => 'Staff', 'password' => bcrypt('secret123'), 'has_account' => true,
         ]);
     }

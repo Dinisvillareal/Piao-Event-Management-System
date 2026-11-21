@@ -16,6 +16,37 @@ use Illuminate\Support\Carbon;
 
 class FeedbackController extends Controller
 {
+    /**
+     * English label of each "couldn't attend" reason. Staff alerts carry the label and the
+     * screens map it back to the reader's own language (see resources/js/lib/absence.ts).
+     */
+    private const REASON_LABELS = [
+        'schedule'       => 'Schedule conflict',
+        'sick'           => 'Sick or unwell',
+        'not_informed'   => "Didn't know about it",
+        'no_transport'   => 'No transportation',
+        'work_family'    => 'Work or family duties',
+        'not_interested' => 'Not interested',
+        'other'          => 'Other',
+    ];
+
+    /*
+     * NOTIFICATION CONTRACT. The staff bell, the Notifications page and the member's inbox read
+     * these notifications by their SHAPE and write the wording themselves, in the reader's
+     * language (verbs, "on", reason labels all come from the interface dictionaries):
+     *   staff:  title "<Name> sent feedback" | "<Name> updated their feedback" |
+     *                 "<Name> sent a reason for not attending" |
+     *                 "<Name> liked your reply on their feedback|response"
+     *           message "\"<Event>\" - 4/5" (or "- <Reason label>"), then the comment on line 2
+     *   member: title "Barangay staff liked|replied to your feedback|response",
+     *           message "\"<Event>\"", then the staff reply on line 2
+     * Changing the title or message text here breaks that reading, so keep to this shape.
+     */
+    private function personName($user): string
+    {
+        return trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: 'A member';
+    }
+
     // ------------------------------------------------------------------
     // Window helpers
     // ------------------------------------------------------------------
@@ -156,7 +187,7 @@ class FeedbackController extends Controller
                 "Edited feedback for event '{$event->name}' (rating {$request->rating}/5)"
             );
 
-            $this->notifyStaff($existing, $event, auth()->user());
+            $this->notifyStaff($existing, $event, auth()->user(), true);
 
             return response()->json([
                 'message'  => 'Feedback updated.',
@@ -534,7 +565,7 @@ class FeedbackController extends Controller
             $this->notifyMember(
                 $target,
                 'Barangay staff liked your ' . ($kind === 'absence' ? 'response' : 'feedback'),
-                'Your ' . ($kind === 'absence' ? 'reason' : 'rating') . ' was acknowledged by barangay staff.'
+                '"' . ($target->event->name ?? 'an event') . '"'
             );
         }
 
@@ -576,13 +607,10 @@ class FeedbackController extends Controller
             return;
         }
 
-        $member = auth()->user();
-        $title   = 'Member liked your reply';
-        $message = "{$member->first_name} {$member->last_name} liked your reply on their " .
-            ($kind === 'absence' ? 'reason' : 'feedback') . '.';
+        $title   = $this->personName(auth()->user()) . ' liked your reply on their ' . ($kind === 'absence' ? 'response' : 'feedback');
+        $message = '"' . ($target->event->name ?? 'an event') . "\"\n" . $target->staff_reply;
 
         $exists = Notification::where('user_id', $target->staff_replied_by)
-            # ->where('type', 'feedback_received')
             ->where('type', 'reply_liked')
             ->where('event_id', $target->event_id)
             ->where('title', $title)
@@ -596,7 +624,6 @@ class FeedbackController extends Controller
         Notification::insert([[
             'user_id'    => $target->staff_replied_by,
             'event_id'   => $target->event_id,
-            # 'type'       => 'feedback_received',
             'type'       => 'reply_liked',
             'title'      => $title,
             'message'    => $message,
@@ -628,8 +655,8 @@ class FeedbackController extends Controller
         if ($text !== '') {
             $this->notifyMember(
                 $target,
-                'Barangay staff replied to your ' . ($kind === 'absence' ? 'reason' : 'feedback'),
-                $text
+                'Barangay staff replied to your ' . ($kind === 'absence' ? 'response' : 'feedback'),
+                '"' . ($target->event->name ?? 'an event') . "\"\n" . $text
             );
         }
 
@@ -679,7 +706,7 @@ class FeedbackController extends Controller
     // Staff notifications
     // ------------------------------------------------------------------
 
-    private function notifyStaff(Feedback $feedback, $event, $member): void
+    private function notifyStaff(Feedback $feedback, $event, $member, bool $edited = false): void
     {
         try {
             $staffIds = User::where('role', 'Staff')->where('id', '!=', $member->id)->pluck('id');
@@ -687,18 +714,21 @@ class FeedbackController extends Controller
                 return;
             }
 
-            $msg = "{$member->first_name} {$member->last_name} rated \"{$event->name}\": {$feedback->rating}/5" .
-                ($feedback->comment ? " — {$feedback->comment}" : '');
+            $comment = trim((string) $feedback->comment);
+            $message = '"' . ($event->name ?? 'an event') . '" - ' . (int) $feedback->rating . '/5'
+                . ($comment !== '' ? "\n" . $comment : '');
+            $title = $this->personName($member) . ($edited ? ' updated their feedback' : ' sent feedback');
+            $now = now();
 
             Notification::insert($staffIds->map(fn ($id) => [
                 'user_id'    => $id,
                 'event_id'   => $event->id,
                 'type'       => 'feedback_received',
-                'title'      => 'New feedback received',
-                'message'    => $msg,
+                'title'      => $title,
+                'message'    => $message,
                 'read'       => false,
-                'created_at' => now(),
-                'updated_at' => now(),
+                'created_at' => $now,
+                'updated_at' => $now,
             ])->all());
         } catch (\Throwable $e) {
             \Log::warning('notifyStaff failed: ' . $e->getMessage());
@@ -713,17 +743,20 @@ class FeedbackController extends Controller
                 return;
             }
 
-            $msg = "{$member->first_name} {$member->last_name} reported couldn't attend \"{$event->name}\": {$row->reason}";
+            $comment = trim((string) $row->comment);
+            $message = '"' . ($event->name ?? 'an event') . '" - ' . (self::REASON_LABELS[$row->reason] ?? $row->reason)
+                . ($comment !== '' ? "\n" . $comment : '');
+            $now = now();
 
             Notification::insert($staffIds->map(fn ($id) => [
                 'user_id'    => $id,
                 'event_id'   => $event->id,
                 'type'       => 'feedback_received',
-                'title'      => "Couldn't attend reported",
-                'message'    => $msg,
+                'title'      => $this->personName($member) . ' sent a reason for not attending',
+                'message'    => $message,
                 'read'       => false,
-                'created_at' => now(),
-                'updated_at' => now(),
+                'created_at' => $now,
+                'updated_at' => $now,
             ])->all());
         } catch (\Throwable $e) {
             \Log::warning('notifyStaffAbsence failed: ' . $e->getMessage());

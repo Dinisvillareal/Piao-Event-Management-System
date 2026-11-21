@@ -23,7 +23,7 @@ class InventoryController extends Controller
     private function localUpload($file, string $dir = 'inventory_photos'): string
     {
         $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        $ext      = $file->getClientOriginalExtension();
+        $ext      = \App\Support\Uploads::extension($file, \App\Support\Uploads::IMAGE);
         $clean    = preg_replace('/[^A-Za-z0-9\-_.]/', '_', $original);
         $filename = time() . '_' . \Illuminate\Support\Str::random(6) . '_' . $clean . '.' . $ext;
 
@@ -370,10 +370,10 @@ class InventoryController extends Controller
         $request->validate([
             'action' => 'required|in:found',
             'units' => 'nullable|array',
-            'units.*' => 'nullable|integer|min:0',
+            'units.*' => 'nullable|integer|min:0|max:1000000',
             // Evidence photos (up to 5): required for found.
             'photos' => 'nullable|array|max:5',
-            'photos.*' => 'image|max:5120',
+            'photos.*' => \App\Support\Uploads::IMAGE_RULE,
         ]);
 
         $action = $request->input('action');
@@ -545,9 +545,9 @@ class InventoryController extends Controller
 
         $request->validate([
             'units' => 'required|array',
-            'units.*' => 'nullable|integer|min:0',
+            'units.*' => 'nullable|integer|min:0|max:1000000',
             'photos' => 'nullable|array|max:5',
-            'photos.*' => 'image|max:5120',
+            'photos.*' => \App\Support\Uploads::IMAGE_RULE,
         ]);
 
         $fail = fn (string $message) => throw new \Illuminate\Http\Exceptions\HttpResponseException(

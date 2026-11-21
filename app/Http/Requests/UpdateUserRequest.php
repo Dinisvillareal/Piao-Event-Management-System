@@ -15,8 +15,8 @@ class UpdateUserRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'first_name'       => 'nullable|string|max:70',
-            'last_name'        => 'nullable|string|max:70',
+            'first_name'       => 'sometimes|required|string|max:70',
+            'last_name'        => 'sometimes|required|string|max:70',
             'middle_name'      => 'nullable|string|max:70',
             'suffix'           => 'nullable|string|max:10',
 
@@ -44,12 +44,12 @@ class UpdateUserRequest extends FormRequest
             // a password) are enforced in UserController::update.
             'has_account'      => 'nullable|boolean',
             'password'         => ['nullable', 'string', new StrongPassword()],
-            'validation_id'    => 'nullable',
+            'validation_id'    => 'nullable|' . \App\Support\Uploads::IMAGE_RULE,
             'membership_ids'   => 'nullable|array',
             'membership_ids.*' => 'exists:memberships,id',
 
             // Adviser recommendation: "Profiling (Filter for Age)"
-            'birth_date'       => 'nullable|date|before_or_equal:today',
+            'birth_date'       => 'nullable|date|after_or_equal:1900-01-01|before_or_equal:today',
             'address'          => 'nullable|string|max:150',
             'civil_status_id'  => 'nullable|exists:civil_statuses,id',
             'current_status_ids'   => 'nullable|array',

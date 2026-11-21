@@ -71,7 +71,7 @@ class ArchiveTest extends TestCase
         $c->delete();
         $ids['civil_status'] = $c->id;
 
-        $s = CurrentStatus::create(['label' => 'Seasonal Worker', 'category' => 'Other', 'sort_order' => 9, 'deleted_by' => 'PR-777']);
+        $s = CurrentStatus::create(['label' => 'Seasonal Worker', 'category' => 'other', 'sort_order' => 9, 'deleted_by' => 'PR-777']);
         $s->delete();
         $ids['current_status'] = $s->id;
 
@@ -79,7 +79,7 @@ class ArchiveTest extends TestCase
         $i->delete();
         $ids['inventory_item'] = $i->id;
 
-        $x = $this->event('Budget Event')->expenses()->create(['item' => 'Tarpaulin', 'amount' => 250, 'receipt_path' => 'r.jpg', 'recorded_by' => 'PR-111', 'deleted_by' => 'PR-777']);
+        $x = $this->event('Budget Event')->expenses()->create(['item' => 'Tarpaulin', 'amount' => 250, 'receipt_path' => 'expense_receipts/1731900000_r.jpg', 'recorded_by' => 'PR-111', 'deleted_by' => 'PR-777']);
         $x->delete();
         $ids['expense'] = $x->id;
 
@@ -132,7 +132,7 @@ class ArchiveTest extends TestCase
         $ben = $this->staff();
         $e = $this->event('Fiesta');
         $x = $this->actingAs($ana)->post("/events/{$e->id}/expenses", [
-            'item' => 'Sound system', 'amount' => 900, 'receipt' => UploadedFile::fake()->image('r.jpg'),
+            'item' => 'Sound system', 'amount' => 900, 'receipt' => $this->fakeImage('r.jpg'),
         ], ['Accept' => 'application/json'])->assertStatus(201)->json('expense.id');
 
         $this->actingAs($ben)->deleteJson("/events/{$e->id}/expenses/{$x}")->assertOk();
@@ -206,7 +206,7 @@ class ArchiveTest extends TestCase
     {
         $this->archiveOneOfEach();
         $i = InventoryItem::create(['name' => '100% Cotton Mats', 'quantity' => 1, 'new_quantity' => 0, 'good_quantity' => 1, 'fair_quantity' => 0, 'poor_quantity' => 0]);
-        $i->delete();
+        $this->archived($i);
 
         $this->assertSame(['100% Cotton Mats'], $this->names($this->archive(['search' => '%'])));
         $this->assertSame([], $this->names($this->archive(['search' => 'Spare_Chairs'])));
@@ -218,8 +218,9 @@ class ArchiveTest extends TestCase
         $b = Membership::create(['name' => 'alpha', 'description' => 'x']);
         $c = Membership::create(['name' => 'Charlie', 'description' => 'x']);
         foreach ([[$a, '2026-11-01 08:00:00'], [$b, '2026-11-03 08:00:00'], [$c, '2026-11-02 08:00:00']] as [$m, $at]) {
-            $m->delete();
-            Membership::withTrashed()->where('id', $m->id)->update(['deleted_at' => $at]);
+            $this->archived($m);
+            // back-dating an archive time is test set-up that no screen can do (the database refuses to re-date it)
+            $this->withoutTimeLocks(fn () => Membership::withTrashed()->where('id', $m->id)->update(['deleted_at' => $at]));
         }
 
         $this->assertSame(['alpha', 'Bravo', 'Charlie'], $this->names($this->archive(['sort' => 'name-az'])));
@@ -231,7 +232,7 @@ class ArchiveTest extends TestCase
     {
         foreach (range(1, 23) as $n) {
             $m = Membership::create(['name' => sprintf('Club %02d', $n), 'description' => 'x']);
-            $m->delete();
+            $this->archived($m);
         }
 
         $p1 = $this->archive(['per_page' => 10, 'page' => 1, 'sort' => 'name-az']);

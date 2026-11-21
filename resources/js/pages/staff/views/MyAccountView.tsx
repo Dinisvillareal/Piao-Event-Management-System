@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { KeyRound, ShieldCheck, Smartphone, BellRing, Crown, CheckCircle2 } from "lucide-react";
+import { KeyRound, ShieldCheck, Smartphone, BellRing, Crown, CheckCircle2, AlertTriangle } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import ChangePasswordForm from "../../../components/auth/ChangePasswordForm";
 import PasswordConfirmDialog from "../../../components/auth/PasswordConfirmDialog";
 import SaveButton from "../../../components/ui/SaveButton";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
 import SectionCard from "../../../components/ui/SectionCard";
 import Skeleton from "../../../components/ui/Skeleton";
 import SimplePager from "../../../components/ui/SimplePager";
@@ -41,6 +43,12 @@ export default function MyAccountView() {
   const [askOffPw, setAskOffPw] = useState(false);
   const [offOpen, setOffOpen] = useState(false);
   const [acceptOpen, setAcceptOpen] = useState(false);
+  // "Are you sure?" and "discard changes?" steps
+  const [askSetupSure, setAskSetupSure] = useState(false);
+  const [askOnSure, setAskOnSure] = useState(false);
+  const [askOffSure, setAskOffSure] = useState(false);
+  const [askDiscardSetup, setAskDiscardSetup] = useState(false);
+  const [askDiscardOff, setAskDiscardOff] = useState(false);
 
   const alertsRef = useRef<SecAlert[]>([]);
   alertsRef.current = alerts;
@@ -78,8 +86,13 @@ export default function MyAccountView() {
     setAskSetupPw(false);
   };
 
-  const confirmSetup = async (e: React.FormEvent) => {
+  const confirmSetup = (e: React.FormEvent) => {
     e.preventDefault();
+    if (tfaCode.length === 6 && !tfaBusy) setAskOnSure(true);
+  };
+
+  const finishSetup = async () => {
+    setAskOnSure(false);
     setTfaBusy(true);
     setTfaError("");
     try {
@@ -101,6 +114,24 @@ export default function MyAccountView() {
     setOffCode("");
     setNotice(t("secTwoStepOffNotice"));
     await load();
+  };
+
+  const discardSetup = () => {
+    setAskDiscardSetup(false);
+    setTfaSetup(null);
+    setTfaCode("");
+    setTfaError("");
+  };
+
+  const cancelOff = () => {
+    if (offCode) setAskDiscardOff(true);
+    else setOffOpen(false);
+  };
+
+  const discardOff = () => {
+    setAskDiscardOff(false);
+    setOffOpen(false);
+    setOffCode("");
   };
 
   const accept = async (password: string, otp: string) => {
@@ -125,12 +156,6 @@ export default function MyAccountView() {
         <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">{t("myaccount")}</h1>
         <p className="mt-1.5 max-w-2xl text-sm text-white/55">{t("secMyAccountSubtitle")}</p>
       </div>
-
-      {notice && (
-        <div className="flex items-center gap-2 rounded-xl border border-[#4FBEB0]/30 bg-[#4FBEB0]/10 px-4 py-3 text-sm text-[#7DD8CB]">
-          <CheckCircle2 className="h-5 w-5 shrink-0" /> {notice}
-        </div>
-      )}
 
       {transfer && (
         <div className="rounded-2xl border border-gold-400/40 bg-gold-400/10 p-5 sm:p-6">
@@ -232,7 +257,7 @@ export default function MyAccountView() {
                   ))}
                   <Skeleton className="h-[54px] w-full !rounded-full" />
                 </div>
-              ) : <div><ChangePasswordForm userId={me.id} minLength={minLength} onDone={() => { setPwDone(true); load(); }} /></div>
+              ) : <div><ChangePasswordForm userId={me.id} minLength={minLength} confirmFirst withCancel onDone={() => { setPwDone(true); setNotice(t("secPasswordChangedNote")); load(); }} /></div>
             )}
           </SectionCard>
 
@@ -276,7 +301,7 @@ export default function MyAccountView() {
                 </div>
                 <div className="flex flex-wrap gap-3">
                   <SaveButton className="min-w-[220px]" active={tfaCode.length === 6 && !tfaBusy}>{tfaBusy ? t("savingLabel") : t("secTurnOn")}</SaveButton>
-                  <button type="button" onClick={() => setTfaSetup(null)} className={ghostBtn}>{t("cancel")}</button>
+                  <button type="button" onClick={() => setAskDiscardSetup(true)} className={ghostBtn}>{t("cancel")}</button>
                 </div>
               </form>
             ) : me.two_factor_enabled ? (
@@ -290,8 +315,8 @@ export default function MyAccountView() {
                     <input value={offCode} onChange={(e) => setOffCode(e.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" placeholder="000000"
                       className="w-full rounded-full border border-white/25 bg-white/10 px-5 py-3 text-center text-lg tracking-[0.4em] text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20" />
                     <div className="flex gap-3">
-                      <button onClick={() => setAskOffPw(true)} disabled={offCode.length !== 6} className="rounded-full bg-red-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40">{t("secTurnOff")}</button>
-                      <button onClick={() => { setOffOpen(false); setOffCode(""); }} className={ghostBtn}>{t("cancel")}</button>
+                      <button onClick={() => setAskOffSure(true)} disabled={offCode.length !== 6} className="rounded-full bg-red-500 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-40">{t("secTurnOff")}</button>
+                      <button onClick={cancelOff} className={ghostBtn}>{t("cancel")}</button>
                     </div>
                   </div>
                 )}
@@ -299,7 +324,7 @@ export default function MyAccountView() {
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-white/65">{t("secTwoStepIsOff")}{me.is_head_staff ? ` ${t("secTwoStepHeadAdvice")}` : ""}</p>
-                <SaveButton type="button" icon={ShieldCheck} className="w-full sm:w-auto sm:min-w-[300px]" active onClick={() => setAskSetupPw(true)}>{t("secSetUpTwoStep")}</SaveButton>
+                <SaveButton type="button" icon={ShieldCheck} className="w-full sm:w-auto sm:min-w-[300px]" active onClick={() => setAskSetupSure(true)}>{t("secSetUpTwoStep")}</SaveButton>
               </div>
             )}
           </SectionCard>
@@ -339,6 +364,58 @@ export default function MyAccountView() {
       </SectionCard>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={askSetupSure}
+        icon={<Smartphone size={36} />}
+        title={t("secAskSetupTitle")}
+        body={t("secAskSetupBody")}
+        confirmLabel={t("secAskSetupYes")}
+        onCancel={() => setAskSetupSure(false)}
+        onConfirm={() => { setAskSetupSure(false); setAskSetupPw(true); }}
+      />
+      <ConfirmDialog
+        open={askOnSure}
+        icon={<ShieldCheck size={36} />}
+        title={t("secAskOnTitle")}
+        body={t("secAskOnBody")}
+        confirmLabel={t("secAskOnYes")}
+        onCancel={() => setAskOnSure(false)}
+        onConfirm={finishSetup}
+      />
+      <ConfirmDialog
+        open={askOffSure}
+        tone="danger"
+        icon={<AlertTriangle size={36} />}
+        title={t("secAskOffTitle")}
+        body={t("secAskOffBody")}
+        confirmLabel={t("secAskOffYes")}
+        onCancel={() => setAskOffSure(false)}
+        onConfirm={() => { setAskOffSure(false); setAskOffPw(true); }}
+      />
+      <ConfirmDialog
+        open={askDiscardSetup}
+        tone="warning"
+        icon={<AlertTriangle size={36} />}
+        title={t("secDiscardTitle")}
+        body={t("secDiscardSetupBody")}
+        cancelLabel={t("secKeepEditing")}
+        confirmLabel={t("secDiscardYes")}
+        onCancel={() => setAskDiscardSetup(false)}
+        onConfirm={discardSetup}
+      />
+      <ConfirmDialog
+        open={askDiscardOff}
+        tone="warning"
+        icon={<AlertTriangle size={36} />}
+        title={t("secDiscardTitle")}
+        body={t("secDiscardTypedBody")}
+        cancelLabel={t("secKeepEditing")}
+        confirmLabel={t("secDiscardYes")}
+        onCancel={() => setAskDiscardOff(false)}
+        onConfirm={discardOff}
+      />
+      <StatusModal open={!!notice} type="success" title={t("successTitle")} message={notice} onClose={() => setNotice("")} z={9999} />
 
       <PasswordConfirmDialog open={askSetupPw} title={t("secSetUpTwoStep")} body={t("secConfirmWithPassword")} confirmLabel={t("secContinue")} onConfirm={startSetup} onClose={() => setAskSetupPw(false)} />
       <PasswordConfirmDialog open={askOffPw} title={t("secTurnOff")} body={t("secTurnOffBody")} confirmLabel={t("secTurnOff")} tone="danger" onConfirm={turnOff} onClose={() => setAskOffPw(false)} />
