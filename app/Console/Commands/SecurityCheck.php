@@ -29,6 +29,7 @@ class SecurityCheck extends Command
         $this->databaseAccount();
         $this->locks();
         $this->fingerprints();
+        $this->attendance();
 
         $this->table(['', 'Check', 'Detail'], array_map(fn ($r) => $r, $this->results));
         $failed = count(array_filter($this->results, fn ($r) => $r[0] === 'FAIL'));
@@ -90,7 +91,7 @@ class SecurityCheck extends Command
     private function locks(): void
     {
         $names = $this->triggerNames();
-        $need = ['activity_logs_append_only_update', 'activity_logs_append_only_delete', 'generated_reports_append_only_update', 'inventory_unit_logs_ledger_core_update', 'users_deleted_at_lock'];
+        $need = ['activity_logs_append_only_update', 'activity_logs_append_only_delete', 'generated_reports_append_only_update', 'inventory_unit_logs_ledger_core_update', 'attendance_scans_append_only_update', 'attendance_scans_append_only_delete', 'attendances_scanned_row_delete_lock', 'attendances_status_follows_times_update', 'users_deleted_at_lock'];
         $missing = array_values(array_diff($need, $names));
         $missing
             ? $this->add('FAIL', 'Database locks are in place', 'Missing: ' . implode(', ', $missing) . '. Run php artisan migrate.')
@@ -105,6 +106,19 @@ class SecurityCheck extends Command
         }
 
         return array_map(fn ($r) => $r->TRIGGER_NAME, DB::select('SELECT TRIGGER_NAME FROM information_schema.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE()'));
+    }
+
+    private function attendance(): void
+    {
+        if (! Schema::hasTable('attendance_scans')) {
+            $this->add('FAIL', 'Attendance matches the scan ledger', 'The scan ledger is missing. Run php artisan migrate.');
+
+            return;
+        }
+        $n = count(\App\Support\AttendanceLedger::check());
+        $n
+            ? $this->add('FAIL', 'Attendance matches the scan ledger', "{$n} row(s) differ. Run php artisan attendance:reconcile for the details.")
+            : $this->add('OK', 'Attendance matches the scan ledger', 'Every attendance row agrees with its scans.');
     }
 
     private function fingerprints(): void
@@ -122,6 +136,6 @@ class SecurityCheck extends Command
         }
         $bad
             ? $this->add('FAIL', 'Log fingerprints are intact', 'Check: ' . implode(', ', $bad) . '. Run php artisan log:verify for the exact rows.')
-            : $this->add('OK', 'Log fingerprints are intact', 'Activity log, report history and inventory ledger verify.');
+            : $this->add('OK', 'Log fingerprints are intact', 'Activity log, report history, inventory ledger and attendance scan ledger verify.');
     }
 }

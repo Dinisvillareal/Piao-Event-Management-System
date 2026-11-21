@@ -7,9 +7,9 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Checks the activity log, the report history and the inventory ledger for tampering (see App\Support\AuditChain).
+ * Checks the activity log, the report history, the inventory ledger and the attendance scan ledger for tampering (see App\Support\AuditChain).
  *
- *   php artisan log:verify            walks all three and names the rows that were edited, removed or added by hand
+ *   php artisan log:verify            walks all four and names the rows that were edited, removed or added by hand
  *   php artisan log:verify --anchor   when a table is intact, also saves a checkpoint (its newest row), so that rows
  *                                     later cut off the end are caught as well
  *
@@ -19,9 +19,9 @@ class LogVerify extends Command
 {
     protected $signature = 'log:verify {--anchor : Save the newest row of each intact table as a checkpoint}';
 
-    protected $description = 'Check the activity log, the report history and the inventory ledger for edited, removed or hand-added rows';
+    protected $description = 'Check the activity log, the report history, the inventory ledger and the attendance scan ledger for edited, removed or hand-added rows';
 
-    private const TITLES = ['activity_logs' => 'Activity log', 'generated_reports' => 'Report history', 'inventory_unit_logs' => 'Inventory ledger'];
+    private const TITLES = ['activity_logs' => 'Activity log', 'generated_reports' => 'Report history', 'inventory_unit_logs' => 'Inventory ledger', 'attendance_scans' => 'Attendance scan ledger'];
 
     public function handle(): int
     {

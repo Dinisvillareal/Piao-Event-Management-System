@@ -106,7 +106,7 @@ class NoFutureTimeLockTest extends TestCase
         // an event with no call time lets anyone sign in until it starts, so only the clock refuses these
         $event = $this->event();
         $user = $this->user();
-        $row = fn (array $t) => DB::table('attendances')->insert(['event_id' => $event, 'user_id' => $user, 'status' => 'Incomplete'] + $t);
+        $row = fn (array $t) => DB::table('attendances')->insert(['event_id' => $event, 'user_id' => $user, 'status' => 'Incomplete'] + $t);   // one scan, so Incomplete is the true status
 
         $this->refused(fn () => $row(['time_in' => now()->addDay()->toDateTimeString()]));
         $this->refused(fn () => $row(['time_out' => now()->addDays(6)->toDateTimeString()]));
@@ -114,7 +114,7 @@ class NoFutureTimeLockTest extends TestCase
 
         $row(['time_in' => now()->subMinute()->toDateTimeString()]);
         $id = DB::table('attendances')->value('id');
-        $this->refused(fn () => DB::table('attendances')->where('id', $id)->update(['time_out' => now()->addHour()->toDateTimeString()]));
+        $this->refused(fn () => DB::table('attendances')->where('id', $id)->update(['time_out' => now()->addHour()->toDateTimeString(), 'status' => 'Complete']));
     }
 
     // ---------- account times ----------
@@ -179,7 +179,8 @@ class NoFutureTimeLockTest extends TestCase
     {
         $m = $this->migration();
         $listed = [];
-        foreach ([$m::RECORDED, $m::PLANNED] as $group) {
+        $scans = require database_path('migrations/2026_11_19_000022_create_attendance_scan_ledger.php');   // added later, so it lists its own recorded times
+        foreach ([$m::RECORDED, $m::PLANNED, [$scans::TABLE => $scans::RECORDED]] as $group) {
             foreach ($group as $table => $columns) {
                 foreach ($columns as $column) {
                     $listed[] = "{$table}.{$column}";

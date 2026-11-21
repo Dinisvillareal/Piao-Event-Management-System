@@ -79,7 +79,8 @@ class BorrowAndSignInLockTest extends TestCase
     private function attendance(int $event, ?string $in, ?string $out): int
     {
         return DB::table('attendances')->insertGetId([
-            'event_id' => $event, 'user_id' => $this->user(), 'time_in' => $in, 'time_out' => $out, 'status' => 'Incomplete',
+            'event_id' => $event, 'user_id' => $this->user(), 'time_in' => $in, 'time_out' => $out,
+            'status' => $in && $out ? 'Complete' : ($in || $out ? 'Incomplete' : 'missed'),   // the status always follows the scans
         ]);
     }
 
@@ -193,10 +194,10 @@ class BorrowAndSignInLockTest extends TestCase
         $event = $this->event();
         $a = $this->attendance($event, null, null);   // a sign-in time is written once, from empty, as the scan does
 
-        $this->refused(fn () => DB::table('attendances')->where('id', $a)->update(['time_in' => '2026-10-10 10:00:00']), 'Sign-in is outside the sign-in window');
-        DB::table('attendances')->where('id', $a)->update(['time_in' => '2026-10-10 08:45:00']);
-        DB::table('attendances')->where('id', $a)->update(['status' => 'Complete']);   // not a time change
-        $this->assertSame('Complete', DB::table('attendances')->where('id', $a)->value('status'));
+        $this->refused(fn () => DB::table('attendances')->where('id', $a)->update(['time_in' => '2026-10-10 10:00:00', 'status' => 'Incomplete']), 'Sign-in is outside the sign-in window');
+        DB::table('attendances')->where('id', $a)->update(['time_in' => '2026-10-10 08:45:00', 'status' => 'Incomplete']);
+        DB::table('attendances')->where('id', $a)->update(['updated_at' => now()]);   // not a time change
+        $this->assertSame('Incomplete', DB::table('attendances')->where('id', $a)->value('status'));
     }
 
     // ------------------------------------------------------------------ sign-out window
@@ -230,8 +231,8 @@ class BorrowAndSignInLockTest extends TestCase
         $event = $this->event();
         $a = $this->attendance($event, '2026-10-10 08:30:00', null);   // a sign-out time is written once, from empty
 
-        $this->refused(fn () => DB::table('attendances')->where('id', $a)->update(['time_out' => '2026-10-10 11:00:00']), 'Sign-out is outside the sign-out window');
-        DB::table('attendances')->where('id', $a)->update(['time_out' => '2026-10-10 12:45:00']);
+        $this->refused(fn () => DB::table('attendances')->where('id', $a)->update(['time_out' => '2026-10-10 11:00:00', 'status' => 'Complete']), 'Sign-out is outside the sign-out window');
+        DB::table('attendances')->where('id', $a)->update(['time_out' => '2026-10-10 12:45:00', 'status' => 'Complete']);
     }
 
     // ------------------------------------------------------------------ older records and the migration itself
@@ -246,9 +247,9 @@ class BorrowAndSignInLockTest extends TestCase
         $oldLoan = $this->loan($event, $item, ['good' => 4]);                              // more than the stock
         $m->up();                                                                          // runs fine over them
 
-        DB::table('attendances')->where('id', $old)->update(['status' => 'Complete']);               // unrelated edit still works
+        DB::table('attendances')->where('id', $old)->update(['updated_at' => now()]);                // unrelated edit still works
         DB::table('event_inventory_items')->where('id', $oldLoan)->update(['updated_at' => now()]);   // so does this one
-        $this->assertSame('Complete', DB::table('attendances')->where('id', $old)->value('status'));
+        $this->assertSame('Complete', DB::table('attendances')->where('id', $old)->value('status'));   // still the status it was saved with
 
         $this->refused(fn () => DB::table('attendances')->where('id', $old)->update(['time_in' => '2026-10-10 10:05:00']), 'Sign-in is outside the sign-in window');
     }
@@ -261,7 +262,7 @@ class BorrowAndSignInLockTest extends TestCase
 
         $event = $this->event();
         $this->attendance($event, '2026-10-10 10:00:00', null);   // allowed while unlocked
-        DB::table('attendances')->delete();
+        $this->withoutTimeLocks(fn () => DB::table('attendances')->delete());   // test clean-up only: scanned rows are otherwise kept
         $m->up();
 
         $this->refused(fn () => $this->attendance($event, '2026-10-10 10:00:00', null), 'Sign-in is outside the sign-in window');

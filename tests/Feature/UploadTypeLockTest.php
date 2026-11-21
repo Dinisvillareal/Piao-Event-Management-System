@@ -84,8 +84,6 @@ class UploadTypeLockTest extends TestCase
         'users.validation_id'                          => ['validation_ids', false],
         'inventory_items.photo_path'                   => ['inventory_photos', true],
         'event_inventory_releases.evidence_photo_path' => ['release_evidence_photos', false],
-        'event_inventory_releases.undo_photo_path'     => ['release_undo_photos', false],
-        'event_inventory_release_undos.photo_path'     => ['release_undo_photos', false],
         'inventory_unit_logs.photo_path'               => ['inventory_unit_photos', true],
         'event_expenses.receipt_path'                  => ['expense_receipts', false],
         'event_inventory_releases.extra_evidence_photo_paths' => ['release_evidence_photos', false],
@@ -105,8 +103,6 @@ class UploadTypeLockTest extends TestCase
         ['users', 'validation_id'],
         ['inventory_items', 'photo_path'],
         ['event_inventory_releases', 'evidence_photo_path'],
-        ['event_inventory_releases', 'undo_photo_path'],
-        ['event_inventory_release_undos', 'photo_path'],
         ['inventory_unit_logs', 'photo_path'],
     ];
 
@@ -226,8 +222,6 @@ class UploadTypeLockTest extends TestCase
         // a validation ID path in the receipt column, and so on
         $this->assertTrue($this->refused(fn () => $this->row('event_expenses', 'receipt_path', 'validation_ids/1731900000_a.png')));
         $this->assertTrue($this->refused(fn () => $this->row('users', 'validation_id', 'expense_receipts/1731900000_a.png')));
-        $this->assertTrue($this->refused(fn () => $this->row('event_inventory_releases', 'undo_photo_path', 'release_evidence_photos/1731900000_a.png')));
-        $this->row('event_inventory_releases', 'undo_photo_path', 'release_undo_photos/1731900000_a.png');
     }
 
     public function test_a_list_that_already_holds_an_older_file_can_still_gain_a_new_photo(): void

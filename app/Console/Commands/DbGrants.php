@@ -27,6 +27,7 @@ class DbGrants extends Command
         'activity_logs'      => 'SELECT, INSERT',
         'generated_reports'  => 'SELECT, INSERT',
         'inventory_unit_logs' => 'SELECT, INSERT, UPDATE',
+        'attendance_scans'   => 'SELECT, INSERT',
     ];
 
     public const DEFAULT = 'SELECT, INSERT, UPDATE, DELETE';

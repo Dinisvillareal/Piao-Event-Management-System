@@ -189,12 +189,12 @@ class RecordedTimeLockTest extends TestCase
     {
         $event = $this->event();
         $user = $this->makeUser()->id;
-        $a = DB::table('attendances')->insertGetId(['event_id' => $event, 'user_id' => $user, 'status' => 'Incomplete']);
+        $a = DB::table('attendances')->insertGetId(['event_id' => $event, 'user_id' => $user, 'status' => 'missed']);
         $row = fn () => DB::table('attendances')->where('id', $a);
 
-        $row()->update(['time_in' => now()->subDays(2)->setTime(8, 30)->toDateTimeString()]);   // from empty
+        $row()->update(['time_in' => now()->subDays(2)->setTime(8, 30)->toDateTimeString(), 'status' => 'Incomplete']);   // from empty
         $this->refused(fn () => $row()->update(['time_in' => now()->subDays(2)->setTime(8, 45)->toDateTimeString()]), 'Time in cannot be changed once it is saved');
-        $this->refused(fn () => $row()->update(['time_in' => null]), 'Time in cannot be changed once it is saved');
+        $this->refused(fn () => $row()->update(['time_in' => null, 'status' => 'missed']), 'Time in cannot be changed once it is saved');
 
         $row()->update(['time_out' => now()->subDays(2)->setTime(12, 30)->toDateTimeString(), 'status' => 'Complete']);
         $this->refused(fn () => $row()->update(['time_out' => now()->subDays(2)->setTime(12, 45)->toDateTimeString()]), 'Time out cannot be changed once it is saved');

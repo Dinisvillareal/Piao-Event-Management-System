@@ -22,11 +22,9 @@ use App\Services\FacebookService;
 class EventController extends Controller
 {
     // Same upload/delete convention as InventoryController::localUpload --
-    // evidence photos for a release ("the item came back") and for an undo
-    // ("why this release is being reversed") are required proof images
-    // stored on the public disk, exposed via EventInventoryRelease's
-    // evidence_photo_url / undo_photo_url accessors. $folder keeps the two
-    // kinds in separate storage/app/public subfolders.
+    // evidence photos for a release ("the item came back") are required proof
+    // images stored on the public disk, exposed via EventInventoryRelease's
+    // evidence_photo_url accessor. $folder picks the storage/app/public subfolder.
     private function localUpload($file, string $folder): string
     {
         $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
@@ -1774,12 +1772,8 @@ class EventController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        // Moving a release back to Pending doesn't need a second photo -- the
-        // release already carries its own evidence. One can still be sent
-        // with the request, but it's optional.
-        $request->validate([
-            'photo' => 'nullable|' . \App\Support\Uploads::IMAGE_RULE,
-        ]);
+        // Moving a release back to Pending takes no photo -- the release
+        // already carries its own evidence, so an undo stores none.
 
         $release = EventInventoryRelease::whereNull('undone_at')->findOrFail($releaseId);
         $event = Event::withoutTrashed()->find($release->event_id);
@@ -1826,20 +1820,6 @@ class EventController extends Controller
 
         $item?->takeUnits($undoUnits);
 
-        $undoPhotoPath = null;
-        if ($request->hasFile('photo')) {
-            $undoPhotoPath = $this->localUpload($request->file('photo'), 'release_undo_photos');
-
-            // Replace any earlier undo photo pointer on this same release row --
-            // a convenience for anything that just wants "the latest undo
-            // evidence for this release" without joining through the log table.
-            // The full per-action record (every undo, including earlier partial
-            // ones) lives in event_inventory_release_undos, created below.
-            // The earlier undo photo is NOT deleted: the undo it belongs to still
-            // points at it from event_inventory_release_undos.
-            $release->undo_photo_path = $undoPhotoPath;
-        }
-
         // Shrink this release record by however much of it was just
         // undone; once nothing is left of it, mark it fully undone so it
         // drops off the Recently Released list. A partial undo leaves the
@@ -1859,7 +1839,6 @@ class EventController extends Controller
             'event_inventory_release_id' => $release->id,
             'quantity' => $requestedQty,
             'undone_by' => auth()->user()?->user_code,
-            'photo_path' => $undoPhotoPath,
         ]);
 
         $itemName = $item->name ?? 'item';

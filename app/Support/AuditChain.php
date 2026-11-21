@@ -5,7 +5,7 @@ namespace App\Support;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Tamper evidence for the activity log, the report history and the inventory ledger (a hash chain per table).
+ * Tamper evidence for the activity log, the report history, the inventory ledger and the attendance scan ledger (a hash chain per table).
  *
  * Each row stores a fingerprint of its own content together with the fingerprint of the row
  * before it. Editing a row changes its fingerprint; removing, adding or re-ordering rows breaks
@@ -43,6 +43,12 @@ class AuditChain
             'json'   => ['units', 'extra_photo_paths'],
             'tag'    => 'inventory_unit_logs',
             'anchor' => 'audit-anchor-inventory_unit_logs.json',
+        ],
+        'attendance_scans' => [
+            'fields' => ['event_id', 'user_id', 'kind', 'scanned_at', 'source', 'recorded_by', 'note', 'created_at'],
+            'json'   => [],
+            'tag'    => 'attendance_scans',
+            'anchor' => 'audit-anchor-attendance_scans.json',
         ],
     ];
 

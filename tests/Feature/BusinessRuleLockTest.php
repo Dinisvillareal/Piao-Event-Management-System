@@ -156,7 +156,7 @@ class BusinessRuleLockTest extends TestCase
         DB::table('attendances')->insert(['event_id' => $event, 'user_id' => $this->user(), 'time_in' => null, 'time_out' => '2026-10-10 11:00:00', 'status' => 'Incomplete']);
 
         $this->refused(fn () => DB::table('attendances')->insert(['event_id' => $event, 'user_id' => $this->user(), 'time_in' => '2026-10-10 08:30:00', 'time_out' => '2026-10-10 08:00:00', 'status' => 'Complete']), 'Time out cannot be before time in');
-        $this->refused(fn () => DB::table('attendances')->where('id', $a)->update(['time_out' => '2026-10-10 08:00:00']), 'Time out cannot be before time in');
+        $this->refused(fn () => DB::table('attendances')->where('id', $a)->update(['time_out' => '2026-10-10 08:00:00', 'status' => 'Complete']), 'Time out cannot be before time in');
     }
 
     // ------------------------------------------------------------------ quantities
@@ -228,11 +228,12 @@ class BusinessRuleLockTest extends TestCase
 
     public function test_only_the_allowed_status_action_and_type_words_are_accepted(): void
     {
-        $event = $this->event();
+        $event = $this->event(['event_start' => '2026-10-10 09:00:00', 'event_end' => '2026-10-10 12:00:00', 'call_time_start' => '2026-10-10 08:00:00', 'call_time_end' => '2026-10-10 13:00:00']);   // past, so the scan times are real
         $item = $this->item();
 
-        foreach (['missed', 'Incomplete', 'Complete', 'complete'] as $status) {
-            DB::table('attendances')->insert(['event_id' => $event, 'user_id' => $this->user(), 'status' => $status]);
+        $times = ['missed' => [null, null], 'Incomplete' => ['2026-10-10 08:30:00', null], 'Complete' => ['2026-10-10 08:30:00', '2026-10-10 12:30:00'], 'complete' => ['2026-10-10 08:30:00', '2026-10-10 12:30:00']];
+        foreach ($times as $status => [$in, $out]) {
+            DB::table('attendances')->insert(['event_id' => $event, 'user_id' => $this->user(), 'time_in' => $in, 'time_out' => $out, 'status' => $status]);
         }
         $this->refused(fn () => DB::table('attendances')->insert(['event_id' => $event, 'user_id' => $this->user(), 'status' => 'attended']), 'Attendance status is not recognised');
 

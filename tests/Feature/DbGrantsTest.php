@@ -23,6 +23,7 @@ class DbGrantsTest extends TestCase
         $this->assertStringContainsString("GRANT SELECT, INSERT ON `piao_db`.`activity_logs`", $sql);
         $this->assertStringContainsString("GRANT SELECT, INSERT ON `piao_db`.`generated_reports`", $sql);
         $this->assertStringContainsString("GRANT SELECT, INSERT, UPDATE ON `piao_db`.`inventory_unit_logs`", $sql);
+        $this->assertStringContainsString("GRANT SELECT, INSERT ON `piao_db`.`attendance_scans`", $sql);
     }
 
     public function test_no_account_ever_gets_trigger_alter_drop_or_a_global_grant(): void

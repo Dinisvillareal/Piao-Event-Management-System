@@ -26,7 +26,7 @@ class FeedbackNotificationsTest extends TestCase
     private function attendedEvent($resident): Event
     {
         $e = Event::create(['name' => 'Assembly', 'description' => 'x', 'location' => 'Hall', 'event_start' => now()->subHours(3), 'event_end' => now()->subHour()]);
-        EventAttendance::create(['event_id' => $e->id, 'user_id' => $resident->id, 'time_in' => now()->subHours(4), 'status' => 'Complete']);
+        EventAttendance::create(['event_id' => $e->id, 'user_id' => $resident->id, 'time_in' => now()->subHours(4), 'time_out' => now()->subMinutes(30), 'status' => 'Complete']);
 
         return $e;
     }

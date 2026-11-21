@@ -90,10 +90,14 @@ trait Support
             require database_path('migrations/2026_11_19_000018_lock_recorded_times_and_activity_log.php'),
             require database_path('migrations/2026_11_19_000020_lock_report_history_and_hash_chain.php'),
             require database_path('migrations/2026_11_19_000021_lock_inventory_ledger_and_hash_chain.php'),
+            require database_path('migrations/2026_11_19_000022_create_attendance_scan_ledger.php'),
+            require database_path('migrations/2026_11_19_000023_lock_attendance_rows.php'),
         ];
         $locks[0]->down();
         $locks[1]->down(false);   // lifts the add-only lock but keeps the chain columns
         $locks[2]->down(false);
+        $locks[3]->down(false);   // lifts the ledger's add-only lock but keeps the table
+        $locks[4]->down();        // lifts the attendance row locks
         try {
             return $setup();
         } finally {
