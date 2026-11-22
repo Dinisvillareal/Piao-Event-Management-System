@@ -593,6 +593,7 @@ export const translations: Dict = {
   loginHelpContactBtn: { en: "Show the Records Office number", tl: "Ipakita ang numero ng Records Office", ceb: "Ipakita ang numero sa Records Office" },
   loginHelpNotFound: { en: "Check the user code on your slip or ID (it looks like PR-0001). If you just received a slip, activate your account first.", tl: "Suriin ang user code sa slip o ID mo (mukhang PR-0001). Kung kakatanggap mo lang ng slip, i-activate muna ang account.", ceb: "Susiha ang user code sa imong slip o ID (murag PR-0001). Kung bag-o ka pa lang nakadawat og slip, i-activate una ang account." },
   loginErrPendingActivation: { en: "This account is waiting to be activated. Choose “Activate my account” and use the slip from the Barangay Hall.", tl: "Naghihintay pa itong account na ma-activate. Piliin ang “I-activate ang account ko” at gamitin ang slip mula sa Barangay Hall.", ceb: "Naghulat pa kini nga account nga ma-activate. Pilia ang “I-activate akong account” ug gamita ang slip gikan sa Barangay Hall." },
+  dashNoMoreUpcoming: { en: "No other upcoming events.", tl: "Wala nang ibang paparating na kaganapan.", ceb: "Wala nay lain nga umaabot nga kalihokan." },
   actBack: { en: "Back to sign in", tl: "Bumalik sa sign in", ceb: "Balik sa sign in" },
   notifSeen: { en: "Seen", tl: "Nakita na", ceb: "Nakita na" },
   eventCancelledNote: { en: "This event has been cancelled", tl: "Nakansela na ang kaganapang ito", ceb: "Nakansela na ni nga kalihokan" },

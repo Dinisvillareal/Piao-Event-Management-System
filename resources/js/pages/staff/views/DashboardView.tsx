@@ -559,10 +559,10 @@ export default function DashboardView({
                   const d = new Date(ev.event_start ?? ev.date);
                   const valid = !isNaN(d.getTime());
                   return (
-                    <li key={ev.id ?? i} className="flex flex-1 border-t border-white/10 first:border-t-0">
+                    <li key={ev.id ?? i} className="flex border-t border-white/10 first:border-t-0">
                       <button
                         onClick={() => setActive("events")}
-                        className="timeline-cell flex w-full items-center gap-4 px-5 py-3 text-left transition hover:bg-white/[0.07]"
+                        className="timeline-cell flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-white/[0.07]"
                       >
                         <span className="flex w-14 shrink-0 flex-col items-center leading-none">
                           <span className="text-[11px] font-extrabold uppercase text-[#7DD8CB]">{valid ? d.toLocaleDateString(locale, { month: "short" }) : ""}</span>
@@ -581,6 +581,17 @@ export default function DashboardView({
                     </li>
                   );
                 })}
+                {/* Rows keep their own height (a lone event no longer floats in the middle of a tall
+                    card); the leftover space below says there is nothing more, and the card still
+                    ends level with the Budget Snapshot. */}
+                <li className="flex flex-1 flex-col items-center justify-center gap-3 border-t border-white/10 px-5 py-6 text-center">
+                  {upcomingEvents.length < 5 && <p className="text-sm text-white/45">{t("dashNoMoreUpcoming")}</p>}
+                  {upcomingEvents.length < 5 && (
+                    <button onClick={() => setActive("events")} className="inline-flex items-center rounded-full border border-white/20 bg-white/[0.06] px-4 py-1.5 text-xs font-bold text-white/80 transition hover:bg-white/10 hover:text-white">
+                      {t("dashViewAll")}
+                    </button>
+                  )}
+                </li>
               </ul>
             )}
           </div>
