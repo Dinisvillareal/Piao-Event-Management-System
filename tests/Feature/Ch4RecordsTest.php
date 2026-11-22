@@ -41,7 +41,7 @@ class Ch4RecordsTest extends TestCase
     {
         return array_merge([
             'first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'contact_number' => '09171234567',
-            'role' => 'Resident', 'has_account' => true,
+            'role' => 'Resident', 'has_account' => true, 'birth_date' => '1990-05-05',
             'password' => 'Passw0rd!Strong#1', 'password_confirmation' => 'Passw0rd!Strong#1',
         ], $o);
     }

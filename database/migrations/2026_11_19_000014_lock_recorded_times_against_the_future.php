@@ -62,7 +62,7 @@ return new class extends Migration
     public const PLANNED = [
         'events'               => ['event_start', 'event_end', 'call_time_start', 'call_time_end'],
         'head_staff_transfers' => ['expires_at'],
-        'users'                => ['locked_until'],
+        'users'                => ['locked_until', 'activation_expires_at'],
     ];
 
     private const MESSAGE = 'A time that records when something happened cannot be in the future.';

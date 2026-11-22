@@ -15,6 +15,7 @@ import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
 import Portal from "../../../components/ui/Portal";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import ActivationSlipModal, { type ActivationSlip } from "../../../components/auth/ActivationSlipModal";
 
 type Staff = {
   id: number;
@@ -25,6 +26,7 @@ type Staff = {
   suspended_at: string | null;
   last_login_at: string | null;
   must_change_password: boolean;
+  pending_activation?: boolean;
   two_factor_enabled: boolean;
   active_sessions: number;
 };
@@ -90,7 +92,8 @@ export default function StaffAccountsView() {
 
   const [search, setSearch] = useState("");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [tempPw, setTempPw] = useState<{ name: string; value: string } | null>(null);
+  // One-time activation slip made by "Reset password" (shown once, to be printed).
+  const [slip, setSlip] = useState<ActivationSlip | null>(null);
   const [codes, setCodes] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
   // "Have you saved these codes?" before the one-time codes window closes.
@@ -138,9 +141,9 @@ export default function StaffAccountsView() {
       const id = action.staff.id;
       if (action.kind === "reset") {
         const res = await api.post(`/staff-accounts/${id}/reset-password`, { password, otp });
-        setTempPw({ name: action.staff.name, value: res.data.temporary_password });
+        setSlip(res.data.activation_slip);
       } else if (action.kind === "suspend") {
-        await api.post(`/staff-accounts/${id}/suspend`, { password });
+        await api.post(`/staff-accounts/${id}/suspend`, { password, otp });
         flash(t("secSuspendedNotice").replace("{name}", action.staff.name));
       } else if (action.kind === "unsuspend") {
         await api.post(`/staff-accounts/${id}/unsuspend`, { password });
@@ -436,6 +439,7 @@ export default function StaffAccountsView() {
                         {s.name}
                         {s.is_head_staff && <span className={`${chip} bg-gold-400/20 text-gold-300`}><Crown className="h-3 w-3" /> {t("secHeadStaff")}</span>}
                         {s.suspended_at && <span className={`${chip} bg-red-500/20 text-red-300`}>{t("secSuspendedBadge")}</span>}
+                        {s.pending_activation && <span className={`${chip} bg-amber-400/20 text-amber-200`}>{t("actPendingBadge")}</span>}
                         {s.must_change_password && <span className={`${chip} bg-white/10 text-white/70`}>{t("secMustChangeBadge")}</span>}
                         {s.two_factor_enabled && <span className={`${chip} bg-[#4FBEB0]/15 text-[#7DD8CB]`}>{t("secTwoStepBadge")}</span>}
                       </p>
@@ -529,26 +533,13 @@ export default function StaffAccountsView() {
           confirmLabel={dialogProps.label}
           tone={dialogProps.tone}
           onConfirm={run}
-          requireOtp={action?.kind === "codes" || action?.kind === "reset" || action?.kind === "transfer"}
+          requireOtp={action?.kind === "codes" || action?.kind === "reset" || action?.kind === "transfer" || action?.kind === "suspend"}
           twoFactorOn={!!data?.staff.find((s) => s.is_head_staff)?.two_factor_enabled}
           onClose={() => setAction(null)}
         />
       )}
 
-      {tempPw && (
-        <Portal><div className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-7 text-center shadow-2xl">
-            <h3 className="text-lg font-bold text-white">{t("secTempPwTitle")}</h3>
-            <p className="mt-2 text-sm text-white/55">{t("secTempPwBody").replace("{name}", tempPw.name)}</p>
-            <p className="mt-5 select-all rounded-2xl border border-white/20 bg-white/10 px-4 py-4 font-mono text-2xl tracking-wider text-white">{tempPw.value}</p>
-            <div className="mt-5 flex justify-center gap-3">
-              <button onClick={() => copy(tempPw.value)} className={actBtn}>{copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {copied ? t("secCopied") : t("secCopy")}</button>
-              <button onClick={() => { setTempPw(null); load(); }} className="rounded-full bg-sage-700 px-6 py-2 text-sm font-semibold text-white transition hover:bg-sage-800">{t("secDone")}</button>
-            </div>
-            <p className="mt-4 text-xs text-white/40">{t("secShownOnce")}</p>
-          </div>
-        </div></Portal>
-      )}
+      {slip && <ActivationSlipModal slip={slip} forStaff onClose={() => { setSlip(null); load(); }} />}
 
       {codes && (
         <Portal><div className="fixed inset-0 z-[10060] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">

@@ -49,10 +49,7 @@ class StoreUserRequest extends FormRequest
             // Portal login is opt-in. When has_account is on, a password is
             // required (strong, 8+ chars) -- the username is the generated PR-#### code.
             'has_account'      => 'nullable|boolean',
-            'password'         => [
-                Rule::requiredIf(fn () => filter_var($this->input('has_account'), FILTER_VALIDATE_BOOLEAN)),
-                'nullable', 'string', new StrongPassword(),
-            ],
+            // Staff do not set a password: with has_account on, the system makes an activation code instead (UserController).
             'validation_id'    => 'nullable|' . \App\Support\Uploads::IMAGE_RULE,
             'membership_ids'   => 'nullable|array',
             'membership_ids.*' => 'exists:memberships,id',

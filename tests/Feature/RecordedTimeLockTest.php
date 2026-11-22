@@ -178,7 +178,8 @@ class RecordedTimeLockTest extends TestCase
         $first = $this->ago(3);
         DB::table('users')->where('id', $target->id)->update(['suspended_at' => $first]);   // already suspended earlier
 
-        $this->actingAs($head)->postJson("/staff-accounts/{$target->id}/suspend", ['password' => self::PASSWORD])->assertOk();
+        $secret = $this->enableTwoFactor($head);
+        $this->actingAs($head)->postJson("/staff-accounts/{$target->id}/suspend", ['password' => self::PASSWORD, 'otp' => $this->otp($secret)])->assertOk();
 
         $this->assertSame($first, DB::table('users')->where('id', $target->id)->value('suspended_at'));
     }
@@ -241,7 +242,7 @@ class RecordedTimeLockTest extends TestCase
     {
         $staff = $this->staff();
         $this->actingAs($staff)->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])->postJson('/users', [
-            'first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'contact_number' => '09171234567', 'role' => 'Resident', 'has_account' => true,
+            'first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'contact_number' => '09171234567', 'role' => 'Resident', 'has_account' => true, 'birth_date' => '1990-05-05',
             'password' => self::PASSWORD, 'password_confirmation' => self::PASSWORD,
         ])->assertStatus(201);
 
@@ -280,7 +281,7 @@ class RecordedTimeLockTest extends TestCase
     {
         $staff = $this->staff();
         $this->actingAs($staff)->postJson('/users', self::INJECT + [
-            'first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'contact_number' => '09171234567', 'role' => 'Resident', 'has_account' => true,
+            'first_name' => 'Juan', 'last_name' => 'Dela Cruz', 'contact_number' => '09171234567', 'role' => 'Resident', 'has_account' => true, 'birth_date' => '1990-05-05',
             'password' => self::PASSWORD, 'password_confirmation' => self::PASSWORD,
         ])->assertStatus(201);
 

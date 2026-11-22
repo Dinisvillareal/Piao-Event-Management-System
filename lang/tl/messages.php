@@ -234,4 +234,11 @@ return [
     'We apologize for the inconvenience. This event has been cancelled.' => 'Humihingi kami ng paumanhin sa abala. Kinansela ang kaganapang ito.',
     'You can only change your answer within {1} minute(s) after sending it.' => 'Maaari mo lamang baguhin ang iyong sagot sa loob ng {1} minuto pagkatapos itong ipadala.',
     'This file type is not accepted.' => 'Hindi tinatanggap ang uri ng file na ito.',
+    'Activation slip ready.' => 'Handa na ang activation slip.',
+    'An activation slip is only for a resident\'s portal account. A staff password is reset by the Head Staff.' => 'Ang activation slip ay para lamang sa portal account ng residente. Ang password ng staff ay ni-reset ng Head Staff.',
+    'The details do not match, or the code is no longer valid. Ask the Barangay Hall for a new activation slip.' => 'Hindi tugma ang mga detalye, o hindi na valid ang code. Humingi ng bagong activation slip sa Barangay Hall.',
+    'This account is waiting to be activated. Choose "Activate my account" and use the slip from the Barangay Hall.' => 'Naghihintay pa itong account na ma-activate. Piliin ang "Activate my account" at gamitin ang slip mula sa Barangay Hall.',
+    'This record is archived.' => 'Naka-archive ang talaang ito.',
+    'This resident has no portal account yet. Turn on portal access first.' => 'Wala pang portal account ang residenteng ito. I-on muna ang portal access.',
+    'Your account is active. You can now sign in with your new password.' => 'Aktibo na ang iyong account. Maaari ka nang mag-sign in gamit ang bago mong password.',
 ];

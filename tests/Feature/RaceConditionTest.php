@@ -431,7 +431,8 @@ class RaceConditionTest extends TestCase
             }
         );
 
-        $this->actingAs($head)->postJson("/staff-accounts/{$target->id}/suspend", ['password' => self::PASSWORD])->assertStatus(422);
+        $secret = $this->enableTwoFactor($head);
+        $this->actingAs($head)->postJson("/staff-accounts/{$target->id}/suspend", ['password' => self::PASSWORD, 'otp' => $this->otp($secret)])->assertStatus(422);
 
         $this->assertNull($target->fresh()->suspended_at);
     }
@@ -442,7 +443,8 @@ class RaceConditionTest extends TestCase
         $a = $this->staff();
         $b = $this->staff();
 
-        $this->actingAs($head)->postJson("/staff-accounts/{$a->id}/suspend", ['password' => self::PASSWORD])->assertOk();
+        $secret = $this->enableTwoFactor($head);
+        $this->actingAs($head)->postJson("/staff-accounts/{$a->id}/suspend", ['password' => self::PASSWORD, 'otp' => $this->otp($secret)])->assertOk();
         $this->assertNotNull($a->fresh()->suspended_at);
 
         $this->actingAs($head)->postJson("/staff-accounts/{$b->id}/demote", ['password' => self::PASSWORD])->assertOk();

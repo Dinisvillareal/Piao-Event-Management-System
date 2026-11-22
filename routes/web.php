@@ -46,6 +46,7 @@ Route::get('/', function () {
 // per-account lockout inside UserController::login() (5 wrong tries per
 // account+network in 15 minutes, and 10 per account overall).
 Route::post('/login', [UserController::class, 'login'])->middleware(['throttle:login', SecurityHeaders::class])->name('login');
+Route::post('/activate-account', [UserController::class, 'activateAccount'])->middleware(['throttle:login', SecurityHeaders::class]);
 
 // Head Staff break-glass: reset the password with a printed recovery code.
 Route::post('/recover-head-access', [StaffAccountController::class, 'recoverHeadAccess'])->middleware(['throttle:login', SecurityHeaders::class]);
@@ -109,6 +110,7 @@ Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class, 'throttl
     Route::get('/users/all-for-memberships', [UserController::class, 'getAllForMemberships']);
     Route::get('/users/{id}', [UserController::class, 'show']);
     Route::post('/users', [UserController::class, 'store']);
+    Route::post('/users/{id}/activation-slip', [UserController::class, 'activationSlip'])->middleware('throttle:sensitive');
     Route::put('/users/{id}', [UserController::class, 'update']);
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
     Route::post('/users/{id}/restore', [UserController::class, 'restore']);

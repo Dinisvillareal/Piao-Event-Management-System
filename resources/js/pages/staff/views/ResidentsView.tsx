@@ -9,7 +9,6 @@ import FilterBar, { type FilterDef, type ExtraChip } from "../../../components/u
 import QuickTabs from "../../../components/ui/QuickTabs";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FormSelect from "../../../components/ui/FormSelect";
-import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import SlideOutGhost from "../../../components/ui/SlideOutGhost";
@@ -21,7 +20,7 @@ import { useBarangayOfficials, OFFICIALS_CHANGED_EVENT } from "../../../lib/bara
 import { exportResidentsXlsx, RESIDENT_EXPORT_COLUMNS, MIN_EXPORT_COLUMNS, type ResidentExportColumnKey } from "../../../lib/residentsExport";
 import api from "../../../lib/api";
 import PasswordConfirmDialog from "../../../components/auth/PasswordConfirmDialog";
-import { checkPassword, isStrongPassword, PASSWORD_MAX } from "../../../lib/passwordPolicy";
+import ActivationSlipModal, { type ActivationSlip } from "../../../components/auth/ActivationSlipModal";
 import {
   Search,
   X as XIcon,
@@ -46,6 +45,7 @@ import {
   Check,
   ListChecks,
   Eye,
+  KeyRound,
 } from "lucide-react";
 import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
@@ -135,6 +135,7 @@ interface ResidentRow {
   hasAccount: boolean;
   password: string;
   passwordChangedByUser: boolean;
+  pendingActivation: boolean;
   photo: string;
   deleted_at: string | null;
   birthDate: string;
@@ -185,6 +186,7 @@ type EditForm = {
   hasAccount: boolean;
   password: string;
   passwordChangedByUser: boolean;
+  pendingActivation: boolean;
   hasMemberships: boolean;
   selectedMemberships: number[];
   deleted_at: string | null;
@@ -366,7 +368,6 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   // panel. Measure the real content scroller instead.
   const [panelTop, setPanelTop] = useState(73);
   // Show/hide toggle for the account password field (Add + Edit forms).
-  const [showPassword, setShowPassword] = useState(false);
   const panelOpen = showAddForm || !!editRecord;
   useLayoutEffect(() => {
     if (!panelOpen) return;
@@ -396,11 +397,6 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
     };
   }, [panelOpen]);
 
-  // Always reopen a form with the password hidden.
-  useEffect(() => {
-    if (!panelOpen) setShowPassword(false);
-  }, [panelOpen]);
-
   // Attendance status arrives from the API in mixed case ("missed",
   // "Incomplete", ...). Normalize, then show the translated, capitalized label.
   const attendanceStatusLabel = (status: string) => {
@@ -414,6 +410,10 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   const [showDeleteSuccess, setShowDeleteSuccess] = useState(false);
   const [showUpdateSuccess, setShowUpdateSuccess] = useState(false);
   const [showAddSuccess, setShowAddSuccess] = useState(false);
+  // One-time activation slip (shown once after the server issues it) and the
+  // "print a new slip" confirmation.
+  const [activationSlip, setActivationSlip] = useState<ActivationSlip | null>(null);
+  const [slipConfirmFor, setSlipConfirmFor] = useState<number | null>(null);
   const [showRoleChangedModal, setShowRoleChangedModal] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState<"edit" | "add" | null>(null);
   const [showAddConfirm, setShowAddConfirm] = useState(false);
@@ -646,6 +646,7 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
         hasAccount: !!item.has_account,
         password: "",
         passwordChangedByUser: !!item.password_changed_by_user,
+        pendingActivation: !!item.pending_activation,
         photo: item.validation_id_url,
         deleted_at: item.deleted_at,
         birthDate: item.birth_date ?? "",
@@ -848,7 +849,6 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
     else if (raw.length !== 11) err.contactNumber = t("mustBe11Digits");
     if (!newResident.civilStatusId) err.civilStatusId = t("civilStatusRequired");
     if (!newResident.gender) err.gender = t("genderRequired");
-    if (newResident.hasAccount && !isStrongPassword(newResident.password)) err.password = t("passwordPolicyError");
     setFormErrors(err);
     if (Object.keys(err).length > 0) setApiError(Object.values(err)[0]);
     return Object.keys(err).length === 0;
@@ -864,11 +864,6 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
     if (!raw) err.contactNumber = t("contactNumberRequired");
     else if (!raw.startsWith("09")) err.contactNumber = t("contactNumberMustStart09");
     else if (raw.length !== 11) err.contactNumber = t("mustBe11Digits");
-    // Granting a new account needs a password; resetting an existing one
-    // is optional, but if one is typed it must meet the same rule.
-    if (editingResident.hasAccount && (!editOriginalHasAccount || editingResident.password.trim() !== "")) {
-      if (!isStrongPassword(editingResident.password)) err.password = t("passwordPolicyError");
-    }
     setFormErrors(err);
     if (Object.keys(err).length > 0) setApiError(Object.values(err)[0]);
     return Object.keys(err).length === 0;
@@ -917,11 +912,9 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
     fd.append("last_name", newResident.lastName);
     fd.append("contact_number", newResident.contactNumber.replace(/\D/g, ""));
     fd.append("role", newResident.role);
-    // Portal login is opt-in: only when "Has account" is ticked do we send
-    // has_account + the password (the server requires a password in that
-    // case -- see StoreUserRequest). Otherwise has_account stays false.
+    // Portal login is opt-in. Staff never type a password: the server makes a
+    // one-time activation code and returns it once, to be printed on a slip.
     fd.append("has_account", newResident.hasAccount ? "1" : "0");
-    if (newResident.hasAccount) fd.append("password", newResident.password);
     if (addPhotoFile) fd.append("validation_id", addPhotoFile);
     if (newResident.hasMemberships && newResident.selectedMemberships.length > 0)
       newResident.selectedMemberships.forEach((id) => fd.append("membership_ids[]", String(id)));
@@ -962,6 +955,7 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
         return;
       }
 
+    const addBody = await safeParseJson(res);
     setShowAddForm(false);
     setFormErrors({});
     setApiError(null);
@@ -969,7 +963,8 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
     setAddPhotoFile(null);
     setAddPhotoPreview("");
 
-    setShowAddSuccess(true);
+    if (addBody?.activation_slip) setActivationSlip(addBody.activation_slip);
+    else setShowAddSuccess(true);
 
     fetchResidents();
     } catch (e) {
@@ -1007,6 +1002,7 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
       hasAccount: r.hasAccount,
       password: r.password,
       passwordChangedByUser: r.passwordChangedByUser,
+      pendingActivation: r.pendingActivation,
       hasMemberships: memIds.length > 0,
       selectedMemberships: memIds,
       deleted_at: r.deleted_at,
@@ -1074,12 +1070,8 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
 
     // has_account can only ever go false -> true here (an existing account
     // is locked on in the UI, and the server rejects removal). Turning it
-    // on requires a password; for an existing account a password is just
-    // an optional reset.
+    // on makes the server issue an activation slip; no password is typed.
     fd.append("has_account", editingResident.hasAccount ? "1" : "0");
-    if (editingResident.hasAccount && editingResident.password.trim()) {
-      fd.append("password", editingResident.password);
-    }
 
     if (editPhotoFile) fd.append("validation_id", editPhotoFile);
 
@@ -1138,13 +1130,40 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
         return;
         }
 
+      const editBody = await safeParseJson(res);
       setEditRecord(null);
       setFormErrors({});
       setApiError(null);
-      setShowUpdateSuccess(true);
+      if (editBody?.activation_slip) setActivationSlip(editBody.activation_slip);
+      else setShowUpdateSuccess(true);
       fetchResidents();
     } catch (e) {
       console.error("Update error:", e);
+      setApiErrorTitle(t("errorTitle"));
+      setApiError(t("networkErrorTryAgain"));
+    }
+  };
+
+  // ─── PRINT A NEW ACTIVATION SLIP: POST /users/{id}/activation-slip ────────
+  const performPrintNewSlip = async () => {
+    const id = slipConfirmFor;
+    setSlipConfirmFor(null);
+    if (id == null) return;
+    try {
+      const res = await fetch(`/users/${id}/activation-slip`, {
+        method: "POST",
+        headers: { Accept: "application/json", "X-CSRF-TOKEN": csrfToken() },
+      });
+      const body = await safeParseJson(res);
+      if (!res.ok || !body.activation_slip) {
+        setApiErrorTitle(t("errorTitle"));
+        setApiError(body.message ?? t("actPrintFailed"));
+        return;
+      }
+      setActivationSlip(body.activation_slip);
+      fetchResidents();
+    } catch (e) {
+      console.error("Slip error:", e);
       setApiErrorTitle(t("errorTitle"));
       setApiError(t("networkErrorTryAgain"));
     }
@@ -1584,12 +1603,10 @@ const handleDeleteResident = async () => {
     const locked = isEdit && editOriginalHasAccount;
     const archived = isEdit && editingResident?.deleted_at !== null;
     const disabled = locked || archived;
-    const setForm = (patch: { hasAccount?: boolean; password?: string }) =>
+    const setForm = (patch: { hasAccount?: boolean }) =>
       isEdit
         ? setEditingResident((p) => (p ? { ...p, ...patch } : p))
         : setNewResident((p) => ({ ...p, ...patch }));
-    const inputCls =
-      "resident-password-field w-full rounded-full border px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 border-white/10";
     return (
       <div className="space-y-4">
         {/* Portal access -- a switch card (not a checkbox): clear on/off state,
@@ -1633,7 +1650,7 @@ const handleDeleteResident = async () => {
               aria-checked={form.hasAccount}
               aria-label={t("portalAccessLabel")}
               disabled={disabled}
-              onClick={() => setForm({ hasAccount: !form.hasAccount, password: "" })}
+              onClick={() => setForm({ hasAccount: !form.hasAccount })}
               className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4FBEB0]/50 disabled:cursor-not-allowed disabled:opacity-60 ${
                 form.hasAccount ? "border-[#4FBEB0] bg-[#4FBEB0]" : "border-white/20 bg-white/10"
               }`}
@@ -1659,59 +1676,30 @@ const handleDeleteResident = async () => {
                 className="w-full rounded-full border px-5 py-3.5 text-base bg-white/[0.05] text-white placeholder:text-white/40 border-white/10 cursor-not-allowed"
               />
             </div>
-            <div>
-              <label className="block text-base font-semibold text-white mb-1.5">
-                {t("passwordLabel")}
-                {!locked && <span className="text-red-400"> *</span>}
-              </label>
-              <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                autoComplete="new-password"
-                value={form.password}
-                disabled={archived}
-                onChange={(e) => setForm({ password: e.target.value })}
-                maxLength={PASSWORD_MAX}
-                className={`${inputCls} pr-14`}
-                placeholder={locked ? t("resetPasswordPlaceholder") : t("resPasswordPlaceholder")}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? t("resHidePassword") : t("resShowPassword")}
-                aria-pressed={showPassword}
-                title={showPassword ? t("resHidePassword") : t("resShowPassword")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex h-9 w-9 items-center justify-center rounded-full text-white/60 hover:text-white hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 transition"
-              >
-                <EyeToggleIcon visible={showPassword} />
-              </button>
-              </div>
-              <p className="mt-1.5 text-sm text-white/60">
-                {locked ? t("passwordResetNote") : t("resPasswordRequiredNote")}
-              </p>
-              {!archived && (form.password.length > 0 || !locked) && (
-                <ul className="mt-2 grid grid-cols-1 gap-1">
-                  {checkPassword(form.password).map((c) => (
-                    <li
-                      key={c.key}
-                      className={`flex items-center gap-2 text-xs transition-colors ${
-                        c.ok ? "text-[#7DD8CB]" : "text-white/45"
-                      }`}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[11px] font-bold ${
-                          c.ok ? "bg-[#4FBEB0]/20 text-[#7DD8CB]" : "bg-white/[0.06] text-white/40"
-                        }`}
-                      >
-                        {c.ok ? "✓" : "•"}
-                      </span>
-                      {t(`resPw_${c.key}`)}
-                    </li>
-                  ))}
-                </ul>
+            <div className="space-y-3">
+              {locked ? (
+                isEdit && editingResident?.pendingActivation ? (
+                  <div className="rounded-2xl border border-amber-400/25 bg-amber-400/10 p-4">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-200">
+                      <KeyRound className="h-3.5 w-3.5" /> {t("actPendingBadge")}
+                    </span>
+                    <p className="mt-2 text-sm text-amber-100/90">{t("actPendingNote")}</p>
+                  </div>
+                ) : null
+              ) : (
+                <p className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70">
+                  {isEdit ? t("actNoteEdit") : t("actNoteAdd")}
+                </p>
               )}
-              {formErrors.password && <p className="text-red-400 text-xs mt-1">{formErrors.password}</p>}
+              {locked && !archived && isEdit && (
+                <button
+                  type="button"
+                  onClick={() => setSlipConfirmFor(editingResident!.real_id)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/15"
+                >
+                  <KeyRound className="h-4 w-4" /> {t("actPrintNewBtn")}
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -3458,6 +3446,17 @@ const handleDeleteResident = async () => {
       <StatusModal open={exportSuccess !== null} type="success" title={t("successTitle")} message={exportSuccess === "pdf" ? t("resExportSuccessPdf") : t("resExportSuccessExcel")} okLabel={t("okLabel")} onClose={() => setExportSuccess(null)} />
       <StatusModal open={showDeleteSuccess} type="success" title={t("successTitle")} message={t("residentDeletedSuccess")} okLabel={t("okLabel")} onClose={() => setShowDeleteSuccess(false)} />
       <StatusModal open={showUpdateSuccess} type="success" title={t("successTitle")} message={t("recordUpdatedSuccess")} okLabel={t("okLabel")} onClose={() => setShowUpdateSuccess(false)} />
+      {activationSlip && <ActivationSlipModal slip={activationSlip} onClose={() => setActivationSlip(null)} />}
+      <ConfirmDialog
+        open={slipConfirmFor !== null}
+        icon={<KeyRound size={32} />}
+        title={t("actPrintNewTitle")}
+        body={t("actPrintNewBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("actSlipPrint")}
+        onCancel={() => setSlipConfirmFor(null)}
+        onConfirm={performPrintNewSlip}
+      />
       <StatusModal open={showAddSuccess} type="success" title={t("successTitle")} message={t("residentAddedSuccess")} okLabel={t("okLabel")} onClose={() => setShowAddSuccess(false)} />
       <StatusModal
         open={showRoleChangedModal}

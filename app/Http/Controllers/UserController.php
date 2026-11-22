@@ -322,8 +322,8 @@ class UserController extends Controller
                 'validation_id'  => $path,
                 'role'           => 'Resident',
                 'has_account'    => $hasAccount ? 1 : 0,
-                'password'       => $hasAccount ? Hash::make($request->password) : null,
-                'must_change_password' => $hasAccount ? 1 : 0,
+                'password'       => null,   // staff never set a password: the resident chooses it when activating
+                'must_change_password' => 0,
                 'birth_date'                => $request->birth_date,
                 'address'                   => $request->address,
                 'civil_status_id'           => $request->civil_status_id ?: null,
@@ -371,13 +371,22 @@ class UserController extends Controller
                 }
             }
 
-            $this->createLog('Create User', 'User', "Created user {$user->user_code}");
+            $slip = null;
+            if ($hasAccount) {
+                $slip = $this->issueActivationSlip($user);
+            }
+
+            $this->createLog('Create User', 'User', "Created user {$user->user_code}" . ($slip ? ' (waiting for the resident to activate the account)' : ''));
+            if ($slip) {
+                $this->createLog('Activation Slip', 'User', "Printed an activation slip for {$user->user_code}");
+            }
 
             DB::commit();
 
             return response()->json([
                 'message' => 'User created successfully',
-                'user' => $user->load('memberships', 'currentStatuses')
+                'user' => $user->load('memberships', 'currentStatuses'),
+                'activation_slip' => $slip,
             ], 201);
 
         } catch (\Exception $e) {
@@ -461,6 +470,9 @@ class UserController extends Controller
             // `code` lets the screen show it in the visitor's language.
             if (!$user) {
                 return response()->json(['message' => 'Username not found.', 'code' => 'username_not_found', 'field' => 'username'], 401);
+            }
+            if ($user->has_account && !$user->password && $user->activation_code_hash) {
+                return response()->json(['message' => 'This account is waiting to be activated. Choose "Activate my account" and use the slip from the Barangay Hall.', 'code' => 'pending_activation', 'field' => 'username'], 401);
             }
             if (!$user->has_account || !$user->password) {
                 return response()->json(['message' => 'This username has no portal account yet. Please contact the Records Office.', 'code' => 'no_portal_account', 'field' => 'username'], 401);
@@ -810,22 +822,13 @@ class UserController extends Controller
                 }
 
                 if (!$user->has_account && $wantsAccount) {
-                    if (!$request->filled('password')) {
-                        DB::rollBack();
-                        return response()->json([
-                            'errors' => ['password' => ['A password is required to create this resident\'s account.']],
-                        ], 422);
-                    }
                     $user->has_account = 1;
-                    $user->password = Hash::make($request->password);
-                    $user->must_change_password = true;
-                    $this->createLog('Account Created', 'User', "Created a portal account for {$user->user_code}");
-                } elseif ($user->has_account && $request->filled('password')) {
-                    $user->password = Hash::make($request->password);
-                    $user->must_change_password = true;
-                    $user->password_changed_at = null;
-                    $this->createLog('Password Reset', 'User', "Reset the password of {$user->user_code}");
+                    $slip = $this->issueActivationSlip($user);
+                    $this->createLog('Account Created', 'User', "Created a portal account for {$user->user_code} (waiting for the resident to activate it)");
+                    $this->createLog('Activation Slip', 'User', "Printed an activation slip for {$user->user_code}");
                 }
+                // An existing account's password is never set by staff here: a lost password gets a new
+                // activation slip instead (POST /users/{id}/activation-slip).
             }
 
             if ($request->hasFile('validation_id')) {
@@ -870,7 +873,8 @@ class UserController extends Controller
 
             return response()->json([
                 'message' => 'User updated successfully',
-                'user' => $user->load('memberships', 'currentStatuses')
+                'user' => $user->load('memberships', 'currentStatuses'),
+                'activation_slip' => $slip ?? null,
             ]);
 
         } catch (\Exception $e) {
@@ -896,6 +900,109 @@ class UserController extends Controller
                 'error' => $this->safeError($e),
             ], 500);
         }
+    }
+
+    // =========================
+    // ACCOUNT ACTIVATION
+    // Staff never type or see a resident's password. A portal account starts without one: the system
+    // makes a one-time code that is printed once on a slip, and the resident uses it (with their user
+    // code) to choose their own password.
+    // =========================
+
+    /** Makes a new one-time code for the account, stores only its hash, and returns what the slip shows (once). */
+    private function issueActivationSlip(User $user): array
+    {
+        return app(\App\Services\ActivationSlipService::class)->issue($user, auth()->user());
+    }
+
+    /** Staff: print a new activation slip (for a lost slip, an expired code, or a forgotten password). */
+    public function activationSlip($id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $user = User::findOrFail($id);
+
+        if ($user->role !== 'Resident' || $user->is_head_staff) {
+            return response()->json(['message' => "An activation slip is only for a resident's portal account. A staff password is reset by the Head Staff."], 403);
+        }
+        if (!$user->has_account) {
+            return response()->json(['message' => 'This resident has no portal account yet. Turn on portal access first.'], 422);
+        }
+        if ($user->deleted_at) {
+            return response()->json(['message' => 'This record is archived.'], 422);
+        }
+
+        $slip = DB::transaction(function () use ($user) {
+            $slip = $this->issueActivationSlip($user);
+            $this->createLog('Activation Slip', 'User', "Printed a new activation slip for {$user->user_code}; the earlier code and password no longer work");
+            return $slip;
+        });
+
+        return response()->json(['message' => 'Activation slip ready.', 'activation_slip' => $slip]);
+    }
+
+    /** The resident (no sign-in yet): use the slip's code, with the user code, to choose a password. */
+    public function activateAccount(Request $request)
+    {
+        $request->validate([
+            'user_code' => 'required|string|max:20',
+            'activation_code' => 'required|string|max:30',
+            'password' => ['required', 'string', 'max:200', 'confirmed', new \App\Rules\StrongPassword()],
+        ]);
+
+        // One answer for every kind of mismatch, so it cannot be used to find out who has an account.
+        $fail = fn () => response()->json([
+            'message' => 'The details do not match, or the code is no longer valid. Ask the Barangay Hall for a new activation slip.',
+            'code' => 'activation_failed',
+        ], 422);
+
+        $user = User::where('user_code', trim((string) $request->user_code))->first();
+
+        $pending = $user && $user->has_account && !$user->password && $user->activation_code_hash
+            && !$user->deleted_at && !$user->suspended_at;
+        $valid = $pending && $user->activation_expires_at && $user->activation_expires_at->isFuture();
+
+        if (!$valid) {
+            return $fail();
+        }
+
+        $code = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) $request->activation_code));
+        $codeOk = Hash::check($code, $user->activation_code_hash);
+
+        if (!$codeOk) {
+            $attempts = (int) $user->activation_failed_attempts + 1;
+            if ($attempts >= 5) {
+                // five wrong tries cancel the code: staff must print a new slip
+                $user->forceFill(['activation_code_hash' => null, 'activation_expires_at' => null, 'activation_failed_attempts' => 0])->save();
+                ActivityLog::create([
+                    'user_code' => $user->user_code, 'action' => 'Activation Cancelled', 'module' => 'Authentication',
+                    'description' => "Five wrong activation tries for {$user->user_code}; the code was cancelled",
+                ]);
+            } else {
+                $user->forceFill(['activation_failed_attempts' => $attempts])->save();
+            }
+            return $fail();
+        }
+
+        $user->forceFill([
+            'password' => Hash::make($request->password),
+            'must_change_password' => false,
+            'password_changed_at' => now(),
+            'activation_code_hash' => null,
+            'activation_expires_at' => null,
+            'activation_failed_attempts' => 0,
+        ])->save();
+
+        ActivityLog::create([
+            'user_code' => $user->user_code,
+            'action' => 'Account Activated',
+            'module' => 'Authentication',
+            'description' => "Account activated by the resident ({$user->user_code})",
+        ]);
+
+        return response()->json(['message' => 'Your account is active. You can now sign in with your new password.']);
     }
 
     // =========================
