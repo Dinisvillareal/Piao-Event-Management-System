@@ -1553,6 +1553,16 @@ export default function EventsView({
     return !getAbsenceForEvent(ev.id); // not answered yet
   };
 
+  // The first review can only be sent for a limited time after the event ends (the Feedback Rules
+  // setting). The server enforces this; here the form is locked so nobody types a review that will be refused.
+  const reviewWindowClosed = (ev: Event) => {
+    const hours = feedbackRules?.close_after_hours ?? 12;
+    const endRaw = ev.event_end || (ev as any).call_time_end || ev.date;
+    const end = new Date(endRaw);
+    if (isNaN(end.getTime())) return false;
+    return Date.now() > end.getTime() + hours * 3_600_000;
+  };
+
   const startReview = (eventId: number) => {
     const existing = getFeedbackForEvent(eventId);
     setReviewingEventId(eventId);
@@ -2030,7 +2040,8 @@ export default function EventsView({
                                         onMouseEnter={() => setReviewHoverRating(n)}
                                         onMouseLeave={() => setReviewHoverRating(0)}
                                         onClick={() => setReviewRating(n)}
-                                        className="p-0.5"
+                                        disabled={!isEditSubmit && reviewWindowClosed(e)}
+                                        className="p-0.5 disabled:cursor-not-allowed disabled:opacity-40"
                                       >
                                         <Star
                                           size={22}
@@ -2048,8 +2059,15 @@ export default function EventsView({
                                     onChange={(ev) => setReviewComment(ev.target.value)}
                                     placeholder={t("optionalCommentPlaceholder")}
                                     rows={2}
-                                    className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+                                    disabled={!isEditSubmit && reviewWindowClosed(e)}
+                                    className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 disabled:cursor-not-allowed disabled:opacity-50"
                                   />
+                                  {!isEditSubmit && reviewWindowClosed(e) && (
+                                    <p role="status" className="mt-2 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-medium text-amber-300">
+                                      <Lock size={14} className="mt-0.5 shrink-0" />
+                                      <span>{t("reviewClosedNote").replace("{hours}", String(feedbackRules?.close_after_hours ?? 12))}</span>
+                                    </p>
+                                  )}
                                   {reviewError && (
                                     <p className="mt-1 text-xs text-red-400">{reviewError}</p>
                                   )}
@@ -2057,8 +2075,9 @@ export default function EventsView({
                                     <button
                                       type="button"
                                       onClick={() => setConfirmReviewEventId(e.id)}
-                                      disabled={reviewRating < 1 || submittingReview}
-                                      className="flex-1 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-bold py-2 disabled:opacity-50 transition"
+                                      disabled={reviewRating < 1 || submittingReview || (!isEditSubmit && reviewWindowClosed(e))}
+                                      title={!isEditSubmit && reviewWindowClosed(e) ? t("reviewClosedNote").replace("{hours}", String(feedbackRules?.close_after_hours ?? 12)) : undefined}
+                                      className="flex-1 rounded-full bg-gold-400 hover:bg-gold-300 text-[#08130F] text-sm font-bold py-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-gold-400 transition"
                                     >
                                       {submittingReview
                                         ? t("submittingLabel")

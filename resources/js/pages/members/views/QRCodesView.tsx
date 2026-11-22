@@ -1135,11 +1135,11 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                 <button
                   type="button"
                   onClick={() => setShowDownloadConfirm(true)}
-                  className="group inline-flex min-w-[260px] items-center justify-center gap-4 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-1.5 py-1.5 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md"
+                  className="group inline-flex min-w-[260px] items-center justify-center gap-4 rounded-full border border-[#E5E7EB] bg-white pl-6 pr-1.5 py-1.5 text-base font-semibold text-[#1A1A1A] shadow-sm transition-all duration-300 ease-out hover:bg-[#F3F4F6] hover:shadow-md"
                 >
                   {t("downloadQrCode")}
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
-                    <Download className="h-4 w-4 text-white" />
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F3F4F6] transition-colors duration-300 ease-out group-hover:bg-white">
+                    <Download className="h-4 w-4 text-[#1A1A1A]" />
                   </span>
                 </button>
                 <button
@@ -1198,13 +1198,13 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                 disabled={!qrData}
                 className={`group mt-4 inline-flex w-full items-center justify-center gap-3 rounded-full border pl-5 pr-1.5 py-1.5 text-[15px] font-semibold shadow-sm transition-all duration-500 ease-out ${
                   qrData
-                    ? 'border-white/15 bg-white/[0.04] text-white hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md cursor-pointer'
+                    ? 'border-[#E5E7EB] bg-white text-[#1A1A1A] hover:bg-[#F3F4F6] hover:shadow-md cursor-pointer'
                     : 'border-white/10 bg-white/10 text-white/30 cursor-not-allowed'
                 }`}
               >
                 {t("downloadQrCode")}
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
-                  <Download className="h-4 w-4 text-white" />
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ease-out ${qrData ? 'bg-[#F3F4F6] group-hover:bg-white' : 'bg-white/10'}`}>
+                  <Download className={`h-4 w-4 ${qrData ? 'text-[#1A1A1A]' : 'text-white/30'}`} />
                 </span>
               </button>
             </div>

@@ -442,7 +442,10 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                ) : (
                    <div className="space-y-3">
                        {paginatedNotifications.map((n) => {
-                           const { title, actualMessage } = parseMessage(n);
+                           const parsed = parseMessage(n);
+                           const cancelledName = (n as any).type === 'event_deleted' ? ((n.title || '').split(/Event Cancelled:\s*/i)[1] || '').trim() : '';
+                           const title = cancelledName || parsed.title;
+                           const actualMessage = cancelledName ? t("notifCancelledMsg") : parsed.actualMessage;
                            const targetText = n.target_name || t("allResidentsOption");
 
 

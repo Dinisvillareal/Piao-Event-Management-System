@@ -455,7 +455,9 @@ export default function DashboardView({
               </div>
             ) : (
               thisWeekNotifications.map((item) => {
-                const { staffName, title, actualMessage } = parseMessage(item.message);
+                const parsedMsg = parseMessage(item.message);
+                const staffName = parsedMsg.staffName;
+                const { title, actualMessage } = parsedMsg;
 
                 return (
                   <div
