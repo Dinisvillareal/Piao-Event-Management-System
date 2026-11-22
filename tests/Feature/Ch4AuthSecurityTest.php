@@ -128,7 +128,7 @@ class Ch4AuthSecurityTest extends TestCase
         $this->assertNotSame($res->json('activation_slip.code'), $fresh->activation_code_hash);
     }
 
-    public function test_suspend_and_make_head_staff_need_password_and_authenticator_code(): void
+    public function test_suspend_remove_access_and_make_head_staff_need_password_and_authenticator_code(): void
     {
         $h = $this->headStaff();
         $secret = $this->enableTwoFactor($h);
@@ -140,6 +140,8 @@ class Ch4AuthSecurityTest extends TestCase
         $this->actingAs($h)->postJson("/staff-accounts/{$target->id}/suspend", ['password' => $pw, 'otp' => '000000'])->assertStatus(422);
         $this->assertNull($target->fresh()->suspended_at);
         $this->actingAs($h)->postJson('/staff-accounts/transfer', ['to_user_id' => $target->id, 'password' => $pw])->assertStatus(422);
+        $this->actingAs($h)->postJson("/staff-accounts/{$target->id}/demote", ['password' => $pw])->assertStatus(422);
+        $this->assertSame('Staff', $target->fresh()->role);
 
         $this->actingAs($h)->postJson("/staff-accounts/{$target->id}/suspend", ['password' => $pw, 'otp' => $this->otp($secret)])->assertOk();
         $this->assertNotNull($target->fresh()->suspended_at);

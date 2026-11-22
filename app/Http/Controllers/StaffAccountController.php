@@ -202,9 +202,9 @@ class StaffAccountController extends Controller
 
     public function demote(Request $request, $id)
     {
-        $request->validate(['password' => 'required|string']);
+        $request->validate(['password' => 'required|string', 'otp' => 'nullable|string|max:20']);
         $me = $request->user();
-        $this->security->requirePassword($me, $request->password);
+        $this->security->requireSensitive($me, $request->password, $request->otp);
 
         $target = $this->staffTarget($id);
         if ($target->id === $me->id || $target->is_head_staff) {

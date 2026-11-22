@@ -149,7 +149,7 @@ export default function StaffAccountsView() {
         await api.post(`/staff-accounts/${id}/unsuspend`, { password });
         flash(t("secReactivatedNotice").replace("{name}", action.staff.name));
       } else if (action.kind === "demote") {
-        await api.post(`/staff-accounts/${id}/demote`, { password });
+        await api.post(`/staff-accounts/${id}/demote`, { password, otp });
         flash(t("secDemotedNotice").replace("{name}", action.staff.name));
       } else if (action.kind === "transfer") {
         await api.post("/staff-accounts/transfer", { to_user_id: id, password, otp });
@@ -533,7 +533,7 @@ export default function StaffAccountsView() {
           confirmLabel={dialogProps.label}
           tone={dialogProps.tone}
           onConfirm={run}
-          requireOtp={action?.kind === "codes" || action?.kind === "reset" || action?.kind === "transfer" || action?.kind === "suspend"}
+          requireOtp={action?.kind === "codes" || action?.kind === "reset" || action?.kind === "transfer" || action?.kind === "suspend" || action?.kind === "demote"}
           twoFactorOn={!!data?.staff.find((s) => s.is_head_staff)?.two_factor_enabled}
           onClose={() => setAction(null)}
         />

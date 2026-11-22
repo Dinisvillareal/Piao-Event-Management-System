@@ -464,6 +464,12 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   // normal save runs. `roleApplied` remembers a change that already went
   // through so a retry after a validation error never repeats it.
   const [askRolePw, setAskRolePw] = useState(false);
+  // Removing Staff access also needs the authenticator code, so know whether it is set up.
+  const [myTwoFactorOn, setMyTwoFactorOn] = useState(true);
+  useEffect(() => {
+    if (!askRolePw) return;
+    api.get("/me").then((r) => setMyTwoFactorOn(!!r.data?.two_factor_enabled)).catch(() => {});
+  }, [askRolePw]);
   const roleApplied = useRef<{ id: string; role: string } | null>(null);
   const editOriginalRole = (() => {
     if (roleApplied.current && roleApplied.current.id === editRecord) return roleApplied.current.role;
@@ -471,12 +477,12 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   })();
   const editIsSelf = !!editingResident && currentUserId === editingResident.real_id;
   const canEditRole = isHeadStaff && !!editingResident && !editIsSelf;
-  const applyRoleChange = async (password: string) => {
+  const applyRoleChange = async (password: string, otp: string) => {
     if (!editingResident || !editRecord) return;
     if (editingResident.role === "Staff") {
       await api.post("/staff-accounts/promote", { user_id: editingResident.real_id, password });
     } else {
-      await api.post(`/staff-accounts/${editingResident.real_id}/demote`, { password });
+      await api.post(`/staff-accounts/${editingResident.real_id}/demote`, { password, otp });
     }
     roleApplied.current = { id: editRecord, role: editingResident.role };
     setAskRolePw(false);
@@ -3191,6 +3197,8 @@ const handleDeleteResident = async () => {
         body={editingResident ? (editingResident.role === "Staff" ? t("secChangeRoleToStaff") : t("secChangeRoleToResident")) : undefined}
         confirmLabel={t("secConfirmRoleChange")}
         tone={editingResident?.role === "Staff" ? "brand" : "danger"}
+        requireOtp={editingResident?.role !== "Staff"}
+        twoFactorOn={myTwoFactorOn}
         onConfirm={applyRoleChange}
         onClose={() => setAskRolePw(false)}
       />
