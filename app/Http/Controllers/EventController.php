@@ -896,7 +896,7 @@ class EventController extends Controller
                 ->update([
                     'type' => 'event_deleted',
                     'title' => '❌ Event Cancelled: ' . $eventName,
-                    'message' => 'We apologize for the inconvenience. This event has been cancelled.',
+                    'message' => 'Staff: ' . $user->last_name . ' • ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.',
                     'is_updated' => true,
                     'read' => false,
                     'updated_at_notification' => now(),

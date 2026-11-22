@@ -5,7 +5,7 @@ import SearchBar from "../../../components/ui/SearchBar";
 import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import FilterBar from "../../../components/ui/FilterBar";
-import { Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, AlertTriangle, Filter, Heart, MessageSquareReply } from "lucide-react";
+import { CheckCheck, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, Filter, Heart, MessageSquareReply } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { tc } from "../../../lib/contentTranslations";
@@ -484,16 +484,18 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                            }
                            const isRead = n.read;
                            const isDeleted = isEventDeleted(n);
-                           const { staffName, title, actualMessage } = parseMessage(n.message);
+                           const parsed = parseMessage(n.message);
+                           const cancelledName = n.type === 'event_deleted' ? ((n.title || '').split(/Event Cancelled:\s*/i)[1] || '').trim() : '';
+                           const staffName = parsed.staffName || (isDeleted ? t("barangayStaffFallback") : '');
+                           const title = cancelledName || parsed.title;
+                           const actualMessage = cancelledName ? t("notifCancelledMsg") : parsed.actualMessage;
 
                            return (
                                <div
                                    key={n.id}
                                    onClick={() => handleNotificationClick(n)}
                                    className={`cursor-pointer relative rounded-2xl sm:rounded-3xl px-5 sm:px-6 py-6 sm:py-7 border-l-4 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.35)] hover:-translate-y-1 active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100 ${
-                                       isDeleted
-                                           ? 'border-l-white/20 bg-white/[0.02] opacity-75 cursor-not-allowed hover:bg-white/[0.02]'
-                                           : isRead
+                                       isRead
                                                ? 'border-l-white/15 bg-white/[0.04] hover:bg-white/[0.06]'
                                                : 'border-l-gold-400 bg-gold-400/10 hover:bg-gold-400/[0.15]'
                                    } border-y border-r border-white/10`}
@@ -501,7 +503,7 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
                                        <div className="flex-1 min-w-0">
                                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs sm:text-sm">
-                                               {staffName && !isDeleted && (
+                                               {staffName && (
                                                    <>
                                                        <div className="flex items-center gap-2 flex-wrap">
                                                            <span className="text-white/60 break-words text-xs sm:text-sm">
@@ -515,15 +517,11 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                                <div className="flex-1 mt-1.5 sm:mt-0">
                                                    <div className="flex flex-wrap items-center gap-1.5">
                                                        <span className={`font-semibold text-xs sm:text-sm ${
-                                                           !isRead && !isDeleted
-                                                               ? 'text-white font-bold'
-                                                               : isDeleted
-                                                                   ? 'text-white/40 line-through'
-                                                                   : 'text-white/80'
+                                                           !isRead ? 'text-white font-bold' : 'text-white/80'
                                                        }`}>
                                                            {highlightText(title, notificationSearch)}
                                                        </span>
-                                                       {actualMessage && !isDeleted && (
+                                                       {actualMessage && (
                                                            <>
                                                                <span className="text-white/30">—</span>
                                                                <span className={`text-white/50 break-words text-xs sm:text-sm ${
@@ -536,18 +534,18 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
                                                    </div>
                                                </div>
                                            </div>
-                                           {isDeleted && (
-                                               <div className="flex items-center gap-2 mt-2">
-                                                   <AlertTriangle size={14} className="text-white/40" />
-                                                   <span className="text-xs text-white/40">{t("eventCancelledNote")}</span>
-                                               </div>
-                                           )}
                                        </div>
 
                                        <div className={`shrink-0 text-xs whitespace-nowrap ${
                                            !isRead && !isDeleted ? 'font-bold text-white/70' : 'text-white/40'
                                        }`}>
                                            {formatDateCard(n.created_at)}
+                                           {isRead && (
+                                               <span className="mt-1 flex items-center justify-end gap-1 font-normal text-[#7DD8CB]">
+                                                   <CheckCheck size={13} />
+                                                   {t("notifSeen")}
+                                               </span>
+                                           )}
                                        </div>
                                    </div>
                                </div>

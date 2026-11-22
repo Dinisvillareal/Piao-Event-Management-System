@@ -2534,11 +2534,11 @@ const handleDeleteResident = async () => {
                                     <div className="flex items-center justify-center gap-3">
                     <button
                       onClick={() => setShowQrDownloadConfirm(true)}
-                      className="group inline-flex min-w-[240px] items-center justify-center gap-4 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-1.5 py-1.5 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md"
+                      className="group inline-flex min-w-[240px] items-center justify-center gap-4 rounded-full border border-[#E5E7EB] bg-white pl-6 pr-1.5 py-1.5 text-base font-semibold text-[#1A1A1A] shadow-sm transition-all duration-300 ease-out hover:bg-[#F3F4F6] hover:shadow-md"
                     >
                       {t("downloadLabel")}
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
-                        <Download className="h-4 w-4 text-white" />
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F3F4F6] transition-colors duration-300 ease-out group-hover:bg-white">
+                        <Download className="h-4 w-4 text-[#1A1A1A]" />
                       </span>
                     </button>
                     <button
