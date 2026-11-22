@@ -364,6 +364,13 @@ class Event extends Model
         // resident from creating a new row after this runs.)
         $removedResidentIds = array_diff($existingResidentIds, $eligibleResidentIds);
         if (!empty($removedResidentIds)) {
+            // A scan is never erased silently: its removal is written to the attendance scan ledger first
+            // (a "void" entry), which is what lets the database delete a row that holds a scan.
+            foreach ($this->attendances()->whereIn('user_id', $removedResidentIds)->get(['user_id', 'time_in', 'time_out']) as $row) {
+                if ($row->time_in || $row->time_out) {
+                    \App\Support\AttendanceLedger::void($this->id, (int) $row->user_id);
+                }
+            }
             $this->attendances()->whereIn('user_id', $removedResidentIds)->delete();
         }
     }

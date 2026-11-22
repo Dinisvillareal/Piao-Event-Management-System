@@ -40,7 +40,7 @@ class ExpenseEditDeleteTest extends TestCase
     private function add(Event $e, string $item, $amount, $staff = null): EventExpense
     {
         $res = $this->actingAs($staff ?? $this->staff())->post("/events/{$e->id}/expenses", [
-            'item' => $item, 'amount' => $amount, 'receipt' => UploadedFile::fake()->image('r.jpg'),
+            'item' => $item, 'amount' => $amount, 'receipt' => $this->fakeImage('r.jpg'),
         ], ['Accept' => 'application/json'])->assertStatus(201);
 
         return EventExpense::findOrFail($res->json('expense.id'));
@@ -186,7 +186,7 @@ class ExpenseEditDeleteTest extends TestCase
         $this->actingAs($staff)->deleteJson("/events/{$e->id}/expenses/{$snack->id}")->assertOk();
 
         // The event finishes; its books are now closed.
-        $e->update(['event_start' => now()->subDays(2), 'event_end' => now()->subDay(), 'call_time_end' => now()->subDay()]);
+        $e->update(['event_start' => now()->subDays(2), 'event_end' => now()->subDay(), 'call_time_start' => now()->subDays(2)->subHour(), 'call_time_end' => now()->subDay()]);
 
         $res = $this->actingAs($staff)->postJson('/api/archive/restore', ['type' => 'expense', 'id' => $snack->id])->assertStatus(422);
 
@@ -273,7 +273,7 @@ class ExpenseEditDeleteTest extends TestCase
         $x = $this->add($e, 'Food', 800);
         $old = $x->receipt_path;
 
-        $this->edit($e, $x, ['item' => 'Food', 'amount' => 800, 'receipt' => UploadedFile::fake()->image('new.jpg')])->assertOk();
+        $this->edit($e, $x, ['item' => 'Food', 'amount' => 800, 'receipt' => $this->fakeImage('new.jpg')])->assertOk();
 
         $x = $x->fresh();
         $this->assertNotSame($old, $x->receipt_path);
@@ -292,7 +292,7 @@ class ExpenseEditDeleteTest extends TestCase
 
         $this->edit($e, $x, [
             'item' => 'Food', 'amount' => 800, 'receipts_sync' => true, 'keep_receipts' => [],
-            'receipts' => [UploadedFile::fake()->image('a.jpg'), UploadedFile::fake()->image('b.jpg')],
+            'receipts' => [$this->fakeImage('a.jpg'), $this->fakeImage('b.jpg')],
         ])->assertOk();
 
         $x = $x->fresh();
@@ -338,7 +338,7 @@ class ExpenseEditDeleteTest extends TestCase
     {
         $e = $this->event();
         $x = $this->add($e, 'Food', 800);
-        $e->update(['event_start' => now()->subDays(2), 'event_end' => now()->subDay(), 'call_time_end' => now()->subDay()]);
+        $e->update(['event_start' => now()->subDays(2), 'event_end' => now()->subDay(), 'call_time_start' => now()->subDays(2)->subHour(), 'call_time_end' => now()->subDay()]);
 
         $this->edit($e, $x, ['item' => 'Food', 'amount' => 900])->assertStatus(422);
         $this->actingAs($this->staff())->deleteJson("/events/{$e->id}/expenses/{$x->id}")->assertStatus(422);

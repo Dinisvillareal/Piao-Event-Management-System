@@ -30,7 +30,7 @@ class CurrentStatusController extends Controller
         $request->validate([
             'label'      => 'required|string|max:50',
             'category'   => 'nullable|in:' . implode(',', CurrentStatus::CATEGORIES),
-            'sort_order' => 'nullable|integer|min:0',
+            'sort_order' => 'nullable|integer|min:0|max:9999',
         ]);
 
         if (CurrentStatus::whereRaw('LOWER(TRIM(label)) = ?', [mb_strtolower(trim($request->label))])->exists()) {
@@ -70,7 +70,7 @@ class CurrentStatusController extends Controller
         $request->validate([
             'label'      => 'required|string|max:50',
             'category'   => 'nullable|in:' . implode(',', CurrentStatus::CATEGORIES),
-            'sort_order' => 'nullable|integer|min:0',
+            'sort_order' => 'nullable|integer|min:0|max:9999',
         ]);
 
         if (CurrentStatus::whereRaw('LOWER(TRIM(label)) = ?', [mb_strtolower(trim($request->label))])->where('id', '!=', $status->id)->exists()) {

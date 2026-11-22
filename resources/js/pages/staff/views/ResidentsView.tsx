@@ -775,7 +775,7 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>, isEdit = false) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
       setApiErrorTitle(t("validationErrorTitle"));
       setApiError(t("uploadImageOnly"));
       e.target.value = "";
@@ -1853,7 +1853,7 @@ const handleDeleteResident = async () => {
         <input
           id={inputId}
           type="file"
-          accept="image/*"
+          accept="image/jpeg,image/png,.jpg,.jpeg,.png"
           onChange={(e) => handlePhotoChange(e, isEdit)}
           className="hidden"
         />

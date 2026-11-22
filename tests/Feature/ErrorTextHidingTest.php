@@ -161,8 +161,8 @@ class ErrorTextHidingTest extends TestCase
             'name' => 'Assembly', 'description' => 'Test', 'location' => 'Hall',
             'event_start' => now()->addHours(3), 'event_end' => now()->addHours(5),
         ]);
-        $x = $event->expenses()->create(['item' => 'Food', 'amount' => 100, 'receipt_path' => 'r.jpg']);
-        $x->delete();
+        $x = $event->expenses()->create(['item' => 'Food', 'amount' => 100, 'receipt_path' => 'expense_receipts/1731900000_r.jpg']);
+        $this->archived($x);
         EventExpense::restoring(fn () => throw new \RuntimeException(self::SECRET));
 
         $res = $this->actingAs($staff)->postJson('/api/archive/restore', ['type' => 'expense', 'id' => $x->id])->assertStatus(500);

@@ -1,5 +1,6 @@
 import KpiCard from "../../../components/ui/KpiCard";
 import { renderSystemQrPoster } from "../../../lib/systemQrPoster";
+import { SYSTEM_URL } from "../../../lib/siteUrl";
 import { useClockFormat } from "../../../lib/clockFormat";
 import React, { useState, useEffect, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
@@ -118,8 +119,7 @@ export default function DashboardView({
   };
 
   useEffect(() => {
-    const url = `${window.location.protocol}//${window.location.host}`;
-    setAppUrl(url);
+    setAppUrl(SYSTEM_URL);
   }, []);
 
   const fetchCurrentUser = async () => {

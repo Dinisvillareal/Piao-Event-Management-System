@@ -237,8 +237,9 @@ class StaffAccountController extends Controller
             return response()->json(['message' => 'The Head Staff cannot be suspended.'], 422);
         }
 
+        // suspending someone who is already suspended keeps the time they were first suspended (the database does not let it be re-dated)
         $changed = User::where('id', $target->id)->where('is_head_staff', false)
-            ->update(['suspended_at' => now()]);
+            ->update(['suspended_at' => $target->suspended_at ?? now()]);
         if (!$changed) {
             return response()->json(['message' => 'The Head Staff cannot be suspended.'], 422);
         }
@@ -331,12 +332,21 @@ class StaffAccountController extends Controller
         }
 
         HeadStaffTransfer::where('status', 'pending')->update(['status' => 'cancelled']);
-        $transfer = HeadStaffTransfer::create([
-            'from_user_id' => $me->id,
-            'to_user_id' => $target->id,
-            'status' => 'pending',
-            'expires_at' => now()->addHours(self::TRANSFER_HOURS),
-        ]);
+        try {
+            $transfer = HeadStaffTransfer::create([
+                'from_user_id' => $me->id,
+                'to_user_id' => $target->id,
+                'status' => 'pending',
+                'expires_at' => now()->addHours(self::TRANSFER_HOURS),
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Two requests at the same moment: the database lets only one pending offer exist
+            // (head_staff_transfers_one_pending). The other one gets a plain answer, not a server error.
+            if (str_contains($e->getMessage(), 'head_staff_transfers_one_pending') || str_contains($e->getMessage(), 'head_staff_transfers.status')) {
+                return response()->json(['message' => 'A transfer is already waiting.'], 409);
+            }
+            throw $e;
+        }
 
         $this->createLog('Head Staff Transfer', "Offered the Head Staff role to {$target->user_code}");
         $this->security->alert($target, 'transfer_offered', 'Head Staff transfer waiting',

@@ -228,7 +228,7 @@ class TranslationCoverageTest extends TestCase
         $all = [];
         foreach ($files as $file) {
             $src = file_get_contents($file);
-            $rel = str_replace($dir . '/', '', $file);
+            $rel = str_replace('\\', '/', substr($file, strlen($dir) + 1));
             preg_match_all('~(?:^|\n)\s*"?([A-Za-z0-9_]+)"?\s*:\s*\{\s*en\s*:~', $src, $m, PREG_OFFSET_CAPTURE);
             foreach ($m[1] as $idx => [$key, $_]) {
                 $open = strpos($src, '{', $m[0][$idx][1]);
@@ -364,7 +364,7 @@ class TranslationCoverageTest extends TestCase
         $it = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS));
         foreach ($it as $file) {
             if (!in_array($file->getExtension(), ['ts', 'tsx'], true)) { continue; }
-            $rel = str_replace($dir . '/', '', $file->getPathname());
+            $rel = str_replace('\\', '/', substr($file->getPathname(), strlen($dir) + 1));
             if (str_starts_with($rel, 'i18n/')) { continue; }
             $out[$rel] = preg_replace('~^\s*(//|\*|/\*).*$~m', '', file_get_contents($file->getPathname()));
         }

@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -40,7 +41,7 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             $table->string('full_name_key', 450)
                 ->nullable()
-                ->storedAs("CASE WHEN deleted_at IS NULL THEN CONCAT(LOWER(TRIM(first_name)), '|', LOWER(TRIM(COALESCE(middle_name, ''))), '|', LOWER(TRIM(last_name)), '|', LOWER(TRIM(COALESCE(suffix, '')))) ELSE NULL END")
+                ->storedAs("CASE WHEN deleted_at IS NULL THEN " . $this->nameKey(true) . " ELSE NULL END")
                 ->after('last_name');
         });
         Schema::table('users', function (Blueprint $table) {
@@ -56,6 +57,23 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             $table->unique('barangay_position_key', 'users_unique_active_barangay_position');
         });
+    }
+
+    /**
+     * The normalised name key, with or without the suffix. SQLite joins
+     * strings with "||" (CONCAT() only exists from SQLite 3.44), MySQL with
+     * CONCAT().
+     */
+    private function nameKey(bool $withSuffix): string
+    {
+        $parts = ["LOWER(TRIM(first_name))", "'|'", "LOWER(TRIM(COALESCE(middle_name, '')))", "'|'", "LOWER(TRIM(last_name))"];
+        if ($withSuffix) {
+            array_push($parts, "'|'", "LOWER(TRIM(COALESCE(suffix, '')))");
+        }
+
+        return DB::getDriverName() === 'sqlite'
+            ? implode(' || ', $parts)
+            : 'CONCAT(' . implode(', ', $parts) . ')';
     }
 
     public function down(): void
@@ -76,7 +94,7 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             $table->string('full_name_key', 400)
                 ->nullable()
-                ->storedAs("CASE WHEN deleted_at IS NULL THEN CONCAT(LOWER(TRIM(first_name)), '|', LOWER(TRIM(COALESCE(middle_name, ''))), '|', LOWER(TRIM(last_name))) ELSE NULL END")
+                ->storedAs("CASE WHEN deleted_at IS NULL THEN " . $this->nameKey(false) . " ELSE NULL END")
                 ->after('last_name');
         });
         Schema::table('users', function (Blueprint $table) {

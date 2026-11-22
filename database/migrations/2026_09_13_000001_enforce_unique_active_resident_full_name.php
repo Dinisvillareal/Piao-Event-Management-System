@@ -32,7 +32,7 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             $table->string('full_name_key', 400)
                 ->nullable()
-                ->storedAs("CASE WHEN deleted_at IS NULL THEN CONCAT(LOWER(TRIM(first_name)), '|', LOWER(TRIM(COALESCE(middle_name, ''))), '|', LOWER(TRIM(last_name))) ELSE NULL END")
+                ->storedAs("CASE WHEN deleted_at IS NULL THEN " . $this->nameKey() . " ELSE NULL END")
                 ->after('last_name');
         });
 
@@ -43,7 +43,7 @@ return new class extends Migration
         // The users table has no timestamps, so "most recently created"
         // means the highest id (deterministic tie-break).
         $duplicateIds = DB::table('users')
-            ->select('id', DB::raw("CONCAT(LOWER(TRIM(first_name)), '|', LOWER(TRIM(COALESCE(middle_name, ''))), '|', LOWER(TRIM(last_name))) as name_key"))
+            ->select('id', DB::raw($this->nameKey() . " as name_key"))
             ->whereNull('deleted_at')
             ->orderByDesc('id')
             ->get()
@@ -60,6 +60,21 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             $table->unique('full_name_key', 'users_unique_active_full_name');
         });
+    }
+
+    /**
+     * The normalised "first|middle|last" key. MySQL/MariaDB join strings with
+     * CONCAT(); SQLite (used by the test suite) joins them with "||" and only
+     * knows CONCAT() from version 3.44 on, so older builds -- such as the one
+     * bundled with many Windows PHP installs -- would fail every test here.
+     */
+    private function nameKey(): string
+    {
+        $parts = ["LOWER(TRIM(first_name))", "'|'", "LOWER(TRIM(COALESCE(middle_name, '')))", "'|'", "LOWER(TRIM(last_name))"];
+
+        return DB::getDriverName() === 'sqlite'
+            ? implode(' || ', $parts)
+            : 'CONCAT(' . implode(', ', $parts) . ')';
     }
 
     public function down(): void

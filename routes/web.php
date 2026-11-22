@@ -88,7 +88,7 @@ Route::get('/content-translations', function () {
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(function () {
+Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class, 'throttle:app'])->group(function () {
 
     /*
     |--------------------------------------------------------------------------
@@ -175,7 +175,7 @@ Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class])->group(
     |--------------------------------------------------------------------------
     */
     Route::post('/memberships/eligibility-preview', [MembershipController::class, 'eligibilityPreview']);
-    Route::resource('api/memberships', MembershipController::class);
+    Route::resource('api/memberships', MembershipController::class)->except(['create', 'edit']);   // no HTML form pages in a JSON API
     Route::get('/memberships/{id}/ineligible-members', [MembershipController::class, 'ineligibleMembers']);
     Route::post('/memberships/{id}/restore', [MembershipController::class, 'restore']);
 

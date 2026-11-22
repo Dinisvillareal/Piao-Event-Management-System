@@ -19,7 +19,6 @@ class EventInventoryRelease extends Model
         'undone_at',
         'evidence_photo_path',
         'extra_evidence_photo_paths',
-        'undo_photo_path',
         'activity_log',
     ];
 
@@ -36,7 +35,6 @@ class EventInventoryRelease extends Model
     protected $appends = [
         'evidence_photo_url',
         'evidence_photo_urls',
-        'undo_photo_url',
         'activity_log_urls',
     ];
 
@@ -57,13 +55,6 @@ class EventInventoryRelease extends Model
     public function getEvidencePhotoUrlsAttribute(): array
     {
         return array_map(fn ($p) => Storage::disk('public')->url($p), $this->allEvidencePhotoPaths());
-    }
-
-    public function getUndoPhotoUrlAttribute(): ?string
-    {
-        return $this->undo_photo_path
-            ? Storage::disk('public')->url($this->undo_photo_path)
-            : null;
     }
 
     public function event()

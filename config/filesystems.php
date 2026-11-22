@@ -33,7 +33,7 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            'serve' => false,   // the app never serves private files through Laravel's built-in storage route
             'throw' => false,
             'report' => false,
         ],

@@ -26,7 +26,7 @@ class InventoryBorrowGuardTest extends TestCase
     private function staffUser(): User
     {
         return User::create([
-            'user_code'      => 'STAFF-' . uniqid(),
+            'user_code'      => 'PR-' . random_int(10000, 99999),
             'first_name'     => 'Staff',
             'last_name'      => 'Tester',
             'contact_number' => '09171234567',
@@ -39,7 +39,7 @@ class InventoryBorrowGuardTest extends TestCase
     private function residentUser(): User
     {
         return User::create([
-            'user_code'      => 'RES-' . uniqid(),
+            'user_code'      => 'PR-' . random_int(10000, 99999),
             'first_name'     => 'Resident',
             'last_name'      => 'Tester',
             'contact_number' => '09179876543',

@@ -403,9 +403,18 @@ class ArchiveController extends Controller
                 case 'household':
                     $item = Household::onlyTrashed()->findOrFail($request->id);
                     $itemName = $item->code;
-                    $item->deleted_by = null;
-                    $item->save();
-                    $item->restore();
+                    // The household and the people it had come back together (those
+                    // who are still free to be linked).
+                    $relinked = \Illuminate\Support\Facades\DB::transaction(function () use ($item) {
+                        $item->deleted_by = null;
+                        $item->save();
+                        $item->restore();
+
+                        return $item->relinkDissolvedMembers();
+                    });
+                    $logExtra = $relinked['linked'] || $relinked['skipped']
+                        ? " ({$relinked['linked']} member(s) linked back" . ($relinked['skipped'] ? ", {$relinked['skipped']} could not be" : '') . ')'
+                        : '';
                     break;
             }
 
@@ -414,11 +423,11 @@ class ArchiveController extends Controller
                 $this->createLog(
                     'Restore',
                     'Archive',
-                    "Restored {$request->type} '{$itemName}'"
+                    "Restored {$request->type} '{$itemName}'" . ($logExtra ?? '')
                 );
             }
 
-            return response()->json(['message' => 'Item restored successfully']);
+            return response()->json(['message' => 'Item restored successfully'] + (isset($relinked) ? ['relinked' => $relinked['linked'], 'not_relinked' => $relinked['skipped']] : []));
 
         } catch (\Exception $e) {
             return response()->json(['message' => $this->safeError($e)], 500);

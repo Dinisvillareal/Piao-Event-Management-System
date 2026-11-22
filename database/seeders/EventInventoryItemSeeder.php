@@ -344,9 +344,16 @@ class EventInventoryItemSeeder extends Seeder
                             $at = now()->subMinutes(30);
                         }
 
-                        // The units came back in the conditions they went out in.
+                        // The units came back in the conditions they went out in. As in real life they were
+                        // out on loan first (the database only accepts a return against a loan), so the loan
+                        // is written, the return is recorded against it, and the loan is then closed.
+                        $units = $this->pickUnits($item, $qty);
+                        $loan = new EventInventoryItem(['event_id' => $event->id, 'inventory_item_id' => $item->id]);
+                        $loan->setUnits($units);
+                        $loan->save();
+
                         $release = new EventInventoryRelease();
-                        $release->setUnits($this->pickUnits($item, $qty));
+                        $release->setUnits($units);
 
                         // forceFill so the backdated created_at is kept.
                         $release->forceFill([
@@ -356,6 +363,7 @@ class EventInventoryItemSeeder extends Seeder
                             'created_at' => $at,
                             'updated_at' => $at,
                         ])->save();
+                        $loan->delete();
                         $returnCount++;
                     }
                     continue;
@@ -371,14 +379,16 @@ class EventInventoryItemSeeder extends Seeder
                 // Lend specific units (per condition) and remember them on the
                 // borrow row, so they go back to the same conditions on return.
                 $units = $this->pickUnits($item, $qty);
-                $item->takeUnits($units);
 
+                // Same order as the real borrow: the loan is saved against the stock still on the
+                // shelf (the database refuses a loan bigger than the stock), then the units leave stock.
                 $borrow = new EventInventoryItem([
                     'event_id' => $event->id,
                     'inventory_item_id' => $item->id,
                 ]);
                 $borrow->setUnits($units);
                 $borrow->save();
+                $item->takeUnits($units);
             }
         }
     }

@@ -81,7 +81,7 @@ class Membership extends Model
         
         $this->update([
             'is_active' => false,
-            'deactivated_at' => now(),
+            'deactivated_at' => $this->deactivated_at ?? now(),   // an archive time is never re-dated
             'deactivated_reason' => $reason,
             'deleted_by' => $deletedBy ?? auth()->user()?->user_code ?? 'SYSTEM',
         ]);

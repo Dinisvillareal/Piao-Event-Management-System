@@ -61,7 +61,7 @@ class ReturnFlowTest extends TestCase
     private function giveBack(Event $e, EventInventoryItem $b, array $data = [], bool $photo = true)
     {
         if ($photo) {
-            $data['photos'] = [UploadedFile::fake()->image('proof.jpg')];
+            $data['photos'] = [$this->fakeImage('proof.jpg')];
         }
 
         return $this->actingAs($this->staff())->post(
@@ -194,7 +194,7 @@ class ReturnFlowTest extends TestCase
 
         $this->actingAs($this->makeUser('Resident'))->post(
             "/events/{$e->id}/borrowed-items/{$b->id}/release",
-            ['photos' => [UploadedFile::fake()->image('p.jpg')]], ['Accept' => 'application/json']
+            ['photos' => [$this->fakeImage('p.jpg')]], ['Accept' => 'application/json']
         )->assertStatus(403);
     }
 
@@ -260,16 +260,24 @@ class ReturnFlowTest extends TestCase
 
     // ---------------------------------------------------------------- the item was archived meanwhile
 
-    public function test_units_go_back_even_if_the_item_was_archived_while_on_loan(): void
+    public function test_an_item_on_loan_cannot_be_archived_until_it_is_returned(): void
     {
         $e = $this->event();
         $item = $this->chairs(30);
         $b = $this->lend($e, $item, ['Good' => 10]);
-        $item->delete();                                   // soft delete (archive)
+
+        try {
+            $this->archived($item);                        // the database refuses: part of it is out on loan
+            $this->fail('The item was archived while on loan.');
+        } catch (\Illuminate\Database\QueryException $ex) {
+            $this->assertStringContainsString('An item that is on loan cannot be archived', $ex->getMessage());
+        }
 
         $this->giveBack($e, $b)->assertOk();
-
-        $this->assertSame(40, InventoryItem::withTrashed()->find($item->id)->quantity);
+        $this->assertSame(40, InventoryItem::find($item->id)->quantity);
         $this->assertSame(1, EventInventoryRelease::count());
+
+        $this->archived($item->fresh());                   // once everything is back it can be archived
+        $this->assertNotNull(InventoryItem::withTrashed()->find($item->id)->deleted_at);
     }
 }

@@ -58,6 +58,9 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
+            // The session clock of the database is pinned to the application's time zone, so NOW() inside
+            // the database triggers (ended events, no future times) agrees with the times the app writes.
+            'timezone' => env('DB_TIMEZONE', '+08:00'),
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),
@@ -78,6 +81,9 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'strict' => true,
+            // The session clock of the database is pinned to the application's time zone, so NOW() inside
+            // the database triggers (ended events, no future times) agrees with the times the app writes.
+            'timezone' => env('DB_TIMEZONE', '+08:00'),
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 (PHP_VERSION_ID >= 80500 ? Mysql::ATTR_SSL_CA : PDO::MYSQL_ATTR_SSL_CA) => env('MYSQL_ATTR_SSL_CA'),

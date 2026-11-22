@@ -146,8 +146,9 @@ class ActivityLogSeeder extends Seeder
         // fills up over time rather than seeding-order.
         usort($rows, fn ($a, $b) => $a['created_at'] <=> $b['created_at']);
 
-        foreach (array_chunk($rows, 500) as $chunk) {
-            ActivityLog::insert($chunk);
+        // one at a time through the model, so every seeded row joins the hash chain like a real one
+        foreach ($rows as $row) {
+            (new ActivityLog())->forceFill($row)->save();
         }
     }
 }

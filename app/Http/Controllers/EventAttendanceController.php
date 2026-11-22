@@ -9,6 +9,7 @@ use App\Models\Event;
 use App\Models\User;
 use App\Models\ActivityLog;
 use App\Support\Paged;
+use App\Support\AttendanceLedger;
 
 class EventAttendanceController extends Controller
 {
@@ -150,6 +151,7 @@ class EventAttendanceController extends Controller
                 $attendance->time_in = $scannedAt;
                 $attendance->status = 'Incomplete';
                 $attendance->save();
+                AttendanceLedger::record('in', $event->id, $user->id, $scannedAt, $note === '' ? 'scan' : 'offline');
 
                 // ✅ Log with Name, Event Title, and 'QR' module
                 $this->createLog(
@@ -168,6 +170,7 @@ class EventAttendanceController extends Controller
                 'time_in' => $scannedAt,
                 'status' => 'Incomplete'
             ]);
+            AttendanceLedger::record('in', $event->id, $user->id, $scannedAt, $note === '' ? 'scan' : 'offline');
 
             // ✅ Log with Name, Event Title, and 'QR' module
             $this->createLog(
@@ -284,6 +287,7 @@ class EventAttendanceController extends Controller
                     'time_out' => $scannedAt,
                     'status' => 'Incomplete'
                 ]);
+                AttendanceLedger::record('out', $event->id, $user->id, $scannedAt, $note === '' ? 'scan' : 'offline');
 
                 // ✅ Log with Name, Event Title, and 'QR' module
                 $this->createLog(
@@ -304,6 +308,7 @@ class EventAttendanceController extends Controller
             $attendance->time_out = $scannedAt;
             $attendance->status = ($attendance->time_in && $attendance->time_out) ? 'Complete' : 'Incomplete';
             $attendance->save();
+            AttendanceLedger::record('out', $event->id, $user->id, $scannedAt, $note === '' ? 'scan' : 'offline');
 
             // ✅ Log with Name, Event Title, and 'QR' module
             $this->createLog(

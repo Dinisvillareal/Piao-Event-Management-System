@@ -1,0 +1,741 @@
+import KpiCard from "../../../components/ui/KpiCard";
+import { renderSystemQrPoster } from "../../../lib/systemQrPoster";
+import { useClockFormat } from "../../../lib/clockFormat";
+import React, { useState, useEffect, useRef } from "react";
+import { QRCodeCanvas } from "qrcode.react";
+import { UserPlus, CalendarPlus, ScanLine, Bell, BarChart3, Users, Award, CalendarDays, Undo2, Download, Activity, Clock } from "lucide-react";
+import api from "../../../lib/api";
+import { useLanguage } from "../../../i18n/LanguageContext";
+import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import StatusModal from "../../../components/ui/StatusModal";
+import Skeleton from "../../../components/ui/Skeleton";
+
+import { tc } from "../../../lib/contentTranslations";
+import Portal from "../../../components/ui/Portal";
+import FeedWarning from "../../../components/ui/FeedWarning";
+import { useFeedHealth, useVisiblePoll } from "../../../hooks/useLiveFeeds";
+interface DashboardViewProps {
+  setActive: (route: string) => void;
+  membershipsCount: number;
+  eventsCount: number;  // ✅ ADD THIS - now required
+  notifications?: any[];
+  upcomingEvents?: any[];
+  pastEventsCount?: number;
+}
+
+export default function DashboardView({
+  membershipsCount,
+  eventsCount,           // ✅ ADD THIS
+  setActive,
+  upcomingEvents = [],
+  pastEventsCount = 0
+}: DashboardViewProps) {
+  const { t, locale, language } = useLanguage();
+  // Headline numbers, all worked out by the server (GET /dashboard/stats) so they
+  // match the Residents / Memberships / Events pages and the Activity Log exactly.
+  const [stats, setStats] = useState({
+    residents: 0,
+    memberships: 0,
+    events: eventsCount,
+    eventsToday: 0,
+    actionsToday: 0,
+    activeStaffToday: 0,
+  });
+  const [lastAction, setLastAction] = useState<{ action: string; user_code: string; created_at: string } | null>(null);
+  const [memberName, setMemberName] = useState("");
+  const [loading, setLoading] = useState(true);
+  // The skeleton shows for the first load only; later re-fetches (e.g. when
+  // the events count arrives or changes) refresh the numbers silently.
+  const loadedOnceRef = useRef(false);
+  const [appUrl, setAppUrl] = useState("");
+  // Events that already ended but still hold borrowed inventory --
+  // nothing in the system releases these on its own (see
+  // EventController::overdueBorrows), so the Dashboard surfaces them
+  // directly instead of relying on staff noticing the Inventory badge.
+  const [overdueBorrows, setOverdueBorrows] = useState<any[]>([]);
+  // Real approved-vs-spent figures for this quarter's events, from the
+  // same endpoint the Reports > Budget report uses -- no invented
+  // category breakdown, just the actual per-event numbers staff already
+  // record in Budget & Expenses.
+  const [budgetSummary, setBudgetSummary] = useState<{ per_event: any[] } | null>(null);
+  // Ticks every second purely for the live clock in the "Today's Live
+  // Snapshot" panel -- everything else in that panel is real fetched data,
+  // this just proves the panel is actually live rather than a static
+  // screenshot of "recent activity".
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [clockHour12, toggleClockHour12] = useClockFormat();
+  // Which feeds failed on their last try, and when everything last loaded cleanly --
+  // powers the "synced Xs ago" readout, which only moves forward when NOTHING failed,
+  // so it never claims "synced just now" while a feed is actually down.
+  const { failedCount, lastOkAt: lastSyncedAt, report, completeCycle } = useFeedHealth();
+  const [retrying, setRetrying] = useState(false);
+
+  const getCsrfToken = () => {
+    const token = document.cookie
+      .split('; ')
+      .find(row => row.startsWith('XSRF-TOKEN='))
+      ?.split('=')[1];
+    return token ? decodeURIComponent(token) : '';
+  };
+
+  const formatActivityDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const options: Intl.DateTimeFormatOptions = {
+      year: 'numeric',
+      month: 'long',
+      day: '2-digit',
+    };
+    const datePart = date.toLocaleDateString(locale, options);
+    const timePart = date.toLocaleTimeString(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+    return `${datePart} • ${timePart}`;
+  };
+
+  // Short "Sep 20" style date used in the compact upcoming-events list --
+  // the events themselves already show their full date once opened, this
+  // panel is just a glanceable pointer to what's coming up next.
+  const formatShortDate = (dateString?: string) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return dateString;
+    return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' });
+  };
+
+  // Current calendar quarter as a date_from/date_to pair for the budget
+  // endpoint, plus a "Q3 2026" label so the panel's subtitle matches
+  // exactly what it's showing instead of an unqualified "this quarter".
+  const getQuarterInfo = () => {
+    const now = new Date();
+    const q = Math.floor(now.getMonth() / 3);
+    const start = new Date(now.getFullYear(), q * 3, 1);
+    const end = new Date(now.getFullYear(), q * 3 + 3, 0);
+    const toISO = (d: Date) => d.toISOString().split('T')[0];
+    return { date_from: toISO(start), date_to: toISO(end), label: `Q${q + 1} ${now.getFullYear()}` };
+  };
+
+  useEffect(() => {
+    const url = `${window.location.protocol}//${window.location.host}`;
+    setAppUrl(url);
+  }, []);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await api.get('/me');
+      const user = response.data;
+
+      let formattedName = "Staff";
+      if (user.first_name && user.last_name) {
+        formattedName = `${user.first_name} ${user.last_name}`;
+      } else if (user.first_name) {
+        formattedName = user.first_name;
+      } else if (user.name) {
+        formattedName = user.name;
+      }
+
+      setMemberName(formattedName);
+
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+      setMemberName("Staff");
+    }
+  };
+
+  // Every feed below keeps the numbers it already has when a refresh fails (instead of
+  // wiping them to 0 / empty, which looked like "nothing is overdue" when the server was
+  // simply unreachable) and reports the failure so the page can say so.
+  const fetchOverdueBorrows = async () => {
+    try {
+      const response = await api.get('/events/overdue-borrows');
+      setOverdueBorrows(Array.isArray(response.data) ? response.data : []);
+      report('overdue', true);
+    } catch (error) {
+      console.error('Error fetching overdue borrows:', error);
+      report('overdue', false);
+    }
+  };
+
+  const fetchBudgetSummary = async () => {
+    try {
+      const { date_from, date_to } = getQuarterInfo();
+      const response = await api.get('/reports/budget-summary', { params: { date_from, date_to } });
+      setBudgetSummary(response.data);
+      report('budget', true);
+    } catch (error) {
+      console.error('Error fetching budget summary:', error);
+      report('budget', false);
+    }
+  };
+
+  const fetchAllStats = async () => {
+    try {
+      const { data } = await api.get('/dashboard/stats');
+      setStats({
+        residents: Number(data.residents) || 0,
+        memberships: Number(data.memberships) || 0,
+        events: Number(data.events) || 0,
+        eventsToday: Number(data.events_today) || 0,
+        actionsToday: Number(data.actions_today) || 0,
+        activeStaffToday: Number(data.active_staff_today) || 0,
+      });
+      setLastAction(data.last_action ?? null);
+      report('stats', true);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      report('stats', false);
+    }
+  };
+
+  const refreshFeeds = async () => {
+    await Promise.all([fetchAllStats(), fetchOverdueBorrows(), fetchBudgetSummary()]);
+    completeCycle();
+  };
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      if (!loadedOnceRef.current) setLoading(true);
+      try {
+        await Promise.all([fetchCurrentUser(), refreshFeeds()]);
+      } catch (error) {
+        console.error('Error loading dashboard:', error);
+      } finally {
+        loadedOnceRef.current = true;
+        setLoading(false);
+      }
+    };
+
+    loadDashboard();
+  }, [eventsCount]); // Re-run when an event is added / deleted so the cards follow straight away.
+
+  // Keeps the *whole* Dashboard live: the clock ticks every second, and every data feed the
+  // page shows -- the headline cards, today's staff activity, overdue borrows and the quarterly
+  // budget summary -- is silently re-fetched every 30s. The 30s refresh pauses while the tab is
+  // hidden and runs straight away when it is shown again.
+  useEffect(() => {
+    const clockTimer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(clockTimer);
+  }, []);
+
+  useVisiblePoll(() => { void refreshFeeds(); }, 30000);
+
+  const retryFeeds = async () => {
+    setRetrying(true);
+    try { await refreshFeeds(); } finally { setRetrying(false); }
+  };
+
+  // Download itself is unchanged -- only wrapped with a confirm step before
+  // it runs and a success popup once the file has actually been written,
+  // matching the confirm-then-report pattern used for every other
+  // destructive/generating action across the app (ConfirmDialog + StatusModal).
+  const [showQrDownloadConfirm, setShowQrDownloadConfirm] = useState(false);
+  const [showQrDownloadSuccess, setShowQrDownloadSuccess] = useState(false);
+
+  // Builds the print-ready A4 poster (2480 x 3508 px) around the system QR.
+  // The QR is drawn once into a hidden 1200px canvas and used directly.
+  // The canvas is tracked in state (not looked up by id) because the card can
+  // mount after the page's first render -- the preview must start once it exists.
+  const [qrEl, setQrEl] = useState<HTMLCanvasElement | null>(null);
+  const buildQrPoster = async (): Promise<HTMLCanvasElement | null> => {
+    if (!qrEl || !appUrl) return null;
+    return renderSystemQrPoster({ qr: qrEl, url: appUrl });
+  };
+
+  // The card shows the real poster (a lighter copy), not just the bare QR.
+  const [posterPreview, setPosterPreview] = useState<string | null>(null);
+  const [posterFailed, setPosterFailed] = useState(false);
+  const [showPosterPreview, setShowPosterPreview] = useState(false);
+  useEffect(() => {
+    if (!appUrl || !qrEl) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        // Let the dashboard paint first; the poster drawing is a heavy, one-off job.
+        await new Promise((r) => window.setTimeout(r, 50));
+        if (cancelled) return;
+        const poster = await buildQrPoster();
+        if (!poster || cancelled) return;
+        const small = document.createElement('canvas');
+        small.width = 1240;
+        small.height = 1754;
+        const sctx = small.getContext('2d');
+        if (!sctx) return;
+        sctx.imageSmoothingQuality = 'high';
+        sctx.drawImage(poster, 0, 0, small.width, small.height);
+        if (!cancelled) setPosterPreview(small.toDataURL('image/jpeg', 0.88));
+      } catch (err) {
+        console.error('QR poster preview failed:', err);
+        if (!cancelled) setPosterFailed(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [appUrl, qrEl]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const performQrDownload = async () => {
+    try {
+      const poster = await buildQrPoster();
+      if (!poster) return;
+      const blob: Blob | null = await new Promise((res) => poster.toBlob(res, 'image/png'));
+      if (!blob) return;
+      const href = URL.createObjectURL(blob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = href;
+      downloadLink.download = 'barangay-piao-qr-poster.png';
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      window.setTimeout(() => URL.revokeObjectURL(href), 2000);
+      setShowQrDownloadSuccess(true);
+    } catch (err) {
+      console.error('QR poster download failed:', err);
+    }
+  };
+
+  const downloadQRCode = () => setShowQrDownloadConfirm(true);
+
+  // Every caption below is either static copy or a real, already-fetched
+  // count -- no invented period-over-period percentages, since the system
+  // doesn't track historical snapshots to compute a real "+4.2%" from.
+  // Same gradient-card language as the Budget page's portfolio KPI strip
+  // (sage / gold / dark sage / maroon), in the same left-to-right order,
+  // so the two stat strips read as one consistent system instead of the
+  // old plain-white cards here vs. gradient cards there. Overdue Returns
+  // gets the maroon "needs attention" tone, same role as "Events Over
+  // Budget" plays in the Budget strip.
+  const statsCards = [
+    {
+      value: stats.residents,
+      label: t("residents"),
+      route: "residents",
+      description: t("dashTotalResidentsDesc"),
+      icon: Users,
+      gradient: "from-sage-400 to-sage-700",
+    },
+    {
+      value: stats.memberships,
+      label: t("dashActiveMemberships"),
+      route: "memberships",
+      description: t("dashActiveMembershipTypesDesc"),
+      icon: Award,
+      gradient: "from-gold-400 to-gold-700",
+    },
+    {
+      value: stats.events,
+      label: t("events"),
+      route: "events",
+      description: upcomingEvents.length > 0 ? t("dashUpcomingThisYear").replace("{n}", String(upcomingEvents.length)) : t("dashUpcomingPastThisYear"),
+      icon: CalendarDays,
+      gradient: "from-sage-800 to-[#1C2E2B]",
+    },
+    {
+      value: overdueBorrows.length,
+      label: t("dashOverdueReturns"),
+      route: "returns",
+      description: overdueBorrows.length > 0 ? t("dashFlaggedReview") : t("dashAllReturnedOnTime"),
+      icon: Undo2,
+      gradient: "from-[#8A3D2C] to-[#5C2A1E]",
+    }
+  ];
+
+  const quickActions = [
+    { label: t("dashAddResident"), icon: UserPlus, onClick: () => setActive("residents") },
+    { label: t("dashCreateEvent"), icon: CalendarPlus, onClick: () => setActive("events") },
+    { label: t("dashScanQr"), icon: ScanLine, onClick: () => setActive("scan") },
+    { label: t("dashSendNotice"), icon: Bell, onClick: () => setActive("notify") },
+    { label: t("dashViewReports"), icon: BarChart3, onClick: () => setActive("reports") },
+  ];
+
+  if (loading) {
+    // Skeleton shaped like the real page below -- hero (avatar + two text
+    // lines, two action cards) then the 4-card stat strip -- instead of a
+    // bare spinner, so the page's actual layout is visible immediately and
+    // nothing jumps around once the real numbers arrive.
+    return (
+      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] px-6 py-8 sm:px-10 sm:py-9">
+        <div className="w-full space-y-10">
+          <div className="relative flex flex-col gap-6 py-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-5">
+              <Skeleton className="h-16 w-16 shrink-0 rounded-full" />
+              <div className="space-y-2.5">
+                <Skeleton className="h-7 w-56" />
+                <Skeleton className="h-4 w-72" />
+              </div>
+            </div>
+            <div className="flex w-full flex-col gap-4 sm:flex-row lg:w-auto">
+              <Skeleton className="h-[76px] flex-1 rounded-2xl lg:w-72" />
+              <Skeleton className="h-[76px] flex-1 rounded-2xl lg:w-72" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-2xl" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Skeleton className="h-72 rounded-2xl" />
+            <Skeleton className="h-72 rounded-2xl" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Sync state shown next to the clock in the header.
+  const secondsSinceSync = Math.max(0, Math.round((currentTime.getTime() - lastSyncedAt.getTime()) / 1000));
+  const syncText =
+    secondsSinceSync < 5 ? t("dashSyncedJustNow")
+    : secondsSinceSync < 60 ? t("dashSyncedSecondsAgo").replace("{n}", String(secondsSinceSync))
+    : t("dashSyncedMinutesAgo").replace("{n}", String(Math.floor(secondsSinceSync / 60)));
+
+  const liveBadge = (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">
+      <span className="relative flex h-1.5 w-1.5">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
+        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
+      </span>
+      {t("liveLabel")}
+    </span>
+  );
+
+  return (
+    // Full-bleed dark navy page -- cancels the shared content area's own
+    // padding so the Dashboard reads as its own immersive page, while every
+    // other staff view keeps its untouched light "paper" background.
+    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A]">
+      <div className="w-full space-y-6 px-6 py-8 sm:px-10 sm:py-9">
+        {/* Header: who / when on the left, the live clock + sync state on the right. */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="font-display text-2xl font-extrabold text-white sm:text-3xl">
+              {t("welcomeBack")}, {memberName}
+            </h1>
+            <p className="mt-1.5 text-sm text-white/55">
+              {currentTime.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="hidden text-right sm:block">
+              <div className="flex items-center justify-end gap-2">{liveBadge}</div>
+              <p className="mt-1 text-xs text-white/40">{syncText}</p>
+            </div>
+            <button
+              type="button"
+              onClick={toggleClockHour12}
+              title={clockHour12 ? "24-hour" : "12-hour"}
+              aria-label={clockHour12 ? "Switch to 24-hour clock" : "Switch to 12-hour clock"}
+              className="flex cursor-pointer select-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 transition hover:border-[#4FBEB0]/40 hover:bg-white/[0.08] active:scale-95"
+            >
+              <Clock className="h-4 w-4 text-[#4FBEB0]" />
+              <span className="font-display text-lg font-bold tabular-nums text-white">
+                {currentTime.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: clockHour12 })}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <FeedWarning failedCount={failedCount} lastOkAt={lastSyncedAt} onRetry={retryFeeds} retrying={retrying} />
+
+        {/* Key numbers */}
+        <div className="report-stagger grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          {statsCards.map((item, idx) => (
+            <KpiCard key={idx} value={item.value} label={item.label} description={item.description} icon={item.icon} gradient={item.gradient} delay={idx * 70} onClick={() => setActive(item.route)} />
+          ))}
+        </div>
+
+        {overdueBorrows.length > 0 && (
+          <button
+            onClick={() => setActive("returns")}
+            className="flex w-full flex-wrap items-center justify-between gap-4 rounded-2xl border border-gold-500/25 bg-gold-500/[0.08] p-5 text-left transition-colors hover:bg-gold-500/[0.12]"
+          >
+            <div>
+              <h2 className="text-lg font-bold text-gold-300">{t("overdueBorrowsTitle")}</h2>
+              <p className="mt-1 text-sm text-gold-100/80">
+                {overdueBorrows.length} {overdueBorrows.length === 1 ? t("eventSingularLabel") : t("eventPluralLabel")} &mdash; {t("overdueBorrowsSubtitle")}
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-gold-500 px-4 py-2.5 text-xs font-bold text-[#08130F]">
+              {t("reviewReturnsLabel")}
+            </span>
+          </button>
+        )}
+
+        {/* Shortcuts -- real navigation only. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {quickActions.map((action) => (
+            <button
+              key={action.label}
+              onClick={action.onClick}
+              className="dash-shortcut group flex min-h-[52px] items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.04] py-2.5 pl-2.5 pr-4 sm:gap-3 sm:pr-5 text-left transition hover:border-[#4FBEB0]/40 hover:bg-white/[0.07]"
+            >
+              <span className="dash-shortcut-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/10 text-[#4FBEB0] transition group-hover:bg-[#4FBEB0]/20">
+                <action.icon className="h-[18px] w-[18px]" />
+              </span>
+              <span className="dash-shortcut-label min-w-0 line-clamp-2 text-[13px] font-semibold leading-tight sm:text-sm text-white/80 group-hover:text-white">{action.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+          <div className="flex flex-col gap-4">
+          {/* Today's Live Snapshot -- replaces the old static activity log
+              with a genuinely real-time panel: a ticking clock plus counts
+              derived from data the Dashboard already fetches (today's
+              activity log, overdue borrows, upcoming events), silently
+              refreshed every 30s so the numbers move on their own. */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06]">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-display text-xl font-bold text-white">{t("dashTodaySnapshot")}</h2>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
+                    </span>
+                    {t("liveLabel")}
+                  </span>
+                </div>
+                <p className="mt-1 text-[15px] text-white/50">
+                  {currentTime.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' })}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-2 gap-3.5">
+              {(() => {
+                const snapshotTiles = [
+                  { label: t("dashStaffActionsToday"), value: stats.actionsToday, icon: Activity, tone: "text-[#4FBEB0]" },
+                  { label: t("dashStaffActiveToday"), value: stats.activeStaffToday, icon: Users, tone: "text-[#7DD8CB]" },
+                  { label: t("dashEventsToday"), value: stats.eventsToday, icon: CalendarDays, tone: "text-gold-400" },
+                  { label: t("dashNeedsAttention"), value: overdueBorrows.length, icon: Bell, tone: overdueBorrows.length > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
+                ];
+
+                return snapshotTiles.map((tile) => (
+                  <div key={tile.label} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-3 min-[420px]:p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="min-w-0 truncate font-display text-lg font-extrabold tabular-nums text-white min-[420px]:text-2xl">{tile.value}</span>
+                      <tile.icon className={`h-4 w-4 shrink-0 ${tile.tone}`} />
+                    </div>
+                    <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/45">{tile.label}</p>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            <div className="mt-5 border-t border-white/10 pt-4">
+              <p className="text-[11px] text-white/35">
+                {!lastAction
+                  ? t("dashNoStaffActivity")
+                  : t("dashLastAction")
+                      .replace("{action}", String(lastAction?.action ?? "—"))
+                      .replace("{user}", String(lastAction?.user_code ?? "staff"))
+                      .replace("{time}", formatActivityDate(lastAction?.created_at ?? ""))}
+              </p>
+              <p className="mt-1 text-[11px] uppercase tracking-wide text-white/25">{t("dashAutoRefresh")}</p>
+            </div>
+          </div>
+
+          {/* Upcoming events -- an agenda: dark header, then one row per event
+              (date / name + venue / weekday + time). The rows share the card's
+              height equally, so it always ends level with the Budget Snapshot. */}
+          <div className="timeline-card flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+            <div className="flex items-center gap-3 bg-gradient-to-r from-[#0A0E1A] via-[#123A38] to-[#1C5850] px-5 py-4">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
+                <CalendarDays className="h-4 w-4 text-white" />
+              </span>
+              <h2 className="min-w-0 flex-1 truncate font-display text-lg font-bold text-white">{t("dashUpcomingTitle")}</h2>
+              <button onClick={() => setActive("events")} className="-mr-2 inline-flex min-h-10 shrink-0 items-center px-2 text-xs font-bold text-white/70 transition hover:text-white hover:underline">
+                {t("dashViewAll")}
+              </button>
+            </div>
+
+            {upcomingEvents.length === 0 ? (
+              <p className="px-5 py-6 text-sm text-white/45">{t("dashNoUpcomingEvents")}</p>
+            ) : (
+              <ul className="flex flex-1 flex-col">
+                {upcomingEvents.slice(0, 5).map((ev, i) => {
+                  const d = new Date(ev.event_start ?? ev.date);
+                  const valid = !isNaN(d.getTime());
+                  return (
+                    <li key={ev.id ?? i} className="flex flex-1 border-t border-white/10 first:border-t-0">
+                      <button
+                        onClick={() => setActive("events")}
+                        className="timeline-cell flex w-full items-center gap-4 px-5 py-3 text-left transition hover:bg-white/[0.07]"
+                      >
+                        <span className="flex w-14 shrink-0 flex-col items-center leading-none">
+                          <span className="text-[11px] font-extrabold uppercase text-[#7DD8CB]">{valid ? d.toLocaleDateString(locale, { month: "short" }) : ""}</span>
+                          <span className="mt-1 font-display text-3xl font-extrabold tracking-tight text-white [font-variant-numeric:tabular-nums]">{valid ? String(d.getDate()).padStart(2, "0") : "--"}</span>
+                          <span className="mt-1 text-[11px] font-semibold text-white/45">{valid ? d.getFullYear() : ""}</span>
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[15px] font-bold text-white">{tc(ev.name ?? ev.title, language as any)}</span>
+                          <span className="mt-0.5 block truncate text-xs text-white/50">{tc(ev.location, language as any)}</span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block text-xs font-bold text-white/85">{valid ? d.toLocaleDateString(locale, { weekday: "short" }) : ""}</span>
+                          <span className="block text-xs text-white/45">{valid ? d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" }) : ""}</span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+          </div>
+
+          <div className="space-y-4">
+            {/* System QR Code -- keeps the icon-badge + dashed "scan target"
+                frame layout, but back on the same dark navy card treatment
+                as the rest of the dashboard instead of the light card this
+                briefly became. */}
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06]">
+              <div className="flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/10">
+                  <ScanLine className="h-5 w-5 text-[#4FBEB0]" />
+                </span>
+                <h2 className="font-display text-xl font-bold text-white">{t("dashSystemQrCode")}</h2>
+              </div>
+              <p className="mt-3 text-[15px] text-white/50">
+                {t("dashSystemQrDesc")}
+              </p>
+
+              <div className="mt-5 flex flex-col items-start gap-5 sm:flex-row">
+                {/* The QR itself stays in the page (hidden) -- the poster is built from it. */}
+                <QRCodeCanvas
+                  ref={setQrEl}
+                  id="system-qr-code"
+                  style={{ display: "none" }}
+                  value={appUrl || " "}
+                  size={1200}
+                  bgColor="#ffffff"
+                  fgColor="#0A0E1A"
+                  level="H"
+                  includeMargin={true}
+                />
+                <button
+                  type="button"
+                  onClick={() => posterPreview && setShowPosterPreview(true)}
+                  aria-label={t("dashViewPoster")}
+                  className="group relative w-full shrink-0 overflow-hidden rounded-xl border-2 border-dashed border-white/15 bg-white/[0.03] p-2.5 transition hover:border-[#4FBEB0]/60 sm:w-56"
+                >
+                  {posterPreview ? (
+                    <img src={posterPreview} alt={t("dashSystemQrCode")} className="mx-auto aspect-[1240/1754] w-full max-w-[16rem] rounded-md object-contain shadow-md" />
+                  ) : posterFailed ? (
+                    <div className="mx-auto flex aspect-[1240/1754] w-full max-w-[16rem] items-center justify-center rounded-md bg-white/[0.04] p-4 text-center text-sm text-white/50">{t("dashPosterPreviewUnavailable")}</div>
+                  ) : (
+                    <Skeleton className="mx-auto aspect-[1240/1754] w-full max-w-[16rem] rounded-md" />
+                  )}
+                  <span className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">{t("dashViewPoster")}</span>
+                </button>
+                <div className="flex-1">
+                  <p className="font-medium text-white">Barangay e-Membership</p>
+                  <p className="mt-1 text-sm text-white/50">
+                    {t("dashPrintPostHall")}
+                  </p>
+                  <button
+                    onClick={downloadQRCode}
+                    className="group mt-3 inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-5 pr-1.5 py-1.5 text-[15px] font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md"
+                  >
+                    {t("dashDownloadQrPoster")}
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+                      <Download className="h-4 w-4 text-white" />
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <ConfirmDialog
+              open={showQrDownloadConfirm}
+              icon={<Download className="h-6 w-6" />}
+              title={t("dashDownloadQrConfirmTitle")}
+              body={t("dashDownloadQrConfirmBody")}
+              cancelLabel={t("cancelLabel")}
+              confirmLabel={t("downloadLabel")}
+              onCancel={() => setShowQrDownloadConfirm(false)}
+              z={10100}
+              onConfirm={() => {
+                setShowQrDownloadConfirm(false);
+                setShowPosterPreview(false);
+                performQrDownload();
+              }}
+            />
+            {showPosterPreview && posterPreview && (
+              <Portal><div
+                className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+                onClick={() => setShowPosterPreview(false)}
+                role="dialog"
+                aria-modal="true"
+              >
+                <div className="max-h-full" onClick={(e) => e.stopPropagation()}>
+                  <img src={posterPreview} alt={t("dashSystemQrCode")} className="max-h-[88vh] w-auto rounded-xl shadow-2xl" />
+                  <div className="mt-3 flex justify-center gap-3">
+                    <button onClick={() => setShowQrDownloadConfirm(true)} className="rounded-full bg-sage-700 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-sage-800">{t("dashDownloadQrPoster")}</button>
+                    <button onClick={() => setShowPosterPreview(false)} className="rounded-full border border-white/20 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">{t("closeLabel")}</button>
+                  </div>
+                </div>
+              </div></Portal>
+            )}
+            <StatusModal
+              open={showQrDownloadSuccess}
+              type="success"
+              title={t("dashDownloadComplete")}
+              message={t("dashQrSavedMessage")}
+              okLabel={t("okLabel")}
+              onClose={() => setShowQrDownloadSuccess(false)}
+            />
+
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06]">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="font-display text-xl font-bold text-white">{t("dashBudgetSnapshot")}</h2>
+                  <p className="mt-1 text-[13px] text-white/50">{t("dashApprovedVsSpent").replace("{quarter}", getQuarterInfo().label)}</p>
+                </div>
+                <button onClick={() => setActive("budget")} className="-mr-2 inline-flex min-h-10 shrink-0 items-center px-2 text-xs font-bold text-[#7DD8CB] hover:underline">
+                  {t("dashViewAll")}
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3.5">
+                {!budgetSummary || budgetSummary.per_event.length === 0 ? (
+                  <p className="py-2 text-sm text-white/35">{t("dashNoApprovedBudgets")}</p>
+                ) : (
+                  (() => {
+                    // Each bar just gets the next color in this fixed
+                    // sequence, by position -- not tied to the percentage,
+                    // so five events all sitting in the high-80s/90s still
+                    // read as five distinct bars instead of one flat color.
+                    // Every tone here stays inside the navy / gold / teal
+                    // palette -- no maroon/rust.
+                    const barTones = ["bg-gold-500", "bg-[#4FBEB0]", "bg-gold-300", "bg-[#2E8E82]", "bg-gold-600", "bg-[#4FBEB0]/60", "bg-gold-400", "bg-[#2E8E82]/70"];
+                    return budgetSummary.per_event.slice(0, 5).map((ev: any, idx: number) => {
+                    const approved = Number(ev.approved_budget) || 0;
+                    const spent = Number(ev.total_expenses) || 0;
+                    const pct = approved > 0 ? Math.round((spent / approved) * 100) : 0;
+                    const barColor = barTones[idx % barTones.length];
+                    return (
+                      <div key={ev.id}>
+                        <div className="mb-1.5 flex justify-between gap-3 text-[13px]">
+                          <span className="truncate font-semibold text-white/85">{tc(ev.name, language as any)}</span>
+                          <span className="shrink-0 text-white/40">{pct}%</span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }}></div>
+                        </div>
+                      </div>
+                    );
+                    });
+                  })()
+                )}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

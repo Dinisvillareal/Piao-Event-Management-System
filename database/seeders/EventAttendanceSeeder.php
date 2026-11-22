@@ -91,26 +91,30 @@ class EventAttendanceSeeder extends Seeder
             return [null, null, 'missed'];
         }
 
-        $start = Carbon::parse($event->call_time_start ?? $event->event_start);
+        // Times must follow the same windows the scan screen enforces (and the database now checks):
+        // sign-in from the call time up to the event start, sign-out from the event end up to the call-time end.
+        $open = Carbon::parse($event->call_time_start ?? $event->event_start);
+        $close = Carbon::parse($event->event_start);
         $end = Carbon::parse($event->event_end ?? $event->event_start);
+        $signOutClose = $event->call_time_end ? Carbon::parse($event->call_time_end) : $end->copy()->addMinutes(30);
 
-        // A believable spread of arrival times around the call time,
+        // A believable spread of arrival times after the call time opens,
         // instead of every attendee clocking in at the exact same second.
-        $arrivalOffsets = [-10, -5, 0, 3, 8, 12, 18, 25, 30, 40];
-        $timeIn = $start->copy()->addMinutes($arrivalOffsets[array_rand($arrivalOffsets)]);
-        if ($timeIn->greaterThan($end)) {
-            // Never let a "late" arrival land after the event has ended.
-            $timeIn = $end->copy()->subMinutes(5);
+        $arrivalOffsets = [0, 3, 8, 12, 18, 25, 30, 40];
+        $timeIn = $open->copy()->addMinutes($arrivalOffsets[array_rand($arrivalOffsets)]);
+        if ($timeIn->greaterThan($close)) {
+            // Sign-in closes when the event starts.
+            $timeIn = $close->copy();
         }
 
         if ($outcome === 'incomplete') {
             return [$timeIn->format('Y-m-d H:i:s'), null, 'Incomplete'];
         }
 
-        $departureOffsets = [-15, -10, -5, 0, 5, 10, 15];
+        $departureOffsets = [0, 5, 10, 15, 20, 25];
         $timeOut = $end->copy()->addMinutes($departureOffsets[array_rand($departureOffsets)]);
-        if ($timeOut->lessThan($timeIn)) {
-            $timeOut = $timeIn->copy()->addMinutes(30);
+        if ($timeOut->greaterThan($signOutClose)) {
+            $timeOut = $signOutClose->copy();
         }
 
         return [$timeIn->format('Y-m-d H:i:s'), $timeOut->format('Y-m-d H:i:s'), 'Complete'];

@@ -22,15 +22,13 @@ use App\Services\FacebookService;
 class EventController extends Controller
 {
     // Same upload/delete convention as InventoryController::localUpload --
-    // evidence photos for a release ("the item came back") and for an undo
-    // ("why this release is being reversed") are required proof images
-    // stored on the public disk, exposed via EventInventoryRelease's
-    // evidence_photo_url / undo_photo_url accessors. $folder keeps the two
-    // kinds in separate storage/app/public subfolders.
+    // evidence photos for a release ("the item came back") are required proof
+    // images stored on the public disk, exposed via EventInventoryRelease's
+    // evidence_photo_url accessor. $folder picks the storage/app/public subfolder.
     private function localUpload($file, string $folder): string
     {
         $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        $ext      = $file->getClientOriginalExtension();
+        $ext      = \App\Support\Uploads::extension($file, \App\Support\Uploads::IMAGE);
         $clean    = preg_replace('/[^A-Za-z0-9\-_.]/', '_', $original);
         $filename = time() . '_' . $clean . '.' . $ext;
 
@@ -564,7 +562,7 @@ class EventController extends Controller
             'name'                 => 'required|string|max:255',
             'description'          => 'required|string',
             'location'             => 'nullable|string|max:100',
-            'event_start'          => 'required|date',
+            'event_start'          => 'required|date|after_or_equal:2020-01-01|before_or_equal:' . now()->addYears(3)->toDateString(),
             'event_end'            => 'required|date|after:event_start',
             // Call time = when sign-in/out actually opens, separate from
             // the event's own start/end (e.g. call time 6:00, event starts
@@ -581,11 +579,11 @@ class EventController extends Controller
             'post_to_facebook'     => 'nullable|boolean',
             'borrowed_items'                     => 'nullable|array',
             'borrowed_items.*.inventory_item_id'  => 'required_with:borrowed_items|integer|exists:inventory_items,id',
-            'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1',
+            'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1|max:1000000',
             // Which units to borrow, per condition (e.g. Good => 10, New => 5).
             // When sent, their sum is the quantity borrowed.
             'borrowed_items.*.conditions'         => 'nullable|array',
-            'borrowed_items.*.conditions.*'       => 'integer|min:0',
+            'borrowed_items.*.conditions.*'       => 'integer|min:0|max:1000000',
         ]);
 
         // Double-booking guard: two events can't share the same physical venue
@@ -693,7 +691,7 @@ class EventController extends Controller
             'name'                 => 'required|string|max:255',
             'description'          => 'required|string',
             'location'             => 'nullable|string|max:100',
-            'event_start'          => 'required|date',
+            'event_start'          => 'required|date|after_or_equal:2020-01-01|before_or_equal:' . now()->addYears(3)->toDateString(),
             'event_end'            => 'required|date|after:event_start',
             // Strictly BEFORE event_start -- see store() above for why.
             'call_time_start'      => 'required|date|before:event_start',
@@ -704,11 +702,11 @@ class EventController extends Controller
             'approved_budget'      => 'nullable|numeric|decimal:0,2|min:0|max:99999999.99',
             'borrowed_items'                     => 'nullable|array',
             'borrowed_items.*.inventory_item_id'  => 'required_with:borrowed_items|integer|exists:inventory_items,id',
-            'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1',
+            'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1|max:1000000',
             // Which units to borrow, per condition (e.g. Good => 10, New => 5).
             // When sent, their sum is the quantity borrowed.
             'borrowed_items.*.conditions'         => 'nullable|array',
-            'borrowed_items.*.conditions.*'       => 'integer|min:0',
+            'borrowed_items.*.conditions.*'       => 'integer|min:0|max:1000000',
         ]);
 
         // ✅ MODIFIED: Find event excluding soft-deleted
@@ -1165,14 +1163,17 @@ class EventController extends Controller
                 $label = array_key_first($short);
                 throw new \App\Exceptions\UserFacingException("Not enough {$label} stock for \"{$item->name}\" (available: {$have[$label]}, requested: {$units[$label]}).");
             }
-            $item->takeUnits($units);
-
+            // The loan row is saved BEFORE the units leave stock: the database then checks the loan against
+            // the stock still on the shelf (it refuses a loan bigger than the stock). Both steps run in the
+            // caller's transaction, so either both happen or neither does.
             $borrow = new EventInventoryItem([
                 'event_id'           => $event->id,
                 'inventory_item_id'  => $item->id,
             ]);
             $borrow->setUnits($units);
             $borrow->save();
+
+            $item->takeUnits($units);
         }
     }
 
@@ -1463,8 +1464,8 @@ class EventController extends Controller
             'conditions.*' => 'integer|min:0',
             // One or more evidence photos (first = cover), up to 5.
             'photos' => 'required_without:photo|array|min:1|max:5',
-            'photos.*' => 'image|max:5120',
-            'photo' => 'required_without:photos|image|max:5120',
+            'photos.*' => \App\Support\Uploads::IMAGE_RULE,
+            'photo' => 'required_without:photos|' . \App\Support\Uploads::IMAGE_RULE,
         ]);
 
         // A return is all-or-nothing: the loan, the stock, the return record and its
@@ -1526,12 +1527,9 @@ class EventController extends Controller
                 }
                 $item?->giveUnits($releasedUnits);
 
-                if ($borrow->quantity <= 0) {
-                    $borrow->delete();
-                } else {
-                    $borrow->save();
-                }
-
+                // The return is recorded BEFORE the loan is lowered: the database then compares it with
+                // what the event still has out (it refuses a return bigger than the loan). Both steps run
+                // in this transaction, so either both happen or neither does.
                 $release = new EventInventoryRelease([
                     'event_id' => $event->id,
                     'inventory_item_id' => $borrow->inventory_item_id,
@@ -1542,6 +1540,12 @@ class EventController extends Controller
                 ]);
                 $release->setUnits($releasedUnits);
                 $release->save();
+
+                if ($borrow->quantity <= 0) {
+                    $borrow->delete();
+                } else {
+                    $borrow->save();
+                }
             });
         } catch (\Throwable $e) {
             // Nothing was saved, so the photos must not stay on disk either.
@@ -1581,7 +1585,7 @@ class EventController extends Controller
 
         $request->validate([
             'lost_units' => 'required|array',
-            'lost_units.*' => 'nullable|integer|min:0',
+            'lost_units.*' => 'nullable|integer|min:0|max:1000000',
         ]);
 
         $lostUnits = [];
@@ -1610,6 +1614,17 @@ class EventController extends Controller
                 throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json(['message' => 'Enter how many units were lost.'], 422));
             }
 
+            // The loss is logged BEFORE the loan is lowered: the database then compares it with what the
+            // event still has out (it refuses more lost units than the loan holds).
+            \App\Models\InventoryUnitLog::create([
+                'inventory_item_id' => $borrow->inventory_item_id,
+                'event_id' => $event->id,
+                'action' => 'lost',
+                'quantity' => $lost,
+                'units' => $lostUnits,
+                'user_code' => auth()->user()?->user_code,
+            ]);
+
             foreach ($lostUnits as $label => $n) {
                 $out[$label] = ($out[$label] ?? 0) - $n;
             }
@@ -1624,15 +1639,6 @@ class EventController extends Controller
                 $item->lost_quantity = (int) $item->lost_quantity + $lost;
                 $item->save();
             }
-
-            \App\Models\InventoryUnitLog::create([
-                'inventory_item_id' => $borrow->inventory_item_id,
-                'event_id' => $event->id,
-                'action' => 'lost',
-                'quantity' => $lost,
-                'units' => $lostUnits,
-                'user_code' => auth()->user()?->user_code,
-            ]);
         });
 
         $parts = [];
@@ -1766,12 +1772,8 @@ class EventController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        // Moving a release back to Pending doesn't need a second photo -- the
-        // release already carries its own evidence. One can still be sent
-        // with the request, but it's optional.
-        $request->validate([
-            'photo' => 'nullable|image|max:5120',
-        ]);
+        // Moving a release back to Pending takes no photo -- the release
+        // already carries its own evidence, so an undo stores none.
 
         $release = EventInventoryRelease::whereNull('undone_at')->findOrFail($releaseId);
         $event = Event::withoutTrashed()->find($release->event_id);
@@ -1818,20 +1820,6 @@ class EventController extends Controller
 
         $item?->takeUnits($undoUnits);
 
-        $undoPhotoPath = null;
-        if ($request->hasFile('photo')) {
-            $undoPhotoPath = $this->localUpload($request->file('photo'), 'release_undo_photos');
-
-            // Replace any earlier undo photo pointer on this same release row --
-            // a convenience for anything that just wants "the latest undo
-            // evidence for this release" without joining through the log table.
-            // The full per-action record (every undo, including earlier partial
-            // ones) lives in event_inventory_release_undos, created below.
-            // The earlier undo photo is NOT deleted: the undo it belongs to still
-            // points at it from event_inventory_release_undos.
-            $release->undo_photo_path = $undoPhotoPath;
-        }
-
         // Shrink this release record by however much of it was just
         // undone; once nothing is left of it, mark it fully undone so it
         // drops off the Recently Released list. A partial undo leaves the
@@ -1851,7 +1839,6 @@ class EventController extends Controller
             'event_inventory_release_id' => $release->id,
             'quantity' => $requestedQty,
             'undone_by' => auth()->user()?->user_code,
-            'photo_path' => $undoPhotoPath,
         ]);
 
         $itemName = $item->name ?? 'item';
@@ -1887,12 +1874,12 @@ class EventController extends Controller
 
         $request->validate([
             'quantity' => 'nullable|integer|min:1|max:' . $maxQty,
-            'photo' => 'nullable|image|max:5120',
+            'photo' => 'nullable|' . \App\Support\Uploads::IMAGE_RULE,
             // The whole evidence-photo list: keep_photos[] = indexes of the
             // saved photos to keep (cover first), photos[] = new files.
             'photos_sync' => 'nullable|boolean',
             'photos' => 'nullable|array|max:5',
-            'photos.*' => 'image|max:5120',
+            'photos.*' => \App\Support\Uploads::IMAGE_RULE,
             'keep_photos' => 'nullable|array',
             'keep_photos.*' => 'integer|min:0',
             'conditions' => 'nullable|array',

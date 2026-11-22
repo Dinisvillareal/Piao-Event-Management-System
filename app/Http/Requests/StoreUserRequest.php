@@ -8,9 +8,15 @@ use Illuminate\Validation\Rule;
 
 class StoreUserRequest extends FormRequest
 {
+    /** Only Staff register residents. Checked BEFORE the form is validated, so a resident learns nothing about the rules. */
     public function authorize(): bool
     {
-        return true;
+        return auth()->user()?->role === 'Staff';
+    }
+
+    protected function failedAuthorization(): void
+    {
+        throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json(['message' => 'Unauthorized'], 403));
     }
 
     public function rules(): array
@@ -47,12 +53,12 @@ class StoreUserRequest extends FormRequest
                 Rule::requiredIf(fn () => filter_var($this->input('has_account'), FILTER_VALIDATE_BOOLEAN)),
                 'nullable', 'string', new StrongPassword(),
             ],
-            'validation_id'    => 'nullable',
+            'validation_id'    => 'nullable|' . \App\Support\Uploads::IMAGE_RULE,
             'membership_ids'   => 'nullable|array',
             'membership_ids.*' => 'exists:memberships,id',
 
             // Adviser recommendation: "Profiling (Filter for Age)"
-            'birth_date'       => 'nullable|date|before_or_equal:today',
+            'birth_date'       => 'nullable|date|after_or_equal:1900-01-01|before_or_equal:today',
             'address'          => 'nullable|string|max:150',
             'civil_status_id'  => 'nullable|exists:civil_statuses,id',
             'current_status_ids'   => 'nullable|array',

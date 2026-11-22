@@ -46,6 +46,10 @@ class DatabaseSeeder extends Seeder
         $this->call([
             EventAttendanceSeeder::class,
         ]);
+        // The demo scans are written down as the ledger's opening entries.
+        $this->call([
+            AttendanceLedgerSeeder::class,
+        ]);
         // Realistic, interconnected demo data for the remaining modules --
         // each references real rows from the seeders above instead of
         // standing alone.
@@ -60,6 +64,10 @@ class DatabaseSeeder extends Seeder
         // on top of the borrows above.
         $this->call([
             EventInventoryReleaseSeeder::class,
+        ]);
+        // Opening balance of every item's ledger, after every seeder that changed stock.
+        $this->call([
+            InventoryLedgerSeeder::class,
         ]);
         $this->call([
             EventExpenseSeeder::class,

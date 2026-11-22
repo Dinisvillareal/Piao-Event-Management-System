@@ -39,7 +39,7 @@ class ExpenseAmountLimitsTest extends TestCase
     private function add(Event $e, $amount)
     {
         return $this->actingAs($this->staff())->post("/events/{$e->id}/expenses", [
-            'item' => 'Sound system', 'amount' => $amount, 'receipt' => UploadedFile::fake()->image('r.jpg'),
+            'item' => 'Sound system', 'amount' => $amount, 'receipt' => $this->fakeImage('r.jpg'),
         ], ['Accept' => 'application/json']);
     }
 
@@ -133,7 +133,7 @@ class ExpenseAmountLimitsTest extends TestCase
             $msg = (string) $this->actingAs($this->staff())
                 ->withHeader('X-Lang', $lang)
                 ->post("/events/{$e->id}/expenses", [
-                    'item' => 'x', 'amount' => '0', 'receipt' => UploadedFile::fake()->image('r.jpg'),
+                    'item' => 'x', 'amount' => '0', 'receipt' => $this->fakeImage('r.jpg'),
                 ], ['Accept' => 'application/json'])
                 ->assertStatus(422)->json('errors.amount.0');
 

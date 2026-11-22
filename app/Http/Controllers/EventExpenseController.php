@@ -27,7 +27,7 @@ class EventExpenseController extends Controller
     private function localUpload($file): string
     {
         $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        $ext      = $file->getClientOriginalExtension();
+        $ext      = \App\Support\Uploads::extension($file, \App\Support\Uploads::RECEIPT);
         $clean    = preg_replace('/[^A-Za-z0-9\-_.]/', '_', $original);
         $filename = time() . '_' . $clean . '.' . $ext;
 
@@ -68,7 +68,7 @@ class EventExpenseController extends Controller
             $hasPdf = $hasPdf || $isPdf(pathinfo($path, PATHINFO_EXTENSION));
         }
         foreach ($plan['files'] as $file) {
-            $hasPdf = $hasPdf || $isPdf($file->getClientOriginalExtension());
+            $hasPdf = $hasPdf || $isPdf(\App\Support\Uploads::extension($file, \App\Support\Uploads::RECEIPT));
         }
 
         if ($hasPdf && $total > 1) {
@@ -158,10 +158,10 @@ class EventExpenseController extends Controller
             // expense can't exist without one from the start (see update()
             // below for why an existing one also can't be removed outright
             // once attached).
-            'receipt' => 'required_without:receipts|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'receipt' => 'required_without:receipts|' . \App\Support\Uploads::RECEIPT_RULE,
             // Up to 5 photos, or one PDF (see checkReceiptSet).
             'receipts' => 'required_without:receipt|array|min:1|max:5',
-            'receipts.*' => 'file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'receipts.*' => \App\Support\Uploads::RECEIPT_RULE,
         ]);
 
         $event = Event::withoutTrashed()->findOrFail($eventId);
@@ -212,12 +212,12 @@ class EventExpenseController extends Controller
             'item' => 'required|string|max:150',
             'amount' => self::AMOUNT_RULES,
             'notes' => 'nullable|string|max:255',
-            'receipt' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'receipt' => 'nullable|' . \App\Support\Uploads::RECEIPT_RULE,
             // The whole receipt list: keep_receipts[] = indexes of the saved
             // files to keep, receipts[] = new files (photos, or one PDF).
             'receipts_sync' => 'nullable|boolean',
             'receipts' => 'nullable|array|max:5',
-            'receipts.*' => 'file|mimes:jpg,jpeg,png,pdf|max:5120',
+            'receipts.*' => \App\Support\Uploads::RECEIPT_RULE,
             'keep_receipts' => 'nullable|array',
             'keep_receipts.*' => 'integer|min:0',
         ]);
