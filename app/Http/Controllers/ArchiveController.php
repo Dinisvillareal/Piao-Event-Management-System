@@ -537,7 +537,8 @@ class ArchiveController extends Controller
 
                         [$fbOk, $fbMessage] = app(\App\Services\FacebookService::class)->postEvent(
                             '✅ Event Re-opened: ' . $item->name,
-                            $staffName . ' • ' . $item->name . ' — This event has been re-opened and is active again. Please check the app for the updated schedule.'
+                            //$staffName . ' • ' . $item->name . ' — This event has been re-opened and is active again. Please check the app for the updated schedule.'
+                            'This event has been re-opened and is active again. Please check the app for the updated schedule.'
                         );
                         if (!$fbOk) {
                             \Illuminate\Support\Facades\Log::warning('Facebook reopen post failed: ' . $fbMessage, ['event' => $item->name]);

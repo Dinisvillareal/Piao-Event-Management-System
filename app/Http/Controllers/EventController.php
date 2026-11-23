@@ -982,7 +982,8 @@ class EventController extends Controller
             // logged and the archive continues.
             [$fbOk, $fbMessage] = app(FacebookService::class)->postEvent(
                 '❌ Event Cancelled: ' . $eventName,
-                'Staff: ' . $user->last_name . ' • ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.'
+                //'Staff: ' . $user->last_name . ' • ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.'
+                'We apologize for the inconvenience.'
             );
             if (!$fbOk) {
                 \Illuminate\Support\Facades\Log::warning('Facebook cancel post failed: ' . $fbMessage, ['event' => $eventName]);
