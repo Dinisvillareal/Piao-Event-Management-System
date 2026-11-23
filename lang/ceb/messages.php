@@ -241,4 +241,5 @@ return [
     'This record is archived.' => 'Naka-archive kini nga rekord.',
     'This resident has no portal account yet. Turn on portal access first.' => 'Wala pay portal account kini nga residente. I-on una ang portal access.',
     'Your account is active. You can now sign in with your new password.' => 'Aktibo na ang imong account. Makasulod ka na gamit ang imong bag-ong password.',
+    'Slip verified.' => 'Na-verify ang slip.',
 ];

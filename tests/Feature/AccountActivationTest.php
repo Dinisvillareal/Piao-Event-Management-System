@@ -105,6 +105,44 @@ class AccountActivationTest extends TestCase
         $this->assertNull($user->fresh()->password);
     }
 
+    public function test_the_check_step_verifies_the_slip_and_changes_nothing(): void
+    {
+        [$user, $slip] = $this->register();
+        auth()->logout();
+
+        $this->postJson('/activate-account/check', ['user_code' => $user->user_code, 'activation_code' => $slip['code']])
+            ->assertOk()->assertJson(['ok' => true]);
+
+        $fresh = $user->fresh();
+        $this->assertNull($fresh->password);            // still waiting: only the final step sets the password
+        $this->assertTrue($fresh->pending_activation);
+        $this->assertSame(0, (int) $fresh->activation_failed_attempts);
+
+        // and the final step still works afterwards
+        $this->activate($user, $slip['code'])->assertOk();
+        $this->assertNotNull($user->fresh()->password);
+    }
+
+    public function test_the_check_step_gives_the_same_answer_for_any_mismatch_and_counts_wrong_tries(): void
+    {
+        [$user, $slip] = $this->register();
+        auth()->logout();
+
+        $wrong = $this->postJson('/activate-account/check', ['user_code' => $user->user_code, 'activation_code' => 'AAAA-BBBB-CCCC'])
+            ->assertStatus(422)->assertJson(['code' => 'activation_failed'])->json('message');
+        $none = $this->postJson('/activate-account/check', ['user_code' => 'PR-9999', 'activation_code' => 'AAAA-BBBB-CCCC'])
+            ->assertStatus(422)->json('message');
+        $this->assertSame($wrong, $none);
+        $this->assertSame(1, (int) $user->fresh()->activation_failed_attempts);
+
+        for ($i = 0; $i < 4; $i++) {
+            $this->postJson('/activate-account/check', ['user_code' => $user->user_code, 'activation_code' => 'AAAA-BBBB-CCCC']);
+        }
+        // five wrong tries through the check step cancel the real code too
+        $this->postJson('/activate-account/check', ['user_code' => $user->user_code, 'activation_code' => $slip['code']])->assertStatus(422);
+        $this->assertDatabaseHas('activity_logs', ['action' => 'Activation Cancelled']);
+    }
+
     public function test_five_wrong_tries_cancel_the_code(): void
     {
         [$user, $slip] = $this->register();

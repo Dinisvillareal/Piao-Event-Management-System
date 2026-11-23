@@ -50,6 +50,7 @@ table.d th,table.d td{border:1px solid #777;padding:9px 12px;text-align:left;ver
 table.d th{width:34%;background:#eef6f5;font-weight:700}
 td.code{font-family:"Courier New",monospace;font-size:22px;font-weight:700;letter-spacing:.12em;color:#005F63;background:#f8fbfb}
 td.uc{font-family:"Courier New",monospace;font-size:16px;font-weight:700;letter-spacing:.08em}
+.dash{display:inline-block;margin:0 .35em;font-weight:900;color:#005F63}
 h2{font-size:12px;margin:22px 0 6px;color:#005F63;text-transform:uppercase;letter-spacing:.06em}
 ol{margin:0;padding-left:22px;font-size:12.5px;line-height:1.65}
 .note{margin-top:18px;border:1px solid #9a7b1c;background:#fff8e1;padding:10px 14px;font-size:11.5px;line-height:1.5}
@@ -84,7 +85,7 @@ ol{margin:0;padding-left:22px;font-size:12.5px;line-height:1.65}
 <table class="d">
 <tr><th>${esc(t(forStaff ? "actDocStaffMember" : "actDocResident"))}</th><td>${esc(slip.name)}</td></tr>
 <tr><th>${esc(t("actSlipUserCode"))}</th><td class="uc">${esc(slip.user_code)}</td></tr>
-<tr><th>${esc(t("actSlipCode"))}</th><td class="code">${esc(slip.code)}</td></tr>
+<tr><th>${esc(t("actSlipCode"))}</th><td class="code">${slip.code.split("-").map(esc).join('<span class="dash">&ndash;</span>')}</td></tr>
 <tr><th>${esc(t("actSlipValid"))}</th><td>${esc(expires)}</td></tr>
 </table>
 <h2>${esc(t("actDocHowTitle"))}</h2>

@@ -943,7 +943,67 @@ class UserController extends Controller
         return response()->json(['message' => 'Activation slip ready.', 'activation_slip' => $slip]);
     }
 
-    /** The resident (no sign-in yet): use the slip's code, with the user code, to choose a password. */
+    /** One answer for every kind of mismatch, so it cannot be used to find out who has an account. */
+    private function activationFailed()
+    {
+        return response()->json([
+            'message' => 'The details do not match, or the code is no longer valid. Ask the Barangay Hall for a new activation slip.',
+            'code' => 'activation_failed',
+        ], 422);
+    }
+
+    /**
+     * Finds the account the slip belongs to and checks the code. A wrong code counts as a try
+     * (five cancel the code); returns null on any mismatch. Used by the "check my slip" step
+     * and again by the final activation, so the password step can never skip the check.
+     */
+    private function matchActivationSlip(string $userCode, string $activationCode): ?User
+    {
+        $user = User::where('user_code', trim($userCode))->first();
+
+        $pending = $user && $user->has_account && !$user->password && $user->activation_code_hash
+            && !$user->deleted_at && !$user->suspended_at;
+        $valid = $pending && $user->activation_expires_at && $user->activation_expires_at->isFuture();
+
+        if (!$valid) {
+            return null;
+        }
+
+        $code = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $activationCode));
+        if (Hash::check($code, $user->activation_code_hash)) {
+            return $user;
+        }
+
+        $attempts = (int) $user->activation_failed_attempts + 1;
+        if ($attempts >= 5) {
+            // five wrong tries cancel the code: staff must print a new slip
+            $user->forceFill(['activation_code_hash' => null, 'activation_expires_at' => null, 'activation_failed_attempts' => 0])->save();
+            ActivityLog::create([
+                'user_code' => $user->user_code, 'action' => 'Activation Cancelled', 'module' => 'Authentication',
+                'description' => "Five wrong activation tries for {$user->user_code}; the code was cancelled",
+            ]);
+        } else {
+            $user->forceFill(['activation_failed_attempts' => $attempts])->save();
+        }
+        return null;
+    }
+
+    /** Step 1 for the resident: is this slip real and still valid? Changes nothing when it is. */
+    public function checkActivation(Request $request)
+    {
+        $request->validate([
+            'user_code' => 'required|string|max:20',
+            'activation_code' => 'required|string|max:30',
+        ]);
+
+        if (!$this->matchActivationSlip((string) $request->user_code, (string) $request->activation_code)) {
+            return $this->activationFailed();
+        }
+
+        return response()->json(['message' => 'Slip verified.', 'ok' => true]);
+    }
+
+    /** Step 2 for the resident (no sign-in yet): the slip is checked again, then they choose their own password. */
     public function activateAccount(Request $request)
     {
         $request->validate([
@@ -952,38 +1012,9 @@ class UserController extends Controller
             'password' => ['required', 'string', 'max:200', 'confirmed', new \App\Rules\StrongPassword()],
         ]);
 
-        // One answer for every kind of mismatch, so it cannot be used to find out who has an account.
-        $fail = fn () => response()->json([
-            'message' => 'The details do not match, or the code is no longer valid. Ask the Barangay Hall for a new activation slip.',
-            'code' => 'activation_failed',
-        ], 422);
-
-        $user = User::where('user_code', trim((string) $request->user_code))->first();
-
-        $pending = $user && $user->has_account && !$user->password && $user->activation_code_hash
-            && !$user->deleted_at && !$user->suspended_at;
-        $valid = $pending && $user->activation_expires_at && $user->activation_expires_at->isFuture();
-
-        if (!$valid) {
-            return $fail();
-        }
-
-        $code = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string) $request->activation_code));
-        $codeOk = Hash::check($code, $user->activation_code_hash);
-
-        if (!$codeOk) {
-            $attempts = (int) $user->activation_failed_attempts + 1;
-            if ($attempts >= 5) {
-                // five wrong tries cancel the code: staff must print a new slip
-                $user->forceFill(['activation_code_hash' => null, 'activation_expires_at' => null, 'activation_failed_attempts' => 0])->save();
-                ActivityLog::create([
-                    'user_code' => $user->user_code, 'action' => 'Activation Cancelled', 'module' => 'Authentication',
-                    'description' => "Five wrong activation tries for {$user->user_code}; the code was cancelled",
-                ]);
-            } else {
-                $user->forceFill(['activation_failed_attempts' => $attempts])->save();
-            }
-            return $fail();
+        $user = $this->matchActivationSlip((string) $request->user_code, (string) $request->activation_code);
+        if (!$user) {
+            return $this->activationFailed();
         }
 
         $user->forceFill([

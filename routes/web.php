@@ -46,6 +46,7 @@ Route::get('/', function () {
 // per-account lockout inside UserController::login() (5 wrong tries per
 // account+network in 15 minutes, and 10 per account overall).
 Route::post('/login', [UserController::class, 'login'])->middleware(['throttle:login', SecurityHeaders::class])->name('login');
+Route::post('/activate-account/check', [UserController::class, 'checkActivation'])->middleware(['throttle:login', SecurityHeaders::class]);
 Route::post('/activate-account', [UserController::class, 'activateAccount'])->middleware(['throttle:login', SecurityHeaders::class]);
 
 // Head Staff break-glass: reset the password with a printed recovery code.
