@@ -267,6 +267,174 @@ class ArchiveController extends Controller
         );
     }
 
+    //LAST WORKING IMPLEMENTATION
+    // private function restoreLocked(Request $request)
+    // {
+    //     try {
+    //         $itemName = '';
+
+    //         switch ($request->type) {
+
+    //             case 'inventory_item':
+    //                 $item = InventoryItem::onlyTrashed()->findOrFail($request->id);
+    //                 $itemName = $item->name;
+    //                 $item->deleted_by = null;
+    //                 $item->restore();
+    //                 break;
+
+    //             case 'expense':
+    //                 $item = EventExpense::onlyTrashed()->findOrFail($request->id);
+    //                 $itemName = $item->item;
+
+    //                 // An ended event's budget is locked (no adding, editing or deleting
+    //                 // expenses), so a removed expense can't quietly come back into it either.
+    //                 $expenseEvent = Event::withTrashed()->find($item->event_id);
+    //                 if ($expenseEvent && $expenseEvent->hasEnded()) {
+    //                     return response()->json([
+    //                         'message' => 'This event has already ended, so its expenses can no longer be changed.',
+    //                     ], 422);
+    //                 }
+
+    //                 $item->deleted_by = null;
+    //                 $item->save();
+    //                 $item->restore();
+    //                 break;
+
+    //             case 'age_bracket':
+    //                 $item = AgeBracket::onlyTrashed()->findOrFail($request->id);
+    //                 $itemName = $item->label;
+    //                 $item->deleted_by = null;
+    //                 $item->restore();
+    //                 AgeBracket::forgetCache();
+    //                 break;
+
+    //             case 'civil_status':
+    //                 $item = CivilStatus::onlyTrashed()->findOrFail($request->id);
+    //                 $itemName = $item->label;
+    //                 $item->deleted_by = null;
+    //                 $item->restore();
+    //                 CivilStatus::forgetCache();
+    //                 break;
+
+    //             case 'current_status':
+    //                 $item = CurrentStatus::onlyTrashed()->findOrFail($request->id);
+    //                 $itemName = $item->label;
+    //                 $item->deleted_by = null;
+    //                 $item->restore();
+    //                 CurrentStatus::forgetCache();
+    //                 break;
+
+    //             case 'membership':
+    //                 $item = Membership::onlyTrashed()->findOrFail($request->id);
+    //                 $itemName = $item->name;
+    //                 $item->restore();
+    //                 $item->update(['is_active' => true, 'deactivated_at' => null]);
+    //                 break;
+
+    //             case 'notification':
+    //             case 'event':
+    //                 $item = Event::withTrashed()->findOrFail($request->id);
+    //                 $itemName = $item->name;
+
+    //                 if (!$item->trashed()) {
+    //                     // Someone else restored it a moment ago: nothing to do,
+    //                     // and nothing to log or notify a second time.
+    //                     return response()->json(['message' => 'Item restored successfully']);
+    //                 }
+
+    //                 DB::beginTransaction();
+    //                 try {
+    //                     $item->deleted_by = null;
+    //                     $item->save();
+
+    //                     if ($item->trashed()) {
+    //                         $item->restore();
+    //                     }
+
+    //                     $staffName       = 'Staff: ' . (auth()->user()->last_name ?? 'Unknown');
+    //                     $restoredTitle   = 'Event Restored: ' . $item->name;
+    //                     $restoredMessage = $staffName . ' • ' . $item->name . ' — ' .
+    //                         ($item->notification_message ?? 'This event has been restored and is active again.');
+
+    //                     $affectedNotifications = Notification::where('event_id', $item->id)
+    //                         ->where('type', 'event_deleted')
+    //                         ->update([
+    //                             'type'                    => 'event_updated',
+    //                             'title'                   => $restoredTitle,
+    //                             'message'                 => $restoredMessage,
+    //                             'is_updated'              => true,
+    //                             'updated_at_notification' => now(),
+    //                             'read'                    => false,
+    //                             'updated_at'              => now(),
+    //                         ]);
+
+    //                     DB::commit();
+
+    //                     // ✅ Log the event restore
+    //                     $this->createLog(
+    //                         'Restore',
+    //                         'Events',
+    //                         "Restored event: '{$itemName}'"
+    //                     );
+
+    //                     // ✅ Log the notification update separately
+    //                     $this->createLog(
+    //                         'Update',
+    //                         'Notifications',
+    //                         "Restored notifications for event: '{$itemName}' — {$affectedNotifications} recipient(s) notified"
+    //                     );
+
+    //                     // ✅ Override the generic log below so we don't double-log
+    //                     $itemName = '';
+
+    //                 } catch (\Exception $e) {
+    //                     DB::rollBack();
+    //                     throw $e;
+    //                 }
+    //                 break;
+
+    //             case 'resident':
+    //                 $item = User::onlyTrashed()->findOrFail($request->id);
+    //                 $itemName = $item->first_name . ' ' . $item->last_name;
+    //                 $item->deleted_by = null;
+    //                 $item->save();
+    //                 $item->restore();
+    //                 break;
+
+    //             case 'household':
+    //                 $item = Household::onlyTrashed()->findOrFail($request->id);
+    //                 $itemName = $item->code;
+    //                 // The household and the people it had come back together (those
+    //                 // who are still free to be linked).
+    //                 $relinked = \Illuminate\Support\Facades\DB::transaction(function () use ($item) {
+    //                     $item->deleted_by = null;
+    //                     $item->save();
+    //                     $item->restore();
+
+    //                     return $item->relinkDissolvedMembers();
+    //                 });
+    //                 $logExtra = $relinked['linked'] || $relinked['skipped']
+    //                     ? " ({$relinked['linked']} member(s) linked back" . ($relinked['skipped'] ? ", {$relinked['skipped']} could not be" : '') . ')'
+    //                     : '';
+    //                 break;
+    //         }
+
+    //         // Events log their own (more detailed) entries above; every other kind is logged here.
+    //         if ($itemName !== '') {
+    //             $this->createLog(
+    //                 'Restore',
+    //                 'Archive',
+    //                 "Restored {$request->type} '{$itemName}'" . ($logExtra ?? '')
+    //             );
+    //         }
+
+    //         return response()->json(['message' => 'Item restored successfully'] + (isset($relinked) ? ['relinked' => $relinked['linked'], 'not_relinked' => $relinked['skipped']] : []));
+
+    //     } catch (\Exception $e) {
+    //         return response()->json(['message' => $this->safeError($e)], 500);
+    //     }
+    // }
+
     private function restoreLocked(Request $request)
     {
         try {
@@ -366,6 +534,24 @@ class ArchiveController extends Controller
                                 'read'                    => false,
                                 'updated_at'              => now(),
                             ]);
+
+                        [$fbOk, $fbMessage] = app(\App\Services\FacebookService::class)->postEvent(
+                            '✅ Event Re-opened: ' . $item->name,
+                            $staffName . ' • ' . $item->name . ' — This event has been re-opened and is active again. Please check the app for the updated schedule.'
+                        );
+                        if (!$fbOk) {
+                            \Illuminate\Support\Facades\Log::warning('Facebook reopen post failed: ' . $fbMessage, ['event' => $item->name]);
+                        }
+
+                        // Same SMS parity as FB: blast the re-opening to household heads.
+                        try {
+                            app(\App\Services\SmsService::class)->broadcastToAllHouseholdHeads(
+                                $item->id,
+                                'RE-OPENED: ' . $item->name . ' — This event has been re-opened. Check the app for the updated schedule.'
+                            );
+                        } catch (\Throwable $e) {
+                            \Illuminate\Support\Facades\Log::warning('SMS reopen broadcast failed: ' . $e->getMessage(), ['event' => $item->name]);
+                        }
 
                         DB::commit();
 

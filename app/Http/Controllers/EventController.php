@@ -847,7 +847,79 @@ class EventController extends Controller
         }
     }
 
+    //LAST WORKING IMPLEMENTATION BEFORE THE UPDATED 
     // ✅ MODIFIED: Implement SOFT DELETE instead of hard delete
+    // public function destroy($id)
+    // {
+    //     // Only Staff archive events -- same reasoning as store() above.
+    //     if (!$this->isStaff()) {
+    //         return response()->json(['message' => 'Unauthorized'], 403);
+    //     }
+
+    //     $user = auth()->user();
+
+    //     // ✅ Find only active (non-deleted) events
+    //     $event = Event::withoutTrashed()->findOrFail($id);
+    //     $eventName = $event->name;
+
+    //     // Ongoing/Past events are locked -- same rule as update() above.
+    //     if ($this->isEventOngoing($event)) {
+    //         return response()->json([
+    //             'message' => "\"{$eventName}\" is currently ongoing and can't be archived until it ends.",
+    //         ], 409);
+    //     }
+
+    //     if ($event->event_end && now()->gt($event->event_end)) {
+    //         return response()->json([
+    //             'message' => "\"{$eventName}\" has already ended and can't be archived.",
+    //         ], 409);
+    //     }
+
+    //     DB::beginTransaction();
+
+    //     try {
+    //         // ✅ Record who archived before soft deleting
+    //         $event->deleted_by = $user->user_code;
+    //         $event->save();
+
+    //         // ✅ Return any borrowed inventory items -- an archived event no
+    //         // longer needs them out on loan.
+    //         $this->releaseBorrowedItems($event);
+
+    //         // ✅ Step 1: Soft delete the event (sets deleted_at timestamp)
+    //         $event->delete();
+
+    //         // ✅ Step 2: Update notifications to show event was cancelled
+    //         // Only the members' announcements -- staff alerts and staff replies
+    //         // keep their own type.
+    //         Notification::where('event_id', $id)
+    //             ->whereIn('type', ['event_announcement', 'event_updated'])
+    //             ->update([
+    //                 'type' => 'event_deleted',
+    //                 'title' => '❌ Event Cancelled: ' . $eventName,
+    //                 'message' => 'Staff: ' . $user->last_name . ' • ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.',
+    //                 'is_updated' => true,
+    //                 'read' => false,
+    //                 'updated_at_notification' => now(),
+    //                 'updated_at' => now(),
+    //             ]);
+
+    //         // ✅ Step 3: Log the archive action
+    //         $this->createLog('Archive Event', 'Events', "Archived event: {$eventName}");
+
+    //         DB::commit();
+
+    //         return response()->json(['message' => 'Event archived successfully']);
+
+    //     } catch (\Exception $e) {
+    //         DB::rollBack();
+    //         return response()->json([
+    //             'message' => 'Failed to archive event: ' . $this->safeError($e)
+    //         ], 500);
+    //     }
+    // }
+
+        // ✅ MODIFIED: Implement SOFT DELETE instead of hard delete
     public function destroy($id)
     {
         // Only Staff archive events -- same reasoning as store() above.
@@ -903,7 +975,32 @@ class EventController extends Controller
                     'updated_at' => now(),
                 ]);
 
-            // ✅ Step 3: Log the archive action
+            // ✅ Step 3: Post the cancellation to the Facebook Page -- same
+            // channel pattern as SMS. postEvent() never throws; it returns
+            // [ok, message], so a FB failure can't break the archive. A
+            // skipped/failed post (Page not connected, network error) is
+            // logged and the archive continues.
+            [$fbOk, $fbMessage] = app(FacebookService::class)->postEvent(
+                '❌ Event Cancelled: ' . $eventName,
+                'Staff: ' . $user->last_name . ' • ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.'
+            );
+            if (!$fbOk) {
+                \Illuminate\Support\Facades\Log::warning('Facebook cancel post failed: ' . $fbMessage, ['event' => $eventName]);
+            }
+
+            
+            // Same SMS parity as FB: blast the cancellation to household heads.
+            try {
+                app(SmsService::class)->broadcastToAllHouseholdHeads(
+                    $event->id,
+                    'CANCELLED: ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.'
+                );
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('SMS cancel broadcast failed: ' . $e->getMessage(), ['event' => $eventName]);
+            }
+
+
+            // ✅ Step 4: Log the archive action
             $this->createLog('Archive Event', 'Events', "Archived event: {$eventName}");
 
             DB::commit();

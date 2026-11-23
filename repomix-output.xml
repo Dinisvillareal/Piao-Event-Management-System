@@ -1,0 +1,3505 @@
+This file is a merged representation of a subset of the codebase, containing specifically included files, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of a subset of the repository's contents that is considered the most important context.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Only files matching these patterns are included: app/Http/Controllers/EventController.php, app/Http/Controllers/ArchiveController.php, app/Services/FacebookService.php, app/Services/SmsService.php, app/Http/Controllers/IntegrationController.php, routes/web.php
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+app/
+  Http/
+    Controllers/
+      ArchiveController.php
+      EventController.php
+      IntegrationController.php
+  Services/
+    FacebookService.php
+    SmsService.php
+routes/
+  web.php
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="app/Http/Controllers/IntegrationController.php">
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Services\FacebookService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+
+class IntegrationController extends Controller
+{
+    // Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)"
+    public function facebookStatus(FacebookService $fb)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json($fb->status());
+    }
+
+    public function connectFacebook(Request $request, FacebookService $fb)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'page_id' => 'required|string|max:100',
+            'access_token' => 'required|string',
+        ]);
+
+        $fb->connect($request->page_id, $request->access_token);
+
+        return response()->json(['message' => 'Facebook Page connected.', 'status' => $fb->status()]);
+    }
+
+    public function disconnectFacebook(FacebookService $fb)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $fb->disconnect();
+
+        return response()->json(['message' => 'Facebook Page disconnected.']);
+    }
+
+    /**
+     * Facebook Messenger webhook verification (GET) — public route, no auth.
+     * Register this URL in the Meta Developer Portal along with FACEBOOK_VERIFY_TOKEN.
+     */
+    public function webhookVerify(Request $request)
+    {
+        $verifyToken = config('services.facebook.verify_token', 'piao-verify-token');
+
+        if ($request->get('hub_mode') === 'subscribe' && $request->get('hub_verify_token') === $verifyToken) {
+            return response($request->get('hub_challenge'), 200);
+        }
+
+        return response('Forbidden', 403);
+    }
+
+    /**
+     * Receives Messenger events (e.g. a resident messaging the Page). Logged
+     * for now — wire up auto-replies here once a real Page token is set.
+     */
+    public function webhookReceive(Request $request)
+    {
+        Log::info('Facebook webhook payload', $request->all());
+
+        return response()->json(['status' => 'received']);
+    }
+}
+</file>
+
+<file path="app/Services/FacebookService.php">
+<?php
+
+namespace App\Services;
+
+use App\Models\IntegrationSetting;
+use Illuminate\Support\Facades\Http;
+
+/**
+ * Adviser recommendation: "2 in 1 — Facebook Page (Developer Portal / API)
+ * + Text/physical QR ID". This service posts event announcements to the
+ * barangay's connected Facebook Page via the Graph API, as a second
+ * notification channel alongside in-app notifications and the printed/QR
+ * check-in flow (see ScanView's Manual/Physical ID tab).
+ */
+class FacebookService
+{
+    public function settings(): ?IntegrationSetting
+    {
+        return IntegrationSetting::where('key', 'facebook_page')->first();
+    }
+
+    public function isConnected(): bool
+    {
+        $s = $this->settings();
+        return (bool) ($s && $s->is_enabled && !empty($s->value['page_id'] ?? null) && !empty($s->value['access_token'] ?? null));
+    }
+
+    public function status(): array
+    {
+        $s = $this->settings();
+        return [
+            'connected' => $this->isConnected(),
+            'page_id' => $s->value['page_id'] ?? null,
+            'connected_at' => $s->value['connected_at'] ?? null,
+        ];
+    }
+
+    public function connect(string $pageId, string $accessToken): IntegrationSetting
+    {
+        return IntegrationSetting::updateOrCreate(
+            ['key' => 'facebook_page'],
+            [
+                'value' => [
+                    'page_id' => $pageId,
+                    'access_token' => $accessToken,
+                    'connected_at' => now()->toIso8601String(),
+                ],
+                'is_enabled' => true,
+            ]
+        );
+    }
+
+    public function disconnect(): void
+    {
+        IntegrationSetting::where('key', 'facebook_page')->update(['is_enabled' => false]);
+    }
+
+    /**
+     * @return array{0: bool, 1: string} [success, message]
+     */
+    public function postEvent(string $title, string $message): array
+    {
+        $s = $this->settings();
+        if (!$this->isConnected() || !$s) {
+            return [false, 'Facebook Page is not connected yet.'];
+        }
+
+        $pageId = $s->value['page_id'];
+        $token = $s->value['access_token'];
+        $text = trim("{$title}\n\n{$message}");
+
+        try {
+            $response = Http::post("https://graph.facebook.com/v19.0/{$pageId}/feed", [
+                'message' => $text,
+                'access_token' => $token,
+            ]);
+
+            if ($response->successful()) {
+                return [true, 'Posted to the Facebook Page.'];
+            }
+
+            return [false, $response->json('error.message') ?? 'Facebook API request failed.'];
+        } catch (\Throwable $e) {
+            // The technical detail (a network error can contain the request URL) goes to the log only.
+            \Illuminate\Support\Facades\Log::warning('Facebook post failed: ' . $e->getMessage());
+
+            return [false, 'Could not reach Facebook. Please try again later.'];
+        }
+    }
+}
+</file>
+
+<file path="app/Services/SmsService.php">
+<?php
+
+namespace App\Services;
+
+use App\Models\SmsLog;
+use App\Models\User;
+use App\Models\Household;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Adviser recommendation: "Piao has slow/limited connectivity — notify by
+ * household. Head of the household gets an SMS to a per-household contact
+ * number" (rather than relying solely on in-app notifications, which
+ * require the resident's phone to be online).
+ *
+ * Provider: IPROG SMS (https://www.iprogsms.com).
+ *
+ * IPROG send endpoint accepts exactly three parameters (per their API docs):
+ *   - api_token    (string, required)  -- account API Token
+ *   - phone_number (string, required)  -- recipient number
+ *   - message      (string, required)  -- message body
+ *
+ * Their `sms_provider` parameter (integer 0/1/2, default 0) is optional
+ * and is deliberately omitted -- 0 is the default and is what this account
+ * needs (shared sender name). No sender_name is sent either; IPROG picks
+ * the sender automatically from the account settings.
+ *
+ * Sender name note: currently on the default shared sender (iprogSMS),
+ * which only reaches Globe / TM / DITO / GOMO. Smart/TNT numbers are
+ * rejected by IPROG at send time and land in sms_logs with
+ * status = "failed" (with IPROG's error in provider_response), so staff
+ * can see which households weren't reached. To cover Smart/TNT later,
+ * apply for a custom sender name; once approved, IPROG uses it
+ * automatically with no code change needed here.
+ *
+ * Without SMS_API_KEY configured in .env, messages are just logged
+ * (status = "simulated"), so the feature is fully wired end-to-end and
+ * only needs the real token to start sending.
+ */
+class SmsService
+{
+    private const IPROG_SEND_ENDPOINT = 'https://www.iprogsms.com/api/v1/sms_messages';
+
+    // =========================================================
+    // LOW-LEVEL: send one SMS + log it
+    // =========================================================
+
+    public function send(?int $userId, ?int $eventId, string $toNumber, string $message): SmsLog
+    {
+        $apiToken = config('services.sms.api_key');
+
+        $status = 'simulated';
+        $providerResponse = null;
+
+        if ($apiToken) {
+            try {
+                $response = Http::asJson()->post(self::IPROG_SEND_ENDPOINT, [
+                    'api_token'    => $apiToken,
+                    'phone_number' => $this->normalizeNumber($toNumber),
+                    'message'      => $message,
+                ]);
+
+                $status = $response->successful() ? 'sent' : 'failed';
+                $providerResponse = substr($response->body(), 0, 255);
+
+                if (!$response->successful()) {
+                    Log::warning('IPROG SMS send failed: ' . $response->body());
+                }
+            } catch (\Throwable $e) {
+                $status = 'failed';
+                $providerResponse = substr($e->getMessage(), 0, 255);
+                Log::warning('SMS send failed: ' . $e->getMessage());
+            }
+        } else {
+            Log::info("[SMS-SIMULATED] To: {$toNumber} — {$message}");
+        }
+
+        return SmsLog::create([
+            'user_id'           => $userId,
+            'event_id'          => $eventId,
+            'to_number'         => $toNumber,
+            'message'           => $message,
+            'status'            => $status,
+            'provider_response' => $providerResponse,
+        ]);
+    }
+
+    private function normalizeNumber(string $number): string
+    {
+        $digits = preg_replace('/\D/', '', $number);
+        if (str_starts_with($digits, '63') && strlen($digits) === 12) {
+            $digits = '0' . substr($digits, 2);
+        }
+        return $digits;
+    }
+
+    // =========================================================
+    // Broadcast to every household head in the barangay
+    // =========================================================
+    // Sends ONE SMS to every user flagged `is_household_head = true`,
+    // regardless of whether their household has any member matching the
+    // event's membership targeting.
+    //
+    // Then, as a fallback, covers households with NO head assigned --
+    // without this step, a headless household would silently receive
+    // ZERO SMS for every event, forever, because the primary loop only
+    // walks users where is_household_head = true.
+    //
+    // Rationale (adviser rec + local reality):
+    //   - Low internet connectivity and low smartphone ownership mean
+    //     in-app notifications don't reach most residents.
+    //   - Household heads are, by definition, the people with phones.
+    //   - Heads acting as neighborhood relays is how info already
+    //     spreads in a barangay.
+    //
+    // Cost note: this is a real SMS send per head. With N households and
+    // M events, that's N×M messages per period. Deliberately a separate
+    // method so it's obvious at every call site that this one broadcasts
+    // to everyone.
+    //
+    // @return \App\Models\SmsLog[]
+    // =========================================================
+
+    public function broadcastToAllHouseholdHeads(?int $eventId, string $message): array
+    {
+        $logs = [];
+
+        // ─── Primary pass: every assigned household head ─────────────
+        $heads = User::where('role', 'Resident')
+            ->where('is_household_head', true)
+            ->whereNull('deleted_at')
+            ->with('household:id,contact_number')
+            ->get([
+                'id',
+                'first_name',
+                'last_name',
+                'contact_number',
+                'household_id',
+                'household_code',
+                'household_contact_number',
+                'is_household_head',
+            ]);
+
+        foreach ($heads as $head) {
+            // Prefer the household's own shared contact number, then the
+            // legacy free-text one, then the head's personal number.
+            $number = $head->household?->contact_number
+                ?: $head->household_contact_number
+                ?: $head->contact_number;
+
+            if (!$number) {
+                continue;
+            }
+
+            $personalized = $this->personalizeMessage($message, $head);
+            $logs[] = $this->send($head->id, $eventId, $number, $personalized);
+        }
+
+        // ─── Fallback: households with NO head assigned ──────────────
+        // The loop above only finds heads. A household that has nobody
+        // flagged is_household_head = true would otherwise get ZERO SMS
+        // for every event, forever. Fall back to texting any one member
+        // of that household who has a phone number on file, so the
+        // household still gets reached.
+        //
+        // The eager-load closure filters the members list down to only
+        // members with a usable contact number, so `->first()` is
+        // guaranteed to pick one that can actually be reached (rather
+        // than skipping the whole household because the alphabetically
+        // first member happens to have no phone).
+        $headlessHouseholds = Household::whereDoesntHave('head')
+            ->whereNull('deleted_at')
+            ->with(['members' => function ($q) {
+                $q->whereNull('deleted_at')
+                  ->whereNotNull('contact_number')
+                  ->where('contact_number', '!=', '');
+            }])
+            ->get();
+
+        foreach ($headlessHouseholds as $household) {
+            $fallback = $household->members->first();
+            if (!$fallback) {
+                // Household has no reachable member at all -- nothing we
+                // can do. Skip silently (an SMS cannot be sent to a
+                // number that doesn't exist).
+                continue;
+            }
+
+            $personalized = $this->personalizeMessage($message, $fallback);
+            $logs[] = $this->send($fallback->id, $eventId, $fallback->contact_number, $personalized);
+        }
+
+        return $logs;
+    }
+
+    // =========================================================
+    // Original eligible-households method -- kept for any other
+    // callers or future targeted use.
+    // =========================================================
+
+    public function notifyHouseholds(iterable $residents, ?int $eventId, string $message): array
+    {
+        $logs = [];
+
+        $groups = [];
+        foreach ($residents as $resident) {
+            if ($resident->household_id) {
+                $key = 'hh:' . $resident->household_id;
+            } elseif ($resident->household_code) {
+                $key = 'code:' . $resident->household_code;
+            } else {
+                $key = 'user:' . $resident->id;
+            }
+            $groups[$key][] = $resident;
+        }
+
+        foreach ($groups as $members) {
+            $head = null;
+            foreach ($members as $member) {
+                if ($member->is_household_head ?? false) {
+                    $head = $member;
+                    break;
+                }
+            }
+
+            if ($head) {
+                $number = $head->household?->contact_number
+                    ?: $head->household_contact_number
+                    ?: $head->contact_number;
+
+                if ($number) {
+                    $personalized = $this->personalizeMessage($message, $head);
+                    $logs[] = $this->send($head->id, $eventId, $number, $personalized);
+                }
+                continue;
+            }
+
+            foreach ($members as $resident) {
+                $number = $resident->household?->contact_number
+                    ?: $resident->household_contact_number
+                    ?: $resident->contact_number;
+
+                if (!$number) {
+                    continue;
+                }
+                $personalized = $this->personalizeMessage($message, $resident);
+                $logs[] = $this->send($resident->id, $eventId, $number, $personalized);
+            }
+        }
+
+        return $logs;
+    }
+
+    // =========================================================
+    // Shared: replace {name} in the message with the recipient's full name
+    // =========================================================
+
+    private function personalizeMessage(string $message, $resident): string
+    {
+        $fullName = trim(($resident->first_name ?? '') . ' ' . ($resident->last_name ?? ''));
+        if ($fullName === '') {
+            $fullName = 'Resident';
+        }
+        return str_replace('{name}', $fullName, $message);
+    }
+}
+</file>
+
+<file path="app/Http/Controllers/ArchiveController.php">
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Membership;
+use App\Models\Event;
+use App\Models\User;
+use App\Models\Notification;
+use App\Models\ActivityLog;
+use App\Models\AgeBracket;
+use App\Models\CivilStatus;
+use App\Models\CurrentStatus;
+use App\Models\InventoryItem;
+use App\Models\EventExpense;
+use App\Models\Household;
+use App\Support\Paged;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+
+class ArchiveController extends Controller
+{
+    public function index(Request $request)
+    {
+        if (auth()->user()?->role !== 'Staff') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // The Archive screen: one filtered, sorted page straight from the database.
+        if ($request->boolean('paged')) {
+            return $this->pagedArchive($request);
+        }
+
+        $memberships = Membership::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'membership',
+                'name'      => $item->name,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+        $events = Event::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'event',
+                'name'      => $item->name,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+        $users = User::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'resident',
+                'name'      => $item->first_name . ' ' . $item->last_name,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+            $notifications = Notification::where('type', 'event_deleted')
+                ->whereNotNull('event_id')
+                ->with('event')
+                ->orderBy('updated_at', 'desc')
+                ->get()
+                ->unique('event_id')
+                ->values()
+                ->map(fn($item) => [
+                    'id'        => $item->event_id,
+                    'type'      => 'notification',
+                    'name'      => $item->title,
+                    'deletedAt' => optional($item->updated_at)->format('Y-m-d H:i:s'),
+                    'deletedBy' => $item->event?->deleted_by ?? 'SYSTEM',
+                ]);
+
+        $ageBrackets = AgeBracket::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'age_bracket',
+                'name'      => $item->label,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+        $civilStatuses = CivilStatus::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'civil_status',
+                'name'      => $item->label,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+        $currentStatuses = CurrentStatus::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'current_status',
+                'name'      => $item->label,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+        $inventoryItems = InventoryItem::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'inventory_item',
+                'name'      => $item->name,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+        $expenses = EventExpense::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'expense',
+                'name'      => $item->item,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+        $households = Household::onlyTrashed()
+            ->orderBy('deleted_at', 'desc')
+            ->get()
+            ->map(fn($item) => [
+                'id'        => $item->id,
+                'type'      => 'household',
+                'name'      => $item->code,
+                'deletedAt' => optional($item->deleted_at)->format('Y-m-d H:i:s'),
+                'deletedBy' => $item->deleted_by ?? 'SYSTEM',
+            ]);
+
+        $archivedItems = array_merge(
+            $memberships->toArray(),
+            $events->toArray(),
+            $users->toArray(),
+            $notifications->toArray(),
+            $ageBrackets->toArray(),
+            $civilStatuses->toArray(),
+            $currentStatuses->toArray(),
+            $inventoryItems->toArray(),
+            $expenses->toArray(),
+            $households->toArray()
+        );
+
+        usort($archivedItems, function ($a, $b) {
+            return strtotime($b['deletedAt']) <=> strtotime($a['deletedAt']);
+        });
+
+        return response()->json($archivedItems);
+    }
+
+    /**
+     * Every archived record of every kind as ONE list of
+     * { id, type, name, deleted_at, deleted_by } rows, built by the database (a UNION of the
+     * ten tables). Filtering, sorting, counting and paging are then done by the database too,
+     * so the screen never loads the whole archive into memory.
+     */
+    private function archiveUnion(): \Illuminate\Database\Query\Builder
+    {
+        $sqlite = DB::connection()->getDriverName() === 'sqlite';
+        $fullName = $sqlite ? "first_name || ' ' || last_name" : "CONCAT(first_name, ' ', last_name)";
+        $by = "COALESCE(NULLIF(deleted_by, ''), 'SYSTEM')";
+
+        $soft = fn (string $table, string $type, string $nameExpr) => DB::table($table)
+            ->whereNotNull('deleted_at')
+            ->selectRaw("id, '{$type}' as type, {$nameExpr} as name, deleted_at, {$by} as deleted_by");
+
+        // An event's "cancelled" announcement, one row per event (the newest wins).
+        $notifications = DB::table('notifications as n')
+            ->where('n.type', 'event_deleted')
+            ->whereNotNull('n.event_id')
+            ->groupBy('n.event_id')
+            ->selectRaw("n.event_id as id, 'notification' as type, MAX(n.title) as name, MAX(n.updated_at) as deleted_at, "
+                . "COALESCE(NULLIF((select e.deleted_by from events e where e.id = n.event_id), ''), 'SYSTEM') as deleted_by");
+
+        return $soft('memberships', 'membership', 'name')
+            ->unionAll($soft('events', 'event', 'name'))
+            ->unionAll($soft('users', 'resident', $fullName))
+            ->unionAll($notifications)
+            ->unionAll($soft('age_brackets', 'age_bracket', 'label'))
+            ->unionAll($soft('civil_statuses', 'civil_status', 'label'))
+            ->unionAll($soft('current_statuses', 'current_status', 'label'))
+            ->unionAll($soft('inventory_items', 'inventory_item', 'name'))
+            ->unionAll($soft('event_expenses', 'expense', 'item'))
+            ->unionAll($soft('households', 'household', 'code'));
+    }
+
+    private function pagedArchive(Request $request)
+    {
+        $source = fn () => DB::query()->fromSub($this->archiveUnion(), 'a');
+
+        // Figures for the whole archive (not narrowed by the filters below).
+        $agg = $source()->selectRaw('COUNT(*) as total, COUNT(DISTINCT type) as kinds, MAX(deleted_at) as newest, MIN(deleted_at) as oldest')->first();
+        $newest = $agg->newest ? strtotime($agg->newest) : null;
+        $oldest = $agg->oldest ? strtotime($agg->oldest) : null;
+        $stats = [
+            'total' => (int) $agg->total,
+            'distinct_types' => (int) $agg->kinds,
+            'newest_at' => $newest ? date('c', $newest) : null,
+            'oldest_days' => $oldest ? (int) floor((time() - $oldest) / 86400) : 0,
+        ];
+
+        $query = $source();
+        if ($request->filled('type') && $request->input('type') !== 'all') {
+            $query->where('type', (string) $request->input('type'));
+        }
+        // Every typed word must appear in the name, the kind or who deleted it.
+        // (Paged::like escapes % and _ with a backslash; MySQL reads that by default, SQLite needs it declared.)
+        $esc = DB::connection()->getDriverName() === 'sqlite' ? " ESCAPE '\\'" : '';
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $like = Paged::like($word);
+            $query->where(fn ($q) => $q->whereRaw("LOWER(name) LIKE ?{$esc}", [$like])
+                ->orWhereRaw("LOWER(type) LIKE ?{$esc}", [$like])
+                ->orWhereRaw("LOWER(deleted_by) LIKE ?{$esc}", [$like]));
+        }
+
+        match ($request->input('sort')) {
+            'oldest' => $query->orderBy('deleted_at')->orderBy('id'),
+            'name-az' => $query->orderByRaw('LOWER(name)')->orderBy('id'),
+            default => $query->orderByDesc('deleted_at')->orderByDesc('id'),
+        };
+
+        $paginator = $query->paginate(Paged::perPage($request, 20), ['*'], 'page', Paged::page($request));
+        $rows = collect($paginator->items())->map(fn ($r) => [
+            'id' => (int) $r->id,
+            'type' => $r->type,
+            'name' => $r->name,
+            'deletedAt' => $r->deleted_at ? date('Y-m-d H:i:s', strtotime($r->deleted_at)) : null,
+            'deletedBy' => $r->deleted_by,
+        ])->values();
+
+        return response()->json(Paged::body($paginator, $rows, ['stats' => $stats]));
+    }
+
+    public function restore(Request $request)
+    {
+        if (auth()->user()?->role !== 'Staff') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'type' => 'required|string|in:membership,event,resident,notification,age_bracket,civil_status,current_status,inventory_item,expense,household',
+            'id'   => 'required|integer',
+        ]);
+
+        // One restore of the same record at a time. Two staff clicking Restore
+        // together used to both succeed and both write the "restored" log and
+        // notifications; now the second one finds it already restored.
+        return $this->exclusively(
+            'restore:' . $request->type . ':' . (int) $request->id,
+            fn () => $this->restoreLocked($request)
+        );
+    }
+
+    private function restoreLocked(Request $request)
+    {
+        try {
+            $itemName = '';
+
+            switch ($request->type) {
+
+                case 'inventory_item':
+                    $item = InventoryItem::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->name;
+                    $item->deleted_by = null;
+                    $item->restore();
+                    break;
+
+                case 'expense':
+                    $item = EventExpense::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->item;
+
+                    // An ended event's budget is locked (no adding, editing or deleting
+                    // expenses), so a removed expense can't quietly come back into it either.
+                    $expenseEvent = Event::withTrashed()->find($item->event_id);
+                    if ($expenseEvent && $expenseEvent->hasEnded()) {
+                        return response()->json([
+                            'message' => 'This event has already ended, so its expenses can no longer be changed.',
+                        ], 422);
+                    }
+
+                    $item->deleted_by = null;
+                    $item->save();
+                    $item->restore();
+                    break;
+
+                case 'age_bracket':
+                    $item = AgeBracket::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->deleted_by = null;
+                    $item->restore();
+                    AgeBracket::forgetCache();
+                    break;
+
+                case 'civil_status':
+                    $item = CivilStatus::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->deleted_by = null;
+                    $item->restore();
+                    CivilStatus::forgetCache();
+                    break;
+
+                case 'current_status':
+                    $item = CurrentStatus::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->deleted_by = null;
+                    $item->restore();
+                    CurrentStatus::forgetCache();
+                    break;
+
+                case 'membership':
+                    $item = Membership::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->name;
+                    $item->restore();
+                    $item->update(['is_active' => true, 'deactivated_at' => null]);
+                    break;
+
+                case 'notification':
+                case 'event':
+                    $item = Event::withTrashed()->findOrFail($request->id);
+                    $itemName = $item->name;
+
+                    if (!$item->trashed()) {
+                        // Someone else restored it a moment ago: nothing to do,
+                        // and nothing to log or notify a second time.
+                        return response()->json(['message' => 'Item restored successfully']);
+                    }
+
+                    DB::beginTransaction();
+                    try {
+                        $item->deleted_by = null;
+                        $item->save();
+
+                        if ($item->trashed()) {
+                            $item->restore();
+                        }
+
+                        $staffName       = 'Staff: ' . (auth()->user()->last_name ?? 'Unknown');
+                        $restoredTitle   = 'Event Restored: ' . $item->name;
+                        $restoredMessage = $staffName . ' • ' . $item->name . ' — ' .
+                            ($item->notification_message ?? 'This event has been restored and is active again.');
+
+                        $affectedNotifications = Notification::where('event_id', $item->id)
+                            ->where('type', 'event_deleted')
+                            ->update([
+                                'type'                    => 'event_updated',
+                                'title'                   => $restoredTitle,
+                                'message'                 => $restoredMessage,
+                                'is_updated'              => true,
+                                'updated_at_notification' => now(),
+                                'read'                    => false,
+                                'updated_at'              => now(),
+                            ]);
+
+                        DB::commit();
+
+                        // ✅ Log the event restore
+                        $this->createLog(
+                            'Restore',
+                            'Events',
+                            "Restored event: '{$itemName}'"
+                        );
+
+                        // ✅ Log the notification update separately
+                        $this->createLog(
+                            'Update',
+                            'Notifications',
+                            "Restored notifications for event: '{$itemName}' — {$affectedNotifications} recipient(s) notified"
+                        );
+
+                        // ✅ Override the generic log below so we don't double-log
+                        $itemName = '';
+
+                    } catch (\Exception $e) {
+                        DB::rollBack();
+                        throw $e;
+                    }
+                    break;
+
+                case 'resident':
+                    $item = User::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->first_name . ' ' . $item->last_name;
+                    $item->deleted_by = null;
+                    $item->save();
+                    $item->restore();
+                    break;
+
+                case 'household':
+                    $item = Household::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->code;
+                    // The household and the people it had come back together (those
+                    // who are still free to be linked).
+                    $relinked = \Illuminate\Support\Facades\DB::transaction(function () use ($item) {
+                        $item->deleted_by = null;
+                        $item->save();
+                        $item->restore();
+
+                        return $item->relinkDissolvedMembers();
+                    });
+                    $logExtra = $relinked['linked'] || $relinked['skipped']
+                        ? " ({$relinked['linked']} member(s) linked back" . ($relinked['skipped'] ? ", {$relinked['skipped']} could not be" : '') . ')'
+                        : '';
+                    break;
+            }
+
+            // Events log their own (more detailed) entries above; every other kind is logged here.
+            if ($itemName !== '') {
+                $this->createLog(
+                    'Restore',
+                    'Archive',
+                    "Restored {$request->type} '{$itemName}'" . ($logExtra ?? '')
+                );
+            }
+
+            return response()->json(['message' => 'Item restored successfully'] + (isset($relinked) ? ['relinked' => $relinked['linked'], 'not_relinked' => $relinked['skipped']] : []));
+
+        } catch (\Exception $e) {
+            return response()->json(['message' => $this->safeError($e)], 500);
+        }
+    }
+
+    public function forceDelete(Request $request)
+    {
+        // Permanent deletion is switched off for everyone, Head Staff included:
+        // archived records are kept for transparency.
+        return response()->json(['message' => 'Permanent deletion is disabled. Records are archived and kept.'], 403);
+
+        // --- previous implementation, intentionally unreachable ---
+        if (auth()->user()?->role !== 'Staff') {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'type' => 'required|string|in:membership,event,resident,age_bracket,civil_status,current_status,inventory_item,expense,household',
+            'id'   => 'required|integer',
+        ]);
+
+        try {
+            $itemName = '';
+
+            switch ($request->type) {
+
+                case 'inventory_item':
+                    $item = InventoryItem::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->name;
+                    $item->forceDelete();
+                    break;
+
+                case 'expense':
+                    $item = EventExpense::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->item;
+                    $item->forceDelete();
+                    break;
+
+                case 'age_bracket':
+                    $item = AgeBracket::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->forceDelete();
+                    AgeBracket::forgetCache();
+                    break;
+
+                case 'civil_status':
+                    $item = CivilStatus::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->forceDelete();
+                    CivilStatus::forgetCache();
+                    break;
+
+                case 'current_status':
+                    $item = CurrentStatus::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->label;
+                    $item->forceDelete();
+                    CurrentStatus::forgetCache();
+                    break;
+
+                case 'membership':
+                    $item = Membership::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->name;
+                    $item->forceDelete();
+                    break;
+
+                case 'event':
+                    $item = Event::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->name;
+                    $item->forceDelete();
+                    break;
+
+                case 'resident':
+                    $item = User::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->first_name . ' ' . $item->last_name;
+                    $item->forceDelete();
+                    break;
+
+                case 'household':
+                    $item = Household::onlyTrashed()->findOrFail($request->id);
+                    $itemName = $item->code;
+                    $item->forceDelete();
+                    break;
+            }
+
+            $this->createLog(
+                'Force Delete',
+                'Archive',
+                "Deleted {$request->type} '{$itemName}'"
+            );
+
+            return response()->json(['message' => 'Item permanently deleted']);
+
+        } catch (\Exception $e) {
+            return response()->json(['message' => $this->safeError($e)], 500);
+        }
+    }
+}
+</file>
+
+<file path="routes/web.php">
+<?php
+
+use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\UserController;
+use App\Http\Controllers\MembershipController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EventController;
+use App\Http\Controllers\MembershipResidentController;
+use App\Http\Controllers\EventAttendanceController;
+use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ArchiveController;
+use App\Http\Controllers\ReportController;
+use App\Http\Controllers\FeedbackController;
+use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\EventExpenseController;
+use App\Http\Controllers\IntegrationController;
+use App\Http\Controllers\AgeBracketController;
+use App\Http\Controllers\CivilStatusController;
+use App\Http\Controllers\NameSuffixController;
+use App\Http\Controllers\CurrentStatusController;
+use App\Http\Controllers\HouseholdController;
+use App\Http\Controllers\StaffAccountController;
+use App\Http\Middleware\EnsureHeadStaff;
+use App\Http\Middleware\EnsureStaff;
+use App\Http\Middleware\SecurityHeaders;
+use App\Http\Middleware\SessionGuard;
+
+/*
+|--------------------------------------------------------------------------
+| FRONTEND / REACT SPA
+|--------------------------------------------------------------------------
+*/
+
+Route::get('/', function () {
+    return view('app');
+})->middleware(SecurityHeaders::class);
+
+/*
+|--------------------------------------------------------------------------
+| PUBLIC ROUTES
+|--------------------------------------------------------------------------
+*/
+
+// Two layers: a coarse per-IP brake here (the 'login' limiter) and a precise
+// per-account lockout inside UserController::login() (5 wrong tries per
+// account+network in 15 minutes, and 10 per account overall).
+Route::post('/login', [UserController::class, 'login'])->middleware(['throttle:login', SecurityHeaders::class])->name('login');
+
+// Head Staff break-glass: reset the password with a printed recovery code.
+Route::post('/recover-head-access', [StaffAccountController::class, 'recoverHeadAccess'])->middleware(['throttle:login', SecurityHeaders::class]);
+
+/*
+|--------------------------------------------------------------------------
+| PUBLIC WEBHOOK (Facebook Page — "2 in 1" adviser recommendation)
+|--------------------------------------------------------------------------
+*/
+Route::get('/integrations/facebook/webhook', [IntegrationController::class, 'webhookVerify']);
+Route::post('/integrations/facebook/webhook', [IntegrationController::class, 'webhookReceive']);
+
+/*
+|--------------------------------------------------------------------------
+| CONTENT TRANSLATIONS (UC-17) -- PUBLIC on purpose
+|--------------------------------------------------------------------------
+| The React app fetches this once on every page load, including the login
+| screen where nobody is signed in yet. Behind auth it answered 401 to
+| guests, and the API client's 401 handler bounced them back to "/", so the
+| login page reloaded forever behind the splash screen. It only returns the
+| translated label text, nothing user-specific.
+*/
+Route::get('/content-translations', function () {
+    try {
+        $rows = \App\Models\ContentTranslation::all();
+    } catch (\Throwable $e) {
+        // Table not migrated yet -- the app simply falls back to English.
+        return response()->json((object) []);
+    }
+    $map = [];
+    foreach ($rows as $r) {
+        $map[$r->key][$r->locale] = $r->value;
+    }
+    return response()->json((object) $map);
+});
+
+/*
+|--------------------------------------------------------------------------
+| PROTECTED ROUTES
+|--------------------------------------------------------------------------
+*/
+
+Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class, 'throttle:app'])->group(function () {
+
+    /*
+    |--------------------------------------------------------------------------
+    | AUTH
+    |--------------------------------------------------------------------------
+    */
+    Route::post('/logout', [UserController::class, 'logout']);
+    Route::get('/me', [UserController::class, 'me']);
+    Route::get('/barangay-officials', [\App\Http\Controllers\BarangayOfficialController::class, 'index']);
+    Route::patch('/users/{id}/change-password', [UserController::class, 'changePassword'])->middleware('throttle:sensitive');
+
+    /*
+    |--------------------------------------------------------------------------
+    | USERS
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/users', [UserController::class, 'index']);
+    Route::get('/users/all-for-memberships', [UserController::class, 'getAllForMemberships']);
+    Route::get('/users/{id}', [UserController::class, 'show']);
+    Route::post('/users', [UserController::class, 'store']);
+    Route::put('/users/{id}', [UserController::class, 'update']);
+    Route::delete('/users/{id}', [UserController::class, 'destroy']);
+    Route::post('/users/{id}/restore', [UserController::class, 'restore']);
+    // (permanent delete routes removed on purpose -- records are archived and kept)
+    Route::patch('/users/{id}/contact-number', [UserController::class, 'updateContactNumber']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | USER MEMBERSHIPS
+    |--------------------------------------------------------------------------
+    */
+
+    /*
+    |--------------------------------------------------------------------------
+    | PROFILING SETTINGS -- Adviser example (Senior Citizen eligibility)
+    | extended to Youth / Solo Parent: Staff-configurable age brackets and
+    | civil/current statuses used to gate membership eligibility.
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/age-brackets', [AgeBracketController::class, 'index']);
+    Route::post('/age-brackets', [AgeBracketController::class, 'store']);
+    Route::put('/age-brackets/{id}', [AgeBracketController::class, 'update']);
+    Route::delete('/age-brackets/{id}', [AgeBracketController::class, 'destroy']);
+    Route::post('/age-brackets/{id}/restore', [AgeBracketController::class, 'restore']);
+
+    // Name suffixes (Jr., Sr., II ...) offered in the resident forms.
+    Route::get('/name-suffixes', [NameSuffixController::class, 'index']);
+    Route::post('/name-suffixes', [NameSuffixController::class, 'store']);
+    Route::delete('/name-suffixes/{id}', [NameSuffixController::class, 'destroy']);
+
+    Route::get('/civil-statuses', [CivilStatusController::class, 'index']);
+    Route::post('/civil-statuses', [CivilStatusController::class, 'store']);
+    Route::put('/civil-statuses/{id}', [CivilStatusController::class, 'update']);
+    Route::delete('/civil-statuses/{id}', [CivilStatusController::class, 'destroy']);
+    Route::post('/civil-statuses/{id}/restore', [CivilStatusController::class, 'restore']);
+
+    Route::get('/current-statuses', [CurrentStatusController::class, 'index']);
+    Route::post('/current-statuses', [CurrentStatusController::class, 'store']);
+    Route::put('/current-statuses/{id}', [CurrentStatusController::class, 'update']);
+    Route::delete('/current-statuses/{id}', [CurrentStatusController::class, 'destroy']);
+    Route::post('/current-statuses/{id}/restore', [CurrentStatusController::class, 'restore']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | HOUSEHOLDS -- real relational replacement for the old free-text
+    | household_code string matching on users.
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/households', [HouseholdController::class, 'index']);
+    Route::get('/households/unassigned', [HouseholdController::class, 'unassigned']);
+    Route::get('/households/options', [HouseholdController::class, 'options']);
+    Route::get('/households/alerts', [HouseholdController::class, 'alerts']);
+    Route::get('/households/{id}', [HouseholdController::class, 'show']);
+    Route::post('/households', [HouseholdController::class, 'store']);
+    Route::put('/households/{id}', [HouseholdController::class, 'update']);
+    Route::delete('/households/{id}', [HouseholdController::class, 'destroy']);
+    Route::post('/households/{id}/members', [HouseholdController::class, 'addMember']);
+    Route::delete('/households/{id}/members/{userId}', [HouseholdController::class, 'removeMember']);
+    Route::put('/households/{id}/head', [HouseholdController::class, 'setHead']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | MEMBERSHIPS
+    |--------------------------------------------------------------------------
+    */
+    Route::post('/memberships/eligibility-preview', [MembershipController::class, 'eligibilityPreview']);
+    Route::resource('api/memberships', MembershipController::class)->except(['create', 'edit']);   // no HTML form pages in a JSON API
+    Route::get('/memberships/{id}/ineligible-members', [MembershipController::class, 'ineligibleMembers']);
+    Route::post('/memberships/{id}/restore', [MembershipController::class, 'restore']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | MEMBERSHIP RESIDENTS
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/membership-residents', [MembershipResidentController::class, 'index']);
+    Route::post('/membership-residents/export/pdf', [\App\Http\Controllers\ResidentExportController::class, 'pdf']);
+    Route::get('/membership-residents/{id}', [MembershipResidentController::class, 'show']);
+    Route::post('/membership-residents', [MembershipResidentController::class, 'store']);
+    Route::put('/membership-residents/{id}', [MembershipResidentController::class, 'update']);
+    Route::delete('/membership-residents/{id}', [MembershipResidentController::class, 'destroy']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | EVENTS (WITH SOFT DELETE SUPPORT)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/events-data', [EventController::class, 'data']);
+    Route::get('/events/overdue-borrows', [EventController::class, 'overdueBorrows']);
+    Route::get('/events/venue-check', [EventController::class, 'venueCheck']);
+    // Declared before the /events/{id} routes below (same reason as
+    // overdue-borrows above) so "borrowed-items" is never swallowed as an
+    // {id} value.
+    Route::get('/events/borrowed-items/releases/recent', [EventController::class, 'recentReleases']);
+    Route::post('/events/borrowed-items/releases/{releaseId}/undo', [EventController::class, 'undoRelease']);
+    Route::post('/events/borrowed-items/releases/{releaseId}/update', [EventController::class, 'updateRelease']);
+    Route::post('/events', [EventController::class, 'store']);
+    Route::put('/events/{id}', [EventController::class, 'update']);
+    Route::delete('/events/{id}', [EventController::class, 'destroy']);  // Now soft deletes
+    Route::get('/events/{id}', [EventController::class, 'show']);
+    Route::get('/events/{id}/inventory', [EventController::class, 'eventInventory']);
+
+    // 🆕 SOFT DELETE ROUTES (ADDED)
+    Route::post('/events/{id}/restore', [EventController::class, 'restore']);        // Restore soft-deleted event
+    Route::post('/events/{id}/release-borrowed-items', [EventController::class, 'returnBorrowedItems']);
+    Route::post('/events/{eventId}/borrowed-items/{borrowId}/release', [EventController::class, 'releaseBorrowedItem']);
+    Route::post('/events/{eventId}/borrowed-items/{borrowId}/lost', [EventController::class, 'reportLostBorrowedItem']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | ATTENDANCE
+    |--------------------------------------------------------------------------
+    */
+    Route::prefix('attendance')->group(function () {
+        Route::post('/time-in', [EventAttendanceController::class, 'timeIn']);
+        Route::put('/time-out', [EventAttendanceController::class, 'timeOut']);
+        Route::get('/{userId}', [EventAttendanceController::class, 'getMemberHistory']);
+    });
+
+    /*
+    |--------------------------------------------------------------------------
+    | DASHBOARD QUERIES
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/events/{id}/attendances', [EventAttendanceController::class, 'getEventAttendees']);
+    Route::get('/users/{id}/attendances', [EventAttendanceController::class, 'getMemberHistory']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | ACTIVITY LOGS
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/activity-logs', [ActivityLogController::class, 'index'])->middleware(EnsureStaff::class);
+    Route::get('/dashboard/stats', [DashboardController::class, 'stats'])->middleware(EnsureStaff::class);
+    Route::get('/activity-logs/today', [ActivityLogController::class, 'today'])->middleware(EnsureStaff::class);
+    Route::get('/activity-logs/export/csv', [ActivityLogController::class, 'exportCsv'])->middleware(EnsureStaff::class);
+    Route::post('/activity-logs/export/pdf', [ActivityLogController::class, 'pdf'])->middleware(EnsureStaff::class);
+    Route::get('/activity-logs/{id}', [ActivityLogController::class, 'show'])->middleware(EnsureStaff::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | NOTIFICATIONS
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/staff', [NotificationController::class, 'staffNotifications']);
+    Route::get('/staff/alerts', [NotificationController::class, 'staffAlerts']);
+    Route::get('/staff/alerts/all', [NotificationController::class, 'staffAlertsAll']);
+    Route::put('/staff/alerts/read-all', [NotificationController::class, 'markAllStaffAlertsRead']);
+    Route::put('/staff/alerts/{id}/read', [NotificationController::class, 'markStaffAlertRead']);
+    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::get('/notifications/replies', [NotificationController::class, 'replyAlerts']);
+    Route::put('/notifications/replies-read', [NotificationController::class, 'markReplyAlertsRead']);
+    Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::get('/notifications/this-week', [NotificationController::class, 'thisWeek']);
+    Route::get('/notifications/sms-logs', [NotificationController::class, 'smsLogs']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | ARCHIVE / TRASH
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/api/archived', [ArchiveController::class, 'index'])->middleware(EnsureStaff::class);
+    Route::post('api/archive/restore', [ArchiveController::class, 'restore'])->middleware(EnsureStaff::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | REPORTS & ANALYTICS (adviser: "Filtering — Date, Summary — Attendance, %")
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/reports/attendance-summary', [ReportController::class, 'attendanceSummary'])->middleware(EnsureStaff::class);
+    Route::get('/reports/membership-summary', [ReportController::class, 'membershipSummary'])->middleware(EnsureStaff::class);
+    Route::get('/reports/budget-summary', [ReportController::class, 'budgetSummary'])->middleware(EnsureStaff::class);
+    Route::get('/reports/inventory-summary', [ReportController::class, 'inventorySummary'])->middleware(EnsureStaff::class);
+    // Official-record downloads (always English -- see ReportController::buildExportPayload)
+    Route::get('/reports/export/pdf', [ReportController::class, 'exportPdf'])->middleware(EnsureStaff::class);
+    Route::get('/reports/export/html', [ReportController::class, 'exportHtml'])->middleware(EnsureStaff::class);
+    Route::get('/reports/export/word', [ReportController::class, 'exportWord'])->middleware(EnsureStaff::class);
+    Route::get('/reports/export/csv', [ReportController::class, 'exportCsv'])->middleware(EnsureStaff::class);
+    // Live page + Report History
+    Route::get('/reports/pulse', [ReportController::class, 'pulse'])->middleware(EnsureStaff::class);
+    Route::get('/reports/history', [ReportController::class, 'history'])->middleware(EnsureStaff::class);
+    Route::post('/reports/history', [ReportController::class, 'recordPrint'])->middleware(EnsureStaff::class);
+
+   /*
+    |--------------------------------------------------------------------------
+    | FEEDBACK (UC-16)
+    |--------------------------------------------------------------------------
+    */
+
+// Submit (first time) OR edit (same handler — the controller decides by
+// whether the resident already has a row for that event). Both paths
+// enforce the 12h submit / 20m edit window from the row's FROZEN values
+// (see FeedbackController::store() and Feedback::isEditLocked()).
+Route::post('/feedback', [FeedbackController::class, 'store']);
+
+// RESTful edit alias — same handler as POST /feedback above. Kept so a
+// PUT /feedback/{id} request from the client doesn't fall through to the
+// SPA catch-all.
+Route::put('/feedback/{id}', [FeedbackController::class, 'store']);
+
+// Remove the resident's own feedback (soft delete + activity log).
+// Returns 403 with code 'edit_window_closed' once the frozen 20m
+// edit window has passed.
+Route::delete('/feedback/{id}', [FeedbackController::class, 'destroy']);
+
+// Member reads
+Route::get('/feedback/pending', [FeedbackController::class, 'pending']);
+Route::get('/feedback/mine', [FeedbackController::class, 'mine']);
+Route::get('/feedback/event/{eventId}', [FeedbackController::class, 'forEvent']);
+
+// Feedback rules: everyone reads them, only Head Staff changes them.
+Route::get('/settings/feedback-rules', [FeedbackController::class, 'rules']);
+Route::put('/settings/feedback-rules', [FeedbackController::class, 'updateRules'])
+    ->middleware([EnsureHeadStaff::class, 'throttle:sensitive']);
+
+// Edit history of one rating / absence reason (staff OR the author).
+Route::get('/feedback/{kind}/{id}/history', [FeedbackController::class, 'history'])
+    ->whereIn('kind', ['rating', 'absence']);
+
+// Non-attendance reasons (same 20-minute rule)
+Route::post('/feedback/absence', [FeedbackController::class, 'storeAbsence'])
+    ->middleware('throttle:30,1');
+Route::get('/feedback/absence/mine', [FeedbackController::class, 'mineAbsences']);
+Route::get('/feedback/absence/event/{eventId}', [FeedbackController::class, 'absencesForEvent']);
+
+// Staff response layer (heart / reply / member like-reply) — does NOT
+// touch the resident's rating/comment; only the reply columns.
+Route::put('/feedback/{kind}/{id}/like', [FeedbackController::class, 'like'])
+    ->whereIn('kind', ['rating', 'absence'])
+    ->middleware(EnsureStaff::class);
+Route::put('/feedback/{kind}/{id}/reply-like', [FeedbackController::class, 'likeReply'])
+    ->whereIn('kind', ['rating', 'absence'])
+    ->middleware('throttle:60,1');
+Route::put('/feedback/{kind}/{id}/reply', [FeedbackController::class, 'reply'])
+    ->whereIn('kind', ['rating', 'absence'])
+    ->middleware([EnsureStaff::class, 'throttle:60,1']);
+    
+    /*
+    |--------------------------------------------------------------------------
+    | BUDGET & EXPENSES (UC-8)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/events/{eventId}/expenses', [EventExpenseController::class, 'index'])->middleware(EnsureStaff::class);
+    Route::post('/events/{eventId}/expenses', [EventExpenseController::class, 'store'])->middleware(EnsureStaff::class);
+    Route::put('/events/{eventId}/budget', [EventExpenseController::class, 'updateBudget'])->middleware(EnsureStaff::class);
+    Route::put('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'update'])->middleware(EnsureStaff::class);
+    Route::delete('/events/{eventId}/expenses/{expenseId}', [EventExpenseController::class, 'destroy'])->middleware(EnsureStaff::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | INVENTORY (UC-9)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/inventory', [InventoryController::class, 'index'])->middleware(EnsureStaff::class);
+    Route::get('/inventory/borrowable', [InventoryController::class, 'borrowable'])->middleware(EnsureStaff::class);
+    Route::post('/inventory', [InventoryController::class, 'store'])->middleware(EnsureStaff::class);
+    Route::put('/inventory/{id}', [InventoryController::class, 'update'])->middleware(EnsureStaff::class);
+    Route::post('/inventory/{id}/units', [InventoryController::class, 'adjustUnits'])->middleware(EnsureStaff::class);
+    Route::get('/inventory/{id}/unit-logs', [InventoryController::class, 'unitLogs'])->middleware(EnsureStaff::class);
+    Route::post('/inventory/{id}/unit-logs/{logId}/undo', [InventoryController::class, 'undoFound'])->middleware(EnsureStaff::class);
+    Route::post('/inventory/{id}/unit-logs/{logId}/edit', [InventoryController::class, 'editFound'])->middleware(EnsureStaff::class);
+    Route::delete('/inventory/{id}', [InventoryController::class, 'destroy'])->middleware(EnsureStaff::class);
+
+    /*
+    |--------------------------------------------------------------------------
+    | INTEGRATIONS (adviser: "2 in 1 — Facebook Page")
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/integrations/facebook', [IntegrationController::class, 'facebookStatus']);
+    Route::post('/integrations/facebook', [IntegrationController::class, 'connectFacebook']);
+    Route::delete('/integrations/facebook', [IntegrationController::class, 'disconnectFacebook']);
+
+    /*
+    |--------------------------------------------------------------------------
+    | ACCOUNT SECURITY
+    |--------------------------------------------------------------------------
+    */
+    // Browser pings this while someone is really using the page (keeps a staff
+    // session alive; background polling does not).
+    Route::post('/session/keepalive', [StaffAccountController::class, 'keepAlive']);
+
+    // Any staff member: own alerts, own two-step login, accepting a transfer.
+    Route::middleware(EnsureStaff::class)->group(function () {
+        Route::get('/security/alerts', [StaffAccountController::class, 'alerts']);
+        Route::post('/security/alerts/read-all', [StaffAccountController::class, 'markAllAlertsRead']);
+        Route::post('/security/alerts/{id}/read', [StaffAccountController::class, 'markAlertRead']);
+
+        Route::middleware('throttle:sensitive')->group(function () {
+            Route::post('/two-factor/setup', [StaffAccountController::class, 'twoFactorSetup']);
+            Route::post('/two-factor/confirm', [StaffAccountController::class, 'twoFactorConfirm']);
+            Route::post('/two-factor/disable', [StaffAccountController::class, 'twoFactorDisable']);
+            Route::post('/staff/head-transfer/accept', [StaffAccountController::class, 'acceptTransfer']);
+        });
+        Route::get('/staff/head-transfer', [StaffAccountController::class, 'myTransfer']);
+    });
+
+    // Head Staff only. Each action also re-asks for the caller's password.
+    Route::middleware(EnsureHeadStaff::class)->prefix('staff-accounts')->group(function () {
+        Route::get('/', [StaffAccountController::class, 'index']);
+        Route::get('/team', [StaffAccountController::class, 'team']);
+        Route::get('/candidates', [StaffAccountController::class, 'candidates']);
+
+        // Changes are rate-limited (10/min per person) on top of the password re-check.
+        Route::middleware('throttle:sensitive')->group(function () {
+            Route::post('/promote', [StaffAccountController::class, 'promote']);
+            Route::post('/{id}/demote', [StaffAccountController::class, 'demote']);
+            Route::post('/{id}/suspend', [StaffAccountController::class, 'suspend']);
+            Route::post('/{id}/unsuspend', [StaffAccountController::class, 'unsuspend']);
+            Route::post('/{id}/sign-out', [StaffAccountController::class, 'signOut']);
+            Route::post('/{id}/reset-password', [StaffAccountController::class, 'resetPassword']);
+            Route::post('/transfer', [StaffAccountController::class, 'startTransfer']);
+            Route::post('/transfer/cancel', [StaffAccountController::class, 'cancelTransfer']);
+            Route::post('/recovery-codes', [StaffAccountController::class, 'regenerateRecoveryCodes']);
+        });
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| REACT SPA FALLBACK - IMPORTANT FOR REACT ROUTING
+|--------------------------------------------------------------------------
+*/
+
+Route::get('/{path?}', function () {
+    return view('app');
+})->where('path', '^(?!api).*$');
+</file>
+
+<file path="app/Http/Controllers/EventController.php">
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Support\Paged;
+use Illuminate\Http\Request;
+use App\Models\Event;
+use App\Models\User;
+use App\Models\Notification;
+use App\Models\EventAttendance;
+use App\Models\EventInventoryItem;
+use App\Models\EventInventoryRelease;
+use App\Models\EventInventoryReleaseUndo;
+use App\Models\InventoryItem;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use App\Services\SmsService;
+use App\Support\PhotoSet;
+use App\Services\FacebookService;
+
+class EventController extends Controller
+{
+    // Same upload/delete convention as InventoryController::localUpload --
+    // evidence photos for a release ("the item came back") are required proof
+    // images stored on the public disk, exposed via EventInventoryRelease's
+    // evidence_photo_url accessor. $folder picks the storage/app/public subfolder.
+    private function localUpload($file, string $folder): string
+    {
+        $original = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $ext      = \App\Support\Uploads::extension($file, \App\Support\Uploads::IMAGE);
+        $clean    = preg_replace('/[^A-Za-z0-9\-_.]/', '_', $original);
+        $filename = time() . '_' . $clean . '.' . $ext;
+
+        $path = $file->storeAs($folder, $filename, 'public');
+
+        if (!$path) {
+            throw new \App\Exceptions\UserFacingException('File upload failed');
+        }
+
+        return $path;
+    }
+
+    private function localDelete(?string $path): void
+    {
+        if (!$path) {
+            return;
+        }
+        try {
+            Storage::disk('public')->delete($path);
+        } catch (\Exception $e) {
+            \Log::warning($e->getMessage());
+        }
+    }
+
+    // Mirrors the frontend's Upcoming/Ongoing/Past classification
+    // (EventsView.tsx getEventStatus): an event is "ongoing" once its own
+    // event_start has passed and until event_end (falling back to
+    // call_time_end, then end-of-day on event_start, for legacy rows
+    // missing an end time). The UI already disables Edit/Archive while
+    // Ongoing or Past, but that was frontend-only -- nothing stopped the
+    // same request being sent directly to the API, so this enforces it
+    // server-side too.
+    private function isEventOngoing(Event $event): bool
+    {
+        $now = now();
+        $start = $event->event_start;
+        if (!$start) {
+            return false;
+        }
+
+        $end = $event->event_end ?? $event->call_time_end;
+        if (!$end) {
+            $end = $start->copy()->endOfDay();
+        }
+
+        return $now->gte($start) && $now->lte($end);
+    }
+
+    /**
+     * Compact, human-readable schedule line for outbound announcements
+     * (Facebook post body / SMS body). Both channels need the full picture:
+     * when sign-in opens (call time) AND when the event itself runs.
+     *
+     * Wording rule: call time is always labeled "sign-in opens" (or similar),
+     * never presented as part of the event's own start/end range -- a
+     * resident reading "6 AM - 11:30 AM" would think the event itself runs
+     * that long, which is not what call time means.
+     *
+     * Returns an empty string when there's nothing to show, so callers can
+     * safely append it without further checks.
+     */
+    private function eventScheduleLine(Event $event, string $channel = 'sms'): string
+    {
+        $start = $event->event_start;
+        if (!$start) {
+            return '';
+        }
+
+        $end       = $event->event_end;
+        $callStart = $event->call_time_start;
+
+        // Show the sign-in line only when the call time actually gives
+        // residents extra time before the event. If call_time_start is
+        // missing or equals/after event_start, skip it.
+        $hasCallTime = $callStart && $callStart->lt($start);
+
+        if ($channel === 'facebook') {
+            $when = $start->format('F j, Y g:i A');
+            if ($end) {
+                $when .= ' – ' . $end->format('g:i A');
+            }
+
+            $parts = ["📅 {$when}"];
+
+            if ($hasCallTime) {
+                $parts[] = "⏰ Sign-in opens at " . $callStart->format('g:i A') .
+                    " — please arrive early for check-in";
+            }
+
+            if ($event->location) {
+                $parts[] = "📍 {$event->location}";
+            }
+
+            return implode("\n", $parts);
+        }
+
+        // SMS: single line, compact, no year.
+        if ($hasCallTime) {
+            $datePart = $start->format('M j');
+            $line = $datePart
+                . ', sign-in ' . $callStart->format('g:i A')
+                . ', event ' . $start->format('g:i A')
+                . ($end ? '-' . $end->format('g:i A') : '');
+        } else {
+            $line = $start->format('M j, g:i A');
+            if ($end) {
+                $line .= '-' . $end->format('g:i A');
+            }
+        }
+
+        if ($event->location) {
+            $line .= ' @ ' . $event->location;
+        }
+
+        return $line;
+    }
+
+    public function index(Request $request)
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        $perPage = $request->get('per_page', 20);
+
+        // ✅ MODIFIED: Exclude soft-deleted events
+        if ($user->role === 'Staff') {
+            return response()->json(Event::withoutTrashed()->with('borrowedItems.inventoryItem')->paginate($perPage));
+        }
+
+        $residentMembershipIds = DB::table('membership_residents')
+            ->where('user_id', $user->id)
+            ->pluck('membership_id')
+            ->toArray();
+
+        // ✅ MODIFIED: Exclude soft-deleted events
+        $events = Event::where(function ($q) use ($residentMembershipIds) {
+            $q->whereRaw('JSON_LENGTH(membership_ids) = 0')
+              ->orWhereNull('membership_ids');
+
+            foreach ($residentMembershipIds as $mid) {
+                $q->orWhereJsonContains('membership_ids', $mid);
+            }
+        })
+        ->withoutTrashed()  // ✅ NEW: Exclude soft-deleted
+        ->with('borrowedItems.inventoryItem')
+        ->paginate($perPage);
+
+        return response()->json($events);
+    }
+
+    // ✅ MODIFIED: Improved data() method with portal mode support & soft delete
+    public function data(Request $request)
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            return response()->json(['message' => 'Unauthenticated'], 401);
+        }
+
+        // Check portal mode from request header
+        $portalMode = $request->header('X-Portal-Mode', 'auto');
+
+        // Determine effective role based on portal mode
+        $effectiveRole = $user->role;
+        if ($user->role === 'Staff' && $portalMode === 'member') {
+            $effectiveRole = 'Resident';
+        }
+
+        // paged=1: the Events screens ask for one page at a time, already filtered
+        // (search, membership, date, quick tab, status) and sorted by the database.
+        if ($request->boolean('paged')) {
+            return $this->pagedEvents($request, $user, $effectiveRole === 'Staff');
+        }
+
+        if ($effectiveRole === 'Staff') {
+            // Staff portal: show all active events (exclude soft-deleted)
+            $events = Event::withoutTrashed()->with('borrowedItems.inventoryItem')->orderByDesc('event_start')->get();
+            $this->attachInventoryCounts($events);
+        } else {
+            // Resident mode: filter by user's memberships (exclude soft-deleted)
+            $residentMembershipIds = DB::table('membership_residents')
+                ->where('user_id', $user->id)
+                ->pluck('membership_id')
+                ->toArray();
+
+            $events = Event::where(function ($q) use ($residentMembershipIds) {
+                $q->whereRaw('JSON_LENGTH(membership_ids) = 0')
+                  ->orWhereNull('membership_ids');
+
+                foreach ($residentMembershipIds as $mid) {
+                    $q->orWhereJsonContains('membership_ids', $mid);
+                }
+            })
+            ->withoutTrashed()  // ✅ NEW: Exclude soft-deleted
+            ->with('borrowedItems.inventoryItem')
+            ->orderByDesc('event_start')
+            ->get();
+        }
+
+        return response()->json(['data' => $events]);
+    }
+
+    /**
+     * One page of the Events list for the staff or member screen. Filters:
+     * search, membership (id), date (Y-m-d), tab (all | today | week | feedback),
+     * status (all | upcoming | ongoing | past); sort: default | soonest | latest | name-az.
+     * Returns the page plus the size of every tab and status, so the counts always
+     * match what the filters would show.
+     */
+    private function pagedEvents(Request $request, $user, bool $staff)
+    {
+        $base = Event::withoutTrashed();
+
+        if (!$staff) {
+            // A resident only sees events open to everyone or to one of their memberships.
+            $mine = DB::table('membership_residents')->where('user_id', $user->id)->pluck('membership_id')->toArray();
+            $base->where(function ($q) use ($mine) {
+                $q->whereRaw('JSON_LENGTH(membership_ids) = 0')->orWhereNull('membership_ids');
+                foreach ($mine as $mid) {
+                    $q->orWhereJsonContains('membership_ids', $mid);
+                }
+            });
+        }
+
+        $visibleTotal = (clone $base)->count(); // everything this person may see, before the filters
+
+        if ($request->filled('membership')) {
+            $id = (int) $request->input('membership');
+            $base->where(fn ($q) => $q->whereJsonContains('membership_ids', $id)->orWhereJsonContains('membership_ids', (string) $id));
+        }
+        if ($request->filled('date')) {
+            $base->whereDate('event_start', (string) $request->input('date'));
+        }
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $like = Paged::like($word);
+            $base->where(function ($q) use ($like) {
+                $q->whereRaw('LOWER(name) LIKE ?', [$like])
+                  ->orWhereRaw('LOWER(COALESCE(location, \'\')) LIKE ?', [$like])
+                  ->orWhereRaw('LOWER(COALESCE(description, \'\')) LIKE ?', [$like])
+                  ->orWhereRaw('DATE(event_start) LIKE ?', [$like])
+                  ->orWhereRaw("LOWER(DATE_FORMAT(event_start, '%M %e %Y')) LIKE ?", [$like]);
+            });
+        }
+
+        $now = now();
+        $nowSql = $now->toDateTimeString();
+        $endExpr = "COALESCE(event_end, call_time_end, CONCAT(DATE(event_start), ' 23:59:59'))";
+
+        $applyTab = function ($q, string $tab) use ($now, $endExpr) {
+            if ($tab === 'feedback') {
+                $q->whereRaw('((SELECT COUNT(*) FROM feedback WHERE feedback.event_id = events.id) + (SELECT COUNT(*) FROM absence_reasons WHERE absence_reasons.event_id = events.id)) > 0');
+            } elseif ($tab === 'today') {
+                $q->where('event_start', '<', $now->copy()->addDay()->startOfDay()->toDateTimeString())
+                  ->whereRaw('COALESCE(event_end, event_start) >= ?', [$now->copy()->startOfDay()->toDateTimeString()]);
+            } elseif ($tab === 'week') {
+                $q->where('event_start', '>=', $now->copy()->startOfWeek()->toDateTimeString())
+                  ->where('event_start', '<', $now->copy()->startOfWeek()->addWeek()->toDateTimeString());
+            }
+        };
+        $applyStatus = function ($q, string $status) use ($nowSql, $endExpr, $staff) {
+            if (!$staff) {
+                // Member screen: upcoming = starts from now on, past = already started.
+                if ($status === 'upcoming') {
+                    $q->where('event_start', '>=', $nowSql);
+                } elseif ($status === 'past') {
+                    $q->where('event_start', '<', $nowSql);
+                }
+                return;
+            }
+            if ($status === 'upcoming') {
+                $q->where('event_start', '>', $nowSql);
+            } elseif ($status === 'ongoing') {
+                $q->where('event_start', '<=', $nowSql)->whereRaw("{$endExpr} >= ?", [$nowSql]);
+            } elseif ($status === 'past') {
+                $q->whereRaw("{$endExpr} < ?", [$nowSql]);
+            }
+        };
+
+        // Budget health (Budget screen): spent vs. approved_budget, from the non-deleted expenses.
+        $spentExpr = '(SELECT COALESCE(SUM(event_expenses.amount), 0) FROM event_expenses WHERE event_expenses.event_id = events.id AND event_expenses.deleted_at IS NULL)';
+        $applyBudget = function ($q, string $budget) use ($spentExpr) {
+            if ($budget === 'over') {
+                $q->whereNotNull('approved_budget')->whereRaw("{$spentExpr} > approved_budget");
+            } elseif ($budget === 'near') {
+                $q->whereNotNull('approved_budget')->where('approved_budget', '>', 0)
+                  ->whereRaw("{$spentExpr} <= approved_budget")
+                  ->whereRaw("{$spentExpr} * 100 >= approved_budget * 80");
+            }
+        };
+
+        $tab = (string) $request->input('tab', 'all');
+        $status = (string) $request->input('status', 'all');
+        $budget = (string) $request->input('budget', 'all');
+
+        $tabCounts = [];
+        foreach (['all', 'today', 'week', 'feedback'] as $key) {
+            $q = clone $base;
+            $applyTab($q, $key);
+            $tabCounts[$key] = $q->count();
+        }
+        $statusCounts = [];
+        foreach (['all', 'ongoing', 'upcoming', 'past'] as $key) {
+            $q = clone $base;
+            $applyTab($q, $tab);
+            $applyBudget($q, $budget);
+            $applyStatus($q, $key);
+            $statusCounts[$key] = $q->count();
+        }
+        $budgetCounts = [];
+        foreach (['all', 'near', 'over'] as $key) {
+            $q = clone $base;
+            $applyTab($q, $tab);
+            $applyStatus($q, $status);
+            $applyBudget($q, $key);
+            $budgetCounts[$key] = $q->count();
+        }
+
+        $query = clone $base;
+        $applyTab($query, $tab);
+        $applyBudget($query, $budget);
+        $applyStatus($query, $status);
+
+        // Staff: Ongoing first, then Upcoming, then Past; the sort picks the order inside each group.
+        // Members: simply newest event first.
+        if ($staff) {
+            $rank = "CASE WHEN event_start > ? THEN 1 WHEN {$endExpr} < ? THEN 2 ELSE 0 END";
+            $query->orderByRaw($rank, [$nowSql, $nowSql]);
+        }
+        switch ($staff ? $request->input('sort') : 'latest') {
+            case 'soonest':
+                $query->orderBy('event_start');
+                break;
+            case 'latest':
+                $query->orderBy('event_start', 'desc');
+                break;
+            case 'name-az':
+                $query->orderBy('name');
+                break;
+            case 'spent':
+                $query->orderByRaw("{$spentExpr} DESC");
+                break;
+            case 'used': // share of the approved budget already spent; events without a budget last
+                $query->orderByRaw("CASE WHEN approved_budget IS NULL THEN -1 WHEN approved_budget = 0 THEN (CASE WHEN {$spentExpr} > 0 THEN 100 ELSE 0 END) ELSE LEAST(100, {$spentExpr} / approved_budget * 100) END DESC");
+                break;
+            default: // upcoming soonest first, past most recent first
+                $query->orderByRaw("CASE WHEN {$endExpr} < ? THEN -UNIX_TIMESTAMP(event_start) ELSE UNIX_TIMESTAMP(event_start) END", [$nowSql]);
+        }
+        $query->orderBy('id', 'desc');
+
+        $paginator = $query->with('borrowedItems.inventoryItem')
+            ->paginate(Paged::perPage($request, 6), ['*'], 'page', Paged::page($request));
+        $events = $paginator->getCollection();
+        if ($staff) {
+            $this->attachInventoryCounts($events);
+            // What each card on the Budget screen shows: money spent so far.
+            $spent = DB::table('event_expenses')->whereIn('event_id', $events->pluck('id'))->whereNull('deleted_at')
+                ->select('event_id', DB::raw('SUM(amount) as s'))->groupBy('event_id')->pluck('s', 'event_id');
+            foreach ($events as $event) {
+                $event->setAttribute('budget_spent', round((float) ($spent[$event->id] ?? 0), 2));
+            }
+        }
+
+        return response()->json(Paged::body($paginator, $events->values(), [
+            'counts' => ['tabs' => $tabCounts, 'status' => $statusCounts, 'budget' => $budgetCounts],
+            'all_total' => $visibleTotal,
+        ]));
+    }
+
+    /**
+     * Gives each event `inventory_items_count` -- how many different items it
+     * took from Inventory (still out or already returned) -- in one query, so
+     * the event page's Inventory tab can show its count right away.
+     */
+    private function attachInventoryCounts($events): void
+    {
+        $ids = $events->pluck('id')->all();
+        if (!$ids) {
+            return;
+        }
+
+        $borrowed = DB::table('event_inventory_items')->whereIn('event_id', $ids)->select('event_id', 'inventory_item_id');
+        $returned = DB::table('event_inventory_releases')->whereIn('event_id', $ids)->whereNull('undone_at')->select('event_id', 'inventory_item_id');
+
+        $counts = DB::query()->fromSub($borrowed->union($returned), 'u')
+            ->select('event_id', DB::raw('COUNT(DISTINCT inventory_item_id) as c'))
+            ->groupBy('event_id')
+            ->pluck('c', 'event_id');
+
+        $attendances = DB::table('attendances')->whereIn('event_id', $ids)
+            ->select('event_id', DB::raw('COUNT(*) as c'))
+            ->groupBy('event_id')
+            ->pluck('c', 'event_id');
+
+        // Feedback + non-attendance reasons per event, so the staff Events list
+        // can offer a "Has feedback" quick tab without loading every event.
+        $feedbackCounts = DB::table('feedback')->whereIn('event_id', $ids)
+            ->select('event_id', DB::raw('COUNT(*) as c'))->groupBy('event_id')->pluck('c', 'event_id');
+        $absenceCounts = DB::table('absence_reasons')->whereIn('event_id', $ids)
+            ->select('event_id', DB::raw('COUNT(*) as c'))->groupBy('event_id')->pluck('c', 'event_id');
+
+        foreach ($events as $event) {
+            $event->setAttribute('feedback_count', (int) ($feedbackCounts[$event->id] ?? 0) + (int) ($absenceCounts[$event->id] ?? 0));
+            $event->setAttribute('inventory_items_count', (int) ($counts[$event->id] ?? 0));
+            // Known up front so the Attendance tab's count doesn't start at 0.
+            $event->setAttribute('attendances_count', (int) ($attendances[$event->id] ?? 0));
+        }
+    }
+
+    public function list()
+    {
+        // ✅ MODIFIED: Exclude soft-deleted events
+        return response()->json(Event::withoutTrashed()->with('borrowedItems.inventoryItem')->get());
+    }
+
+    public function show($id)
+    {
+        $event = Event::withoutTrashed()->findOrFail($id);
+
+        if (!$this->isStaff()) {
+            // A resident may read only an event that is open to everyone or to one of their
+            // own memberships, and never sees the borrowed-equipment details.
+            $ids = is_array($event->membership_ids) ? $event->membership_ids : [];
+            if (count($ids) > 0) {
+                $mine = DB::table('membership_residents')
+                    ->where('user_id', Auth::id())
+                    ->whereNull('deleted_at')
+                    ->pluck('membership_id')
+                    ->map(fn ($v) => (int) $v)
+                    ->all();
+                if (!array_intersect(array_map('intval', $ids), $mine)) {
+                    return response()->json(['message' => 'Unauthorized'], 403);
+                }
+            }
+            return response()->json($event);
+        }
+
+        return response()->json($event->load('borrowedItems.inventoryItem'));
+    }
+
+    /** Human-readable description of the clash, for the screen. */
+    private function conflictPayload(\App\Models\Event $conflict): array
+    {
+        $from = $conflict->call_time_start && $conflict->call_time_start->lt($conflict->event_start)
+            ? $conflict->call_time_start : $conflict->event_start;
+
+        return [
+            'id'    => $conflict->id,
+            'name'  => $conflict->name,
+            'venue' => $conflict->location,
+            'from'  => $from->toDateTimeString(),
+            'to'    => $conflict->event_end->toDateTimeString(),
+        ];
+    }
+
+    /** A 422 when the venue is already booked at that time, otherwise null. */
+    private function venueConflictResponse(Request $request, ?int $exceptId)
+    {
+        $venue = trim((string) $request->location);
+        if ($venue === '') {
+            return null;
+        }
+
+        $conflict = Event::venueConflict($venue, $request->call_time_start, $request->event_start, $request->event_end, $exceptId);
+        if (!$conflict) {
+            return null;
+        }
+
+        return response()->json([
+            'message'  => "\"{$venue}\" is already booked for \"{$conflict->name}\" during that time. Please choose a different time or location.",
+            'conflict' => $this->conflictPayload($conflict),
+        ], 422);
+    }
+
+    /**
+     * Live check for the Add / Edit event form: is this venue free at these times?
+     * Same rule as saving, so the screen can warn before staff press Save.
+     */
+    public function venueCheck(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'location'        => 'nullable|string|max:100',
+            'event_start'     => 'nullable|date',
+            'event_end'       => 'nullable|date',
+            'call_time_start' => 'nullable|date',
+            'exclude_id'      => 'nullable|integer',
+        ]);
+
+        $conflict = Event::venueConflict(
+            $request->location, $request->call_time_start, $request->event_start, $request->event_end,
+            $request->filled('exclude_id') ? (int) $request->exclude_id : null
+        );
+
+        return response()->json(['conflict' => $conflict ? $this->conflictPayload($conflict) : null]);
+    }
+
+    /** The "is this venue free?" check and the save must not interleave with another event for the same venue. */
+    private function venueLockKey(Request $request): ?string
+    {
+        // Same spelling-insensitive form the conflict check uses, so "Covered Court" and
+        // "covered  court" queue behind each other instead of racing.
+        $venue = \App\Models\Event::normalizeVenue((string) $request->input('location'));
+
+        return $venue === '' ? null : 'event-venue:' . $venue;
+    }
+
+    public function store(Request $request)
+    {
+        $key = $this->venueLockKey($request);
+
+        return $key === null ? $this->storeEvent($request) : $this->exclusively($key, fn () => $this->storeEvent($request));
+    }
+
+    private function storeEvent(Request $request)
+    {
+        // Only Staff create events -- this was previously reachable by any
+        // authenticated Resident (the route only requires 'auth'), letting
+        // them create a real event, trigger notifications/SMS to the whole
+        // barangay, and even post to the official Facebook Page.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'name'                 => 'required|string|max:255',
+            'description'          => 'required|string',
+            'location'             => 'nullable|string|max:100',
+            'event_start'          => 'required|date|after_or_equal:2020-01-01|before_or_equal:' . now()->addYears(3)->toDateString(),
+            'event_end'            => 'required|date|after:event_start',
+            // Call time = when sign-in/out actually opens, separate from
+            // the event's own start/end (e.g. call time 6:00, event starts
+            // 7:00 -- sign-in is only open 6:00-7:00). Strictly BEFORE
+            // event_start (not before_or_equal) -- a call time equal to
+            // the event's own start time would leave a zero-length sign-in
+            // window, which defeats the point of having one.
+            'call_time_start'      => 'required|date|before:event_start|after_or_equal:now',
+            'call_time_end'        => 'required|date|after_or_equal:event_end',
+            'membership_ids'       => 'nullable|array',
+            'membership_ids.*'     => 'integer|exists:memberships,id',
+            'notification_message' => 'nullable|string|max:500',
+            'approved_budget'      => 'nullable|numeric|decimal:0,2|min:0|max:99999999.99',
+            'post_to_facebook'     => 'nullable|boolean',
+            'borrowed_items'                     => 'nullable|array',
+            'borrowed_items.*.inventory_item_id'  => 'required_with:borrowed_items|integer|exists:inventory_items,id',
+            'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1|max:1000000',
+            // Which units to borrow, per condition (e.g. Good => 10, New => 5).
+            // When sent, their sum is the quantity borrowed.
+            'borrowed_items.*.conditions'         => 'nullable|array',
+            'borrowed_items.*.conditions.*'       => 'integer|min:0|max:1000000',
+        ]);
+
+        // Double-booking guard: two events can't share the same physical venue
+        // at overlapping times (residents and staff would have no way to tell
+        // which one they're actually at). The venue is free-typed, so names are
+        // compared ignoring capitals, spaces and punctuation, and a venue counts
+        // as taken from the call time (when people start gathering), not only
+        // from the printed start time.
+        if ($response = $this->venueConflictResponse($request, null)) {
+            return $response;
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $event = Event::create([
+                'name'                 => $request->name,
+                'description'          => $request->description,
+                'location'             => $request->location,
+                'event_start'          => $request->event_start,
+                'event_end'            => $request->event_end,
+                'call_time_start'      => $request->call_time_start,
+                'call_time_end'        => $request->call_time_end,
+                'membership_ids'       => $request->membership_ids ?? [],
+                'notification_message' => $request->notification_message,
+                'approved_budget'      => $request->approved_budget,
+            ]);
+
+            $event->createAttendanceRecords();
+            $this->applyBorrowedItems($event, $request->borrowed_items ?? []);
+            $this->sendEventNotifications($event, false);
+
+            // Adviser recommendation: "2 in 1 — Facebook Page" second announcement channel
+            if (filter_var($request->post_to_facebook, FILTER_VALIDATE_BOOLEAN)) {
+                // Build the Facebook post body: Description first (the "what is
+                // this event" context), then the short Message reminder underneath
+                // (the call to action), then the schedule + venue. Every part is
+                // optional, so this only includes whichever ones actually have
+                // content.
+                $facebookBody = trim(
+                    ($event->description ? $event->description : '') .
+                    ($event->notification_message ? "\n\n" . $event->notification_message : '') .
+                    "\n\n" . $this->eventScheduleLine($event, 'facebook')
+                );
+
+                // postEvent() never throws -- it returns [ok, message]. Keep the
+                // result so a failed post is visible (laravel.log + response)
+                // instead of the event saving as if Facebook had worked.
+                [$fbOk, $fbMessage] = app(FacebookService::class)->postEvent(
+                    'New Event: ' . $event->name,
+                    $facebookBody
+                );
+
+                if ($fbOk) {
+                    // Remember that this event's announcement was actually
+                    // published, so update() can decide whether a future edit
+                    // should re-announce it. An event that was never posted on
+                    // create stays silent on edit, even if its schedule changes.
+                    $event->posted_to_facebook = true;
+                    $event->save();
+                } else {
+                    \Illuminate\Support\Facades\Log::warning('Facebook post failed: ' . $fbMessage, ['event' => $event->name]);
+                }
+            }
+
+            DB::commit();
+
+            $this->createLog('Create', 'Events', "Created event: {$event->name}");
+
+            if (!empty($event->notification_message)) {
+                $this->createLog('Create', 'Notifications', "Sent notification for event: {$event->name}", now()->addMilliseconds(500));
+            }
+
+            return response()->json([
+                'message' => 'Event created successfully',
+                'event'   => $event->load('borrowedItems.inventoryItem'),
+                'facebook' => isset($fbOk) ? ['posted' => $fbOk, 'message' => $fbMessage] : null,
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to create event: ' . $this->safeError($e)
+            ], 500);
+        }
+    }
+
+    public function update(Request $request, $id)
+    {
+        $key = $this->venueLockKey($request);
+
+        return $key === null ? $this->updateEvent($request, $id) : $this->exclusively($key, fn () => $this->updateEvent($request, $id));
+    }
+
+    private function updateEvent(Request $request, $id)
+    {
+        // Only Staff edit events -- same reasoning as store() above. This
+        // is separate from the ongoing/already-ended locks below: those
+        // control WHEN an edit is allowed, this controls WHO is allowed.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'name'                 => 'required|string|max:255',
+            'description'          => 'required|string',
+            'location'             => 'nullable|string|max:100',
+            'event_start'          => 'required|date|after_or_equal:2020-01-01|before_or_equal:' . now()->addYears(3)->toDateString(),
+            'event_end'            => 'required|date|after:event_start',
+            // Strictly BEFORE event_start -- see store() above for why.
+            'call_time_start'      => 'required|date|before:event_start',
+            'call_time_end'        => 'required|date|after_or_equal:event_end',
+            'membership_ids'       => 'nullable|array',
+            'membership_ids.*'     => 'integer|exists:memberships,id',
+            'notification_message' => 'nullable|string|max:500',
+            'approved_budget'      => 'nullable|numeric|decimal:0,2|min:0|max:99999999.99',
+            'borrowed_items'                     => 'nullable|array',
+            'borrowed_items.*.inventory_item_id'  => 'required_with:borrowed_items|integer|exists:inventory_items,id',
+            'borrowed_items.*.quantity'           => 'required_with:borrowed_items|integer|min:1|max:1000000',
+            // Which units to borrow, per condition (e.g. Good => 10, New => 5).
+            // When sent, their sum is the quantity borrowed.
+            'borrowed_items.*.conditions'         => 'nullable|array',
+            'borrowed_items.*.conditions.*'       => 'integer|min:0|max:1000000',
+        ]);
+
+        // ✅ MODIFIED: Find event excluding soft-deleted
+        $event = Event::withoutTrashed()->findOrFail($id);
+
+        // Ongoing/Past events are locked -- same rule the frontend already
+        // shows (disabled Edit button + hint), now enforced here too so it
+        // can't be bypassed by calling the API directly.
+        if ($this->isEventOngoing($event)) {
+            return response()->json([
+                'message' => "\"{$event->name}\" is currently ongoing and can't be edited until it ends.",
+            ], 409);
+        }
+
+        if ($event->event_end && now()->gt($event->event_end)) {
+            return response()->json([
+                'message' => "\"{$event->name}\" has already ended and can't be edited.",
+            ], 409);
+        }
+
+        // Only block a past call_time_start when it's actually being
+        // changed to one -- the existing value is resubmitted on every
+        // save, and it's normal for an Upcoming event's sign-in window to
+        // have already opened (call_time_start passed) while the event
+        // itself hasn't started yet, so that alone must not block
+        // unrelated edits (e.g. fixing the description).
+        $requestedCallStart = \Carbon\Carbon::parse($request->call_time_start);
+        $callStartChanged = !$event->call_time_start || !$requestedCallStart->eq($event->call_time_start);
+        if ($callStartChanged && $requestedCallStart->lt(now())) {
+            return response()->json([
+                'message' => 'Call Time (sign-in opens) can\'t be set to a time in the past.',
+            ], 422);
+        }
+
+        // Same double-booking guard as store(), excluding this event
+        // itself so re-saving an event without changing its time/venue
+        // doesn't flag a conflict against its own previous record.
+        if ($response = $this->venueConflictResponse($request, $event->id)) {
+            return $response;
+        }
+
+        $originalMessage = $event->notification_message;
+        $originalMembershipIds = $event->membership_ids ?? [];
+        $newMembershipIds = $request->membership_ids ?? [];
+        $membershipChanged = $originalMembershipIds != $newMembershipIds;
+
+        // Track the details residents actually rely on -- schedule and
+        // venue -- not just the notification message, so a rescheduled or
+        // moved event re-notifies people too (see $scheduleOrVenueChanged below).
+        $originalEventStart = optional($event->event_start)->toDateTimeString();
+        $originalLocation = $event->location;
+
+        DB::beginTransaction();
+
+        try {
+            $event->update([
+                'name'                 => $request->name,
+                'description'          => $request->description,
+                'location'             => $request->location,
+                'event_start'          => $request->event_start,
+                'event_end'            => $request->event_end,
+                'call_time_start'      => $request->call_time_start,
+                'call_time_end'        => $request->call_time_end,
+                'membership_ids'       => $newMembershipIds,
+                'notification_message' => $request->notification_message,
+                'approved_budget'      => $request->approved_budget,
+            ]);
+
+            // Undo the event's previous borrow (returns quantity to Inventory),
+            // then apply whatever the form submitted now -- simplest way to
+            // handle add/remove/quantity-change without diffing item-by-item.
+            // Not a real-world return, so it doesn't go on the Returns
+            // page's release log (see releaseBorrowedItems()'s doc comment).
+            $this->releaseBorrowedItems($event, logRelease: false);
+            $this->applyBorrowedItems($event, $request->borrowed_items ?? []);
+
+            if ($membershipChanged) {
+                $event->syncAttendanceRecords();
+            }
+
+            $notificationUpdated = false;
+
+            // A rescheduled date/time or a changed venue matters just as
+            // much to attendees as an edited message -- previously only
+            // the message was checked here.
+            $scheduleOrVenueChanged = $originalEventStart != optional($event->event_start)->toDateTimeString()
+                || $originalLocation != $event->location;
+            $messageChanged = $originalMessage != $request->notification_message;
+
+            if ($messageChanged || $scheduleOrVenueChanged) {
+                $this->sendEventNotifications($event, true);
+                $notificationUpdated = true;
+            }
+
+            // Adviser recommendation: "2 in 1 — Facebook Page" -- re-post a
+            // correction to the Page whenever a resident-visible detail
+            // actually changed (schedule, venue, or the notification
+            // message) AND the event was originally announced on Facebook
+            // at create time. Events that were never posted to Facebook
+            // stay silent on edit, even if their schedule changes. Title is
+            // different from the create-time post ("Event Updated:" instead
+            // of "New Event:"), so followers immediately understand this
+            // is a correction/reminder, not a duplicate announcement.
+            if ($event->posted_to_facebook && ($scheduleOrVenueChanged || $messageChanged)) {
+                $facebookBody = trim(
+                    ($event->description ?: '') .
+                    ($event->notification_message ? "\n\n" . $event->notification_message : '') .
+                    "\n\n" . $this->eventScheduleLine($event, 'facebook')
+                );
+
+                [$fbOk, $fbMessage] = app(FacebookService::class)->postEvent(
+                    'Event Updated: ' . $event->name,
+                    $facebookBody
+                );
+                if (!$fbOk) {
+                    \Illuminate\Support\Facades\Log::warning('Facebook update post failed: ' . $fbMessage, ['event' => $event->name]);
+                }
+            }
+
+            DB::commit();
+
+            $this->createLog('Update', 'Events', "Updated event: {$event->name}", now()->addMilliseconds(500));
+
+            if ($notificationUpdated) {
+                $this->createLog('Update', 'Notifications', "Updated notification for event: {$event->name}", now()->addMilliseconds(500));
+            }
+
+            return response()->json([
+                'message' => 'Event updated successfully',
+                'event'   => $event->load('borrowedItems.inventoryItem'),
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to update event: ' . $this->safeError($e)
+            ], 500);
+        }
+    }
+
+    // ✅ MODIFIED: Implement SOFT DELETE instead of hard delete
+    public function destroy($id)
+    {
+        // Only Staff archive events -- same reasoning as store() above.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $user = auth()->user();
+
+        // ✅ Find only active (non-deleted) events
+        $event = Event::withoutTrashed()->findOrFail($id);
+        $eventName = $event->name;
+
+        // Ongoing/Past events are locked -- same rule as update() above.
+        if ($this->isEventOngoing($event)) {
+            return response()->json([
+                'message' => "\"{$eventName}\" is currently ongoing and can't be archived until it ends.",
+            ], 409);
+        }
+
+        if ($event->event_end && now()->gt($event->event_end)) {
+            return response()->json([
+                'message' => "\"{$eventName}\" has already ended and can't be archived.",
+            ], 409);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            // ✅ Record who archived before soft deleting
+            $event->deleted_by = $user->user_code;
+            $event->save();
+
+            // ✅ Return any borrowed inventory items -- an archived event no
+            // longer needs them out on loan.
+            $this->releaseBorrowedItems($event);
+
+            // ✅ Step 1: Soft delete the event (sets deleted_at timestamp)
+            $event->delete();
+
+            // ✅ Step 2: Update notifications to show event was cancelled
+            // Only the members' announcements -- staff alerts and staff replies
+            // keep their own type.
+            Notification::where('event_id', $id)
+                ->whereIn('type', ['event_announcement', 'event_updated'])
+                ->update([
+                    'type' => 'event_deleted',
+                    'title' => '❌ Event Cancelled: ' . $eventName,
+                    'message' => 'Staff: ' . $user->last_name . ' • ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.',
+                    'is_updated' => true,
+                    'read' => false,
+                    'updated_at_notification' => now(),
+                    'updated_at' => now(),
+                ]);
+
+            // ✅ Step 3: Log the archive action
+            $this->createLog('Archive Event', 'Events', "Archived event: {$eventName}");
+
+            DB::commit();
+
+            return response()->json(['message' => 'Event archived successfully']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to archive event: ' . $this->safeError($e)
+            ], 500);
+        }
+    }
+
+    // ✅ NEW: Restore soft-deleted event (admin feature)
+    public function restore($id)
+    {
+        // Only Staff restore archived events -- same reasoning as store() above.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $user = auth()->user();
+
+        $event = Event::onlyTrashed()->findOrFail($id);
+        $eventName = $event->name;
+
+        try {
+            // ✅ Clear the deleted_by when restoring
+            $event->deleted_by = null;
+            $event->save();
+
+            $event->restore();
+
+            $this->createLog('Restore Event', 'Events', "Restored event from archive: {$eventName}");
+
+            return response()->json([
+                'message' => 'Event restored successfully',
+                'event'   => $event,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Failed to restore event: ' . $this->safeError($e)
+            ], 500);
+        }
+    }
+
+    // ✅ NEW: Force delete (permanent) - for admin only
+    public function forceDelete($id)
+    {
+        // Permanent deletion is switched off for everyone, Head Staff included.
+        return response()->json(['message' => 'Permanent deletion is disabled. Events are archived and kept.'], 403);
+
+        // --- previous implementation, intentionally unreachable ---
+        // Only Staff permanently delete events -- same reasoning as store()
+        // above, but higher stakes: this wipes the event and its
+        // notifications/attendance/inventory records with no recovery.
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $user = auth()->user();
+
+        // ✅ Find soft-deleted event
+        $event = Event::onlyTrashed()->findOrFail($id);
+        $eventName = $event->name;
+
+        DB::beginTransaction();
+
+        try {
+            // Permanently delete notifications, attendance, and any
+            // leftover borrow records (quantities were already returned to
+            // Inventory when the event was archived, via destroy()).
+            Notification::where('event_id', $id)->forceDelete();
+            EventAttendance::where('event_id', $id)->forceDelete();
+            EventInventoryItem::where('event_id', $id)->delete();
+
+            // Permanently delete event
+            $event->forceDelete();
+
+            $this->createLog('Force Delete', 'Events', "Permanently deleted event: {$eventName}");
+
+            DB::commit();
+
+            return response()->json(['message' => 'Event permanently deleted']);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'message' => 'Failed to permanently delete event: ' . $this->safeError($e)
+            ], 500);
+        }
+    }
+
+    protected function sendEventNotifications(Event $event, $isUpdate = false)
+    {
+        $membershipIds = $event->membership_ids ?? [];
+
+        $userIds = empty($membershipIds)
+            ? User::whereIn('role', ['Resident','Staff'])->pluck('id')
+            : DB::table('membership_residents')
+                ->whereIn('membership_id', $membershipIds)
+                ->pluck('user_id')
+                ->unique();
+
+        // Eligible residents -- still used below for IN-APP notifications.
+        // Not used for the SMS blast anymore (that goes to all heads).
+        $residents = User::where('role', 'Resident')
+            ->whereIn('id', $userIds)
+            ->with('household:id,contact_number')
+            ->get(['id', 'first_name', 'last_name', 'contact_number', 'household_id', 'household_code', 'is_household_head', 'household_contact_number']);
+
+        $smsPrefix = $isUpdate ? 'UPDATED: ' : '';
+
+        // Message + compact schedule line. SMS is length-sensitive (one
+        // segment ~160 chars), so the schedule uses short forms
+        // ("Oct 14, sign-in 6:00 AM, event 7:00 AM-11:00 AM"), and the
+        // notification_message is kept short.
+        $smsMessage = $smsPrefix . trim(
+            $event->name
+            . ' — ' . ($event->notification_message ?? 'New event announced by Barangay Piao.')
+            . ' — ' . $this->eventScheduleLine($event, 'sms')
+        );
+
+        // Broadcast the SMS to EVERY household head in the barangay, not
+        // just heads of households that matched this event's membership
+        // targeting. The in-app notifications further below still only go
+        // to the eligible residents -- this SMS blast is intentionally
+        // broader than that, so a head with no personal stake in the event
+        // still gets it and can relay the info to neighbors.
+        app(SmsService::class)->broadcastToAllHouseholdHeads($event->id, $smsMessage);
+
+        // --- In-app notifications (unchanged) ---
+        $staff = auth()->user();
+        $staffName = 'Staff: ' . $staff->last_name;
+
+        $title = $isUpdate
+            ? 'Event Updated: ' . $event->name
+            : 'New Event: ' . $event->name;
+
+        $messageWithStaff = $staffName . ' • ' . $event->name . ' — ' .
+            ($event->notification_message ?? 'New event announced');
+
+        foreach ($userIds as $userId) {
+            if ($isUpdate) {
+                // Only the event's own announcement is re-used -- never a staff
+                // reply / heart the member received about their feedback.
+                $notification = Notification::where('user_id', $userId)
+                    ->where('event_id', $event->id)
+                    ->whereIn('type', ['event_announcement', 'event_updated'])
+                    ->first();
+
+                if ($notification) {
+                    $notification->update([
+                        'type' => 'event_updated',
+                        'title' => $title,
+                        'message' => $messageWithStaff,
+                        'is_updated' => true,
+                        'updated_at_notification' => now(),
+                        'read' => false,
+                    ]);
+                } else {
+                    Notification::create([
+                        'user_id' => $userId,
+                        'event_id' => $event->id,
+                        'type' => 'event_updated',
+                        'title' => $title,
+                        'message' => $messageWithStaff,
+                        'is_updated' => true,
+                        'updated_at_notification' => now(),
+                        'read' => false,
+                    ]);
+                }
+            } else {
+                Notification::create([
+                    'user_id' => $userId,
+                    'event_id' => $event->id,
+                    'type' => 'event_announcement',
+                    'title' => $title,
+                    'message' => $messageWithStaff,
+                    'is_updated' => false,
+                    'updated_at_notification' => null,
+                    'read' => false,
+                ]);
+            }
+        }
+    }
+
+    // ===== Borrow items from Inventory for an Event (deduct on
+    // create/edit, return on edit/archive) =====
+
+    /**
+     * Deducts each requested quantity from Inventory and records a borrow
+     * row per item. Throws (caller is expected to be inside a DB
+     * transaction) if any item doesn't have enough stock left.
+     */
+    private function applyBorrowedItems(Event $event, array $items): void
+    {
+        // Always lock items in the same (id) order, so two requests borrowing the same items can't wait on each other.
+        usort($items, fn ($x, $y) => (int) ($x['inventory_item_id'] ?? 0) <=> (int) ($y['inventory_item_id'] ?? 0));
+
+        $labels = array_keys(InventoryItem::CONDITION_COLUMNS);
+
+        foreach ($items as $bi) {
+            // Staff choose which units to borrow (e.g. 10 Good + 5 New). When
+            // they do, exactly those come out of stock and go back to the
+            // same conditions on return. Without it (older callers) the
+            // quantity is taken from the item's main condition.
+            $units = null;
+            if (!empty($bi['conditions']) && is_array($bi['conditions'])) {
+                $units = [];
+                foreach ($labels as $label) {
+                    $units[$label] = max(0, (int) ($bi['conditions'][$label] ?? 0));
+                }
+                if (array_sum($units) <= 0) {
+                    $units = null;
+                }
+            }
+
+            $quantity = $units ? array_sum($units) : (int) ($bi['quantity'] ?? 0);
+            if ($quantity <= 0) {
+                continue;
+            }
+
+            // Locked from this check until the caller's transaction ends: a second request borrowing the same item
+            // waits here, then sees the stock AFTER this one's deduction (no two events can both take the last units).
+            $item = InventoryItem::lockForUpdate()->findOrFail((int) $bi['inventory_item_id']);
+
+            if ($item->quantity < $quantity) {
+                throw new \App\Exceptions\UserFacingException("Not enough stock for \"{$item->name}\" (available: {$item->quantity}, requested: {$quantity}).");
+            }
+
+            if (! $units) {
+                // No per-condition choice was sent: take the quantity from the
+                // item's main condition first, then its largest groups, so the
+                // borrow row always records its units per condition (its four
+                // counts must add up to `quantity`).
+                $have = $item->conditionCounts();
+                $order = array_keys($have);
+                usort($order, fn ($a, $b) => ($b === $item->condition) <=> ($a === $item->condition) ?: $have[$b] <=> $have[$a]);
+                $units = array_fill_keys($labels, 0);
+                $need = $quantity;
+                foreach ($order as $label) {
+                    $cut = min($need, $have[$label]);
+                    $units[$label] = $cut;
+                    $need -= $cut;
+                    if ($need <= 0) {
+                        break;
+                    }
+                }
+            }
+
+            $short = $item->shortfall($units);
+            if ($short) {
+                $have = $item->conditionCounts();
+                $label = array_key_first($short);
+                throw new \App\Exceptions\UserFacingException("Not enough {$label} stock for \"{$item->name}\" (available: {$have[$label]}, requested: {$units[$label]}).");
+            }
+            // The loan row is saved BEFORE the units leave stock: the database then checks the loan against
+            // the stock still on the shelf (it refuses a loan bigger than the stock). Both steps run in the
+            // caller's transaction, so either both happen or neither does.
+            $borrow = new EventInventoryItem([
+                'event_id'           => $event->id,
+                'inventory_item_id'  => $item->id,
+            ]);
+            $borrow->setUnits($units);
+            $borrow->save();
+
+            $item->takeUnits($units);
+        }
+    }
+
+    /**
+     * @param bool $logRelease Whether this counts as a real "item came
+     * back" release worth logging for the Returns page's Undo trail.
+     * true for archiving an event and for the dashboard's one-click
+     * "release everything" -- both genuinely give items back. false for
+     * the edit flow below, which tears the borrow list down purely to
+     * rebuild it from the submitted form and isn't a real-world return.
+     */
+    private function releaseBorrowedItems(Event $event, bool $logRelease = true): void
+    {
+        // All-or-nothing, on locked rows: either every loan of this event goes back to
+        // stock (with its return record) or none does. Safe to call from inside another
+        // transaction (archive / edit) -- it then simply joins it.
+        \DB::transaction(function () use ($event, $logRelease) {
+            foreach ($event->borrowedItems()->orderBy('inventory_item_id')->lockForUpdate()->get() as $borrowed) {
+                $item = InventoryItem::withTrashed()->lockForUpdate()->find($borrowed->inventory_item_id);
+                // The borrowed units go back into the same conditions they came from.
+                $units = $borrowed->resolvedUnits($item->condition ?? 'Good');
+                if ($item) {
+                    $item->giveUnits($units);
+                }
+
+                if ($logRelease) {
+                    $log = new EventInventoryRelease([
+                        'event_id' => $event->id,
+                        'inventory_item_id' => $borrowed->inventory_item_id,
+                        'quantity' => $borrowed->quantity,
+                        'released_by' => auth()->user()?->user_code,
+                    ]);
+                    $log->setUnits($units);
+                    $log->save();
+                }
+            }
+
+            $event->borrowedItems()->delete();
+        });
+    }
+
+    /**
+     * Events that have already ended but still have borrowed items nobody
+     * released. Pairs with the item-level "Overdue Return" flag on the
+     * Inventory grid (see InventoryController::index) -- that one lets
+     * staff notice a single stuck item; this one is the event-level view
+     * for the Dashboard, so staff can release everything a given event
+     * is still holding in one action instead of hunting it down later.
+     */
+    /**
+     * Events whose loan is overdue (ended, items still out). With paged=1 the Returns
+     * screen gets one filtered page (search by event or item name, ended_date), the KPI
+     * stats over the whole queue, and -- with focus=<event id> -- the page that event is on.
+     */
+    public function overdueBorrows(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $nowSql = now()->toDateTimeString();
+        $endExpr = 'COALESCE(events.event_end, events.event_start)';
+        $base = Event::withoutTrashed()->whereHas('borrowedItems')->whereRaw("{$endExpr} < ?", [$nowSql]);
+
+        $present = function ($events) {
+            return $events->map(function ($event) {
+                // Units already reported lost from this event's loan, per item.
+                $lostHere = \App\Models\InventoryUnitLog::where('action', 'lost')->where('event_id', $event->id)
+                    ->get()->groupBy('inventory_item_id')->map(fn ($g) => (int) $g->sum('quantity'));
+
+                return [
+                    'id' => $event->id,
+                    'name' => $event->name,
+                    'ended_at' => $event->event_end ?? $event->event_start,
+                    'items' => $event->borrowedItems->map(fn ($b) => [
+                        'id' => $b->id,
+                        'name' => $b->inventoryItem->name ?? 'Unknown item',
+                        'quantity' => $b->quantity,
+                        'lost_quantity' => $lostHere[$b->inventory_item_id] ?? 0,
+                        // Units still out, per condition (what the return form starts from).
+                        'units' => $b->resolvedUnits($b->inventoryItem->condition ?? 'Good'),
+                    ])->values(),
+                ];
+            })->values();
+        };
+
+        if (!$request->boolean('paged')) {
+            return response()->json($present((clone $base)->with(['borrowedItems.inventoryItem:id,name,new_quantity,good_quantity,fair_quantity,poor_quantity'])->get()));
+        }
+
+        // KPI strip: the whole overdue queue, whatever the filters say.
+        $all = (clone $base)->with('borrowedItems:id,event_id,inventory_item_id,quantity')->get(['events.id', 'events.event_start', 'events.event_end']);
+        $oldestDays = 0;
+        foreach ($all as $ev) {
+            $ended = $ev->event_end ?? $ev->event_start;
+            if ($ended) {
+                $oldestDays = max($oldestDays, (int) floor($ended->diffInDays(now(), false)));
+            }
+        }
+        $stats = [
+            'total_events' => $all->count(),
+            'total_units' => (int) $all->sum(fn ($ev) => $ev->borrowedItems->sum('quantity')),
+            'distinct_items' => $all->flatMap(fn ($ev) => $ev->borrowedItems->pluck('inventory_item_id'))->unique()->count(),
+            'oldest_days' => $oldestDays,
+        ];
+
+        $filtered = clone $base;
+        if ($request->filled('ended_date')) {
+            $filtered->whereRaw("DATE({$endExpr}) = ?", [(string) $request->input('ended_date')]);
+        }
+        foreach (Paged::tokens($request->input('search')) as $word) {
+            $like = Paged::like($word);
+            $filtered->where(function ($q) use ($like) {
+                $q->whereRaw('LOWER(events.name) LIKE ?', [$like])
+                  ->orWhereHas('borrowedItems.inventoryItem', fn ($i) => $i->whereRaw('LOWER(name) LIKE ?', [$like]));
+            });
+        }
+        $filtered->orderBy('events.id');
+
+        $perPage = Paged::perPage($request, 6);
+        $page = Paged::page($request);
+        if ($request->filled('focus')) {
+            $focus = (int) $request->input('focus');
+            $before = (clone $filtered)->where('events.id', '<', $focus)->count();
+            $exists = (clone $filtered)->where('events.id', $focus)->exists();
+            if ($exists) {
+                $page = intdiv($before, $perPage) + 1;
+            }
+        }
+
+        $paginator = $filtered->with(['borrowedItems.inventoryItem:id,name,new_quantity,good_quantity,fair_quantity,poor_quantity'])->paginate($perPage, ['*'], 'page', $page);
+
+        return response()->json(Paged::body($paginator, $present($paginator->getCollection()), ['stats' => $stats]));
+    }
+
+    /**
+     * Everything this event took from Inventory, for the event's Inventory
+     * tab: per item, how many units (by condition) are still out, how many
+     * came back (and in what condition), how many were reported lost on this
+     * event's loan (Returns -> Report Lost), plus each return on record.
+     */
+    public function eventInventory($id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $event = Event::withoutTrashed()->findOrFail($id);
+
+        $labels = array_keys(InventoryItem::CONDITION_COLUMNS);
+        $zero = array_fill_keys($labels, 0);
+
+        $out = $event->borrowedItems()->with('inventoryItem')->get();
+        $releases = EventInventoryRelease::where('event_id', $event->id)
+            ->whereNull('undone_at')
+            ->with('inventoryItem')
+            ->orderBy('created_at')
+            ->get();
+
+        $items = [];
+        $touch = function ($itemId, $name, $photo = null) use (&$items, $zero) {
+            return $items[$itemId] ??= [
+                'inventory_item_id' => $itemId,
+                'name' => $name ?? 'Unknown item',
+                'photo_url' => $photo,
+                'out' => 0, 'out_units' => $zero,
+                'returned' => 0, 'returned_units' => $zero,
+                'lost' => 0, 'lost_units' => $zero,
+            ];
+        };
+
+        foreach ($out as $b) {
+            $row = $touch($b->inventory_item_id, $b->inventoryItem->name ?? null, $b->inventoryItem->photo_url ?? null);
+            $units = $b->resolvedUnits($b->inventoryItem->condition ?? 'Good');
+            $row['out'] += $b->quantity;
+            foreach ($units as $label => $n) {
+                $row['out_units'][$label] += $n;
+            }
+            $items[$b->inventory_item_id] = $row;
+        }
+
+        foreach ($releases as $r) {
+            $row = $touch($r->inventory_item_id, $r->inventoryItem->name ?? null, $r->inventoryItem->photo_url ?? null);
+            $units = $r->resolvedUnits($r->inventoryItem->condition ?? 'Good');
+            $row['returned'] += $r->quantity;
+            foreach ($units as $label => $n) {
+                $row['returned_units'][$label] += $n;
+            }
+            $items[$r->inventory_item_id] = $row;
+        }
+
+        // Units reported lost on this event's loan were taken off the outstanding borrow, so
+        // they are counted here from the item's lost reports to keep the borrowed total whole.
+        // The loss stays exactly as it was recorded at return: units found later are not
+        // credited to any event (they cannot be traced to one) -- they are kept on the item.
+        $lostLogs = \App\Models\InventoryUnitLog::where('event_id', $event->id)->where('action', 'lost')
+            ->whereNull('undone_at')->get(['inventory_item_id', 'units']);
+        $lostItems = InventoryItem::withTrashed()->whereIn('id', $lostLogs->pluck('inventory_item_id')->unique())->get()->keyBy('id');
+        foreach ($lostLogs as $lostLog) {
+            $item = $lostItems[$lostLog->inventory_item_id] ?? null;
+            $row = $touch($lostLog->inventory_item_id, $item->name ?? null, $item->photo_url ?? null);
+            foreach ($labels as $label) {
+                $n = (int) ($lostLog->units[$label] ?? 0);
+                $row['lost_units'][$label] += $n;
+                $row['lost'] += $n;
+            }
+            $items[$lostLog->inventory_item_id] = $row;
+        }
+
+        $items = collect($items)->map(function ($row) {
+            $row['total'] = $row['out'] + $row['returned'] + $row['lost'];
+            $row['status'] = $row['out'] === 0
+                ? ($row['lost'] > 0 ? 'settled' : 'returned')
+                : ($row['returned'] > 0 ? 'partial' : 'borrowed');
+
+            return $row;
+        })->sortBy('name')->values();
+
+        return response()->json([
+            'items' => $items,
+            'returns' => $releases->map(fn ($r) => [
+                'id' => $r->id,
+                'name' => $r->inventoryItem->name ?? 'Unknown item',
+                'quantity' => $r->quantity,
+                'units' => $r->resolvedUnits($r->inventoryItem->condition ?? 'Good'),
+                'released_by' => $r->released_by,
+                'released_at' => $r->created_at,
+                'photo_url' => $r->inventoryItem->photo_url ?? null,
+                'evidence_photo_urls' => $r->evidence_photo_urls,
+                'activity' => $r->activity_log_urls,
+            ])->reverse()->values(),
+        ]);
+    }
+
+    /**
+     * One-click release for the Dashboard's overdue-borrows card: returns
+     * every item this event still holds to Inventory, same as archiving
+     * would, but without archiving the event itself -- staff may still
+     * want the event record active (for reports, history, etc.) even
+     * after giving back what it borrowed.
+     */
+    public function returnBorrowedItems($id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $event = Event::withoutTrashed()->findOrFail($id);
+
+        if ($event->borrowedItems()->count() === 0) {
+            return response()->json(['message' => 'This event has no borrowed items to return.'], 422);
+        }
+
+        $this->releaseBorrowedItems($event);
+        $this->createLog('Return Items', 'Inventory', "Returned borrowed items from event: {$event->name}");
+
+        return response()->json(['message' => 'Borrowed items returned to Inventory.']);
+    }
+
+    /**
+     * Release a single borrowed item back to Inventory, instead of an
+     * event's entire bundle at once (see returnBorrowedItems() above for
+     * the all-at-once version, still used internally by archive/edit).
+     * Staff may only want to give back some of what an event borrowed --
+     * e.g. the chairs are free again but the sound system is still in use
+     * elsewhere -- so each item on the Returns page releases on its own.
+     */
+    public function releaseBorrowedItem(Request $request, $eventId, $borrowId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $event = Event::withoutTrashed()->findOrFail($eventId);
+        $borrow = $event->borrowedItems()->where('id', $borrowId)->firstOrFail();
+
+        // Staff can give back fewer than the full quantity -- e.g. 1 of
+        // the 3 borrowed blood pressure monitors is free again, the other
+        // 2 are still out. Defaults to the full remaining quantity so the
+        // request is optional, not required, from any other caller.
+        // An evidence photo (proof the item physically came back) is
+        // required on every release -- see EventInventoryRelease::evidence_photo_url.
+        $request->validate([
+            'quantity' => 'nullable|integer|min:1|max:' . $borrow->quantity,
+            // Condition each returned unit comes back in, e.g. Good => 2, Poor => 1.
+            // When sent, their sum is the quantity returned.
+            'conditions' => 'nullable|array',
+            'conditions.*' => 'integer|min:0',
+            // One or more evidence photos (first = cover), up to 5.
+            'photos' => 'required_without:photo|array|min:1|max:5',
+            'photos.*' => \App\Support\Uploads::IMAGE_RULE,
+            'photo' => 'required_without:photos|' . \App\Support\Uploads::IMAGE_RULE,
+        ]);
+
+        // A return is all-or-nothing: the loan, the stock, the return record and its
+        // evidence photo change together, or none of them do.
+        //  1. The photos are saved first. A file can't be rolled back by the database, so
+        //     if anything below fails they are deleted again and nothing is left behind.
+        //  2. Everything else runs in ONE transaction on locked rows. Two staff returning
+        //     the same loan (or two loans of the same item) at the same moment wait for each
+        //     other, so stock is never credited twice and no update is lost.
+        $evidence = $request->hasFile('photos')
+            ? PhotoSet::resolve([], $request, fn ($f) => $this->localUpload($f, 'release_evidence_photos'))['final']
+            : [$this->localUpload($request->file('photo'), 'release_evidence_photos')];
+
+        $fail = fn (string $message) => throw new \Illuminate\Http\Exceptions\HttpResponseException(
+            response()->json(['message' => $message], 422)
+        );
+
+        $release = null;
+        $releaseQty = 0;
+        $item = null;
+
+        try {
+            \DB::transaction(function () use ($request, $event, $borrowId, $evidence, $fail, &$release, &$releaseQty, &$item) {
+                // Locked, and re-read: if someone else already returned this loan, this is a 404.
+                $borrow = $event->borrowedItems()->where('id', $borrowId)->lockForUpdate()->firstOrFail();
+                $item = InventoryItem::withTrashed()->lockForUpdate()->find($borrow->inventory_item_id);
+
+                $releaseQty = $request->filled('quantity') ? (int) $request->quantity : $borrow->quantity;
+                if ($releaseQty > $borrow->quantity) {
+                    return $fail("Can't return {$releaseQty} -- only {$borrow->quantity} of this item is out on loan.");
+                }
+
+                $mainCondition = $item->condition ?? 'Good';
+
+                // Staff say which condition each returned unit comes back in
+                // (e.g. 3 Good + 1 Poor if one got damaged). Without that, a full
+                // return gives back exactly what was borrowed and a partial one takes
+                // from the largest condition first.
+                $returned = null;
+                if (is_array($request->input('conditions'))) {
+                    $returned = [];
+                    foreach (array_keys(InventoryItem::CONDITION_COLUMNS) as $label) {
+                        $returned[$label] = max(0, (int) ($request->input("conditions.{$label}") ?? 0));
+                    }
+                    if (array_sum($returned) <= 0) {
+                        $returned = null;
+                    }
+                }
+
+                if ($returned) {
+                    $releaseQty = array_sum($returned);
+                    if ($releaseQty > $borrow->quantity) {
+                        return $fail("Can't return {$releaseQty} -- only {$borrow->quantity} of this item is out on loan.");
+                    }
+                    $borrow->takeOutMatching($returned, $mainCondition);
+                    $releasedUnits = $returned;
+                } else {
+                    $releasedUnits = $borrow->takeOutUnits($releaseQty, $mainCondition);
+                }
+                $item?->giveUnits($releasedUnits);
+
+                // The return is recorded BEFORE the loan is lowered: the database then compares it with
+                // what the event still has out (it refuses a return bigger than the loan). Both steps run
+                // in this transaction, so either both happen or neither does.
+                $release = new EventInventoryRelease([
+                    'event_id' => $event->id,
+                    'inventory_item_id' => $borrow->inventory_item_id,
+                    'quantity' => $releaseQty,
+                    'released_by' => auth()->user()?->user_code,
+                    'evidence_photo_path' => $evidence[0] ?? null,
+                    'extra_evidence_photo_paths' => count($evidence) > 1 ? array_slice($evidence, 1) : null,
+                ]);
+                $release->setUnits($releasedUnits);
+                $release->save();
+
+                if ($borrow->quantity <= 0) {
+                    $borrow->delete();
+                } else {
+                    $borrow->save();
+                }
+            });
+        } catch (\Throwable $e) {
+            // Nothing was saved, so the photos must not stay on disk either.
+            foreach ($evidence as $path) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($path);
+            }
+            throw $e;
+        }
+
+        $itemName = $item->name ?? 'item';
+        $this->createLog('Return Items', 'Inventory', "Returned {$releaseQty}x {$itemName} from event: {$event->name}");
+
+        return response()->json([
+            'message' => 'Item returned to Inventory.',
+            'released_quantity' => $releaseQty,
+            'release_id' => $release->id,
+        ]);
+    }
+
+    /**
+     * Reports units of a borrowed item as lost -- they never came back.
+     * Staff pick exactly which units, per condition they went out in (e.g.
+     * 3 Good + 2 Fair), so nothing is chosen at random. The units leave the
+     * loan and are added to the item's lost count; they are NOT added to
+     * stock, and no photo is needed. This is separate from returning items:
+     * it is not logged as a release. If a unit turns up later, "Found" in
+     * Inventory records it.
+     */
+    public function reportLostBorrowedItem(Request $request, $eventId, $borrowId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $event = Event::withoutTrashed()->findOrFail($eventId);
+        $borrow = $event->borrowedItems()->where('id', $borrowId)->firstOrFail();
+
+        $request->validate([
+            'lost_units' => 'required|array',
+            'lost_units.*' => 'nullable|integer|min:0|max:1000000',
+        ]);
+
+        $lostUnits = [];
+        $lost = 0;
+        $item = null;
+
+        // The checks run inside the transaction on locked rows, so two staff
+        // reporting the same loan at once can't both pass them (and report
+        // more units lost than are actually out).
+        \DB::transaction(function () use ($event, $borrowId, $request, &$lostUnits, &$lost, &$item) {
+            $borrow = $event->borrowedItems()->where('id', $borrowId)->lockForUpdate()->firstOrFail();
+            $item = InventoryItem::withTrashed()->lockForUpdate()->find($borrow->inventory_item_id);
+            $main = $item->condition ?? 'Good';
+            $out = $borrow->resolvedUnits($main);
+
+            foreach (array_keys(InventoryItem::CONDITION_COLUMNS) as $label) {
+                $lostUnits[$label] = max(0, (int) $request->input("lost_units.{$label}", 0));
+                if ($lostUnits[$label] > ($out[$label] ?? 0)) {
+                    throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json([
+                        'message' => "Can't report {$lostUnits[$label]} {$label} unit(s) as lost -- only " . ($out[$label] ?? 0) . " {$label} are out on loan.",
+                    ], 422));
+                }
+            }
+            $lost = array_sum($lostUnits);
+            if ($lost <= 0) {
+                throw new \Illuminate\Http\Exceptions\HttpResponseException(response()->json(['message' => 'Enter how many units were lost.'], 422));
+            }
+
+            // The loss is logged BEFORE the loan is lowered: the database then compares it with what the
+            // event still has out (it refuses more lost units than the loan holds).
+            \App\Models\InventoryUnitLog::create([
+                'inventory_item_id' => $borrow->inventory_item_id,
+                'event_id' => $event->id,
+                'action' => 'lost',
+                'quantity' => $lost,
+                'units' => $lostUnits,
+                'user_code' => auth()->user()?->user_code,
+            ]);
+
+            foreach ($lostUnits as $label => $n) {
+                $out[$label] = ($out[$label] ?? 0) - $n;
+            }
+            $borrow->setUnits($out);
+            if ($borrow->quantity <= 0) {
+                $borrow->delete();
+            } else {
+                $borrow->save();
+            }
+
+            if ($item) {
+                $item->lost_quantity = (int) $item->lost_quantity + $lost;
+                $item->save();
+            }
+        });
+
+        $parts = [];
+        foreach ($lostUnits as $label => $n) {
+            if ($n > 0) {
+                $parts[] = "{$n} {$label}";
+            }
+        }
+        $itemName = $item->name ?? 'item';
+        $this->createLog('Report Lost', 'Inventory', "Reported {$lost}x {$itemName} lost (" . implode(', ', $parts) . ") from event: {$event->name}");
+
+        return response()->json([
+            'message' => 'Lost units recorded.',
+            'lost_quantity' => $lost,
+        ]);
+    }
+
+    /**
+     * Releases from roughly the last two weeks, across every event, newest
+     * first -- the "Undo" trail for the Returns page. Two weeks is plenty
+     * of room for "wait, I released the wrong amount earlier today/this
+     * week" without turning this into a permanent audit log browser (that
+     * job belongs to Activity Logs). Paginated (like the overdue-borrows
+     * table above it) rather than a flat 30-row cap, so older-but-still-
+     * recent releases stay reachable instead of just falling off the end.
+     */
+    public function recentReleases(Request $request)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $perPage = 5;
+        $page = max(1, (int) $request->query('page', 1));
+        $search = trim((string) $request->query('search', ''));
+
+        $base = EventInventoryRelease::whereNull('undone_at')
+            ->where('created_at', '>=', now()->subDays(14));
+
+        // Matches the same free-text search the overdue-events table above
+        // uses (event name or item name) -- so typing something like
+        // "folding" finds it here too, even once every matching event has
+        // already been fully released and dropped out of that table.
+        if ($search !== '') {
+            $base->where(function ($query) use ($search) {
+                $query->whereHas('event', fn ($q) => $q->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('inventoryItem', fn ($q) => $q->where('name', 'like', "%{$search}%"));
+            });
+        }
+
+        $total = (clone $base)->count();
+        $lastPage = max(1, (int) ceil($total / $perPage));
+        $page = min($page, $lastPage);
+
+        $rows = $base->with(['event:id,name', 'inventoryItem:id,name,new_quantity,good_quantity,fair_quantity,poor_quantity'])
+            ->latest()
+            ->skip(($page - 1) * $perPage)
+            ->take($perPage)
+            ->get();
+
+        // How much of each item the event still has out -- the Edit Return
+        // form lets staff raise a release up to (already released + still
+        // borrowed), so it needs that ceiling up front.
+        $stillBorrowed = EventInventoryItem::whereIn('event_id', $rows->pluck('event_id')->unique())
+            ->whereIn('inventory_item_id', $rows->pluck('inventory_item_id')->unique())
+            ->get()
+            ->groupBy(fn ($b) => $b->event_id . '-' . $b->inventory_item_id)
+            ->map(fn ($group) => (int) $group->sum('quantity'));
+
+        // Units still out per condition, so Edit Return can cap each condition.
+        $stillOutUnits = EventInventoryItem::with('inventoryItem:id,new_quantity,good_quantity,fair_quantity,poor_quantity')
+            ->whereIn('event_id', $rows->pluck('event_id')->unique())
+            ->whereIn('inventory_item_id', $rows->pluck('inventory_item_id')->unique())
+            ->get()
+            ->groupBy(fn ($b) => $b->event_id . '-' . $b->inventory_item_id)
+            ->map(function ($group) {
+                $sum = array_fill_keys(array_keys(InventoryItem::CONDITION_COLUMNS), 0);
+                foreach ($group as $b) {
+                    foreach ($b->resolvedUnits($b->inventoryItem->condition ?? 'Good') as $label => $n) {
+                        $sum[$label] += $n;
+                    }
+                }
+                return $sum;
+            });
+
+        $releases = $rows->map(function ($r) use ($stillBorrowed, $stillOutUnits) {
+            $main = $r->inventoryItem->condition ?? 'Good';
+            $units = $r->resolvedUnits($main);
+            $out = $stillOutUnits[$r->event_id . '-' . $r->inventory_item_id] ?? array_fill_keys(array_keys($units), 0);
+            $maxUnits = [];
+            foreach ($units as $label => $n) {
+                $maxUnits[$label] = $n + ($out[$label] ?? 0);
+            }
+
+            return [
+                'id' => $r->id,
+                'event_id' => $r->event_id,
+                'event_name' => $r->event?->name ?? 'Deleted event',
+                'item_name' => $r->inventoryItem->name ?? 'Unknown item',
+                'quantity' => $r->quantity,
+                // Condition each returned unit came back in.
+                'units' => $units,
+                'max_units' => $maxUnits,
+                'max_quantity' => $r->quantity + ($stillBorrowed[$r->event_id . '-' . $r->inventory_item_id] ?? 0),
+                'released_by' => $r->released_by,
+                'released_at' => $r->created_at,
+                'evidence_photo_url' => $r->evidence_photo_url,
+                'evidence_photo_urls' => $r->evidence_photo_urls,
+                'activity' => $r->activity_log_urls,
+            ];
+        });
+
+        return response()->json([
+            'data' => $releases,
+            'current_page' => $page,
+            'last_page' => $lastPage,
+            'total' => $total,
+        ]);
+    }
+
+    /**
+     * Reverses a single release: puts the quantity back on the event's
+     * borrow record (re-creating it if the release had zeroed it out and
+     * deleted the row) and takes it back out of Inventory's available
+     * stock. This is the fix for "I released 3 but only meant to release
+     * 2" -- undo the mistaken release of 3, then release 2 properly.
+     */
+    public function undoRelease(Request $request, $releaseId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Moving a release back to Pending takes no photo -- the release
+        // already carries its own evidence, so an undo stores none.
+
+        $release = EventInventoryRelease::whereNull('undone_at')->findOrFail($releaseId);
+        $event = Event::withoutTrashed()->find($release->event_id);
+
+        if (!$event) {
+            return response()->json(['message' => 'That event no longer exists, so this release can\'t be undone.'], 422);
+        }
+
+        // Undo doesn't have to be all-or-nothing -- if only some of what
+        // was released was the actual mistake (released 2, meant 1), the
+        // rest of it can stay released. Defaults to the whole thing when
+        // no quantity is given, and is clamped to what's left on this
+        // release record either way.
+        $requestedQty = (int) $request->input('quantity', $release->quantity);
+        $requestedQty = max(1, min($requestedQty, $release->quantity));
+
+        $item = InventoryItem::withTrashed()->find($release->inventory_item_id);
+
+        // If some of what this release put back into stock has already
+        // been lent out again (to this event or another one) in the
+        // meantime, there may not be enough of it sitting in Inventory
+        // to take back -- undoing anyway would push the count negative.
+        // The units taken back are the ones this release returned (same
+        // conditions), so each has to still be in stock.
+        $mainCondition = $item->condition ?? 'Good';
+        $undoUnits = $release->takeOutUnits($requestedQty, $mainCondition);
+
+        if ($item && ($item->quantity < $requestedQty || $item->shortfall($undoUnits))) {
+            return response()->json([
+                'message' => "Can't undo -- only {$item->quantity} of this item is left in Inventory now. Some of it may have already been lent out again since it was released.",
+            ], 422);
+        }
+
+        $borrow = $event->borrowedItems()->where('inventory_item_id', $release->inventory_item_id)->first();
+        if (!$borrow) {
+            $borrow = new EventInventoryItem([
+                'event_id' => $event->id,
+                'inventory_item_id' => $release->inventory_item_id,
+                'quantity' => 0,
+            ]);
+        }
+        $borrow->addUnits($undoUnits, $mainCondition);
+        $borrow->save();
+
+        $item?->takeUnits($undoUnits);
+
+        // Shrink this release record by however much of it was just
+        // undone; once nothing is left of it, mark it fully undone so it
+        // drops off the Recently Released list. A partial undo leaves the
+        // record showing the remaining (still genuinely released) amount.
+        // (takeOutUnits above already took $requestedQty off this record.)
+        if ($release->quantity <= 0) {
+            $release->quantity = 0;
+            $release->undone_at = now();
+        }
+        $release->save();
+
+        // One row per Undo click -- see EventInventoryReleaseUndo's own
+        // doc comment for why this is a separate log rather than a single
+        // field on the release. This is what the Returns page's "Recently
+        // Undone" record reads.
+        EventInventoryReleaseUndo::create([
+            'event_inventory_release_id' => $release->id,
+            'quantity' => $requestedQty,
+            'undone_by' => auth()->user()?->user_code,
+        ]);
+
+        $itemName = $item->name ?? 'item';
+        $this->createLog('Undo Return', 'Inventory', "Undid return of {$requestedQty}x {$itemName} for event: {$event->name}");
+
+        return response()->json(['message' => 'Release undone -- the item is marked borrowed again.']);
+    }
+
+    /**
+     * Edits a release in place -- the "fix it right where it is" path for a
+     * mis-entered return, instead of undoing it and releasing again:
+     *  - quantity: lower it and the difference goes back to the event's
+     *    borrowed items (and out of Inventory's stock); raise it and the
+     *    extra is taken from what the event still has borrowed.
+     *  - photo: optional; when sent it REPLACES the saved evidence photo
+     *    (the old file is deleted), when omitted the existing one is kept.
+     */
+    public function updateRelease(Request $request, $releaseId)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $release = EventInventoryRelease::whereNull('undone_at')->findOrFail($releaseId);
+        $event = Event::withoutTrashed()->find($release->event_id);
+
+        if (!$event) {
+            return response()->json(['message' => 'That event no longer exists, so this return can\'t be edited.'], 422);
+        }
+
+        $borrow = $event->borrowedItems()->where('inventory_item_id', $release->inventory_item_id)->first();
+        $maxQty = $release->quantity + ($borrow?->quantity ?? 0);
+
+        $request->validate([
+            'quantity' => 'nullable|integer|min:1|max:' . $maxQty,
+            'photo' => 'nullable|' . \App\Support\Uploads::IMAGE_RULE,
+            // The whole evidence-photo list: keep_photos[] = indexes of the
+            // saved photos to keep (cover first), photos[] = new files.
+            'photos_sync' => 'nullable|boolean',
+            'photos' => 'nullable|array|max:5',
+            'photos.*' => \App\Support\Uploads::IMAGE_RULE,
+            'keep_photos' => 'nullable|array',
+            'keep_photos.*' => 'integer|min:0',
+            'conditions' => 'nullable|array',
+            'conditions.*' => 'nullable|integer|min:0',
+        ]);
+
+        // Validate the photo list up front (nothing is uploaded or changed
+        // yet): a return always keeps at least one evidence photo, max 5.
+        if ($request->boolean('photos_sync')) {
+            $plan = PhotoSet::plan($release->allEvidencePhotoPaths(), $request);
+            if (count($plan['kept']) + count($plan['files']) === 0) {
+                return response()->json(['message' => 'A return needs at least one evidence photo.'], 422);
+            }
+        }
+
+        $item = InventoryItem::withTrashed()->find($release->inventory_item_id);
+        $mainCondition = $item->condition ?? 'Good';
+
+        $oldQty = (int) $release->quantity;
+        $current = $release->resolvedUnits($mainCondition);
+        $stillOut = $borrow ? $borrow->resolvedUnits($mainCondition) : array_fill_keys(array_keys($current), 0);
+
+        // Staff may pick exactly how many units came back in each condition
+        // (conditions[New|Good|Fair|Poor]); otherwise only the total changes.
+        $target = null;
+        if ($request->has('conditions')) {
+            $target = [];
+            foreach (array_keys($current) as $label) {
+                $target[$label] = max(0, (int) ($request->input("conditions.{$label}") ?? 0));
+                if ($target[$label] > $current[$label] + ($stillOut[$label] ?? 0)) {
+                    return response()->json([
+                        'message' => "Only " . ($current[$label] + ($stillOut[$label] ?? 0)) . " {$label} unit(s) of this item belong to this return.",
+                    ], 422);
+                }
+            }
+            if (array_sum($target) < 1) {
+                return response()->json(['message' => 'A return needs at least one unit.'], 422);
+            }
+            $newQty = array_sum($target);
+        } else {
+            $newQty = $request->filled('quantity') ? (int) $request->quantity : $release->quantity;
+        }
+        $delta = $newQty - $release->quantity; // < 0: send back to pending, > 0: release more
+
+        if ($target !== null) {
+            $backUnits = [];
+            $moreUnits = [];
+            foreach ($target as $label => $n) {
+                $backUnits[$label] = max(0, $current[$label] - $n);
+                $moreUnits[$label] = max(0, $n - $current[$label]);
+            }
+        } else {
+            $backUnits = $delta < 0 ? $release->takeOutUnits(-$delta, $mainCondition) : [];
+            $moreUnits = null;
+        }
+
+        $backTotal = array_sum($backUnits);
+        if ($backTotal > 0) {
+            if ($item && ($item->quantity < $backTotal || $item->shortfall($backUnits))) {
+                return response()->json([
+                    'message' => "Can't lower this -- not enough of those units are left in Inventory now. Some of it may have already been lent out again since it was released.",
+                ], 422);
+            }
+
+            if (!$borrow) {
+                $borrow = new EventInventoryItem([
+                    'event_id' => $event->id,
+                    'inventory_item_id' => $release->inventory_item_id,
+                    'quantity' => 0,
+                ]);
+            }
+            $borrow->addUnits($backUnits, $mainCondition);
+            $borrow->save();
+
+            $item?->takeUnits($backUnits);
+        }
+
+        if ($target !== null) {
+            if (array_sum($moreUnits) > 0) {
+                // Exactly these units come out of what is still borrowed.
+                $left = $borrow->resolvedUnits($mainCondition);
+                foreach ($moreUnits as $label => $n) {
+                    $left[$label] = max(0, ($left[$label] ?? 0) - $n);
+                }
+                $borrow->setUnits($left);
+                if ($borrow->quantity <= 0) {
+                    $borrow->delete();
+                } else {
+                    $borrow->save();
+                }
+                $item?->giveUnits($moreUnits);
+            }
+            $release->setUnits($target);
+        } elseif ($delta > 0) {
+            // $borrow is guaranteed by the max rule above ($delta <= its quantity).
+            $moreUnits = $borrow->takeOutUnits($delta, $mainCondition);
+            if ($borrow->quantity <= 0) {
+                $borrow->delete();
+            } else {
+                $borrow->save();
+            }
+
+            $item?->giveUnits($moreUnits);
+            $release->addUnits($moreUnits, $mainCondition);
+        }
+
+        $replacedPhotos = [];
+        $addedPhotos = [];
+        $photosBefore = $release->allEvidencePhotoPaths();
+        if ($request->boolean('photos_sync')) {
+            $res = PhotoSet::resolve($release->allEvidencePhotoPaths(), $request, fn ($f) => $this->localUpload($f, 'release_evidence_photos'));
+            $release->evidence_photo_path = $res['final'][0];
+            $release->extra_evidence_photo_paths = count($res['final']) > 1 ? array_slice($res['final'], 1) : null;
+            // Evidence is never deleted: replaced / removed photos stay on disk and are listed in the edit trail.
+            $replacedPhotos = $res['removed'];
+            $addedPhotos = array_values(array_diff($res['final'], $photosBefore));
+        } elseif ($request->hasFile('photo')) {
+            $replacedPhotos = array_filter([$release->evidence_photo_path]);
+            $release->evidence_photo_path = $this->localUpload($request->file('photo'), 'release_evidence_photos');
+            $addedPhotos = [$release->evidence_photo_path];
+        }
+
+        // The edit trail: which counts changed (from -> to) and any photos that were replaced.
+        $changes = [];
+        if ($target !== null) {
+            foreach ($target as $label => $n) {
+                if ($n !== (int) ($current[$label] ?? 0)) {
+                    $changes[] = ['field' => strtolower($label), 'from' => (int) ($current[$label] ?? 0), 'to' => $n];
+                }
+            }
+        } elseif ($newQty !== $oldQty) {
+            $changes[] = ['field' => 'quantity', 'from' => $oldQty, 'to' => $newQty];
+        }
+        $release->logEdit($changes, $replacedPhotos, $addedPhotos);
+
+        $release->quantity = $newQty;
+        $release->save();
+
+        $itemName = $item->name ?? 'item';
+        $this->createLog('Edit Return', 'Inventory', "Edited return of {$itemName} for event: {$event->name} -- now {$newQty} returned");
+
+        return response()->json([
+            'message' => 'Return updated.',
+            'quantity' => $newQty,
+            'moved_back_to_pending' => $delta < 0 ? -$delta : 0,
+        ]);
+    }
+}
+</file>
+
+</files>
