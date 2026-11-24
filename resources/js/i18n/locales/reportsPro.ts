@@ -9,6 +9,7 @@ export const reportsProTranslations: Dict = {
   rpHistoryTab: { en: "Report History", tl: "Kasaysayan ng Ulat", ceb: "Kasaysayan sa Report" },
 
   // Period presets
+  rpFiltersLabel: { en: "Filters", tl: "Mga filter", ceb: "Mga filter" },
   rpPeriodLabel: { en: "Period", tl: "Panahon", ceb: "Panahon" },
   rpPresetLastMonth: { en: "Last month", tl: "Nakaraang buwan", ceb: "Miaging bulan" },
   rpPresetQuarter: { en: "This quarter", tl: "Ngayong quarter", ceb: "Karong quarter" },

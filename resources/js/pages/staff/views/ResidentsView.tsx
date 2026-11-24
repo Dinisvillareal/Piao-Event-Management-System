@@ -11,7 +11,6 @@ import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FormSelect from "../../../components/ui/FormSelect";
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
-import SlideOutGhost from "../../../components/ui/SlideOutGhost";
 import { createPortal } from "react-dom";
 import { renderMemberIdCard, renderMemberIdCardSides } from "../../../lib/memberIdCard";
 import IdCardFlip from "../../../components/ui/IdCardFlip";
@@ -30,6 +29,7 @@ import {
   Plus,
   Pencil,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
   UserPlus,
   QrCode,
@@ -50,6 +50,7 @@ import {
 import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
+import SlideOutGhost from "../../../components/ui/SlideOutGhost";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
 import DefaultAvatar from "../../../components/ui/DefaultAvatar";
@@ -360,6 +361,16 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   // Front/back images for the turning preview (qrCardUrl is the combined download image).
   const [qrCardSides, setQrCardSides] = useState<{ front: string; back: string } | null>(null);
   const [editRecord, setEditRecord] = useState<string | null>(null);
+  // When Edit Record was opened from a resident's profile, closing the form (cancel or save)
+  // goes back to that profile, not to the master list.
+  const [editFromProfile, setEditFromProfile] = useState<string | null>(null);
+  const closeEditForm = () => {
+    setEditRecord(null);
+    if (editFromProfile) {
+      setViewRecord(editFromProfile);
+      setEditFromProfile(null);
+    }
+  };
 
   // The Add/Edit panels are `fixed` full-page take-overs, so they need to
   // start exactly where the page content starts (right under the top header).
@@ -368,7 +379,7 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   // panel. Measure the real content scroller instead.
   const [panelTop, setPanelTop] = useState(73);
   // Show/hide toggle for the account password field (Add + Edit forms).
-  const panelOpen = showAddForm || !!editRecord;
+  const panelOpen = showAddForm || !!editRecord || !!viewRecord;
   useLayoutEffect(() => {
     if (!panelOpen) return;
     const measure = () => {
@@ -414,6 +425,9 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   // "print a new slip" confirmation.
   const [activationSlip, setActivationSlip] = useState<ActivationSlip | null>(null);
   const [slipConfirmFor, setSlipConfirmFor] = useState<number | null>(null);
+  // "Add account" from the profile: a focused dialog that goes straight to making the account.
+  const [addAccountFor, setAddAccountFor] = useState<string | null>(null);
+  const [addAccountBusy, setAddAccountBusy] = useState(false);
   const [showRoleChangedModal, setShowRoleChangedModal] = useState(false);
   const [showCancelConfirm, setShowCancelConfirm] = useState<"edit" | "add" | null>(null);
   const [showAddConfirm, setShowAddConfirm] = useState(false);
@@ -432,7 +446,13 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   // (only one of those forms is ever open at a time), styled like the
   // system's other receipt/attachment viewers rather than opening the
   // image in a bare new tab.
-  const [photoPreviewModal, setPhotoPreviewModal] = useState<{ url: string; label: string; name: string; size: number | null } | null>(null);
+  const [photoPreviewModal, setPhotoPreviewModal] = useState<{ url: string; label: string; name: string; size: number | null; editFor?: string } | null>(null);
+  // "Edit photo" straight from the profile: pick a file, confirm, save (no need to open Edit Record).
+  const profilePhotoInput = useRef<HTMLInputElement>(null);
+  const photoTarget = useRef<string | null>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<{ file: File; preview: string; residentId: string } | null>(null);
+  const [savingPhoto, setSavingPhoto] = useState(false);
+  const [photoStatus, setPhotoStatus] = useState<"success" | "error" | null>(null);
 
   const currentUserId = useMemo<number | null>(() => {
     const sessionUser = sessionStorage.getItem("user");
@@ -810,6 +830,59 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
     e.target.value = "";
   };
 
+  const startProfilePhotoEdit = (residentId: string) => {
+    photoTarget.current = residentId;
+    profilePhotoInput.current?.click();
+  };
+
+  const onProfilePhotoPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const residentId = photoTarget.current;
+    e.target.value = "";
+    if (!file || !residentId) return;
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setApiErrorTitle(t("validationErrorTitle"));
+      setApiError(t("uploadImageOnly"));
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setApiErrorTitle(t("validationErrorTitle"));
+      setApiError(t("photoTooLarge"));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => setPendingPhoto({ file, preview: ev.target?.result as string, residentId });
+    reader.readAsDataURL(file);
+  };
+
+  const savePendingPhoto = async () => {
+    if (!pendingPhoto || savingPhoto) return;
+    const target = residentsData.find((x) => x.id === pendingPhoto.residentId);
+    if (!target) { setPendingPhoto(null); return; }
+    setSavingPhoto(true);
+    try {
+      const fd = new FormData();
+      fd.append("validation_id", pendingPhoto.file);
+      const res = await fetch(`/users/${target.real_id}/photo`, {
+        method: "POST",
+        headers: { Accept: "application/json", "X-CSRF-TOKEN": csrfToken() },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("photo failed");
+      const body = await safeParseJson(res);
+      await fetchResidents();
+      // Keep the open viewer on the new photo.
+      setPhotoPreviewModal((m) => (m && m.editFor === pendingPhoto.residentId ? { ...m, url: body.validation_id_url || m.url, size: null } : m));
+      setPendingPhoto(null);
+      setPhotoStatus("success");
+    } catch {
+      setPendingPhoto(null);
+      setPhotoStatus("error");
+    } finally {
+      setSavingPhoto(false);
+    }
+  };
+
   const handleRemovePhoto = (isEdit = false) => {
     if (isEdit) {
       setEditPhotoFile(null);
@@ -1131,13 +1204,14 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
         sessionStorage.removeItem("isAuthenticated");
 
         setEditRecord(null);
+        setEditFromProfile(null);
         setShowRoleChangedModal(true);
 
         return;
         }
 
       const editBody = await safeParseJson(res);
-      setEditRecord(null);
+      closeEditForm();
       setFormErrors({});
       setApiError(null);
       if (editBody?.activation_slip) setActivationSlip(editBody.activation_slip);
@@ -1147,6 +1221,36 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
       console.error("Update error:", e);
       setApiErrorTitle(t("errorTitle"));
       setApiError(t("networkErrorTryAgain"));
+    }
+  };
+
+  // ─── ADD ACCOUNT (one step): POST /users/{id}/portal-account ──────────────
+  const performAddAccount = async () => {
+    const rec = residentsData.find((x) => x.id === addAccountFor);
+    if (!rec || addAccountBusy) return;
+    setAddAccountBusy(true);
+    try {
+      const res = await fetch(`/users/${rec.real_id}/portal-account`, {
+        method: "POST",
+        headers: { Accept: "application/json", "X-CSRF-TOKEN": csrfToken() },
+      });
+      const body = await safeParseJson(res);
+      if (!res.ok || !body.activation_slip) {
+        setAddAccountFor(null);
+        setApiErrorTitle(t("errorTitle"));
+        setApiError(body.message ?? t("saveRecordFailed"));
+        return;
+      }
+      setAddAccountFor(null);
+      setActivationSlip(body.activation_slip);
+      fetchResidents();
+    } catch (e) {
+      console.error("Add account error:", e);
+      setAddAccountFor(null);
+      setApiErrorTitle(t("errorTitle"));
+      setApiError(t("networkErrorTryAgain"));
+    } finally {
+      setAddAccountBusy(false);
     }
   };
 
@@ -1241,7 +1345,7 @@ const handleDeleteResident = async () => {
   const handleCancelEdit = () => {
     if (hasEditChanges) setShowCancelConfirm("edit");
     else {
-      setEditRecord(null);
+      closeEditForm();
       setFormErrors({});
       setApiError(null);
     }
@@ -1689,7 +1793,7 @@ const handleDeleteResident = async () => {
                     <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/20 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-200">
                       <KeyRound className="h-3.5 w-3.5" /> {t("actPendingBadge")}
                     </span>
-                    <p className="mt-2 text-sm text-amber-100/90">{t("actPendingNote")}</p>
+                    <p className="mt-2 text-sm text-amber-200">{t("actPendingNote")}</p>
                   </div>
                 ) : null
               ) : (
@@ -1989,28 +2093,32 @@ const handleDeleteResident = async () => {
           smaller confirm modals further below are left on their original
           light theme since they're full-screen takeovers, not part of the
           list surface itself. */}
-      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
       <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="dash-card flex flex-col gap-3 rounded-[32px] p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("residentsMasterList")}</h1>
+          <h1
+            className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient"
+          >
+            {t("residentsMasterList")}
+          </h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("residentsSubtitle")}</p>
         </div>
         <button
           onClick={handleOpenAddForm}
           disabled={loading || pageSwitching}
-          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
+          className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
         >
           {t("resRegisterResident")}
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
             <UserPlus className="h-5 w-5 text-white" />
           </span>
         </button>
       </div>
 
       {/* Quick tabs + search / filters / sort / chips */}
-      <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+      <div className="dash-card space-y-4 rounded-[32px] p-4 sm:p-6">
         <QuickTabs
           value={membershipFilter}
           onChange={(k) => { setMembershipFilter(k as typeof membershipFilter); goToPage(1); }}
@@ -2031,8 +2139,8 @@ const handleDeleteResident = async () => {
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 sm:px-5 border-b border-white/10 bg-white/[0.03]">
+      <div className="dash-card overflow-hidden rounded-[32px]">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3 sm:px-5 border-b border-white/10">
           <div className="flex items-center gap-2.5">
             <p className="whitespace-nowrap text-xs font-bold uppercase tracking-wide text-white">{t("residentsMasterList")}</p>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">
@@ -2051,7 +2159,7 @@ const handleDeleteResident = async () => {
                 onClick={() => openExportDialog("excel")}
                 disabled={loading || pageSwitching || tabTotals.all === 0}
                 title={t("resExportExcelTitle")}
-                className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-[13px] font-semibold text-white transition-all duration-300 hover:border-[#1E3A5F] hover:bg-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex items-center gap-2 dash-tile rounded-full px-4 py-2 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <FileSpreadsheet className="h-4 w-4 text-[#7DD8CB]" />
                 {t("resExportExcel")}
@@ -2061,7 +2169,7 @@ const handleDeleteResident = async () => {
                 onClick={() => openExportDialog("pdf")}
                 disabled={loading || pageSwitching || tabTotals.all === 0}
                 title={t("resExportPdfTitle")}
-                className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-[13px] font-semibold text-white transition-all duration-300 hover:border-[#1E3A5F] hover:bg-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40"
+                className="inline-flex items-center gap-2 dash-tile rounded-full px-4 py-2 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <FileText className="h-4 w-4 text-gold-300" />
                 {t("resExportPdf")}
@@ -2167,11 +2275,11 @@ const handleDeleteResident = async () => {
                 onClick={() => goToPage((p) => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
                 aria-label={t("budgetPagePrev")}
-                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] active:scale-95 transition"
+                className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] active:scale-95 transition"
               >
                 ←
               </button>
-              <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold" aria-current="page">
+              <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold" aria-current="page">
                 {currentPage}
               </span>
               <button
@@ -2190,7 +2298,7 @@ const handleDeleteResident = async () => {
       </div>
       </div>
 
-      {/* ─── Resident profile slide-over ──────────────────────────────────────── */}
+      {/* ─── Resident profile page ──────────────────────────────────────── */}
       {viewRecord && (() => {
         const r = residentsData.find((x) => x.id === viewRecord);
         if (!r) return null;
@@ -2240,14 +2348,15 @@ const handleDeleteResident = async () => {
             ),
           ],
         ];
-        const InfoCard = ({ title, rows }: { title: string; rows: [string, React.ReactNode][] }) => (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03]">
-            <p className="px-5 pb-2 pt-4 text-xs font-bold uppercase tracking-wider text-white/45">{title}</p>
-            <dl>
+        // Caption over a boxed value, two per row (the reference "Personal Info" layout).
+        const InfoGroup = ({ title, rows }: { title: string; rows: [string, React.ReactNode][] }) => (
+          <div>
+            <p className="mb-3 text-xs font-bold uppercase tracking-wider text-white/45">{title}</p>
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
               {rows.map(([label, value]) => (
-                <div key={label} className="flex items-center justify-between gap-4 border-t border-white/10 px-5 py-3">
-                  <dt className="shrink-0 text-sm text-white/50">{label}</dt>
-                  <dd className="min-w-0 break-words text-right text-[15px] font-semibold text-white">{value}</dd>
+                <div key={label} className="min-w-0">
+                  <dt className="mb-1 text-xs font-semibold text-white/55">{label}</dt>
+                  <dd className="flex min-h-[46px] items-center break-words rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-[15px] font-semibold text-white">{value}</dd>
                 </div>
               ))}
             </dl>
@@ -2262,50 +2371,88 @@ const handleDeleteResident = async () => {
 
         return createPortal(
           <>
-            {/* Back to a right-anchored slide-over drawer (dimmed backdrop,
-                fixed narrower width, slides in from the right edge) rather
-                than the full content-area take-over used for Add/Edit --
-                but keeps that redesign's section styling (underlined ink
-                headers, caption-over-value fields) inside it. Same data,
-                same handlers -- styling only. */}
-            <style>{`
-              @keyframes residentProfileSlideIn {
-                from { transform: translateX(100%); }
-                to { transform: translateX(0); }
-              }
-              .resident-profile-slide-in { animation: residentProfileSlideIn 280ms ease-out; }
-            `}</style>
-            <SlideOutGhost />
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-40" onClick={() => setViewRecord(null)} />
-            <div className="resident-profile-slide-in fixed inset-y-0 right-0 z-50 w-full max-w-4xl bg-[#0A0E1A] border-l border-white/10 shadow-2xl flex flex-col overflow-hidden">
+            {/* Content-area page (no slide animation), laid out like a profile
+                settings screen: a summary card on the left, details on the right.
+                Same data and handlers as before. */}
+            <div style={{ top: panelTop }} className="resident-form-panel resident-profile-page fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
               <img
                 src="/logo-removebg-preview.png"
                 alt=""
                 aria-hidden="true"
-                className="pointer-events-none select-none absolute z-0 bottom-[-4rem] right-[-4rem] h-[30rem] w-[30rem] object-contain opacity-[0.05]"
+                className="pointer-events-none select-none fixed z-0 bottom-[-4rem] right-[-4rem] h-[28rem] w-[28rem] sm:h-[36rem] sm:w-[36rem] object-contain opacity-[0.05]"
               />
 
-              <div className="relative z-10 flex items-center justify-between px-8 py-5 border-b border-white/10 shrink-0 bg-[#0A0E1A]">
-                <h2 className="font-display text-xl font-bold text-white">{t("resProfileTitle")}</h2>
-                <button onClick={() => setViewRecord(null)} className="text-white/50 hover:text-white">
-                  <XIcon size={26} />
-                </button>
-              </div>
+              <div className="relative z-10 mx-auto w-full max-w-[1680px] px-4 pb-12 pt-7 sm:px-8 sm:pt-8 2xl:px-12">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setViewRecord(null)}
+                    className="dash-tile inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/80 transition hover:text-white"
+                  >
+                    <ChevronLeft className="h-4 w-4" /> {t("resBackToList")}
+                  </button>
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    {r.deleted_at === null && (
+                      <button
+                        onClick={() => setDeleteRecord(r.id)}
+                        className="group inline-flex items-center gap-3 rounded-full border border-red-600 bg-red-600 py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-red-700 hover:bg-red-700 active:scale-95"
+                      >
+                        {t("archiveActivityOption")}
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
+                          <Archive className="h-[18px] w-[18px] text-white" />
+                        </span>
+                      </button>
+                    )}
+                    {r.deleted_at === null && !r.hasAccount && (
+                      <button
+                        onClick={() => setAddAccountFor(r.id)}
+                        className="group inline-flex items-center gap-3 rounded-full border border-slate-300 bg-white py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-slate-900 shadow-md transition-all duration-500 ease-out hover:border-slate-400 hover:bg-slate-100 active:scale-95"
+                      >
+                        {t("resAddAccount")}
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900/10 transition-colors duration-500 ease-out group-hover:bg-slate-900/15">
+                          <UserPlus className="h-[18px] w-[18px] text-slate-900" />
+                        </span>
+                      </button>
+                    )}
+                    {r.deleted_at === null && (
+                      <button
+                        onClick={() => {
+                          setEditFromProfile(r.id);
+                          setEditRecord(r.id);
+                        }}
+                        className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95"
+                      >
+                        {t("editRecordTitle")}
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
+                          <Pencil className="h-[18px] w-[18px] text-white" />
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-              <div className="relative z-10 flex-1 overflow-y-auto px-8 py-7">
+                <h1 className="mt-5 font-display text-2xl font-extrabold tracking-tight text-white sm:text-3xl">{t("resProfileTitle")}</h1>
+
                 {r.deleted_at !== null && (
-                  <div className="mb-6 rounded-xl border border-red-500/25 bg-red-500/10 text-red-300 px-4 py-2.5 text-sm text-center">
+                  <div className="mt-5 rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2.5 text-center text-sm text-red-300">
                     ⚠ {t("recordDeletedWarning")}
                   </div>
                 )}
 
-                <div className="flex items-center gap-4">
-                  <div className="relative h-20 w-20 shrink-0">
-                    <div className="h-20 w-20 rounded-full bg-[#123A38] border border-white/10 flex items-center justify-center text-lg font-bold text-[#7DD8CB] overflow-hidden">
+                <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(380px,34%)_minmax(0,1fr)] lg:items-start">
+                  {/* ── Left: profile card -- photo as the cover, details on frosted panels ── */}
+                  <aside className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03]">
+                    {/* Cover photo, fading into the card (mask, so it works in light and dark) */}
+                    <div
+                      className="absolute inset-x-0 top-0 h-[430px] bg-[#123A38]"
+                      style={{ WebkitMaskImage: "linear-gradient(to bottom, #000 82%, transparent 100%)", maskImage: "linear-gradient(to bottom, #000 82%, transparent 100%)" }}
+                    >
                       {r.photo ? (
-                        <img src={r.photo} alt="" className="h-full w-full object-cover" />
+                        <img src={r.photo} alt="" className="h-full w-full object-cover object-[50%_14%]" />
                       ) : (
-                        <DefaultAvatar className="h-20 w-20" title={`${r.firstName} ${r.lastName}`} />
+                        <div className="flex h-full w-full items-start justify-center pt-8">
+                          <DefaultAvatar className="h-48 w-48" title={`${r.firstName} ${r.lastName}`} />
+                        </div>
                       )}
                     </div>
                     {r.photo && (
@@ -2317,182 +2464,169 @@ const handleDeleteResident = async () => {
                             label: t("idPhotoFieldLabel"),
                             name: withSuffix(`${r.firstName} ${r.middleName} ${r.lastName}`.replace(/\s+/g, " "), r.suffix),
                             size: null,
+                            editFor: r.id,
                           })
                         }
                         title={t("photoPreviewBtn")}
                         aria-label={t("photoPreviewBtn")}
-                        className="absolute inset-0 rounded-full group focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4FBEB0]"
+                        className="group absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white backdrop-blur transition hover:bg-[#4FBEB0] hover:text-[#0A0E1A] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4FBEB0]"
                       >
-                        <span className="absolute bottom-0 right-0 flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white backdrop-blur transition group-hover:bg-[#4FBEB0] group-hover:text-[#0A0E1A]">
-                          <Eye className="h-4 w-4" />
-                        </span>
+                        <Eye className="h-5 w-5" />
                       </button>
                     )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h1 className="font-display text-2xl font-extrabold text-white truncate">
-                      {withSuffix(`${r.firstName} ${r.middleName} ${r.lastName}`.replace(/\s+/g, " "), r.suffix)}
-                    </h1>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm text-white/40 font-mono">
-                      {r.id}
-                      {r.barangayPosition && (
-                        <span className="rounded-full bg-gold-400/15 px-2.5 py-0.5 font-sans text-xs font-bold uppercase tracking-wide text-gold-300">
-                          {r.barangayPosition === "captain" ? t("positionCaptain") : t("positionSecretary")}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-semibold shrink-0 ${
-                      active ? "bg-[#4FBEB0]/10 text-[#7DD8CB]" : "bg-white/[0.06] text-white/45"
-                    }`}
-                  >
-                    <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-[#4FBEB0]" : "bg-white/30"}`} />
-                    {active ? t("resActive") : t("resNotAMember")}
-                  </span>
-                </div>
-
-                {(attendanceLoading || attendanceHistory.length > 0) && (
-                  <div className="mt-6 grid grid-cols-3 gap-3">
-                    {([
-                      ["complete", t("statusComplete"), "bg-[#4FBEB0]"],
-                      ["incomplete", t("statusIncomplete"), "bg-gold-400"],
-                      ["missed", t("statusMissed"), "bg-red-400"],
-                    ] as const).map(([key, label, bar]) => (
-                      <div key={key} className="flex items-stretch gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                        <span className={`w-1 shrink-0 rounded-full ${bar}`} />
-                        <div className="min-w-0">
-                          {attendanceLoading ? <Skeleton className="h-7 w-8" /> : <p className="text-2xl font-black leading-tight text-white">{attCounts[key]}</p>}
-                          <p className="truncate text-xs font-medium text-white/50">{label}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <section className="mt-8">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-white/80 pb-2.5 border-b border-white/15 mb-4">
-                    {t("resPersonalInfo")}
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <InfoCard title={t("resInfoIdentity")} rows={identityRows} />
-                    <InfoCard title={t("resInfoHome")} rows={homeRows} />
-                    {r.currentStatuses.length > 0 && (
-                      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-5 py-4 sm:col-span-2">
-                        <span className="block text-xs font-bold uppercase tracking-wider text-white/45">{t("statusColumn")}</span>
-                        <div className="mt-1.5 flex flex-wrap gap-1.5">
-                          {r.currentStatuses.map((cs) => (
-                            <span key={cs.id} className="px-2.5 py-1 rounded-full text-[13px] font-medium bg-[#4FBEB0]/10 text-[#7DD8CB]">
-                              {tc(cs.label, language as any)}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                    {!r.photo && r.deleted_at === null && (
+                      <button
+                        type="button"
+                        onClick={() => startProfilePhotoEdit(r.id)}
+                        title={t("addPhotoLabel")}
+                        aria-label={t("addPhotoLabel")}
+                        className="group absolute right-4 top-4 z-20 flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-black/70 text-white backdrop-blur transition hover:bg-[#4FBEB0] hover:text-[#0A0E1A] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4FBEB0]"
+                      >
+                        <ImagePlus className="h-5 w-5" />
+                      </button>
                     )}
-                  </div>
-                </section>
 
-                <section className="mt-8">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-white/80 pb-2.5 border-b border-white/15 mb-4">
-                    {t("reportTypeMembership")}
-                  </h2>
-                  {allMems.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {allMems.map((m, i) => (
-                        <span key={i} className={`px-3 py-1.5 rounded-full text-sm font-medium ${getMembershipBadgeStyle(i)}`}>
-                          {tc(m, language as any)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <button
-                    onClick={() => setShowQrPanel(true)}
-                    className="mt-3 inline-flex items-center gap-2 rounded-full border border-gold-400/30 px-5 py-2.5 text-sm font-semibold text-gold-300 hover:bg-gold-400/10 transition-colors"
-                  >
-                    <QrCode className="h-4 w-4" /> {t("resViewQr")}
-                  </button>
-                </section>
-
-                <section className="mt-8">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-white/80 pb-2.5 border-b border-white/15 mb-4">
-                    {t("resAttendanceHistory")}
-                  </h2>
-                  {attendanceLoading ? (
-                    <div className="space-y-2">
-                      {Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
-                          <div className="min-w-0 flex-1 space-y-1.5">
-                            <Skeleton className="h-3.5 w-32" />
-                            <Skeleton className="h-3 w-20" />
-                          </div>
-                          <Skeleton className="h-5 w-16 rounded-full shrink-0" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : attendanceHistory.length === 0 ? (
-                    <p className="text-base text-white/40 italic">{t("resNoAttendanceYet")}</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {attendanceHistory.slice(0, 8).map((a) => (
-                        <div key={a.id} className="flex items-center justify-between gap-3 text-base rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 transition hover:bg-white/[0.05]">
-                          <div className="min-w-0">
-                            <p className="font-medium text-white truncate">{a.isEventDeleted ? t("resDeletedEvent") : a.eventTitle}</p>
-                            {a.eventDate && <p className="text-sm text-white/40">{formatDateShort(a.eventDate, locale)}</p>}
-                          </div>
+                    <div className="relative z-10 space-y-3.5 px-5 pb-5 pt-[316px]">
+                      {/* Name panel */}
+                      <div className="profile-glass rounded-2xl px-5 py-5 text-center">
+                        <h2 className="break-words font-display text-2xl font-extrabold leading-tight text-white">
+                          {withSuffix(`${r.firstName} ${r.middleName} ${r.lastName}`.replace(/\s+/g, " "), r.suffix)}
+                        </h2>
+                        <p className="mt-1 font-mono text-sm text-white/55">{r.id}</p>
+                        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                           <span
-                            className={`shrink-0 whitespace-nowrap px-3 py-1 rounded-full text-[12.5px] font-semibold ${
-                              String(a.status).toLowerCase() === "complete" ? "bg-[#4FBEB0]/15 text-[#7DD8CB]"
-                              : String(a.status).toLowerCase() === "incomplete" ? "bg-gold-400/15 text-gold-300"
-                              : "bg-red-500/15 text-red-400"
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold ${
+                              active ? "bg-[#4FBEB0]/15 text-[#7DD8CB]" : "bg-white/[0.08] text-white/55"
                             }`}
                           >
-                            {attendanceStatusLabel(a.status)}
+                            <span className={`h-1.5 w-1.5 rounded-full ${active ? "bg-[#4FBEB0]" : "bg-white/30"}`} />
+                            {active ? t("resActive") : t("resNotAMember")}
                           </span>
+                          {r.barangayPosition && (
+                            <span className="rounded-full bg-gold-400/15 px-2.5 py-1 text-xs font-bold uppercase tracking-wide text-gold-300">
+                              {r.barangayPosition === "captain" ? t("positionCaptain") : t("positionSecretary")}
+                            </span>
+                          )}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-              </div>
+                        <dl className="mt-4 text-sm">
+                          <div className="flex items-center justify-between gap-3 border-t border-white/15 py-2.5">
+                            <dt className="text-white/50">{t("ageLabel")}</dt>
+                            <dd className="font-semibold text-white">{r.age !== null ? `${r.age}${r.ageGroup ? ` · ${r.ageGroup}` : ""}` : dash}</dd>
+                          </div>
+                          <div className="flex items-center justify-between gap-3 border-t border-white/15 py-2.5">
+                            <dt className="text-white/50">{t("resPurok")}</dt>
+                            <dd className="min-w-0 truncate text-right font-semibold text-white">{r.address || dash}</dd>
+                          </div>
+                        </dl>
+                      </div>
 
-              <div className="relative z-10 flex items-center gap-3 px-8 py-5 border-t border-white/10 shrink-0 bg-[#0A0E1A]">
-                {r.deleted_at === null && (
-                  <button
-                    onClick={() => setDeleteRecord(r.id)}
-                    className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-300 hover:underline"
-                  >
-                    <Archive className="h-4 w-4" /> {t("archiveActivityOption")}
-                  </button>
-                )}
-                <div className="flex items-center gap-2 ml-auto">
-                  {r.deleted_at === null && !r.hasAccount && (
-                    <button
-                      onClick={() => {
-                        setEditRecord(r.id);
-                        setViewRecord(null);
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-[#4FBEB0]/30 px-5 py-2.5 text-base font-semibold text-[#7DD8CB] hover:bg-[#4FBEB0]/10 transition-colors"
-                    >
-                      <UserPlus className="h-4 w-4" /> {t("resAddAccount")}
-                    </button>
-                  )}
-                  {r.deleted_at === null && (
-                    <button
-                      onClick={() => {
-                        setEditRecord(r.id);
-                        setViewRecord(null);
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-white/15 px-5 py-2.5 text-base font-semibold text-white hover:bg-white/5 transition-colors"
-                    >
-                      <Pencil className="h-4 w-4" /> {t("editRecordTitle")}
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setViewRecord(null)}
-                    className="rounded-full bg-sage-700 hover:bg-sage-800 text-white px-6 py-2.5 text-base font-bold transition-colors"
-                  >
-                    {t("resDone")}
-                  </button>
+                      {/* Attendance */}
+                      {(attendanceLoading || attendanceHistory.length > 0) && (
+                        <div className="grid grid-cols-3 gap-2.5">
+                          {([
+                            ["complete", t("statusComplete"), "bg-[#4FBEB0]"],
+                            ["incomplete", t("statusIncomplete"), "bg-gold-400"],
+                            ["missed", t("statusMissed"), "bg-red-400"],
+                          ] as const).map(([key, label, bar]) => (
+                            <div key={key} className="min-w-0 rounded-2xl border border-white/20 bg-white/10 px-2 py-3 text-center backdrop-blur-xl">
+                              {attendanceLoading ? <Skeleton className="mx-auto h-6 w-6" /> : <p className="text-2xl font-black leading-tight text-white">{attCounts[key]}</p>}
+                              <p className="mt-0.5 truncate text-xs font-medium text-white/60">{label}</p>
+                              <span className={`mx-auto mt-1.5 block h-1 w-8 rounded-full ${bar}`} />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Membership + status chips */}
+                      <div className="rounded-2xl border border-white/20 bg-white/[0.06] p-4 backdrop-blur-xl">
+                        <p className="mb-2.5 text-center text-xs font-bold uppercase tracking-wider text-white/50">{t("reportTypeMembership")}</p>
+                        {allMems.length > 0 ? (
+                          <div className="flex flex-wrap justify-center gap-2">
+                            {allMems.map((m, i) => (
+                              <span key={i} className={`rounded-full px-3.5 py-1.5 text-sm font-medium ${getMembershipBadgeStyle(i)}`}>
+                                {tc(m, language as any)}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-center text-sm text-white/40">{dash}</p>
+                        )}
+                        {r.currentStatuses.length > 0 && (
+                          <>
+                            <p className="mb-2.5 mt-4 border-t border-white/15 pt-4 text-center text-xs font-bold uppercase tracking-wider text-white/50">{t("statusColumn")}</p>
+                            <div className="flex flex-wrap justify-center gap-2">
+                              {r.currentStatuses.map((cs) => (
+                                <span key={cs.id} className="rounded-full bg-[#4FBEB0]/10 px-3.5 py-1.5 text-sm font-medium text-[#7DD8CB]">
+                                  {tc(cs.label, language as any)}
+                                </span>
+                              ))}
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => setShowQrPanel(true)}
+                        className="profile-glass-btn inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-[15px] font-bold"
+                      >
+                        <QrCode className="h-5 w-5" /> {t("resViewQr")}
+                      </button>
+                    </div>
+                  </aside>
+
+                  {/* ── Right: details ── */}
+                  <div className="min-w-0 space-y-6">
+                    <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-7">
+                      <h2 className="mb-5 border-b border-white/15 pb-3 text-sm font-bold uppercase tracking-wider text-white/80">
+                        {t("resPersonalInfo")}
+                      </h2>
+                      <div className="space-y-7">
+                        <InfoGroup title={t("resInfoIdentity")} rows={identityRows} />
+                        <InfoGroup title={t("resInfoHome")} rows={homeRows} />
+                      </div>
+                    </section>
+
+                    <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-6 sm:p-7">
+                      <h2 className="mb-5 border-b border-white/15 pb-3 text-sm font-bold uppercase tracking-wider text-white/80">
+                        {t("resAttendanceHistory")}
+                      </h2>
+                      {attendanceLoading ? (
+                        <div className="space-y-2">
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <div key={i} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5">
+                              <div className="min-w-0 flex-1 space-y-1.5">
+                                <Skeleton className="h-3.5 w-32" />
+                                <Skeleton className="h-3 w-20" />
+                              </div>
+                              <Skeleton className="h-5 w-16 shrink-0 rounded-full" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : attendanceHistory.length === 0 ? (
+                        <p className="text-base italic text-white/40">{t("resNoAttendanceYet")}</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {attendanceHistory.slice(0, 8).map((a) => (
+                            <div key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 text-base transition hover:bg-white/[0.05]">
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-white">{a.isEventDeleted ? t("resDeletedEvent") : a.eventTitle}</p>
+                                {a.eventDate && <p className="text-sm text-white/40">{formatDateShort(a.eventDate, locale)}</p>}
+                              </div>
+                              <span
+                                className={`shrink-0 whitespace-nowrap rounded-full px-3 py-1 text-[12.5px] font-semibold ${
+                                  String(a.status).toLowerCase() === "complete" ? "bg-[#4FBEB0]/15 text-[#7DD8CB]"
+                                  : String(a.status).toLowerCase() === "incomplete" ? "bg-gold-400/15 text-gold-300"
+                                  : "bg-red-500/15 text-red-400"
+                                }`}
+                              >
+                                {attendanceStatusLabel(a.status)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  </div>
                 </div>
               </div>
             </div>
@@ -2586,8 +2720,11 @@ const handleDeleteResident = async () => {
           bold underlined section headers in ink (#1A1A1A) rather than the usual
           sage caption pills, per the "register resident" layout redesign. Same
           fields, same handlers -- styling only. */}
-      {showAddForm && (
-        <div style={{ top: panelTop }} className="resident-form-panel fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
+      {showAddForm && createPortal(
+        <>
+        <SlideOutGhost />
+        <div className="staff-drawer-backdrop bg-black/80 z-50" onClick={handleCancelAdd} />
+        <div className="resident-form-panel slide-over-in staff-drawer-panel fixed z-50 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
@@ -2599,9 +2736,9 @@ const handleDeleteResident = async () => {
             <button
               type="button"
               onClick={handleCancelAdd}
-              className="inline-flex items-center gap-2 text-base font-semibold text-white hover:opacity-70 transition mb-8"
+              className="dash-tile inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/80 hover:text-white transition mb-8"
             >
-              <ArrowLeft className="h-5 w-5" /> {t("cancel")}
+              <ChevronLeft className="h-4 w-4" /> {t("cancel")}
             </button>
 
             <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white text-center tracking-tight">
@@ -2847,14 +2984,14 @@ const handleDeleteResident = async () => {
                   disabled={!hasAddChanges}
                   className={`group w-full inline-flex items-center justify-center gap-3 rounded-full border pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide shadow-sm transition-all duration-500 ease-out ${
                     hasAddChanges
-                      ? "border-[#1E3A5F] bg-[#1E3A5F] text-white hover:border-[#122436] hover:bg-[#122436] hover:shadow-md"
+                      ? "form-glass-btn text-white"
                       : "border-white/10 bg-white/[0.02] text-white/30 cursor-not-allowed"
                   }`}
                 >
                   {t("saveRecordButton")}
                   <span
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-500 ease-out ${
-                      hasAddChanges ? "bg-[#0A0E1A] group-hover:bg-white/15" : "bg-white/5"
+                      hasAddChanges ? "bg-white/20 group-hover:bg-white/30" : "bg-white/5"
                     }`}
                   >
                     <Save className={`h-5 w-5 ${hasAddChanges ? "text-white" : "text-white/20"}`} />
@@ -2864,6 +3001,8 @@ const handleDeleteResident = async () => {
             </form>
           </div>
         </div>
+        </>,
+        document.body
       )}
 
       {/* ─── Edit Page ────────────────────────────────────────────────────────────
@@ -2871,8 +3010,11 @@ const handleDeleteResident = async () => {
           background, faded logo watermark, ink (#1A1A1A) underlined section
           headers -- for a consistent Add/Edit experience. Same fields, same
           handlers -- styling only. */}
-      {editRecord && editingResident && (
-        <div style={{ top: panelTop }} className="resident-form-panel fixed bottom-0 left-0 right-0 xl:left-[340px] z-30 bg-[#0A0E1A] overflow-y-auto">
+      {editRecord && editingResident && createPortal(
+        <>
+        <SlideOutGhost />
+        <div className="staff-drawer-backdrop bg-black/80 z-50" onClick={handleCancelEdit} />
+        <div className="resident-form-panel slide-over-in staff-drawer-panel fixed z-50 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
@@ -2884,9 +3026,9 @@ const handleDeleteResident = async () => {
             <button
               type="button"
               onClick={handleCancelEdit}
-              className="inline-flex items-center gap-2 text-base font-semibold text-white hover:opacity-70 transition mb-8"
+              className="dash-tile inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/80 hover:text-white transition mb-8"
             >
-              <ArrowLeft className="h-5 w-5" /> {t("cancel")}
+              <ChevronLeft className="h-4 w-4" /> {t("cancel")}
             </button>
 
             <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white text-center tracking-tight">
@@ -3147,14 +3289,14 @@ const handleDeleteResident = async () => {
                   disabled={!hasEditChanges || editingResident.deleted_at !== null}
                   className={`group w-full inline-flex items-center justify-center gap-3 rounded-full border pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide shadow-sm transition-all duration-500 ease-out ${
                     hasEditChanges && editingResident.deleted_at === null
-                      ? "border-[#1E3A5F] bg-[#1E3A5F] text-white hover:border-[#122436] hover:bg-[#122436] hover:shadow-md"
+                      ? "form-glass-btn text-white"
                       : "border-white/10 bg-white/[0.02] text-white/30 cursor-not-allowed"
                   }`}
                 >
                   {t("updateRecordButton")}
                   <span
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-500 ease-out ${
-                      hasEditChanges && editingResident.deleted_at === null ? "bg-[#0A0E1A] group-hover:bg-white/15" : "bg-white/5"
+                      hasEditChanges && editingResident.deleted_at === null ? "bg-white/20 group-hover:bg-white/30" : "bg-white/5"
                     }`}
                   >
                     <Save className={`h-5 w-5 ${hasEditChanges && editingResident.deleted_at === null ? "text-white" : "text-white/20"}`} />
@@ -3164,6 +3306,8 @@ const handleDeleteResident = async () => {
             </form>
           </div>
         </div>
+        </>,
+        document.body
       )}
 
       {/* ─── ID Photo preview popup ───────────────────────────────────────────── */}
@@ -3172,9 +3316,28 @@ const handleDeleteResident = async () => {
         name={photoPreviewModal?.name ?? ""}
         label={photoPreviewModal?.label}
         meta={photoPreviewModal?.size != null ? `${(photoPreviewModal.size / (1024 * 1024)).toFixed(2)} MB` : undefined}
+        onEdit={
+          photoPreviewModal?.editFor && residentsData.find((x) => x.id === photoPreviewModal.editFor)?.deleted_at === null
+            ? () => startProfilePhotoEdit(photoPreviewModal.editFor as string)
+            : undefined
+        }
         onSelect={() => {}}
         onClose={() => setPhotoPreviewModal(null)}
       />
+      <input ref={profilePhotoInput} type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" onChange={onProfilePhotoPicked} className="hidden" />
+      <ConfirmDialog
+        open={!!pendingPhoto}
+        icon={pendingPhoto ? <img src={pendingPhoto.preview} alt="" className="h-28 w-28 rounded-2xl border border-white/15 object-cover" /> : <ImagePlus size={32} />}
+        title={t("changePhotoTitle")}
+        body={t("changePhotoBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={savingPhoto ? t("changePhotoSavingLabel") : t("changePhotoConfirm")}
+        onCancel={() => { if (!savingPhoto) setPendingPhoto(null); }}
+        onConfirm={savePendingPhoto}
+        z={110}
+      />
+      <StatusModal open={photoStatus === "success"} type="success" title={t("changePhotoSuccessTitle")} message={t("changePhotoSuccessMessage")} okLabel={t("okLabel")} onClose={() => setPhotoStatus(null)} z={110} />
+      <StatusModal open={photoStatus === "error"} type="error" title={t("errorTitle")} message={t("changePhotoFailedMessage")} okLabel={t("okLabel")} onClose={() => setPhotoStatus(null)} z={110} />
 
       {/* ─── Validation / save-error popup (replaces the old inline red banner) ── */}
       <StatusModal open={!!apiError} type="error" title={apiErrorTitle || t("errorTitle")} message={apiError || ""} okLabel={t("okLabel")} onClose={() => setApiError(null)} />
@@ -3454,6 +3617,83 @@ const handleDeleteResident = async () => {
       <StatusModal open={exportSuccess !== null} type="success" title={t("successTitle")} message={exportSuccess === "pdf" ? t("resExportSuccessPdf") : t("resExportSuccessExcel")} okLabel={t("okLabel")} onClose={() => setExportSuccess(null)} />
       <StatusModal open={showDeleteSuccess} type="success" title={t("successTitle")} message={t("residentDeletedSuccess")} okLabel={t("okLabel")} onClose={() => setShowDeleteSuccess(false)} />
       <StatusModal open={showUpdateSuccess} type="success" title={t("successTitle")} message={t("recordUpdatedSuccess")} okLabel={t("okLabel")} onClose={() => setShowUpdateSuccess(false)} />
+      {addAccountFor && (() => {
+        const rec = residentsData.find((x) => x.id === addAccountFor);
+        if (!rec) return null;
+        const fullName = withSuffix(`${rec.firstName} ${rec.middleName} ${rec.lastName}`.replace(/\s+/g, " "), rec.suffix);
+        const steps = [t("acctCreateStep1"), t("acctCreateStep2"), t("acctCreateStep3")];
+        return (
+          <Portal>
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" onClick={() => !addAccountBusy && setAddAccountFor(null)}>
+              <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-[28px] border border-white/10 bg-[#0A0E1A] p-7 shadow-2xl sm:p-8" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/15 text-[#7DD8CB]">
+                      <UserPlus className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <h2 className="font-display text-xl font-extrabold tracking-tight text-white sm:text-2xl">{t("acctCreateTitle")}</h2>
+                      <p className="text-sm text-white/55">{t("acctCreateSub")}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => !addAccountBusy && setAddAccountFor(null)} aria-label={t("closeLabel")} className="shrink-0 text-white/50 hover:text-white">
+                    <XIcon size={24} />
+                  </button>
+                </div>
+
+                <div className="mt-6 flex items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                  <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full border border-white/10 bg-[#123A38]">
+                    {rec.photo ? <img src={rec.photo} alt="" className="h-full w-full object-cover" /> : <DefaultAvatar className="h-14 w-14" title={fullName} />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-base font-bold text-white">{fullName}</p>
+                    <p className="mt-0.5 text-sm text-white/50">
+                      {t("usernameLabel")}: <span className="font-mono font-semibold text-[#7DD8CB]">{rec.id}</span>
+                    </p>
+                  </div>
+                </div>
+
+                <p className="mt-6 text-xs font-bold uppercase tracking-wider text-white/45">{t("acctCreateHow")}</p>
+                <ol className="mt-3 space-y-3">
+                  {steps.map((txt, i) => (
+                    <li key={i} className="flex items-start gap-3">
+                      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-bold text-white">{i + 1}</span>
+                      <span className="text-[15px] leading-snug text-white/80">{txt}</span>
+                    </li>
+                  ))}
+                </ol>
+
+                <div className="mt-6 flex gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/10 p-4">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+                  <p className="text-sm text-amber-200">{t("acctCreateIdCheck")}</p>
+                </div>
+
+                <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    disabled={addAccountBusy}
+                    onClick={() => setAddAccountFor(null)}
+                    className="rounded-full border border-white/20 px-6 py-3 text-base font-semibold text-white transition hover:bg-white/10 disabled:opacity-50"
+                  >
+                    {t("cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={addAccountBusy}
+                    onClick={performAddAccount}
+                    className="group inline-flex items-center justify-center gap-3 rounded-full form-glass-btn py-1.5 pl-6 pr-1.5 text-base font-semibold text-white shadow-sm disabled:pointer-events-none disabled:opacity-60"
+                  >
+                    {addAccountBusy ? t("acctCreating") : t("acctCreateBtn")}
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 transition-colors duration-500 ease-out group-hover:bg-white/30">
+                      <KeyRound className="h-4 w-4 text-white" />
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Portal>
+        );
+      })()}
       {activationSlip && <ActivationSlipModal slip={activationSlip} onClose={() => setActivationSlip(null)} />}
       <ConfirmDialog
         open={slipConfirmFor !== null}
@@ -3484,8 +3724,8 @@ const handleDeleteResident = async () => {
       {showCancelConfirm && (
         <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[90] px-4">
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto">
-            <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
+            <div className="mb-3 text-[#4FBEB0] flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-white mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
               <button onClick={() => setShowCancelConfirm(null)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("stayButton")}</button>
@@ -3493,9 +3733,9 @@ const handleDeleteResident = async () => {
                 onClick={() => {
                   setShowCancelConfirm(null);
                   if (showCancelConfirm === "add") setShowAddForm(false);
-                  if (showCancelConfirm === "edit") setEditRecord(null);
+                  if (showCancelConfirm === "edit") closeEditForm();
                 }}
-                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+                className="px-5 py-2.5 rounded-full bg-sage-700 text-white hover:bg-sage-800 transition"
               >
                 {t("discardCloseButton")}
               </button>

@@ -56,6 +56,28 @@ export default function StaffDashboard() {
 
   const [active, setActiveState] = useState(getInitialActive());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Slide-over forms start right under the top header so it stays visible. Keep the real header height in a CSS
+  // variable (it changes with a wrapped title, the offline banner or zoom) for .staff-drawer-panel / -backdrop.
+  useEffect(() => {
+    const root = document.documentElement;
+    const measure = () => {
+      const el = document.getElementById("staff-content-scroll");
+      if (el) root.style.setProperty("--staff-panel-top", `${Math.round(el.getBoundingClientRect().top)}px`);
+    };
+    measure();
+    const el = document.getElementById("staff-content-scroll");
+    const ro = typeof ResizeObserver !== "undefined" && el ? new ResizeObserver(measure) : null;
+    if (el) ro?.observe(el);
+    window.addEventListener("resize", measure);
+    const settle = window.setTimeout(measure, 350);
+    return () => {
+      ro?.disconnect();
+      window.clearTimeout(settle);
+      window.removeEventListener("resize", measure);
+      root.style.removeProperty("--staff-panel-top");
+    };
+  }, []);
   // A bell notification asks to open an event on a given tab (e.g. its Feedback).
   const [notifyTabRequest, setNotifyTabRequest] = useState<{ tab: "notifications" | "sms" | "feedback"; nonce: number } | null>(null);
   const [openEventRequest, setOpenEventRequest] = useState<{ eventId: number; tab: string; sub?: string; nonce: number } | null>(null);

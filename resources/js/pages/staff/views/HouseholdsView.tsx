@@ -397,27 +397,31 @@ export default function HouseholdsView() {
       {/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents
           background and palette. Modals further down stay in the original
           light theme, same scoping used on the Residents page. */}
-      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
       <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="dash-card flex flex-col justify-between gap-4 rounded-[32px] p-5 sm:flex-row sm:items-center sm:p-6">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("householdsTitle")}</h1>
+          <h1
+            className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient"
+          >
+            {t("householdsTitle")}
+          </h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("householdsSubtitle")}</p>
         </div>
         <button
           type="button"
           onClick={openAdd}
           disabled={loading}
-          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
+          className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
         >
           {t("addHouseholdLabel")}
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
             <Plus className="h-5 w-5 text-white" />
           </span>
         </button>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+      <div className="dash-card rounded-[32px] p-4 sm:p-6">
         <FilterBar
           search={{ value: search, onChange: setSearch, placeholder: t("searchHouseholdsPlaceholder") }}
           filters={[{
@@ -442,6 +446,8 @@ export default function HouseholdsView() {
           count={loading ? undefined : { shown: households.length, total: matchTotal }}
         />
       </div>
+
+
 
       {!loading && alerts.length > 0 && (
         <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 sm:p-5 flex gap-3">
@@ -469,7 +475,7 @@ export default function HouseholdsView() {
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 flex items-center gap-4">
+            <div key={i} className="dash-card rounded-[28px] p-5 flex items-center gap-4">
               <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
               <div className="flex-1 space-y-2">
                 <Skeleton className="h-4 w-40" />
@@ -479,7 +485,7 @@ export default function HouseholdsView() {
           ))}
         </div>
       ) : households.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
+        <div className="dash-card rounded-[32px] p-10 text-center text-sm text-white/50">
           {t("noHouseholdsFound")}
         </div>
       ) : (
@@ -488,7 +494,7 @@ export default function HouseholdsView() {
             const expanded = expandedId === h.id;
             const head = h.members?.find((m) => m.is_household_head);
             return (
-              <div key={h.id} className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden transition-colors hover:border-white/20">
+              <div key={h.id} className="dash-card overflow-hidden rounded-[28px] transition-colors hover:border-[#4FBEB0]/50">
                 <div
                   role="button"
                   tabIndex={0}
@@ -607,24 +613,33 @@ export default function HouseholdsView() {
                             ))
                           )}
                         </div>
-                        <button type="button" onClick={() => { setPickerFor(null); setMemberSearch(""); }} className="text-sm text-white/40 hover:text-white px-2">
-                          {t("cancelLabel")}
-                        </button>
+                        <div className="flex justify-end pt-1">
+                          <button
+                            type="button"
+                            onClick={() => { setPickerFor(null); setMemberSearch(""); }}
+                            className="inline-flex min-h-10 items-center rounded-full border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-900 shadow-sm transition hover:border-slate-400 hover:bg-slate-100 active:scale-95"
+                          >
+                            {t("cancelLabel")}
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="flex items-center justify-between gap-3 flex-wrap">
                         <button
                           type="button"
                           onClick={() => setPickerFor(h.id)}
-                          className="inline-flex items-center gap-1.5 text-sm font-medium text-[#4FBEB0] hover:text-[#7DD8CB]"
+                          className="group inline-flex items-center gap-3 rounded-full border border-slate-300 bg-white py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-slate-900 shadow-md transition-all duration-500 ease-out hover:border-slate-400 hover:bg-slate-100 active:scale-95"
                         >
-                          <UserPlus className="h-4 w-4" /> {t("addMemberLabel")}
+                          {t("addMemberLabel")}
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900/10 transition-colors duration-500 ease-out group-hover:bg-slate-900/15">
+                            <UserPlus className="h-[18px] w-[18px] text-slate-900" />
+                          </span>
                         </button>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); openEdit(h); }}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.03] px-4 py-2 text-sm font-semibold text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                            className="btn-live-navy inline-flex items-center gap-1.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-[#274A77] active:scale-95"
                             title={t("editLabel")}
                           >
                             <Pencil className="h-4 w-4" /> {t("editLabel")}
@@ -632,7 +647,7 @@ export default function HouseholdsView() {
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setDeleteRecord(h); }}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-red-500/25 bg-white/[0.03] px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 transition-colors"
+                            className="inline-flex items-center gap-1.5 rounded-full border border-red-600 bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-red-700 hover:bg-red-700 active:scale-95"
                             title={t("deleteTitle")}
                           >
                             <Trash2 className="h-4 w-4" /> {t("deleteTitle")}
@@ -652,7 +667,7 @@ export default function HouseholdsView() {
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className={`h-9 w-9 rounded-full text-sm ${p === page ? "bg-sage-700 text-white shadow-sm font-bold" : "bg-white/[0.04] border border-white/10 text-white/50 hover:bg-white/10"}`}
+                  className={`h-9 w-9 rounded-full text-sm ${p === page ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm font-bold" : "dash-tile text-white/60"}`}
                 >
                   {p}
                 </button>
@@ -802,8 +817,8 @@ export default function HouseholdsView() {
       {showEditCancelConfirm && (
         <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
+            <div className="mb-3 text-[#4FBEB0] flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-white mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
               <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("stayButton")}</button>
@@ -813,7 +828,7 @@ export default function HouseholdsView() {
                   setEditRecord(null);
                   setConfirmEdit(false);
                 }}
-                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+                className="px-5 py-2.5 rounded-full bg-sage-700 text-white hover:bg-sage-800 transition"
               >
                 {t("discardCloseButton")}
               </button>

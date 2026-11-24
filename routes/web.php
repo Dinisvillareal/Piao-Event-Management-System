@@ -112,6 +112,8 @@ Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class, 'throttl
     Route::get('/users/{id}', [UserController::class, 'show']);
     Route::post('/users', [UserController::class, 'store']);
     Route::post('/users/{id}/activation-slip', [UserController::class, 'activationSlip'])->middleware('throttle:sensitive');
+    Route::post('/users/{id}/photo', [UserController::class, 'updatePhoto'])->middleware('throttle:sensitive');
+    Route::post('/users/{id}/portal-account', [UserController::class, 'createPortalAccount'])->middleware('throttle:sensitive');
     Route::put('/users/{id}', [UserController::class, 'update']);
     Route::delete('/users/{id}', [UserController::class, 'destroy']);
     Route::post('/users/{id}/restore', [UserController::class, 'restore']);

@@ -181,3 +181,8 @@ html[data-theme="light"] .filter-dropdown-scroll-dark::-webkit-scrollbar-thumb{b
 html[data-theme="light"] input[type="password"]::-ms-reveal{filter:none}
 html[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator, html[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator{filter:none}
 }
+html[data-theme="light"] .profile-glass{background:rgba(255,255,255,.34);border-color:rgba(255,255,255,.8);box-shadow:0 8px 24px rgba(15,23,42,.12), inset 0 1px 0 rgba(255,255,255,.7)}
+html[data-theme="light"] .profile-glass-btn{background:linear-gradient(110deg,rgba(79,190,176,.34),rgba(230,180,80,.32),rgba(236,120,170,.30),rgba(120,140,240,.32),rgba(79,190,176,.34));background-size:300% 100%;border-color:rgba(79,190,176,.55);color:#0B3B38 !important;box-shadow:0 6px 18px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.7)}
+html[data-theme="light"] .profile-glass-btn *{color:#0B3B38 !important}
+html[data-theme="light"] .form-glass-btn{background:linear-gradient(110deg,rgba(124,92,246,.30),rgba(59,110,240,.28),rgba(52,190,130,.28),rgba(240,200,70,.34),rgba(124,92,246,.30));background-size:300% 100%;border-color:rgba(99,102,241,.5);color:#1E1B4B !important;box-shadow:0 6px 18px rgba(15,23,42,.10), inset 0 1px 0 rgba(255,255,255,.7)}
+html[data-theme="light"] .form-glass-btn *{color:#1E1B4B !important}

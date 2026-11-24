@@ -943,6 +943,75 @@ class UserController extends Controller
         return response()->json(['message' => 'Activation slip ready.', 'activation_slip' => $slip]);
     }
 
+    /** Staff: change a resident's ID photo straight from the profile (no need to open the edit form). */
+    public function updatePhoto(Request $request, $id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $user = User::withTrashed()->findOrFail($id);
+
+        if ($user->deleted_at) {
+            return response()->json(['message' => 'This record is archived.'], 422);
+        }
+        // A staff member's own record is only changed by the Head Staff (or themselves).
+        if ($user->role === 'Staff' && !auth()->user()->is_head_staff && (int) auth()->id() !== (int) $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $request->validate([
+            'validation_id' => 'required|' . \App\Support\Uploads::IMAGE_RULE,
+        ]);
+
+        $old  = $user->validation_id;
+        $path = $this->localUpload($request->file('validation_id'));
+
+        $user->validation_id = $path;
+        $user->save();
+
+        if ($old) {
+            $this->localDelete($old);
+        }
+
+        $this->createLog('Update User', 'User', "Changed the ID photo of {$user->user_code}");
+
+        return response()->json([
+            'message' => 'Photo updated.',
+            'validation_id_url' => $user->validation_id_url,
+        ]);
+    }
+
+    /** Staff: give a registered resident a portal account straight away (no other fields), and print the first slip. */
+    public function createPortalAccount($id)
+    {
+        if (!$this->isStaff()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $user = User::findOrFail($id);
+
+        if ($user->role !== 'Resident' || $user->is_head_staff) {
+            return response()->json(['message' => "An activation slip is only for a resident's portal account. A staff password is reset by the Head Staff."], 403);
+        }
+        if ($user->deleted_at) {
+            return response()->json(['message' => 'This record is archived.'], 422);
+        }
+        if ($user->has_account) {
+            return response()->json(['message' => 'This resident already has a portal account.'], 422);
+        }
+
+        $slip = DB::transaction(function () use ($user) {
+            $user->has_account = 1;
+            $slip = $this->issueActivationSlip($user);
+            $this->createLog('Account Created', 'User', "Created a portal account for {$user->user_code} (waiting for the resident to activate it)");
+            $this->createLog('Activation Slip', 'User', "Printed an activation slip for {$user->user_code}");
+            return $slip;
+        });
+
+        return response()->json(['message' => 'Activation slip ready.', 'activation_slip' => $slip]);
+    }
+
     /** One answer for every kind of mismatch, so it cannot be used to find out who has an account. */
     private function activationFailed()
     {

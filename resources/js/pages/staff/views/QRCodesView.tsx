@@ -864,27 +864,31 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {/* Full-bleed dark navy wrapper -- matches the Dashboard/Residents/
           Households background and palette. Modals further down stay in
           the original light theme, same scoping used on those pages. */}
-      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
       <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="dash-card flex flex-col justify-between gap-4 rounded-[32px] p-5 sm:flex-row sm:items-center sm:p-6">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("membershipGroupsTitle")}</h1>
+          <h1
+            className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient"
+          >
+            {t("membershipGroupsTitle")}
+          </h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("membershipGroupsPageSubtitle")}</p>
         </div>
         <button
           type="button"
           onClick={() => setShowAddModal(true)}
           disabled={loading || pageSwitching}
-          className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
+          className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
         >
           {t("newMembershipGroupButton")}
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
             <Plus className="h-5 w-5 text-white" />
           </span>
         </button>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+      <div className="dash-card rounded-[32px] p-4 sm:p-6">
         <div className="relative">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
           <input
@@ -912,7 +916,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       {loading || pageSwitching ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+            <div key={i} className="dash-card rounded-[28px] p-5">
               <div className="flex items-start justify-between gap-3">
                 <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
                 <Skeleton className="h-6 w-16 rounded-full" />
@@ -924,7 +928,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           ))}
         </div>
       ) : filteredMemberships.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
+        <div className="dash-card rounded-[32px] p-10 text-center text-sm text-white/50">
           {t("noMembershipsFoundAdmin")}
         </div>
       ) : (
@@ -942,7 +946,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               </button>
               <span
                 title={`${t("pageOfLabel")} ${currentPage} ${t("ofPagesLabel")} ${totalPages}`}
-                className="h-9 w-9 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold"
+                className="h-9 w-9 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold"
               >
                 {currentPage}
               </span>
@@ -965,51 +969,53 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               return (
                 <div
                   key={m.id}
-                  className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 hover:border-white/20 hover:shadow-md transition-all duration-300"
+                  className="dash-card group flex h-full flex-col rounded-[28px] p-5 transition-all duration-300 hover:border-[#4FBEB0]/50 sm:p-6"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#4FBEB0]/10 text-[#4FBEB0] shrink-0">
+                  <div className="flex items-start gap-3.5">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82] text-white shadow-sm">
                       <Layers className="h-5 w-5" />
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => openEditModal(m)}
-                        className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white/50 hover:bg-white/10 hover:text-white transition sm:h-8 sm:w-8"
-                        title={t("editMembershipTitle")}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-[#4FBEB0]/10 px-3 py-1 text-xs font-semibold text-[#7DD8CB]">
+                    <div className="min-w-0 flex-1">
+                      <h2 className="text-base font-bold leading-snug text-white break-words">
+                        {highlightText(tc(m.name, language as any), searchQuery)}
+                      </h2>
+                      <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs font-semibold text-[#2E8E82]">
+                        <Users className="h-3.5 w-3.5" />
                         {residentCount} {t("membersBadgeSuffix")}
-                      </span>
+                      </p>
                     </div>
+                    <button
+                      onClick={() => openEditModal(m)}
+                      className="dash-tile inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/60 hover:text-white"
+                      title={t("editMembershipTitle")}
+                      aria-label={t("editMembershipTitle")}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
                   </div>
 
-                  <h2 className="mt-4 text-base font-bold text-white break-words">
-                    {highlightText(tc(m.name, language as any), searchQuery)}
-                  </h2>
-                  <p className="mt-1 text-sm text-white/50 break-words line-clamp-2">
+                  <p className="mt-4 text-sm leading-relaxed text-white/55 break-words line-clamp-3">
                     {highlightText(tc(m.description || t("noDescription"), language as any), searchQuery)}
                   </p>
 
                   {hasEligibility && (
-                    <p className="mt-2.5 inline-flex items-center gap-1 rounded-full bg-gold-400/15 px-2.5 py-0.5 text-[11px] font-semibold text-gold-300">
+                    <p className="mt-3 inline-flex w-fit max-w-full items-center gap-1 rounded-full bg-gold-400/15 px-2.5 py-1 text-[11px] font-semibold text-gold-300">
                       {t("requiresLabelShort")} {[(m.eligible_age_brackets ?? []).map((b: any) => tc(b.label, language as any)).join(" / "), tc(m.eligible_civil_status?.label, language as any), tc(m.eligible_current_status?.label, language as any), m.eligible_gender].filter(Boolean).join(" • ")}
                     </p>
                   )}
 
-                  <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between gap-2">
+                  <div className="mt-auto flex items-center justify-between gap-2 pt-5">
                     <button
                       onClick={() => handleViewMembers(m)}
-                      className="inline-flex min-h-10 items-center gap-1 text-sm font-semibold text-[#4FBEB0] hover:text-[#7DD8CB] hover:underline transition"
+                      className="dash-tile inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/85 transition hover:text-white"
                     >
-                      {t("viewRosterLabel")} <ChevronRight className="h-4 w-4" />
+                      {t("viewRosterLabel")} <ChevronRight className="h-4 w-4 text-[#2E8E82]" />
                     </button>
                     {hasEligibility && (
                       <button
                         onClick={() => checkEligibility(m)}
                         disabled={checkingEligibilityId === m.id}
-                        className="inline-flex min-h-10 items-center gap-1 text-xs font-semibold text-gold-300 hover:underline disabled:opacity-50 shrink-0"
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-gold-400/15 px-3.5 text-xs font-semibold text-gold-300 transition hover:bg-gold-400/25 disabled:opacity-50 shrink-0"
                       >
                         <AlertTriangle className="h-3.5 w-3.5" /> {checkingEligibilityId === m.id ? t("checkingEligibility") : t("checkEligibilityLabel")}
                       </button>
@@ -1031,19 +1037,22 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0 }}
           onClick={handleBackdropClick}
         >
-          <div className="bg-[#0A0E1A] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl relative mx-4 sm:mx-auto">
-            <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-b border-white/10 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg sm:text-xl font-bold text-white">{tc(selectedMembership.name, language as any)}</h2>
-                <p className="text-xs sm:text-sm text-white/50 mt-0.5 line-clamp-2">{tc(selectedMembership.description || t("noDescriptionModal"), language as any)}</p>
+          <div className="bg-[#0A0E1A] border border-white/10 rounded-[32px] w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl relative mx-4 sm:mx-auto">
+            <div className="bg-[#0A0E1A] px-5 sm:px-7 pt-6 pb-5 flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82] text-white shadow-sm">
+                <Layers className="h-5 w-5" />
               </div>
-              <button onClick={closeModal} className="shrink-0 text-white/50 hover:text-white"><X size={26} /></button>
+              <div className="min-w-0 flex-1">
+                <h2 className="font-display text-xl sm:text-2xl font-extrabold tracking-tight text-white">{tc(selectedMembership.name, language as any)}</h2>
+                <p className="text-xs sm:text-sm text-white/50 mt-1 line-clamp-2">{tc(selectedMembership.description || t("noDescriptionModal"), language as any)}</p>
+              </div>
+              <button onClick={closeModal} aria-label={t("closeLabel")} className="dash-tile flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/60 hover:text-white"><X size={20} /></button>
             </div>
 
-            <div className="p-4 sm:p-6 overflow-y-auto max-h-[60vh]">
-              <div className="flex items-center gap-2 mb-4">
-                <Users className="h-5 w-5 text-[#4FBEB0]" />
-                <span className="text-sm font-semibold text-white">
+            <div className="px-5 pb-5 sm:px-7 overflow-y-auto max-h-[55vh]">
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#4FBEB0]/10 px-3.5 py-1.5">
+                <Users className="h-4 w-4 text-[#2E8E82]" />
+                <span className="text-sm font-semibold text-[#2E8E82]">
                   {selectedMembership.residents.length} {t("residentsCountLabel")}
                 </span>
               </div>
@@ -1063,7 +1072,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
                   {selectedMembership.residents.map((resident: any, idx: number) => (
                     <div
                       key={resident.id || idx}
-                      className="flex items-center justify-between p-3 sm:p-4 rounded-xl bg-white/[0.04] hover:bg-white/10 transition-all"
+                      className="dash-tile flex items-center justify-between rounded-2xl p-3 sm:p-4"
                     >
                       <div className="flex items-center gap-3 sm:gap-4">
                         <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-full bg-[#4FBEB0]/10 border border-[#4FBEB0]/20 flex items-center justify-center text-[#4FBEB0] font-bold text-sm sm:text-base">
@@ -1084,8 +1093,8 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
               )}
             </div>
 
-            <div className="bg-[#0A0E1A] px-4 sm:px-6 py-4 border-t border-white/10 flex justify-end">
-              <button onClick={closeModal} className="bg-sage-700 hover:bg-sage-800 text-white px-4 py-2 rounded-full text-sm font-bold transition">
+            <div className="bg-[#0A0E1A] px-5 sm:px-7 py-5 flex justify-end">
+              <button onClick={closeModal} className="bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white px-6 py-2.5 rounded-full text-sm font-bold shadow-sm transition hover:brightness-125 active:scale-95">
                 {t("closeLabel")}
               </button>
             </div>

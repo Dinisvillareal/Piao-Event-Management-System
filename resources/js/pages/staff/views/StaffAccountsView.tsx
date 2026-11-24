@@ -43,7 +43,8 @@ type Action =
   | { kind: "codes" };
 
 const chip = "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold";
-const actBtn = "inline-flex items-center gap-1.5 rounded-full border border-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10";
+const actBtn = "inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50";
+const actNavy = "btn-live-navy inline-flex items-center gap-1.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#274A77]";
 
 // "⋯" menu for the less-used actions on a staff row, so each row stays calm.
 function RowMenu({ label, children }: { label: string; children: (close: () => void) => React.ReactNode }) {
@@ -65,7 +66,7 @@ function RowMenu({ label, children }: { label: string; children: (close: () => v
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 text-white transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40"
       >
         <MoreVertical className="h-4 w-4" />
       </button>
@@ -362,10 +363,10 @@ export default function StaffAccountsView() {
   }
 
   return (
-    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">{t("staffaccounts")}</h1>
+      <div className="dash-card rounded-[32px] p-5 sm:p-6">
+        <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("staffaccounts")}</h1>
         <p className="mt-1.5 max-w-2xl text-sm text-white/55">{t("secStaffAccountsSubtitle")}</p>
       </div>
 
@@ -386,9 +387,9 @@ export default function StaffAccountsView() {
         {loading ? [0, 1, 2, 3].map((i) => <StatCardSkeleton key={i} />) : (
           <>
             <KpiCard value={data?.staff.length ?? 0} label={t("secStatStaff")} description={t("secStatStaffDesc")} icon={Users} gradient="from-sage-400 to-sage-700" delay={0} />
-            <KpiCard value={data?.staff.filter((s) => s.two_factor_enabled).length ?? 0} label={t("secStatTwoStep")} description={t("secStatTwoStepDesc").replace("{n}", String(data?.staff.length ?? 0))} icon={ShieldCheck} gradient="from-sage-800 to-[#1C2E2B]" delay={70} />
-            <KpiCard value={data?.staff.filter((s) => s.suspended_at).length ?? 0} label={t("secStatSuspended")} description={t("secStatSuspendedDesc")} icon={Ban} gradient="from-[#8A3D2C] to-[#5C2A1E]" delay={140} />
-            <KpiCard value={data?.recovery_codes_remaining ?? 0} label={t("secStatCodes")} description={t("secStatCodesDesc")} icon={FileKey2} gradient="from-gold-400 to-gold-700" delay={210} />
+            <KpiCard value={data?.staff.filter((s) => s.two_factor_enabled).length ?? 0} label={t("secStatTwoStep")} description={t("secStatTwoStepDesc").replace("{n}", String(data?.staff.length ?? 0))} icon={ShieldCheck} gradient="from-sage-400 to-sage-700" delay={70} />
+            <KpiCard value={data?.staff.filter((s) => s.suspended_at).length ?? 0} label={t("secStatSuspended")} description={t("secStatSuspendedDesc")} icon={Ban} gradient="from-sage-400 to-sage-700" delay={140} />
+            <KpiCard value={data?.recovery_codes_remaining ?? 0} label={t("secStatCodes")} description={t("secStatCodesDesc")} icon={FileKey2} gradient="from-sage-400 to-sage-700" delay={210} />
           </>
         )}
       </div>
@@ -429,13 +430,13 @@ export default function StaffAccountsView() {
             <div className="space-y-3">{Array.from({ length: loading ? 3 : Math.max(1, team.shown.length) }, (_, i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>
           ) : (
             <ul className="space-y-3">
-              {team.shown.length === 0 && <li className="rounded-xl border border-dashed border-white/15 px-4 py-8 text-center text-sm text-white/45">{t("fltNoMatches")}</li>}
+              {team.shown.length === 0 && <li className="dash-tile rounded-[24px] border border-dashed border-white/15 px-4 py-8 text-center text-sm text-white/55">{t("fltNoMatches")}</li>}
               {team.shown.map((s) => (
-                <li key={s.id} className={`rounded-xl border p-4 ${s.suspended_at ? "border-red-500/25 bg-red-500/[0.06]" : "border-white/10 bg-white/[0.03]"}`}>
+                <li key={s.id} className={`rounded-[24px] border p-4 sm:p-5 ${s.suspended_at ? "border-red-500/25 bg-red-500/[0.06]" : "dash-card !shadow-[0_8px_22px_rgba(15,23,42,0.09)]"}`}>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gold-400 text-sm font-bold text-[#08130F]">{initials(s.name)}</div>
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gold-400 text-sm font-bold text-[#08130F] ring-2 ring-white shadow-sm">{initials(s.name)}</div>
                     <div className="min-w-0 flex-1 basis-56">
-                      <p className="flex flex-wrap items-center gap-2 text-base font-bold text-white">
+                      <p className="flex flex-wrap items-center gap-2 text-[17px] font-bold text-white">
                         {s.name}
                         {s.is_head_staff && <span className={`${chip} bg-gold-400/20 text-gold-300`}><Crown className="h-3 w-3" /> {t("secHeadStaff")}</span>}
                         {s.suspended_at && <span className={`${chip} bg-red-500/20 text-red-300`}>{t("secSuspendedBadge")}</span>}
@@ -498,12 +499,12 @@ export default function StaffAccountsView() {
                 {candidates.length === 0 ? (
                   <li className="px-2 py-2 text-sm text-white/45">{t("secNoCandidates")}</li>
                 ) : candidates.map((c) => (
-                  <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3">
+                  <li key={c.id} className="dash-card !shadow-[0_8px_22px_rgba(15,23,42,0.09)] flex flex-wrap items-center justify-between gap-3 rounded-2xl px-4 py-3.5">
                     <div className="min-w-0">
                       <p className="truncate text-base font-bold text-white">{c.name}</p>
                       <p className="text-sm text-white/45">{c.user_code}</p>
                     </div>
-                    <button className={actBtn} onClick={() => setAction({ kind: "promote", candidate: c })}><UserPlus className="h-3.5 w-3.5" /> {t("secGiveStaffAccess")}</button>
+                    <button className={actNavy} onClick={() => setAction({ kind: "promote", candidate: c })}><UserPlus className="h-3.5 w-3.5" /> {t("secGiveStaffAccess")}</button>
                   </li>
                 ))}
               </ul>
@@ -518,7 +519,7 @@ export default function StaffAccountsView() {
                   ? t("secCodesRemaining").replace("{n}", String(data.recovery_codes_remaining))
                   : t("secNoCodes")}
               </p>
-              <button className={actBtn} onClick={() => setAction({ kind: "codes" })}><FileKey2 className="h-3.5 w-3.5" /> {t("secCreateCodes")}</button>
+              <button className={actNavy} onClick={() => setAction({ kind: "codes" })}><FileKey2 className="h-3.5 w-3.5" /> {t("secCreateCodes")}</button>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-white/45">{t("secCodesAdvice")}</p>
           </SectionCard>

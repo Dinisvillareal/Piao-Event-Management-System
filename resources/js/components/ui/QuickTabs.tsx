@@ -14,12 +14,38 @@ export default function QuickTabs({
   value,
   onChange,
   className = "",
+  variant = "pills",
 }: {
   tabs: QuickTab[];
   value: string;
   onChange: (key: string) => void;
   className?: string;
+  /** "segmented" = all choices inside one rounded track (for a single either/or choice, like a period). */
+  variant?: "pills" | "segmented";
 }) {
+  if (variant === "segmented") {
+    return (
+      <div role="tablist" className={`inline-flex max-w-full items-center gap-1 overflow-x-auto dash-tile rounded-full p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${className}`}>
+        {tabs.map((tab) => {
+          const on = tab.key === value;
+          return (
+            <button
+              key={tab.key}
+              role="tab"
+              aria-selected={on}
+              type="button"
+              onClick={() => { if (!on) onChange(tab.key); }}
+              className={`inline-flex h-9 shrink-0 items-center whitespace-nowrap rounded-full px-4 text-[13px] font-semibold transition-colors ${
+                on ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/60 hover:bg-white/[0.08] hover:text-white"
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
   return (
     <div role="tablist" className={`flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${className}`}>
       {tabs.map((tab) => {
@@ -32,7 +58,7 @@ export default function QuickTabs({
             type="button"
             onClick={() => { if (!on) onChange(tab.key); }}
             className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-              on ? "bg-sage-700 text-white shadow-sm" : "bg-white/[0.04] text-white/60 hover:bg-white/[0.08]"
+              on ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "bg-white/[0.04] text-white/60 hover:bg-white/[0.08]"
             }`}
           >
             {tab.label}

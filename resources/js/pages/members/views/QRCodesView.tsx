@@ -702,7 +702,7 @@
 //   }
 
 //   return (
-//     <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col">
+//     <div className="h-full dash-canvas p-4 sm:p-8 flex flex-col">
 //       {/* Fixed Header -- title on the left, compact QR ID badge on the
 //           right, then search + pagination underneath. The QR badge is
 //           inline (not a big hero block) so the whole thing reads like a
@@ -1035,10 +1035,12 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     // column widths, spacing and card ratio) so every block sits exactly where
     // its real counterpart will land and nothing shifts when the data arrives.
     return (
-      <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col">
+      <div className="h-full dash-canvas p-4 sm:p-8 flex flex-col">
         <div className="flex-shrink-0 pb-6">
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("myQrAndMemberships")}</h1>
-          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("qrPageSubtitle")}</p>
+          <div className="dash-card rounded-[32px] p-5 sm:p-6">
+            <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("myQrAndMemberships")}</h1>
+            <p className="mt-1.5 text-sm text-white/55 max-w-xl">{t("qrPageSubtitle")}</p>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto min-h-0" style={{ scrollbarGutter: "stable" }}>
@@ -1094,12 +1096,14 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   }
 
   return (
-    <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> 
+    <div className="h-full dash-canvas p-4 sm:p-8 flex flex-col"> 
     {/* <div className="h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-hidden"> */}
       {/* Fixed header: title + subtitle */}
       <div className="flex-shrink-0 pb-6">
-        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("myQrAndMemberships")}</h1>
-        <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("qrPageSubtitle")}</p>
+        <div className="dash-card rounded-[32px] p-5 sm:p-6">
+          <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("myQrAndMemberships")}</h1>
+          <p className="mt-1.5 text-sm text-white/55 max-w-xl">{t("qrPageSubtitle")}</p>
+        </div>
       </div>
 
       {/* Body: side-by-side layout on lg+, stacked on mobile.

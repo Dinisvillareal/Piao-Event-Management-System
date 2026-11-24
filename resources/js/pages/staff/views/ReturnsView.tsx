@@ -180,6 +180,8 @@ export default function ReturnsView() {
   // individually later) rather than forcing an all-or-nothing release.
   const [selectedItemIds, setSelectedItemIds] = useState<Record<number, boolean>>({});
   const [confirmReleaseAll, setConfirmReleaseAll] = useState(false);
+  // Which item card is open in the Release Items screen (null = the first one).
+  const [openItemId, setOpenItemId] = useState<number | string | null>(null);
 
   // Lost units are reported on their own (not part of a release): per item,
   // how many of each condition never came back. No photo, not logged as a return.
@@ -821,7 +823,7 @@ export default function ReturnsView() {
       desc: t("overdueEventsStatDesc"),
       value: stats.totalEvents,
       icon: PackageX,
-      gradient: "from-[#8A3D2C] to-[#5C2A1E]",
+      gradient: "from-sage-400 to-sage-700",
     },
     {
       key: "units",
@@ -829,7 +831,7 @@ export default function ReturnsView() {
       desc: t("itemsStillOutStatDesc"),
       value: stats.totalUnits,
       icon: Package,
-      gradient: "from-gold-400 to-gold-700",
+      gradient: "from-sage-400 to-sage-700",
     },
     {
       key: "types",
@@ -845,7 +847,7 @@ export default function ReturnsView() {
       desc: t("oldestOverdueStatDesc"),
       value: stats.oldestDays,
       icon: Clock,
-      gradient: "from-sage-800 to-[#1C2E2B]",
+      gradient: "from-sage-400 to-sage-700",
     },
   ];
 
@@ -859,14 +861,14 @@ export default function ReturnsView() {
         Households/Inventory/Budget Edit modals); the confirm and success
         modals further below stay on their original light theme, same
         scoping used everywhere else. */}
-    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="dash-card flex flex-wrap items-center justify-between gap-3 rounded-[32px] p-5 sm:p-6">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("returnsTitle")}</h1>
+          <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("returnsTitle")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("returnsSubtitle")}</p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 shrink-0">
+        <div className="dash-tile dash-mint flex items-center gap-2 rounded-full px-3.5 py-2 shrink-0">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
@@ -886,7 +888,7 @@ export default function ReturnsView() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+      <div className="dash-card rounded-[32px] p-4 sm:p-5">
         <FilterBar
           search={{ value: search, onChange: setSearch, placeholder: t("searchReturnsPlaceholder") }}
           extraChips={endedDate ? [{ key: "ended", label: `${t("filterEndedDateLabel").replace(/:\s*$/, "")}: ${new Date(endedDate).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => { setEndedDate(""); goToPage(1); } }] : []}
@@ -913,36 +915,36 @@ export default function ReturnsView() {
         <button
           type="button"
           onClick={() => switchTab("pending")}
-          className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
+          className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
             activeTab === "pending"
-              ? "bg-sage-700 text-white shadow-sm"
-              : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+              ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
+              : "dash-card text-white/60 hover:text-white"
           }`}
         >
-          <PackageX className="h-[18px] w-[18px]" />
+          <PackageX className="h-4 w-4" />
           {t("pendingReturnsTitle")}
           <span
-            className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${
+            className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
               activeTab === "pending" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
             }`}
           >
             {filteredEvents.length}
           </span>
         </button>
-        <ArrowRight className="h-[18px] w-[18px] text-white/25 hidden sm:block" />
+        <ArrowRight className="h-4 w-4 text-white/25 hidden sm:block" />
         <button
           type="button"
           onClick={() => switchTab("released")}
-          className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
+          className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
             activeTab === "released"
-              ? "bg-sage-700 text-white shadow-sm"
-              : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+              ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
+              : "dash-card text-white/60 hover:text-white"
           }`}
         >
-          <History className="h-[18px] w-[18px]" />
+          <History className="h-4 w-4" />
           {t("recentlyReleasedTitle")}
           <span
-            className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${
+            className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
               activeTab === "released" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"
             }`}
           >
@@ -955,12 +957,12 @@ export default function ReturnsView() {
           (icon + title + hint), only rendered while its pill button above
           is the active one. */}
       {activeTab === "pending" && (
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+      <div className="dash-card overflow-hidden rounded-[32px]">
         <div className="px-4 sm:px-6 py-4 border-b border-white/10 flex items-center gap-3">
-          <PackageX className="h-5 w-5 text-white/40" />
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82]"><PackageX className="h-5 w-5 text-white" /></span>
           <div>
-            <p className="text-base font-bold text-white">{t("pendingReturnsTitle")}</p>
-            <p className="text-[13px] text-white/40">{t("pendingReturnsHint")}</p>
+            <p className="font-display text-lg font-extrabold text-white">{t("pendingReturnsTitle")}</p>
+            <p className="text-[13px] text-white/55">{t("pendingReturnsHint")}</p>
           </div>
         </div>
 
@@ -993,11 +995,11 @@ export default function ReturnsView() {
               <table className="rtable w-full text-[15px]">
                 <thead>
                   <tr className="border-b border-white/10">
-                    <th className="py-3.5 px-5 text-left text-xs font-bold uppercase tracking-wide text-white">{t("eventColumnLabel")}</th>
-                    <th className="py-3.5 px-5 text-left text-xs font-bold uppercase tracking-wide text-white">{t("endedOnColumnLabel")}</th>
-                    <th className="py-3.5 px-5 text-left text-xs font-bold uppercase tracking-wide text-white">{t("daysOverdueColumnLabel")}</th>
-                    <th className="py-3.5 px-5 text-left text-xs font-bold uppercase tracking-wide text-white">{t("itemsColumnLabel")}</th>
-                    <th className="py-3.5 px-5 text-right text-xs font-bold uppercase tracking-wide text-white">{t("actionColumnLabel")}</th>
+                    <th className="py-3.5 px-5 text-left text-[11px] font-bold uppercase tracking-wider text-white/55">{t("eventColumnLabel")}</th>
+                    <th className="py-3.5 px-5 text-left text-[11px] font-bold uppercase tracking-wider text-white/55">{t("endedOnColumnLabel")}</th>
+                    <th className="py-3.5 px-5 text-left text-[11px] font-bold uppercase tracking-wider text-white/55">{t("daysOverdueColumnLabel")}</th>
+                    <th className="py-3.5 px-5 text-left text-[11px] font-bold uppercase tracking-wider text-white/55">{t("itemsColumnLabel")}</th>
+                    <th className="py-3.5 px-5 text-right text-[11px] font-bold uppercase tracking-wider text-white/55">{t("actionColumnLabel")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1007,7 +1009,7 @@ export default function ReturnsView() {
                       <tr
                         key={ev.id}
                         className={`border-b border-white/[0.06] last:border-0 transition-colors duration-700 ${
-                          flashEventIds.includes(ev.id) ? "bg-[#4FBEB0]/15 shadow-[inset_3px_0_0_#4FBEB0]" : "hover:bg-white/[0.05]"
+                          flashEventIds.includes(ev.id) ? "bg-[#4FBEB0]/15 shadow-[inset_3px_0_0_#4FBEB0]" : "hover:bg-[#4FBEB0]/[0.06]"
                         }`}
                       >
                         <td className="py-4 px-5">
@@ -1044,7 +1046,7 @@ export default function ReturnsView() {
                         <td className="py-4 px-5 text-right">
                           <button
                             onClick={() => setSelectedEventId(ev.id)}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.03] px-4 py-2 text-sm font-semibold text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+                            className="btn-live-navy inline-flex items-center gap-1.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#274A77] transition-colors"
                           >
                             <Undo2 className="h-4 w-4" />
                             {t("reviewLabel")}
@@ -1066,17 +1068,17 @@ export default function ReturnsView() {
                   <button
                     onClick={() => goToPage((p) => Math.max(1, p - 1))}
                     disabled={safePage === 1}
-                    className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                    className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                   >
                     &larr;
                   </button>
-                  <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                  <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold">
                     {safePage}
                   </span>
                   <button
                     onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
                     disabled={safePage === totalPages}
-                    className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                    className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                   >
                     &rarr;
                   </button>
@@ -1097,12 +1099,12 @@ export default function ReturnsView() {
           while its pill button above is the active one, same as Pending
           Returns, so the two never appear stacked together. */}
       {activeTab === "released" && (
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+      <div className="dash-card overflow-hidden rounded-[32px]">
         <div className="px-4 sm:px-6 py-4 border-b border-white/10 flex items-center gap-3">
-          <History className="h-5 w-5 text-white/40" />
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82]"><History className="h-5 w-5 text-white" /></span>
           <div>
-            <p className="text-base font-bold text-white">{t("recentlyReleasedTitle")}</p>
-            <p className="text-[13px] text-white/40">{t("recentlyReleasedHint")}</p>
+            <p className="font-display text-lg font-extrabold text-white">{t("recentlyReleasedTitle")}</p>
+            <p className="text-[13px] text-white/55">{t("recentlyReleasedHint")}</p>
           </div>
         </div>
         {recentReleasesLoading || pageSwitching ? (
@@ -1198,7 +1200,7 @@ export default function ReturnsView() {
                   </div>
                   <button
                     onClick={() => openEdit(r)}
-                    className="ml-auto shrink-0 inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] hover:bg-white/[0.1] text-white text-[15px] font-bold px-6 py-2.5 transition"
+                    className="btn-live-navy ml-auto shrink-0 inline-flex items-center gap-1.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] hover:bg-[#274A77] text-white text-sm font-semibold px-5 py-2 shadow-sm transition"
                   >
                     <Pencil className="h-4 w-4" />
                     {t("editLabel")}
@@ -1215,17 +1217,17 @@ export default function ReturnsView() {
                   <button
                     onClick={() => fetchRecentReleases(Math.max(1, recentReleasesPage - 1))}
                     disabled={recentReleasesPage === 1}
-                    className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                    className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                   >
                     &larr;
                   </button>
-                  <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                  <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold">
                     {recentReleasesPage}
                   </span>
                   <button
                     onClick={() => fetchRecentReleases(Math.min(recentReleasesTotalPages, recentReleasesPage + 1))}
                     disabled={recentReleasesPage === recentReleasesTotalPages}
-                    className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                    className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                   >
                     &rarr;
                   </button>
@@ -1246,6 +1248,7 @@ export default function ReturnsView() {
           confirm/success alert. */}
       {modalEvent && createPortal(
         <FormDrawer
+          wide
           z="z-[9999]"
           title={tc(modalEvent.name, language as any)}
           subtitle={<span className="text-[#E2A088]">{t("endedOnLabel")} {formatEndedAt(modalEvent.ended_at)}</span>}
@@ -1267,127 +1270,161 @@ export default function ReturnsView() {
             </div>
           }
         >
-          <FormSection title={t("secItemsToRelease")} className="space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm text-white/60">{t("releaseEachItemHint")}</p>
-                <p className="text-sm text-gold-300/80 mt-1">{t("releaseEvidenceHint")}</p>
+          {(() => {
+            const totalItems = modalEvent.items.length;
+            const totalUnits = modalEvent.items.reduce((n, it) => n + (Number(it.quantity) || 0), 0);
+            const pickedUnits = modalEvent.items.filter((it) => isItemSelected(it)).reduce((n, it) => n + qtyFor(it), 0);
+            const R = 54;
+            const C = 2 * Math.PI * R;
+            const pickedPct = totalItems ? Math.round((selectedCount / totalItems) * 100) : 0;
+            return (
+          <div className="grid items-start gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+            {/* Left: a calm summary that follows you while you work through the items. */}
+            <aside className="space-y-4 xl:sticky xl:top-0">
+              <div className="dash-card rounded-[32px] p-6 text-center !shadow-[0_14px_34px_rgba(15,23,42,0.18)]">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#2E8E82]">{t("secItemsToRelease")}</p>
+                <div className="relative mx-auto mt-4 flex h-36 w-36 items-center justify-center">
+                  <svg viewBox="0 0 128 128" className="absolute inset-0 -rotate-90">
+                    <circle cx="64" cy="64" r={R} fill="none" stroke="rgba(46,142,130,0.18)" strokeWidth="11" />
+                    <circle cx="64" cy="64" r={R} fill="none" stroke="#2E8E82" strokeWidth="11" strokeLinecap="round" strokeDasharray={`${C * pickedPct / 100} ${C}`} />
+                  </svg>
+                  <div>
+                    <p className="font-display text-4xl font-extrabold leading-none text-white">{selectedCount}<span className="text-xl text-white/50">/{totalItems}</span></p>
+                    <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-white/55">{t("selectAllLabel")}</p>
+                  </div>
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-3 text-left">
+                  <div className="dash-card !shadow-none rounded-2xl p-3">
+                    <p className="font-display text-2xl font-extrabold text-white tabular-nums">{pickedUnits}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-white/55">{t("borrowTotalLabel")}</p>
+                  </div>
+                  <div className="dash-card !shadow-none rounded-2xl p-3">
+                    <p className="font-display text-2xl font-extrabold text-white tabular-nums">{totalUnits}</p>
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-white/55">{t("itemsColumnLabel")}</p>
+                  </div>
+                </div>
+                {modalEvent.items.length > 1 && (
+                  <label className="dash-card !shadow-none mt-4 flex cursor-pointer select-none items-center justify-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-white">
+                    <input type="checkbox" checked={allItemsSelected} onChange={toggleSelectAll} className="h-4 w-4 accent-[#2E8E82]" />
+                    {t("selectAllLabel")}
+                  </label>
+                )}
               </div>
-              {modalEvent.items.length > 1 && (
-                <label className="shrink-0 flex items-center gap-2 text-sm font-semibold text-white/70 hover:text-white cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={allItemsSelected}
-                    onChange={toggleSelectAll}
-                    className="h-5 w-5 rounded border-white/25 bg-white/[0.03] accent-[#4FBEB0]"
-                  />
-                  {t("selectAllLabel")}
-                </label>
-              )}
-            </div>
+              <div className="dash-card !shadow-none rounded-[24px] p-4">
+                <p className="text-sm font-semibold text-white">{t("releaseEachItemHint")}</p>
+                <p className="mt-2 text-sm font-medium text-[#B7841A]">{t("releaseEvidenceHint")}</p>
+              </div>
+            </aside>
 
-            {modalEvent.items.map((it) => (
-              <div key={it.id} className="rounded-2xl border border-white/25 bg-white/10 p-5 space-y-5">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
-                  <label className="flex items-center gap-3 min-w-0 cursor-pointer select-none">
-                    {/* Unchecked items are simply left out of "Release
-                        Selected" below -- the item itself, and its own
-                        Release button, are unaffected either way. */}
+            {/* Right: one compact card per item -- condition on the left, photo on the right. */}
+            <div className="min-w-0 space-y-5">
+              {modalEvent.items.map((it) => {
+                const photoCount = (releasePhotos[it.id] ?? []).length;
+                const ready = photoCount > 0;
+                return (
+                <div key={it.id} className={`dash-card rounded-[32px] p-5 sm:p-6 ${isItemSelected(it) ? "" : "opacity-75"}`}>
+                  <div className="flex flex-wrap items-center gap-3 border-b border-white/10 pb-4">
                     <input
                       type="checkbox"
                       checked={isItemSelected(it)}
                       onChange={() => toggleItemSelected(it)}
-                      className="h-5 w-5 shrink-0 rounded border-white/25 bg-white/[0.03] accent-[#4FBEB0]"
+                      className="h-5 w-5 shrink-0 rounded accent-[#2E8E82]"
+                      aria-label={tc(it.name, language as any)}
                     />
-                    <span className="text-lg font-bold text-white truncate">{it.quantity}&times; {tc(it.name, language as any)}</span>
-                    {(it.lost_quantity ?? 0) > 0 && (
-                      <span className="shrink-0 rounded-full bg-red-500/15 px-2.5 py-0.5 text-xs font-semibold text-red-300">{t("lostSoFarChip").replace("{n}", String(it.lost_quantity))}</span>
-                    )}
-                  </label>
-                  <div className="flex items-center gap-3 ml-auto">
-                    <span className="text-sm text-white/60 [font-variant-numeric:tabular-nums]">
-                      {t("borrowTotalLabel")}: <span className="font-bold text-white">{qtyFor(it)}</span> / {it.quantity}
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82]"><Package className="h-5 w-5 text-white" /></span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-display text-lg font-extrabold text-white">{tc(it.name, language as any)}</p>
+                      <p className="text-sm text-white/60">
+                        {t("borrowTotalLabel")}: <span className="font-bold text-white [font-variant-numeric:tabular-nums]">{qtyFor(it)}</span> / {it.quantity}
+                        {(it.lost_quantity ?? 0) > 0 && <span className="ml-2 rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-500">{t("lostSoFarChip").replace("{n}", String(it.lost_quantity))}</span>}
+                      </p>
+                    </div>
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${ready ? "bg-[#4FBEB0]/20 text-[#2E8E82]" : "bg-[#F5C451]/25 text-[#9A6B00]"}`}>
+                      {ready ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Camera className="h-3.5 w-3.5" />}
+                      {ready ? `${photoCount} · ${t("evidencePhotoLabel")}` : t("evidencePhotoLabel")}
                     </span>
                   </div>
-                </div>
 
-                {/* Which condition each returned unit comes back in -- starts
-                    from what was borrowed; change it if something came back
-                    worn or damaged. Goes back into Inventory exactly like this. */}
-                <div>
-                  <p className="mb-2 text-sm font-semibold text-white/80">{t("returnConditionLabel")}</p>
-                  <div className="grid grid-cols-2 2xl:grid-cols-4 gap-x-3 gap-y-4">
-                    {RETURN_CONDITIONS.map((c) => (
-                      <div key={c.label} className="min-w-0">
-                        <span className={`mb-1.5 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
-                        <NumberStepper
-                          min={0}
-                          max={it.quantity}
-                          fullWidth
-                          value={String(unitsFor(it)[c.label] ?? 0)}
-                          onChange={(v) => setUnitFor(it, c.label, Number(v))}
-                          className="w-full rounded-full border border-white/25 bg-white/10 pl-4 pr-7 py-3 text-base font-sans text-white [font-variant-numeric:tabular-nums] focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20"
-                        />
+                  <div className="mt-5 space-y-6">
+                    <div>
+                      <p className="mb-3 text-[15px] font-bold text-white">{t("returnConditionLabel")}</p>
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                        {RETURN_CONDITIONS.map((c) => (
+                          <div key={c.label} className="dash-card !shadow-none min-w-0 rounded-2xl p-3">
+                            <span className={`mb-2 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
+                            <NumberStepper
+                              min={0}
+                              max={it.quantity}
+                              fullWidth
+                              value={String(unitsFor(it)[c.label] ?? 0)}
+                              onChange={(v) => setUnitFor(it, c.label, Number(v))}
+                              className="dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.16)] w-full rounded-full pl-4 pr-7 py-2.5 text-base font-sans text-white [font-variant-numeric:tabular-nums] focus:border-[#4FBEB0]/60 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20"
+                            />
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    </div>
+                    <div>
+                      <p className="mb-3 text-[15px] font-bold text-white">{t("evidencePhotoLabel")} <span className="text-red-500">*</span></p>
+                      <PhotoGallery
+                        compact
+                        items={releasePhotos[it.id] ?? []}
+                        onChange={(items) => setReleasePhotosFor(it.id, items)}
+                        onPreview={(photo) => setViewingPhoto({ url: photo.url, name: it.name, urls: (releasePhotos[it.id] ?? []).map((x) => x.url) })}
+                        onError={setError}
+                        emptyLabel={t("attachEvidenceLabel")}
+                      />
+                    </div>
                   </div>
-                </div>
 
-                {/* Evidence photos for THIS item -- up to 5. */}
-                <div>
-                  <p className="mb-2 text-sm font-semibold text-white/80">{t("evidencePhotoLabel")} *</p>
-                  <PhotoGallery
-                    compact
-                    items={releasePhotos[it.id] ?? []}
-                    onChange={(items) => setReleasePhotosFor(it.id, items)}
-                    onPreview={(photo) => setViewingPhoto({ url: photo.url, name: it.name, urls: (releasePhotos[it.id] ?? []).map((x) => x.url) })}
-                    onError={setError}
-                    emptyLabel={t("attachEvidenceLabel")}
-                  />
+                  <details className="group mt-5 rounded-2xl border border-red-400/30 bg-red-500/[0.05]" open={lostTotalFor(it) > 0 ? true : undefined}>
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3">
+                      <span className="flex items-center gap-2 text-sm font-bold text-white"><PackageX className="h-4 w-4 text-red-500" />{t("returnLostLabel")}</span>
+                      <ChevronRight className="h-4 w-4 text-white/50 transition-transform group-open:rotate-90" />
+                    </summary>
+                    <div className="px-4 pb-4">
+                      <p className="mb-3 text-sm text-white/60">{t("returnLostHint")}</p>
+                      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                        {RETURN_CONDITIONS.map((c) => {
+                          const outHere = defaultUnits(it)[c.label] ?? 0;
+                          return (
+                            <div key={c.label} className={`dash-card !shadow-none min-w-0 rounded-2xl p-3 ${outHere === 0 ? "opacity-60" : ""}`}>
+                              <span className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
+                                <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
+                                <span className="whitespace-nowrap text-xs text-white/60">{t("lostOutOfN").replace("{n}", String(outHere))}</span>
+                              </span>
+                              <NumberStepper
+                                min={0}
+                                max={outHere}
+                                disabled={outHere === 0}
+                                fullWidth
+                                value={String(lostDraftFor(it)[c.label] ?? 0)}
+                                onChange={(v) => setLostDraftUnit(it, c.label, Number(v))}
+                                className="dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.16)] w-full rounded-full pl-4 pr-7 py-2.5 text-base font-sans text-white [font-variant-numeric:tabular-nums] focus:border-red-400/60 focus:outline-none focus:ring-2 focus:ring-red-400/20"
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmLost({ eventId: modalEvent.id, item: it })}
+                        disabled={lostTotalFor(it) <= 0 || reportingLostId === it.id}
+                        className="mt-4 inline-flex items-center gap-2 rounded-full bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <PackageX className="h-4 w-4" />
+                        {reportingLostId === it.id ? t("savingLabel") : lostTotalFor(it) > 0 ? t("reportLostN").replace("{n}", String(lostTotalFor(it))) : t("reportLostButton")}
+                      </button>
+                    </div>
+                  </details>
                 </div>
-
-                {/* Units that never came back. Reported on their own: no photo,
-                    and not part of "Release Selected". */}
-                <div className="border-t border-white/10 pt-5">
-                  <p className="mb-1 text-sm font-semibold text-white/80">{t("returnLostLabel")}</p>
-                  <p className="mb-3 text-xs text-white/50">{t("returnLostHint")}</p>
-                  <div className="grid grid-cols-2 2xl:grid-cols-4 gap-x-3 gap-y-4">
-                    {RETURN_CONDITIONS.map((c) => {
-                      const outHere = defaultUnits(it)[c.label] ?? 0;
-                      return (
-                        <div key={c.label} className={`min-w-0 ${outHere === 0 ? "opacity-60" : ""}`}>
-                          <span className="mb-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
-                            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
-                            <span className="whitespace-nowrap text-xs text-white/55">{t("lostOutOfN").replace("{n}", String(outHere))}</span>
-                          </span>
-                          <NumberStepper
-                            min={0}
-                            max={outHere}
-                            disabled={outHere === 0}
-                            fullWidth
-                            value={String(lostDraftFor(it)[c.label] ?? 0)}
-                            onChange={(v) => setLostDraftUnit(it, c.label, Number(v))}
-                            className="w-full rounded-full border border-red-400/30 bg-red-500/10 pl-4 pr-7 py-3 text-base font-sans text-white [font-variant-numeric:tabular-nums] focus:border-red-400/60 focus:outline-none focus:ring-2 focus:ring-red-400/20"
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmLost({ eventId: modalEvent.id, item: it })}
-                    disabled={lostTotalFor(it) <= 0 || reportingLostId === it.id}
-                    className="mt-4 inline-flex items-center gap-2 rounded-full border border-red-400/40 bg-red-500/10 px-5 py-2.5 text-sm font-bold text-red-300 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <PackageX className="h-4 w-4" />
-                    {reportingLostId === it.id ? t("savingLabel") : lostTotalFor(it) > 0 ? t("reportLostN").replace("{n}", String(lostTotalFor(it))) : t("reportLostButton")}
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            <p className="text-sm text-white/50">{t("evidencePhotoLabel")}: {t("fileHintPhotos")}</p>
-          </FormSection>
+                );
+              })}
+              <p className="text-sm text-white/55">{t("evidencePhotoLabel")}: {t("fileHintPhotos")}</p>
+            </div>
+          </div>
+            );
+          })()}
         </FormDrawer>,
         document.body
       )}
@@ -1463,6 +1500,7 @@ export default function ReturnsView() {
         // return dialogs feel like one family.
         return createPortal(
           <FormDrawer
+            wide
             z="z-[9999]"
             title={t("editReturnTitle")}
             subtitle={<span className="text-[#7DD8CB]">{editTarget.item_name} &bull; {editTarget.event_name}</span>}
@@ -1486,65 +1524,98 @@ export default function ReturnsView() {
               </div>
             }
           >
-            <FormSection title={t("returnConditionLabel")} className="space-y-4">
-              <p className="text-sm text-white/60">{t("editReturnHint")}</p>
-              <p className="text-sm text-white/60">
-                {t("borrowTotalLabel")}: <span className="font-bold text-white">{qty}</span> / {editTarget.max_quantity}
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {RETURN_CONDITIONS.map((c) => {
-                  const cap = Math.min(editTarget.max_units?.[c.label] ?? editTarget.max_quantity, editTarget.max_quantity);
-                  return (
-                    <div key={c.label} className="flex items-center justify-between gap-3 rounded-2xl border border-white/25 bg-white/10 px-3.5 py-2.5">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
-                        <span className="text-xs text-white/45">/ {cap}</span>
+            <div className="grid items-start gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+              {/* Left: what is being edited, and how the change affects Inventory. */}
+              <aside className="space-y-4 xl:sticky xl:top-0">
+                <div className="dash-card rounded-[32px] p-6 text-center !shadow-[0_14px_34px_rgba(15,23,42,0.18)]">
+                  <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-[#2E8E82]"><Package className="h-5 w-5 text-white" /></span>
+                  <p className="mt-3 font-display text-lg font-extrabold leading-tight text-white">{editTarget.item_name}</p>
+                  <p className="mt-0.5 text-sm text-white/60">{editTarget.event_name}</p>
+                  {(() => {
+                    const R = 54;
+                    const C = 2 * Math.PI * R;
+                    const pctQ = editTarget.max_quantity ? Math.min(100, Math.round((qty / editTarget.max_quantity) * 100)) : 0;
+                    return (
+                      <div className="relative mx-auto mt-5 flex h-36 w-36 items-center justify-center">
+                        <svg viewBox="0 0 128 128" className="absolute inset-0 -rotate-90">
+                          <circle cx="64" cy="64" r={R} fill="none" stroke="rgba(46,142,130,0.18)" strokeWidth="11" />
+                          <circle cx="64" cy="64" r={R} fill="none" stroke="#2E8E82" strokeWidth="11" strokeLinecap="round" strokeDasharray={`${C * pctQ / 100} ${C}`} />
+                        </svg>
+                        <div>
+                          <p className="font-display text-4xl font-extrabold leading-none text-white">{qty}<span className="text-xl text-white/50">/{editTarget.max_quantity}</span></p>
+                          <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-white/55">{t("borrowTotalLabel")}</p>
+                        </div>
                       </div>
-                      <NumberStepper
-                        min={0}
-                        max={cap}
-                        value={String(editUnits[c.label] ?? 0)}
-                        onChange={(v) => setEditUnit(editTarget, c.label, Number(v))}
-                        className="w-20 rounded-xl border border-white/25 bg-white/10 pl-3 pr-6 py-2 text-base text-center text-white focus:border-[#4FBEB0]/50 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/20"
-                      />
-                    </div>
-                  );
-                })}
+                    );
+                  })()}
+                  {delta !== 0 && (
+                    <p className={`mt-4 flex items-center justify-center gap-2 rounded-2xl px-3 py-2 text-sm font-semibold ${delta < 0 ? "bg-red-500/10 text-red-500" : "bg-[#4FBEB0]/15 text-[#2E8E82]"}`}>
+                      <ArrowRight className="h-4 w-4 shrink-0" />
+                      {delta < 0
+                        ? t("editMovesBackHint").replace("{n}", String(-delta))
+                        : t("editReleasesMoreHint").replace("{n}", String(delta))}
+                    </p>
+                  )}
+                </div>
+                <div className="dash-card !shadow-none rounded-[24px] p-4">
+                  <p className="text-sm font-semibold text-white">{t("editReturnHint")}</p>
+                </div>
+              </aside>
+
+              {/* Right: condition tiles, then the evidence photo, then the history. */}
+              <div className="min-w-0 space-y-5">
+                <div className="dash-card rounded-[32px] p-5 sm:p-6">
+                  <p className="mb-3 text-[15px] font-bold text-white">{t("returnConditionLabel")}</p>
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    {RETURN_CONDITIONS.map((c) => {
+                      const cap = Math.min(editTarget.max_units?.[c.label] ?? editTarget.max_quantity, editTarget.max_quantity);
+                      return (
+                        <div key={c.label} className="dash-card !shadow-none min-w-0 rounded-2xl p-3">
+                          <span className="mb-2 flex items-center justify-between gap-2">
+                            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.chip}`}>{t(c.key)}</span>
+                            <span className="text-xs text-white/60">/ {cap}</span>
+                          </span>
+                          <NumberStepper
+                            min={0}
+                            max={cap}
+                            fullWidth
+                            value={String(editUnits[c.label] ?? 0)}
+                            onChange={(v) => setEditUnit(editTarget, c.label, Number(v))}
+                            className="dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.16)] w-full rounded-full pl-4 pr-7 py-2.5 text-base text-white [font-variant-numeric:tabular-nums] focus:border-[#4FBEB0]/60 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="dash-card rounded-[32px] p-5 sm:p-6 space-y-3">
+                  <p className="text-[15px] font-bold text-white">{t("evidencePhotoLabel")} <span className="text-red-500">*</span></p>
+                  <PhotoGallery
+                    items={editPhotos}
+                    onChange={setEditPhotos}
+                    onPreview={(photo) => setViewingPhoto({ url: photo.url, name: editTarget.item_name, urls: editPhotos.map((x) => x.url) })}
+                    onError={setError}
+                  />
+                  {editPhotos.length === 0 && (
+                    <p className="text-sm font-medium text-[#B7841A]">{t("returnNeedsPhotoHint")}</p>
+                  )}
+                  <p className="text-sm text-white/60">{t("keepPhotoHint")}</p>
+                  <p className="text-sm text-white/60">{t("fileHintPhotos")}</p>
+                  {editSavedNote && (
+                    <div role="status" className="rounded-2xl border border-[#4FBEB0]/30 bg-[#4FBEB0]/10 px-4 py-2.5 text-sm font-semibold text-[#2E8E82]">{t("editReturnSuccessTitle")}</div>
+                  )}
+                  {error && (
+                    <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-2.5 text-sm text-red-500">{error}</div>
+                  )}
+                </div>
+
+                <ActivityLog
+                  entries={editTarget.activity}
+                  onOpen={(url, urls) => setViewingPhoto({ url, name: editTarget.item_name, urls })}
+                />
               </div>
-              {delta !== 0 && (
-                <p className={`flex items-center gap-2 text-sm font-semibold ${delta < 0 ? "text-[#E2A088]" : "text-[#7DD8CB]"}`}>
-                  <ArrowRight className="h-4 w-4 shrink-0" />
-                  {delta < 0
-                    ? t("editMovesBackHint").replace("{n}", String(-delta))
-                    : t("editReleasesMoreHint").replace("{n}", String(delta))}
-                </p>
-              )}
-            </FormSection>
-
-            <FormSection title={t("evidencePhotoLabel")} className="space-y-3">
-              <PhotoGallery
-                items={editPhotos}
-                onChange={setEditPhotos}
-                onPreview={(photo) => setViewingPhoto({ url: photo.url, name: editTarget.item_name, urls: editPhotos.map((x) => x.url) })}
-                onError={setError}
-              />
-              {editPhotos.length === 0 && (
-                <p className="text-sm text-[#E2A088]">{t("returnNeedsPhotoHint")}</p>
-              )}
-              <p className="text-sm text-white/50">{t("keepPhotoHint")}</p>
-              <p className="text-sm text-white/50">{t("fileHintPhotos")}</p>
-              {editSavedNote && (
-                <div role="status" className="rounded-xl border border-[#4FBEB0]/30 bg-[#4FBEB0]/10 px-4 py-2.5 text-sm font-semibold text-[#7DD8CB]">{t("editReturnSuccessTitle")}</div>
-              )}
-              {error && (
-                <div className="rounded-xl border border-red-500/25 bg-red-500/10 px-4 py-2.5 text-sm text-red-400">{error}</div>
-              )}
-            </FormSection>
-
-            <ActivityLog
-              entries={editTarget.activity}
-              onOpen={(url, urls) => setViewingPhoto({ url, name: editTarget.item_name, urls })}
-            />
+            </div>
           </FormDrawer>,
           document.body
         );

@@ -30,7 +30,7 @@ export default function LiveStatus({
     sec === null ? "" : sec < 5 ? t("updatedJustNowLabel") : sec < 60 ? t("updatedSecondsAgoLabel").replace("{n}", String(sec)) : t("updatedMinutesAgoLabel").replace("{n}", String(Math.floor(sec / 60)));
 
   return (
-    <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] py-1.5 pl-3.5 pr-1.5" role="status" aria-live="polite">
+    <div className="inline-flex items-center gap-2 dash-tile rounded-full py-1.5 pl-3.5 pr-1.5" role="status" aria-live="polite">
       <span className="relative flex h-2.5 w-2.5">
         {!failed && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />}
         <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${failed ? "bg-amber-400" : "bg-emerald-400"}`} />

@@ -10,7 +10,7 @@ type T = (key: string) => string;
 export function ChartCard({ title, desc, right, children, className = "", delay = 0 }: { title: ReactNode; desc?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; delay?: number }) {
   return (
     <div
-      className={`report-rise print:break-inside-avoid min-w-0 rounded-[30px] border border-white/10 bg-white/[0.03] p-5 sm:p-6 print:border-[#ddd5ca] print:bg-white ${className}`}
+      className={`report-rise print:break-inside-avoid min-w-0 dash-card rounded-[32px] p-5 sm:p-6 print:border-[#ddd5ca] print:bg-white ${className}`}
       style={delay ? { animationDelay: `${delay}ms` } : undefined}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -28,7 +28,7 @@ export function ChartCard({ title, desc, right, children, className = "", delay 
 /** Small segmented switch for the measure a trend chart plots. */
 function MetricTabs({ value, onChange, options }: { value: string; onChange: (k: string) => void; options: { key: string; label: string }[] }) {
   return (
-    <div role="tablist" className="inline-flex rounded-full border border-white/10 bg-white/[0.04] p-1 print:hidden">
+    <div role="tablist" className="inline-flex dash-tile rounded-full p-1 print:hidden">
       {options.map((o) => (
         <button
           key={o.key}
@@ -36,7 +36,7 @@ function MetricTabs({ value, onChange, options }: { value: string; onChange: (k:
           aria-selected={value === o.key}
           type="button"
           onClick={() => onChange(o.key)}
-          className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${value === o.key ? "bg-sage-700 text-white shadow-sm" : "text-white/55 hover:text-white"}`}
+          className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${value === o.key ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/55 hover:text-white"}`}
         >
           {o.label}
         </button>
@@ -74,7 +74,7 @@ function EventRankTile({ index, ev, color, onOpen, t }: { index: number; ev: any
       <span className="self-start rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] font-bold tabular-nums text-white/55 print:bg-gray-100 print:text-gray-500">#{index + 1}</span>
     </>
   );
-  const cls = "flex min-w-0 items-center gap-3.5 rounded-2xl border border-white/10 bg-white/[0.03] p-3.5 print:break-inside-avoid print:border-[#ddd5ca] print:bg-white";
+  const cls = "flex min-w-0 items-center gap-3.5 dash-tile rounded-2xl p-3.5 print:break-inside-avoid print:border-[#ddd5ca] print:bg-white";
   return onOpen ? (
     <button type="button" onClick={onOpen} title={ev.name} className={`${cls} w-full text-left transition hover:bg-white/5 print:hover:bg-white`}>{body}</button>
   ) : (
@@ -130,7 +130,7 @@ function TrendBody({ t, trend, prev, metric, label, format, integer }: { t: T; t
 // ── Attendance ──────────────────────────────────────────────────────────────
 
 export function AttendanceCharts({
-  t, data, previous, chartsClass, ageClass, ageGroup = "", onAgeSelect, onOpenEvent,
+  t, data, previous, chartsClass, ageClass, ageGroup = "", onAgeSelect, onOpenEvent, part = "all",
 }: {
   t: T; data: any; previous: any; chartsClass: string; ageClass: string;
   /** Currently filtered age group ("" = all); clicking an age bar toggles it. */
@@ -138,6 +138,8 @@ export function AttendanceCharts({
   onAgeSelect?: (group: string) => void;
   /** Open an event (Events page) from a ranked row. */
   onOpenEvent?: (eventId: number | string, tab: string) => void;
+  /** "main" = trend + rankings, "side" = gauge + age + gender (the right-hand column), "all" = both. */
+  part?: "main" | "side" | "all";
 }) {
   const [metric, setMetric] = useState("attended");
   const [rank, setRank] = useState("best");
@@ -171,24 +173,15 @@ export function AttendanceCharts({
 
   return (
     <>
-      <div className={`space-y-4 print:space-y-3 ${chartsClass}`}>
-        <div className="grid gap-4 grid-cols-1 lg:grid-cols-3 print:grid-cols-3 print:gap-3">
+      {part !== "side" && (
+      <div className={`space-y-5 print:space-y-3 ${chartsClass}`}>
+        <div className="grid gap-5 grid-cols-1 print:gap-3">
           <ChartCard
-            className="lg:col-span-2 print:col-span-2"
             title={t("rpTrendTitle")}
             desc={t("rpTrendDesc")}
             right={<MetricTabs value={metric} onChange={setMetric} options={metrics.map((m) => ({ key: m.key, label: m.label }))} />}
           >
             <TrendBody t={t} trend={data?.trend} prev={previous?.trend} metric={active.key} label={active.label} format={active.format} integer={active.integer} />
-          </ChartCard>
-          <ChartCard title={t("overallAttendance")} desc={t("rpGaugeAttendDesc")} delay={90}>
-            <GaugeChart
-              icon={<Users className="h-4 w-4" />}
-              value={Number(summary.attendance_percentage ?? 0)}
-              centerLabel={`${present} ${t("ofLabel")} ${eligible} ${t("ofEligibleResidents")}`}
-              left={{ label: t("rptStatPresent"), value: present, color: CHART_COLORS[0] }}
-              right={{ label: t("rptStatAbsent"), value: Math.max(0, eligible - present), color: CHART_PREVIOUS }}
-            />
           </ChartCard>
         </div>
 
@@ -203,7 +196,7 @@ export function AttendanceCharts({
             <div className="space-y-5">
               <div key={`best-${rank}`} className={rank === "best" ? "" : "hidden print:block"}>
                 <p className="mb-2 hidden text-xs font-bold uppercase tracking-wide text-gray-500 print:block">{t("rpRankBest")}</p>
-                <EventRankGrid events={best} color={CHART_COLORS[2]} t={t} onOpen={onOpenEvent ? (id) => onOpenEvent(id, "attendance") : undefined} />
+                <EventRankGrid events={best} color={CHART_COLORS[0]} t={t} onOpen={onOpenEvent ? (id) => onOpenEvent(id, "attendance") : undefined} />
               </div>
               <div key={`worst-${rank}`} className={rank === "worst" ? "" : "hidden print:block"}>
                 <p className="mb-2 hidden text-xs font-bold uppercase tracking-wide text-gray-500 print:block">{t("rpRankLowest")}</p>
@@ -213,8 +206,22 @@ export function AttendanceCharts({
           </ChartCard>
         )}
       </div>
+      )}
 
-      <div className={`grid gap-4 grid-cols-1 lg:grid-cols-2 print:grid-cols-2 print:gap-3 ${ageClass}`}>
+      {part !== "main" && (
+      <div className="space-y-5 print:space-y-3">
+      <div className={chartsClass}>
+        <ChartCard title={t("overallAttendance")} desc={t("rpGaugeAttendDesc")} delay={90}>
+            <GaugeChart
+              icon={<Users className="h-4 w-4" />}
+              value={Number(summary.attendance_percentage ?? 0)}
+              centerLabel={`${present} ${t("ofLabel")} ${eligible} ${t("ofEligibleResidents")}`}
+              left={{ label: t("rptStatPresent"), value: present, color: CHART_COLORS[0] }}
+              right={{ label: t("rptStatAbsent"), value: Math.max(0, eligible - present), color: CHART_PREVIOUS }}
+            />
+          </ChartCard>
+      </div>
+      <div className={`grid gap-5 grid-cols-1 print:grid-cols-2 print:gap-3 ${ageClass}`}>
         <ChartCard title={t("attendanceByAgeGroup")} desc={t("rpAgeDesc")} delay={300}>
           {(() => {
             const pick = onAgeSelect ? (i: number) => {
@@ -239,6 +246,8 @@ export function AttendanceCharts({
           )}
         </ChartCard>
       </div>
+      </div>
+      )}
     </>
   );
 }

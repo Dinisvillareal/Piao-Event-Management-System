@@ -6,6 +6,7 @@ export const dashboardTranslations: Dict = {
   dashViewReports: { en: "View Reports", tl: "Tingnan ang mga Ulat", ceb: "Tan-awa ang mga Report" },
   dashReportsDesc: { en: "Analytics & activity reports", tl: "Mga ulat ng analytics at aktibidad", ceb: "Mga report sa analytics ug kalihokan" },
   dashCreateEvent: { en: "Create Event", tl: "Gumawa ng Event", ceb: "Paghimo og Event" },
+  dashQuickActions: { en: "Quick actions", tl: "Mga mabilis na aksyon", ceb: "Mga dali nga aksyon" },
   dashScanQr: { en: "Scan QR", tl: "I-scan ang QR", ceb: "I-scan ang QR" },
   dashSendNotice: { en: "Send Notice", tl: "Magpadala ng Abiso", ceb: "Pagpadala og Pahibalo" },
   dashActiveMemberships: { en: "Active Memberships", tl: "Mga Aktibong Membership", ceb: "Mga Aktibong Membership" },

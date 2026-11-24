@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { KeyRound, ShieldCheck, Smartphone, BellRing, Crown, CheckCircle2, AlertTriangle } from "lucide-react";
+import { KeyRound, ShieldCheck, Smartphone, BellRing, Crown, CheckCircle2, AlertTriangle, ChevronRight, Clock } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import ChangePasswordForm from "../../../components/auth/ChangePasswordForm";
@@ -32,6 +32,8 @@ export default function MyAccountView() {
   const [transfer, setTransfer] = useState<{ from_name: string | null; expires_at: string } | null>(null);
   const [pwDone, setPwDone] = useState(false);
   const [notice, setNotice] = useState("");
+  // Which settings section is open on the right (picked from the list on the left).
+  const [section, setSection] = useState<"password" | "twostep" | "alerts">("password");
 
   // two-step login
   const [tfaSetup, setTfaSetup] = useState<{ secret: string; uri: string } | null>(null);
@@ -149,101 +151,72 @@ export default function MyAccountView() {
   const pill = "inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-bold";
   const ghostBtn = "rounded-full border border-white/20 px-5 py-2 text-sm font-semibold text-white transition hover:bg-white/10";
 
+  // The picked section as one card (icon + title + short text + status, then the form).
+  const row = (key: "password" | "twostep" | "alerts", Icon: any, title: string, desc: string, badge: React.ReactNode, content: React.ReactNode) =>
+    section === key ? (
+      <SectionCard key={key} icon={<Icon className="h-5 w-5" />} title={title} desc={desc} action={badge ?? undefined}>
+        {content}
+      </SectionCard>
+    ) : null;
+
   return (
-    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold text-white sm:text-3xl">{t("myaccount")}</h1>
+      <div className="dash-card rounded-[32px] p-5 sm:p-6">
+        <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("myaccount")}</h1>
         <p className="mt-1.5 max-w-2xl text-sm text-white/55">{t("secMyAccountSubtitle")}</p>
       </div>
 
-      {transfer && (
-        <div className="rounded-2xl border border-gold-400/40 bg-gold-400/10 p-5 sm:p-6">
-          <div className="flex flex-wrap items-center gap-4">
-            <Crown className="h-7 w-7 shrink-0 text-gold-300" />
-            <div className="min-w-0 flex-1">
-              <h2 className="text-base font-bold text-white">{t("secTransferOfferedTitle")}</h2>
-              <p className="mt-1 text-sm text-white/65">
-                {t("secTransferOfferedBody").replace("{name}", transfer.from_name ?? "")}{" "}
-                {t("secTransferExpires").replace("{when}", new Date(transfer.expires_at).toLocaleString(locale))}
-              </p>
-            </div>
-            <button onClick={() => setAcceptOpen(true)} className="rounded-full bg-gold-400 px-6 py-2.5 text-sm font-bold text-[#08130F] transition hover:opacity-90">
-              {t("secAcceptHeadRole")}
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[480px_minmax(0,1fr)] lg:items-start">
-        {/* ── Left: who you are + security at a glance ── */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_320px] lg:items-start">
+        {/* Left: who you are, and the menu -- one card. */}
         <aside className="lg:sticky lg:top-4">
-          <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-6">
-            {!me ? (
-              <div aria-busy="true" aria-live="polite">
-                <div className="flex flex-col items-center">
+          <section className="dash-card overflow-hidden rounded-[32px] !shadow-[0_14px_34px_rgba(15,23,42,0.14)]">
+            <div className="px-6 pb-5 pt-7 text-center">
+              {!me ? (
+                <div aria-busy="true" className="flex flex-col items-center">
                   <Skeleton className="h-20 w-20 !rounded-full" />
                   <Skeleton className="mt-4 h-6 w-40" />
                   <Skeleton className="mt-2 h-4 w-20" />
-                  <Skeleton className="mt-3 h-6 w-24 !rounded-full" />
                 </div>
-                <div className="mt-6 space-y-4 border-t border-white/10 pt-4">
-                  <div>
-                    <Skeleton className="h-3.5 w-24" />
-                    <Skeleton className="mt-2 h-6 w-48" />
-                    <Skeleton className="mt-2 h-3.5 w-full" />
-                  </div>
-                  <div className="flex items-center justify-between border-t border-white/10 pt-4">
-                    <Skeleton className="h-5 w-28" /><Skeleton className="h-6 w-12 !rounded-full" />
-                  </div>
-                  <div className="flex items-center justify-between border-t border-white/10 pt-4">
-                    <Skeleton className="h-5 w-24" /><Skeleton className="h-6 w-9 !rounded-full" />
-                  </div>
-                </div>
-                <Skeleton className="mt-4 h-20 w-full !rounded-xl" />
-              </div>
-            ) : (
-              <>
-                <div className="flex flex-col items-center text-center">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gold-400 text-2xl font-bold text-[#08130F]">{initials}</div>
-                  <h2 className="mt-4 text-xl font-bold text-white">{me.first_name} {me.last_name}</h2>
-                  <p className="text-base text-white/55">{me.user_code}</p>
-                  <span className={`${pill} mt-3 ${me.is_head_staff ? "bg-gold-400/20 text-gold-300" : "bg-[#4FBEB0]/15 text-[#7DD8CB]"}`}>
+              ) : (
+                <>
+                  <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gold-400 text-2xl font-bold text-[#08130F] ring-4 ring-white shadow-md">{initials}</div>
+                  <h2 className="mt-4 font-display text-xl font-extrabold text-white">{me.first_name} {me.last_name}</h2>
+                  <p className="text-sm text-white/55">{me.user_code}</p>
+                  <span className={`${pill} mt-3 ${me.is_head_staff ? "bg-gold-400/20 text-gold-300" : "bg-[#4FBEB0]/15 text-[#2E8E82]"}`}>
                     {me.is_head_staff ? <><Crown className="h-3.5 w-3.5" /> {t("secHeadStaff")}</> : t("staffOption")}
                   </span>
-                </div>
-
-                <dl className="mt-6 divide-y divide-white/10 border-t border-white/10 text-base">
-                  <div className="py-3">
-                    <dt className="text-sm font-semibold uppercase tracking-wide text-white/45">{t("secLastSignIn")}</dt>
-                    <dd className="mt-1 text-lg font-semibold text-white">{when(me.last_login_at)}</dd>
-                    <dd className="mt-0.5 text-sm text-white/45">{t("secLastSignInHint")}</dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 py-3">
-                    <dt className="text-white/70">{t("secTwoStepTitle")}</dt>
-                    <dd className={`${pill} ${me.two_factor_enabled ? "bg-[#4FBEB0]/15 text-[#7DD8CB]" : "bg-gold-400/15 text-gold-300"}`}>
-                      {me.two_factor_enabled ? t("secStatusOn") : t("secStatusOff")}
-                    </dd>
-                  </div>
-                  <div className="flex items-center justify-between gap-3 py-3">
-                    <dt className="text-white/70">{t("secUnreadAlerts")}</dt>
-                    <dd className={`${pill} ${unread > 0 ? "bg-red-500/15 text-red-300" : "bg-white/10 text-white/60"}`}>{unread}</dd>
-                  </div>
-                </dl>
-
-                {me.is_head_staff && (
-                  <p className="mt-2 rounded-xl border border-gold-400/30 bg-gold-400/10 px-4 py-3.5 text-sm leading-relaxed text-white/65">
-                    <span className="font-bold text-gold-300">{t("secYouAreHead")}</span> {t("secHeadStricterNote")}
-                  </p>
-                )}
-              </>
-            )}
+                </>
+              )}
+            </div>
+            <nav className="border-t border-white/10 p-3">
+              {([
+                { key: "password", label: t("changePassword"), icon: KeyRound, badge: null as string | null },
+                { key: "twostep", label: t("secTwoStepTitle"), icon: Smartphone, badge: me ? (me.two_factor_enabled ? t("secStatusOn") : t("secStatusOff")) : null },
+                { key: "alerts", label: t("secAlertsTitle"), icon: BellRing, badge: unread > 0 ? String(unread) : null },
+              ] as const).map((it) => {
+                const on = section === it.key;
+                return (
+                  <button
+                    key={it.key}
+                    type="button"
+                    onClick={() => setSection(it.key)}
+                    className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-[15px] font-semibold transition ${on ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/75 hover:bg-[#4FBEB0]/[0.08] hover:text-white"}`}
+                  >
+                    <it.icon className={`h-[18px] w-[18px] shrink-0 ${on ? "text-white" : "text-[#2E8E82]"}`} />
+                    <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                    {it.badge && <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${on ? "bg-white/20 text-white" : it.key === "alerts" ? "bg-red-500/15 text-red-500" : "bg-[#F5C451]/25 text-[#9A6B00]"}`}>{it.badge}</span>}
+                    <ChevronRight className={`h-4 w-4 shrink-0 ${on ? "text-white/70" : "text-white/30"}`} />
+                  </button>
+                );
+              })}
+            </nav>
           </section>
         </aside>
 
-        {/* ── Right: things you can do (kept at a comfortable reading width) ── */}
-        <div className="max-w-2xl space-y-6">
-          <SectionCard icon={<KeyRound className="h-5 w-5" />} title={t("changePassword")} desc={t("secChangePasswordDesc")}>
+        {/* Middle: the picked section. */}
+        <div className="min-w-0 space-y-5">
+          {row("password", KeyRound, t("changePassword"), t("secChangePasswordDesc"), null, (<>
             {pwDone ? (
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="flex items-center gap-2 text-sm font-semibold text-[#7DD8CB]"><CheckCircle2 className="h-5 w-5" /> {t("secPasswordChangedNote")}</p>
@@ -257,20 +230,15 @@ export default function MyAccountView() {
                   ))}
                   <Skeleton className="h-[54px] w-full !rounded-full" />
                 </div>
-              ) : <div><ChangePasswordForm userId={me.id} minLength={minLength} confirmFirst withCancel onDone={() => { setPwDone(true); setNotice(t("secPasswordChangedNote")); load(); }} /></div>
+              ) : <div className="max-w-2xl"><ChangePasswordForm userId={me.id} minLength={minLength} confirmFirst onDone={() => { setPwDone(true); setNotice(t("secPasswordChangedNote")); load(); }} /></div>
             )}
-          </SectionCard>
+          </>))}
 
-          <SectionCard
-            icon={<Smartphone className="h-5 w-5" />}
-            title={t("secTwoStepTitle")}
-            desc={t("secTwoStepDesc")}
-            action={me && !tfaSetup ? (
-              <span className={`${pill} ${me.two_factor_enabled ? "bg-[#4FBEB0]/15 text-[#7DD8CB]" : "bg-gold-400/15 text-gold-300"}`}>
-                {me.two_factor_enabled ? t("secStatusOn") : t("secStatusOff")}
-              </span>
-            ) : undefined}
-          >
+          {row("twostep", Smartphone, t("secTwoStepTitle"), t("secTwoStepDesc"), me && !tfaSetup ? (
+            <span className={`${pill} ${me.two_factor_enabled ? "bg-[#4FBEB0]/15 text-[#2E8E82]" : "bg-[#F5C451]/25 text-[#9A6B00]"}`}>
+              {me.two_factor_enabled ? t("secStatusOn") : t("secStatusOff")}
+            </span>
+          ) : null, (<>
             {!me ? (
               <div className="space-y-4" aria-busy="true">
                 <Skeleton className="h-4 w-3/4" />
@@ -327,15 +295,10 @@ export default function MyAccountView() {
                 <SaveButton type="button" icon={ShieldCheck} className="w-full sm:w-auto sm:min-w-[300px]" active onClick={() => setAskSetupSure(true)}>{t("secSetUpTwoStep")}</SaveButton>
               </div>
             )}
-          </SectionCard>
+          </>))}
 
 
-      <SectionCard
-        icon={<BellRing className="h-5 w-5" />}
-        title={t("secAlertsTitle")}
-        desc={t("secAlertsDesc")}
-        action={unread > 0 ? <span className={`${pill} bg-red-500/15 text-red-300`}>{unread}</span> : undefined}
-      >
+      {row("alerts", BellRing, t("secAlertsTitle"), t("secAlertsDesc"), unread > 0 ? <span className={`${pill} bg-red-500/15 text-red-500`}>{unread}</span> : null, (<>
         {!me || alertPager.switching ? (
           <div className="space-y-2.5" aria-busy="true">
             {Array.from({ length: !me ? 3 : Math.max(1, alertPager.shown.length) }, (_, i) => (
@@ -361,8 +324,83 @@ export default function MyAccountView() {
           </ul>
         )}
         <SimplePager className="mt-4" page={alertPager.page} totalPages={alertPager.totalPages} onChange={alertPager.go} loading={alertPager.switching} />
-      </SectionCard>
+      </>))}
         </div>
+
+        {/* Right: a quick security check. */}
+        <aside className="space-y-5 lg:col-span-2 xl:col-span-1 xl:sticky xl:top-4">
+          <section className="dash-card rounded-[32px] p-6">
+            {!me ? (
+              <Skeleton className="h-40 w-full !rounded-2xl" />
+            ) : (() => {
+              const checks = [
+                { key: "twostep", label: t("secTwoStepTitle"), note: me.two_factor_enabled ? t("secTwoStepIsOn") : t("secTwoStepIsOff"), done: me.two_factor_enabled, go: "twostep" as const },
+                { key: "alerts", label: t("secUnreadAlerts"), note: String(unread), done: unread === 0, go: "alerts" as const },
+              ];
+              const doneN = checks.filter((c) => c.done).length;
+              const R = 38;
+              const C = 2 * Math.PI * R;
+              const pct = Math.round((doneN / checks.length) * 100);
+              return (
+                <>
+                  <div className="flex flex-col items-center text-center">
+                    <span className="relative flex h-28 w-28 items-center justify-center">
+                      <svg viewBox="0 0 90 90" className="absolute inset-0 -rotate-90">
+                        <defs>
+                          {/* Live gradient: the colours keep flowing around the ring. */}
+                          <linearGradient id="acctRingGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="90" y2="90">
+                            <stop offset="0%" stopColor="#F6D365" />
+                            <stop offset="30%" stopColor="#A9C98A" />
+                            <stop offset="55%" stopColor="#5BBBA6" />
+                            <stop offset="78%" stopColor="#2A8A93" />
+                            <stop offset="100%" stopColor="#146088" />
+                            <animateTransform attributeName="gradientTransform" type="rotate" from="0 45 45" to="360 45 45" dur="6s" repeatCount="indefinite" />
+                          </linearGradient>
+                        </defs>
+                        <circle cx="45" cy="45" r={R} fill="none" stroke="rgba(42,138,147,0.16)" strokeWidth="8" />
+                        <circle cx="45" cy="45" r={R} fill="none" stroke="url(#acctRingGrad)" strokeWidth="8" strokeLinecap="round" strokeDasharray={`${C * (pct || 4) / 100} ${C}`} />
+                      </svg>
+                      <span className="relative font-display text-2xl font-extrabold text-white">{doneN}<span className="text-base text-white/45">/{checks.length}</span></span>
+                    </span>
+                    <p className="mt-3 font-display text-lg font-extrabold text-white">{t("accSecurityCheck")}</p>
+                    <p className="text-sm text-white/55">{t("accChecksPassed").replace("{a}", String(doneN)).replace("{b}", String(checks.length))}</p>
+                    <span className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${doneN === checks.length ? "bg-[#4FBEB0]/20 text-[#2E8E82]" : "bg-[#F5C451]/25 text-[#9A6B00]"}`}>
+                      {doneN === checks.length ? <CheckCircle2 className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                      {doneN === checks.length ? t("accAllGood") : t("accNeedsAttention")}
+                    </span>
+                  </div>
+                  <ul className="mt-6 space-y-3">
+                    {checks.map((c) => (
+                      <li key={c.key}>
+                        <button type="button" onClick={() => setSection(c.go)} className="dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.1)] flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition hover:!border-[#4FBEB0]/60">
+                          {c.done ? <CheckCircle2 className="h-5 w-5 shrink-0 text-[#2E8E82]" /> : <AlertTriangle className="h-5 w-5 shrink-0 text-[#B7841A]" />}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-white">{c.label}</span>
+                            <span className="block truncate text-xs text-white/55">{c.note}</span>
+                          </span>
+                          <ChevronRight className="h-4 w-4 shrink-0 text-white/35" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.1)] mt-3 flex items-start gap-3 rounded-2xl px-4 py-3.5">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/15"><Clock className="h-5 w-5 text-[#2E8E82]" /></span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-white/55">{t("secLastSignIn")}</p>
+                      <p className="text-sm font-semibold text-white">{when(me.last_login_at)}</p>
+                      <p className="mt-0.5 text-xs text-white/50">{t("secLastSignInHint")}</p>
+                    </div>
+                  </div>
+                  {me.is_head_staff && (
+                    <p className="mt-4 rounded-2xl border border-gold-400/30 bg-gold-400/10 px-4 py-3 text-sm leading-relaxed text-white/70">
+                      <span className="font-bold text-gold-300">{t("secYouAreHead")}</span> {t("secHeadStricterNote")}
+                    </p>
+                  )}
+                </>
+              );
+            })()}
+          </section>
+        </aside>
       </div>
 
       <ConfirmDialog

@@ -345,7 +345,7 @@ export default function UnitsModal({
         onClose={requestClose}
         footer={
           tabs.length === 0 ? (
-            <SaveButton type="button" icon={CheckCircle2} className="w-full" onClick={onClose} active>{t("closeLabel")}</SaveButton>
+            null
           ) : (
             <SaveButton type="button" icon={Icon} className="w-full" onClick={() => setConfirm("submit")} active={ready}>
               {submitLabel}

@@ -301,7 +301,7 @@ export default function DashboardView({
         <SummaryCard
           value={membershipsCount}
           title={t("verifiedMemberships")}
-          gradient="from-gold-400 to-gold-700"
+          gradient="from-sage-400 to-sage-700"
           description={t("membershipsDesc")}
           icon={Award}
           onClick={() => setActive("qr")}
@@ -317,7 +317,7 @@ export default function DashboardView({
         <SummaryCard
           value={upcomingEvents.length}
           title={t("upcomingEvents")}
-          gradient="from-sage-800 to-[#1C2E2B]"
+          gradient="from-sage-400 to-sage-700"
           description={t("upcomingEventsDesc")}
           icon={CalendarDays}
           onClick={() => setActive("events")}
@@ -413,10 +413,10 @@ export default function DashboardView({
               <p className="mt-1 text-sm text-white/50">{t("showQrToStaffCaption")}</p>
               <button
                 onClick={() => setActive("qr")}
-                className="group mt-3 inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-5 pr-1.5 py-1.5 text-[15px] font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md"
+                className="btn-live-navy group mt-3 inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-5 pr-1.5 py-1.5 text-[15px] font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md"
               >
                 {t("viewFullQrCode")}
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
                   <QrCode className="h-4 w-4 text-white" />
                 </span>
               </button>

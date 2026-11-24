@@ -161,7 +161,7 @@ export default function ActivationSlipModal({ slip, onClose, forStaff = false }:
 
           <div className="mt-3 flex gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/10 p-3">
             <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
-            <p className="text-xs text-amber-100/90 sm:text-sm">{t("actSlipOnce")}</p>
+            <p className="text-xs text-amber-200 sm:text-sm">{t("actSlipOnce")}</p>
           </div>
 
           <div className="mt-4 flex flex-col gap-3 sm:flex-row">
