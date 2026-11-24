@@ -242,4 +242,6 @@ return [
     'This resident has no portal account yet. Turn on portal access first.' => 'Wala pay portal account kini nga residente. I-on una ang portal access.',
     'Your account is active. You can now sign in with your new password.' => 'Aktibo na ang imong account. Makasulod ka na gamit ang imong bag-ong password.',
     'Slip verified.' => 'Na-verify ang slip.',
+    'Photo updated.' => 'Nailisan ang hulagway.',
+    'This resident already has a portal account.' => 'Naa nay portal account kini nga residente.',
 ];

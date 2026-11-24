@@ -268,12 +268,12 @@ export default function NotificationsView({ memberships = [], highlightText, ini
    ], [memberships, t]);
 
    return (
-       <div className="-m-3 sm:-m-6 h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col relative overflow-y-auto lg:overflow-visible">
+       <div className="-m-3 sm:-m-6 h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8 flex flex-col relative overflow-y-auto lg:overflow-visible">
            {/* Fixed Header - Never scrolls */}
            <div className="flex-shrink-0 pb-6 shadow-b-sm">
-               <div className="flex items-center justify-between">
+               <div className="dash-card flex items-center justify-between rounded-[32px] p-5 sm:p-6">
                    <div>
-                       <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("notificationsAndAnnouncements")}</h1>
+                       <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("notificationsAndAnnouncements")}</h1>
                        <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("staffNotificationsSubtitle")}</p>
                    </div>
                </div>
@@ -284,46 +284,46 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                    <button
                        type="button"
                        onClick={() => switchTab("notifications")}
-                       className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
+                       className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
                            activeTab === "notifications"
-                               ? "bg-sage-700 text-white shadow-sm"
-                               : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                               ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
+                               : "dash-card text-white/60 hover:text-white"
                        }`}
                    >
-                       <Bell className="h-[18px] w-[18px]" />
+                       <Bell className="h-4 w-4" />
                        {t("notify")}
-                       <span className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "notifications" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
+                       <span className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${activeTab === "notifications" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
                            {loading && allTotal === 0 ? 0 : allTotal}
                        </span>
                    </button>
                    <button
                        type="button"
                        onClick={() => switchTab("sms")}
-                       className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
+                       className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
                            activeTab === "sms"
-                               ? "bg-sage-700 text-white shadow-sm"
-                               : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                               ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
+                               : "dash-card text-white/60 hover:text-white"
                        }`}
                    >
-                       <Smartphone className="h-[18px] w-[18px]" />
+                       <Smartphone className="h-4 w-4" />
                        {t("householdSmsDeliveries")}
-                       <span className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "sms" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
+                       <span className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${activeTab === "sms" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
                            {smsAllTotal}
                        </span>
                    </button>
                    <button
                        type="button"
                        onClick={() => switchTab("feedback")}
-                       className={`inline-flex items-center gap-2.5 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
+                       className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
                            activeTab === "feedback"
-                               ? "bg-sage-700 text-white shadow-sm"
-                               : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                               ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
+                               : "dash-card text-white/60 hover:text-white"
                        }`}
                    >
-                       <MessageSquare className="h-[18px] w-[18px]" />
+                       <MessageSquare className="h-4 w-4" />
                        {t("alertsTabLabel")}
                        {feedbackUnread > 0 && (
-                           <span className={`inline-flex h-[22px] min-w-[1.4rem] items-center justify-center rounded-full px-2 text-xs font-bold ${activeTab === "feedback" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
+                           <span className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${activeTab === "feedback" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
                                {feedbackUnread > 99 ? "99+" : feedbackUnread}
                            </span>
                        )}
@@ -331,7 +331,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                </div>
 
                {activeTab === "feedback" ? null : activeTab === "notifications" ? (<>
-               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+               <div className="dash-card mt-4 rounded-[28px] p-3 sm:p-4">
                    <FilterBar
                        search={{ value: searchQuery, onChange: setSearchQuery, placeholder: t("searchNotificationsPlaceholder") }}
                        filters={[
@@ -356,19 +356,19 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                            <button
                                onClick={() => goToPage(p => Math.max(1, p - 1))}
                                disabled={currentPage === 1}
-                               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                               className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                            >
                                ←
                            </button>
 
-                           <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-semibold">
+                           <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-semibold">
                                {currentPage}
                            </span>
 
                            <button
                                onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
                                disabled={currentPage === totalPages}
-                               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                               className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                            >
                                →
                            </button>
@@ -376,7 +376,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                    ))}
                </div>
                </>) : (<>
-               <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+               <div className="dash-card mt-4 rounded-[28px] p-3 sm:p-4">
                    <FilterBar
                        search={{ value: smsSearch, onChange: setSmsSearch, placeholder: t("smsSearchPlaceholder") }}
                        filters={[{
@@ -400,17 +400,17 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                            <button
                                onClick={() => setSmsPage(p => Math.max(1, p - 1))}
                                disabled={smsPage === 1}
-                               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                               className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                            >
                                ←
                            </button>
-                           <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                           <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold">
                                {smsPage}
                            </span>
                            <button
                                onClick={() => setSmsPage(p => Math.min(smsLastPage, p + 1))}
                                disabled={smsPage === smsLastPage}
-                               className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                               className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                            >
                                →
                            </button>
@@ -435,7 +435,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                        ))}
                    </div>
                ) : filteredNotifications.length === 0 ? (
-                   <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
+                   <div className="dash-tile rounded-[28px] border border-dashed border-white/15 p-10 text-center text-white/50">
                        <Bell size={40} className="mx-auto mb-3 text-white/20" />
                        <p>{t("noNotificationsMatch")}</p>
                    </div>
@@ -453,7 +453,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                                <div
                                    key={n.id}
                                    onClick={() => setSelectedNotification(n)}
-                                   className="cursor-pointer relative rounded-2xl sm:rounded-3xl bg-white/[0.04] px-5 sm:px-6 py-6 sm:py-7 border-l-4 border-l-gold-400 border-y border-r border-white/10 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.35)] hover:-translate-y-1 hover:bg-white/[0.07] active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100"
+                                   className="cursor-pointer relative dash-card rounded-[28px] px-5 sm:px-6 py-5 sm:py-6 transition-all duration-250 ease-out hover:-translate-y-1 hover:border-[#4FBEB0]/60 active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100"
                                >
                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
                                        <div className="flex-1 min-w-0">
@@ -498,7 +498,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                {smsLoading || pageSwitching ? (
                    <div className="space-y-2">
                        {Array.from({ length: 6 }).map((_, i) => (
-                           <div key={i} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                           <div key={i} className="dash-card flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
                                <div className="flex items-center gap-3 min-w-0 flex-1">
                                    <Skeleton className="h-4 w-4 rounded-full shrink-0" />
                                    <div className="space-y-2 flex-1">
@@ -511,14 +511,14 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                        ))}
                    </div>
                ) : smsLogs.length === 0 ? (
-                   <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
+                   <div className="dash-tile rounded-[28px] border border-dashed border-white/15 p-10 text-center text-white/50">
                        <Smartphone size={40} className="mx-auto mb-3 text-white/20" />
                        <p>{smsSearchApplied || smsStatus !== "all" ? t("smsNoMatch") : t("noSmsSentYet")}</p>
                    </div>
                ) : (
                    <div className="space-y-3">
                        {smsLogs.map((log: any) => (
-                               <div key={log.id} className="relative flex items-center justify-between gap-4 rounded-2xl sm:rounded-3xl bg-white/[0.04] px-5 sm:px-6 py-6 sm:py-7 border-l-4 border-l-gold-400 border-y border-r border-white/10 transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.35)] hover:-translate-y-1 hover:bg-white/[0.07] active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100">
+                               <div key={log.id} className="relative flex items-center justify-between gap-4 dash-card rounded-[28px] px-5 sm:px-6 py-5 sm:py-6 transition-all duration-250 ease-out hover:-translate-y-1 hover:border-[#4FBEB0]/60 active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100">
                                    <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm">
                                        <span className="font-medium text-white shrink-0">{t("toColon")}</span>
                                        {log.user?.is_household_head && <span title={t("householdHeadTitle")}><Home className="h-4 w-4 text-orange-400 shrink-0" /></span>}

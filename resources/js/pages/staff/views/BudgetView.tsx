@@ -13,6 +13,8 @@ import { useLanguage } from "../../../i18n/LanguageContext";
 
 import EventBudgetWorkspace, { type EventOption, money, budgetStateOf } from "../../../components/budget/EventBudgetWorkspace";
 import { makeEventTiming, STATUS_META } from "../../../lib/eventTiming";
+import { ChartCard } from "./reports/ReportCharts";
+import { LineChart, CHART_COLORS } from "../../../components/ui/Charts";
 
 import { tc } from "../../../lib/contentTranslations";
 /**
@@ -42,7 +44,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   // separate from the per-event `summary` below, so the top-of-page
   // totals stay put while browsing/searching the event list, and instead
   // refresh on their own short interval like a real live dashboard.
-  const [portfolio, setPortfolio] = useState<{ summary: any; per_event: any[] } | null>(null);
+  const [portfolio, setPortfolio] = useState<{ summary: any; per_event: any[]; trend?: any; status_counts?: any } | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [nowTick, setNowTick] = useState(() => Date.now());
 
@@ -57,7 +59,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
   const fetchPortfolio = async () => {
     try {
       const res = await api.get("/reports/budget-summary");
-      setPortfolio({ summary: res.data?.summary ?? null, per_event: res.data?.per_event ?? [] });
+      setPortfolio({ summary: res.data?.summary ?? null, per_event: res.data?.per_event ?? [], trend: res.data?.trend, status_counts: res.data?.status_counts });
       setLastUpdated(new Date());
     } catch (e) {
       // Silent -- the KPI strip just keeps showing its last good numbers;
@@ -212,17 +214,17 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
         theme, same scoping used on every other staff view; the Edit
         Expense modal is darkened along with the page, matching the
         Households/Inventory Edit modal treatment. */}
-    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="dash-card flex flex-col justify-between gap-4 rounded-[32px] p-5 sm:flex-row sm:items-center sm:p-6">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("budget")}</h1>
+          <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("budget")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("budgetSubtitle")}</p>
         </div>
         {/* Genuinely live -- fetchPortfolio() re-polls /reports/budget-summary
             every 20s (see effect above), this just renders how long ago
             that last landed, ticking every second off nowTick. */}
-        <div className="hidden sm:inline-flex items-center gap-1.5 self-start sm:self-auto rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-white/50 shrink-0" title={t("liveLabel")}>
+        <div className="hidden sm:inline-flex items-center gap-1.5 self-start sm:self-auto dash-tile dash-mint rounded-full px-3.5 py-2 text-xs font-medium text-white/70 shrink-0" title={t("liveLabel")}>
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
@@ -237,11 +239,11 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
         {[
           { value: Number(portfolioSummary.total_approved_budget || 0), label: t("totalApprovedBudgetStatLabel"), description: t("totalApprovedBudgetStatDesc"), icon: Wallet, gradient: "from-sage-400 to-sage-700" },
-          { value: Number(portfolioSummary.total_expenses || 0), label: t("totalSpentStatLabel"), description: t("totalSpentStatDesc"), icon: Banknote, gradient: "from-gold-400 to-gold-700" },
-          { value: Number(portfolioSummary.total_remaining || 0), label: t("remainingBudgetStatLabel"), description: t("remainingBudgetStatDesc"), icon: PiggyBank, gradient: "from-sage-800 to-[#1C2E2B]" },
-          { value: portfolioSummary.events_over_budget || 0, label: t("eventsOverBudgetStatLabel"), description: Number(portfolioSummary.total_over_amount) > 0 ? t("totalOverAmountDesc").replace("{over}", money(Number(portfolioSummary.total_over_amount))) : t("eventsOverBudgetStatDesc"), icon: AlertTriangle, gradient: "from-[#8A3D2C] to-[#5C2A1E]" },
+          { value: Number(portfolioSummary.total_expenses || 0), label: t("totalSpentStatLabel"), description: t("totalSpentStatDesc"), icon: Banknote, gradient: "from-sage-400 to-sage-700" },
+          { value: Number(portfolioSummary.total_remaining || 0), label: t("remainingBudgetStatLabel"), description: t("remainingBudgetStatDesc"), icon: PiggyBank, gradient: "from-sage-400 to-sage-700" },
+          { value: portfolioSummary.events_over_budget || 0, label: t("eventsOverBudgetStatLabel"), description: Number(portfolioSummary.total_over_amount) > 0 ? t("totalOverAmountDesc").replace("{over}", money(Number(portfolioSummary.total_over_amount))) : t("eventsOverBudgetStatDesc"), icon: AlertTriangle, gradient: "from-sage-400 to-sage-700" },
         ].map((card, idx) => initialLoading ? (
-          <div key={idx} className="rounded-[30px] border border-white/10 bg-white/[0.04] p-6 space-y-3">
+          <div key={idx} className="dash-card rounded-[30px] p-6 space-y-3">
             <Skeleton className="h-8 w-2/3" />
             <Skeleton className="h-3 w-1/2" />
             <Skeleton className="h-3 w-3/4" />
@@ -251,8 +253,24 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
         ))}
       </div>
 
+      {/* One graphic: spending over time (curve with a hover tooltip). */}
+      {portfolio && (
+        <ChartCard title={t("rpSpendTrendTitle")} desc={t("rpSpendTrendDesc")}>
+          {portfolio.trend && portfolio.trend.points?.length >= 2 ? (
+            <LineChart
+              labels={portfolio.trend.points.map((p: any) => p.label)}
+              tooltipLabels={portfolio.trend.points.map((p: any) => p.full)}
+              series={[{ key: "cur", label: t("rpMetricSpent"), color: CHART_COLORS[0], area: true, values: portfolio.trend.points.map((p: any) => Number(p.amount) || 0) }]}
+              format={(n: number) => money(n)}
+            />
+          ) : (
+            <p className="py-14 text-center text-sm italic text-white/40">{t("rpNoTrend")}</p>
+          )}
+        </ChartCard>
+      )}
+
       {/* Toolbar: status tabs + search / budget health / sort / date, then the event cards. */}
-      <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+      <div className="dash-card space-y-4 rounded-[32px] p-4 sm:p-5">
         <QuickTabs
           value={timeTab}
           onChange={(k) => setTimeTab(k as typeof timeTab)}
@@ -299,7 +317,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       {listLoading ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-5 pl-7">
+            <div key={i} className="dash-card space-y-3 rounded-[28px] p-5 pl-7">
               <Skeleton className="h-3 w-1/3" />
               <Skeleton className="h-4 w-3/5" />
               <Skeleton className="h-3 w-2/5" />
@@ -309,7 +327,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
           ))}
         </div>
       ) : pagedSections.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
+        <div className="dash-card rounded-[28px] p-10 text-center text-sm text-white/50">
           {budgetFilter !== "all" || timeTab !== "all" || selectedDate || search ? t("noEventsInFilter") : t("noEventsFound")}
         </div>
       ) : (
@@ -342,7 +360,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                         key={e.id}
                         type="button"
                         onClick={() => setSelectedEventId(String(e.id))}
-                        className="group relative flex w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] py-5 pl-7 pr-5 text-left text-white transition hover:-translate-y-0.5 hover:border-white/20 hover:bg-white/[0.07] hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4FBEB0]/50"
+                        className="dash-card group relative flex w-full flex-col overflow-hidden rounded-[28px] py-5 pl-7 pr-5 text-left text-white transition hover:-translate-y-0.5 hover:border-[#4FBEB0]/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4FBEB0]/50"
                       >
                         <span className={`absolute inset-y-0 left-0 w-1.5 ${meta.accent}`} />
                         <div className="flex items-center justify-between gap-2">
@@ -373,7 +391,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
                           ) : (
                             <p className="text-xs italic text-white/35">{t("budgetRowNoBudget")}</p>
                           )}
-                          <p className="mt-3 flex items-center justify-end gap-1 border-t border-white/10 pt-3 text-xs font-semibold text-[#7DD8CB] opacity-80 transition group-hover:opacity-100">
+                          <p className="mt-3 flex items-center justify-end gap-1 border-t border-white/10 pt-3 text-xs font-semibold text-[#2E8E82] opacity-80 transition group-hover:opacity-100">
                             {t("budgetOpenCard")} <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                           </p>
                         </div>
@@ -392,6 +410,7 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       {/* The event's whole budget slides in from the right, like every other form. */}
       {selectedEvent && (
         <FormDrawer
+          wide
           title={tc(selectedEvent.title, language as any)}
           subtitle={(() => {
             const sd = parseEventDateTime(selectedEvent.event_start || selectedEvent.date);
@@ -399,15 +418,6 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
             return sd ? `${sd.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric", year: "numeric" })}${tl ? ` · ${tl}` : ""}` : undefined;
           })()}
           onClose={() => setSelectedEventId(null)}
-          footer={
-            <button
-              type="button"
-              onClick={() => setSelectedEventId(null)}
-              className="w-full rounded-full border border-white/20 py-3.5 text-base font-bold text-white transition hover:bg-white/10"
-            >
-              {t("budgetCloseDrawer")}
-            </button>
-          }
         >
           <EventBudgetWorkspace event={selectedEvent} onChanged={() => { fetchPortfolio(); setReloadTick((n) => n + 1); }} showHeader={false} />
         </FormDrawer>

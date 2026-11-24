@@ -105,6 +105,37 @@ class AccountActivationTest extends TestCase
         $this->assertNull($user->fresh()->password);
     }
 
+    public function test_staff_can_give_a_registered_resident_a_portal_account_in_one_step(): void
+    {
+        $staff = $this->staff();
+        $this->actingAs($staff)->postJson('/users', [
+            'first_name' => 'Rosa', 'last_name' => 'Lim', 'contact_number' => '09171234567', 'role' => 'Resident', 'has_account' => false,
+        ])->assertStatus(201);
+        $rosa = User::where('first_name', 'Rosa')->first();
+        $this->assertFalse((bool) $rosa->has_account);
+
+        $res = $this->actingAs($staff)->postJson("/users/{$rosa->id}/portal-account")
+            ->assertOk()->assertJsonStructure(['activation_slip' => ['user_code', 'name', 'code', 'expires_at', 'issued_by']]);
+        $fresh = $rosa->fresh();
+        $this->assertTrue((bool) $fresh->has_account);
+        $this->assertNull($fresh->password);
+        $this->assertTrue((bool) $fresh->pending_activation);
+        $this->assertDatabaseHas('activity_logs', ['action' => 'Account Created']);
+        $this->assertDatabaseHas('activity_logs', ['action' => 'Activation Slip']);
+
+        // not twice, and the slip works
+        $this->actingAs($staff)->postJson("/users/{$rosa->id}/portal-account")->assertStatus(422);
+        $this->activate($rosa, $res->json('activation_slip.code'))->assertOk();
+    }
+
+    public function test_the_one_step_account_is_staff_only_and_never_for_staff_accounts(): void
+    {
+        $staff = $this->staff();
+        $other = $this->staff();
+        $this->actingAs($staff)->postJson("/users/{$other->id}/portal-account")->assertStatus(403);
+        $this->actingAs($this->makeUser('Resident'))->postJson("/users/{$staff->id}/portal-account")->assertStatus(403);
+    }
+
     public function test_the_check_step_verifies_the_slip_and_changes_nothing(): void
     {
         [$user, $slip] = $this->register();

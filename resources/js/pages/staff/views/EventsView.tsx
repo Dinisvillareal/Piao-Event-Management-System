@@ -11,12 +11,13 @@ import type { ResponseFields } from "../../../components/ui/FeedbackComment";
 import {
   Filter, X, LogIn, LogOut, ChevronLeft, Archive,
   Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown,
-  Megaphone, ClipboardList, Users, AlertTriangle, ArrowLeft, Save, Download, Printer, CheckCircle2, ChevronRight, Eye,
+  Megaphone, ClipboardList, Users, Wallet, AlertTriangle, ArrowLeft, Save, Download, Printer, CheckCircle2, ChevronRight, Eye,
 } from "lucide-react";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
+import KpiCard from "../../../components/ui/KpiCard";
 import DatePicker from "../../../components/ui/DatePicker";
 import TimePicker from "../../../components/ui/TimePicker";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
@@ -108,6 +109,85 @@ interface EventsViewProps {
   // Asks the page to open one event on a given tab (used by the bell notifications).
   openRequest?: { eventId: number; tab: string; sub?: string; nonce: number } | null;
   onOpenRequestHandled?: () => void;
+}
+
+const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Week card: a dark teal header band with a little timeline, then the week's dates as big date blocks. Click a day to filter the list to it, click again to clear. */
+function WeekStrip({ days, selected, onSelect, locale }: { days: Record<string, number>; selected: string; onSelect: (key: string) => void; locale: string }) {
+  const startOfWeek = (d: Date) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+  const [start, setStart] = useState(() => startOfWeek(selected ? new Date(`${selected}T00:00:00`) : new Date()));
+  const todayKey = dayKey(new Date());
+  const week = Array.from({ length: 7 }, (_, i) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
+  const end = week[6];
+  const sameMonth = start.getMonth() === end.getMonth();
+  const label = sameMonth
+    ? `${start.toLocaleDateString(locale, { month: "long" })} ${start.getFullYear()}`
+    : `${start.toLocaleDateString(locale, { month: "short" })} – ${end.toLocaleDateString(locale, { month: "short", year: "numeric" })}`;
+  const shift = (n: number) => setStart(new Date(start.getFullYear(), start.getMonth(), start.getDate() + n * 7));
+  const glass = "flex h-10 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/25 transition hover:bg-white/25";
+
+  return (
+    <div className="dash-card flex flex-col overflow-hidden rounded-[32px]">
+      <div className="relative bg-gradient-to-r from-[#5BBBA6] via-[#2A8A93] to-[#146088] px-5 py-4 text-white sm:px-6">
+        <div className="pointer-events-none absolute -left-6 top-0 h-28 w-40 rounded-full bg-white/20 blur-3xl" />
+        <div className="pointer-events-none absolute left-1/2 top-0 h-28 w-48 -translate-x-1/2 rounded-full bg-white/15 blur-3xl" />
+        <div className="relative flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/30"><Calendar className="h-5 w-5 text-white" /></span>
+            <h2 className="truncate font-display text-xl font-extrabold capitalize tracking-tight text-white sm:text-2xl">{label}</h2>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setStart(startOfWeek(new Date()))} className={`${glass} px-4 text-xs font-bold`}>Today</button>
+            <button type="button" onClick={() => shift(-1)} aria-label="Previous week" className={`${glass} w-10`}><ChevronLeft className="h-4 w-4" /></button>
+            <button type="button" onClick={() => shift(1)} aria-label="Next week" className={`${glass} w-10`}><ChevronRight className="h-4 w-4" /></button>
+          </div>
+        </div>
+        <div className="relative mt-4 flex items-center">
+          <span className="h-2.5 w-2.5 rounded-full bg-white" />
+          <span className="h-px flex-1 bg-white/40" />
+          <span className="h-2.5 w-2.5 rounded-full bg-white/70" />
+          <span className="h-px flex-1 bg-white/40" />
+          <span className="h-2.5 w-2.5 rounded-full bg-white" />
+        </div>
+      </div>
+
+      <div className="grid flex-1 grid-cols-2 content-center gap-y-3 px-3 py-5 sm:grid-cols-4 sm:px-4">
+        {week.map((d, i) => {
+          const key = dayKey(d);
+          const count = days[key] ?? 0;
+          const isSel = selected === key;
+          const isToday = key === todayKey;
+          return (
+            <div key={key} className={`px-1.5 ${i % 4 !== 0 ? "sm:border-l sm:border-white/15" : ""}`}>
+              <button
+                type="button"
+                onClick={() => onSelect(isSel ? "" : key)}
+                className={`flex w-full flex-col items-center rounded-2xl px-2 py-3 text-center transition active:scale-[0.98] ${
+                  isSel
+                    ? "bg-gradient-to-br from-[#5BBBA6] via-[#2A8A93] to-[#146088] text-white shadow-md"
+                    : isToday
+                      ? "bg-[#2A8A93]/[0.08] text-white shadow-[0_10px_24px_-10px_rgba(20,96,136,0.5)] ring-1 ring-[#2A8A93]/30"
+                      : "text-white hover:bg-[#2A8A93]/[0.07]"
+                }`}
+              >
+                <span className="flex items-center justify-center gap-1.5">
+                  <span className="font-display text-4xl font-extrabold leading-none tracking-tight sm:text-5xl">{d.getDate()}</span>
+                  <span className="flex flex-col items-start text-left leading-none">
+                    <span className="text-sm font-extrabold uppercase sm:text-base">{d.toLocaleDateString(locale, { month: "short" })}</span>
+                    <span className={`mt-0.5 text-xs font-bold uppercase ${isSel ? "text-white/75" : "text-white/55"}`}>{d.toLocaleDateString(locale, { weekday: "short" })}</span>
+                  </span>
+                </span>
+                <span className={`mt-2 text-xs font-medium ${isSel ? "text-white/80" : count ? "text-[#2E8E82]" : "text-white/40"}`}>
+                  {count ? `${count} event${count === 1 ? "" : "s"}` : "No events"}
+                </span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export function EventsView({
@@ -1528,28 +1608,28 @@ export function EventsView({
             // the list view right below this (and the Dashboard/Residents/
             // Households pages), so the event detail reads as part of the
             // same system instead of the light page it used to be.
-            <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+            <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
             <div className="space-y-6">
               <button
                 onClick={() => setViewEv(null)}
-                className="inline-flex items-center gap-1.5 text-sm font-semibold text-white/60 hover:text-white transition"
+                className="dash-tile inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/80 hover:text-white transition"
               >
                 <ChevronLeft className="h-4 w-4" /> {t("backToEventsLabel")}
               </button>
 
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+              <div className="dash-card flex flex-col gap-4 rounded-[32px] p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className="font-display text-2xl sm:text-3xl font-bold text-white break-words">{viewEv.title}</h1>
+                    <h1 className="font-display text-3xl font-extrabold tracking-tight text-white break-words sm:text-4xl">{viewEv.title}</h1>
                     <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold shrink-0 ${statusPillClasses(chipKey(viewEv, status.label), true)}`}>
                       <span className={`h-1.5 w-1.5 rounded-full ${statusDotClasses(chipKey(viewEv, status.label), true)}`} />
                       {eventStatusChipLabel(chipKey(viewEv, status.label))}
                     </span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/50">
-                    <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-gold-300 shrink-0" /> {viewEv.location}</span>
+                    <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-[#2E8E82] shrink-0" /> {viewEv.location}</span>
                     <span className="inline-flex items-center gap-1.5">
-                      <Clock className="h-4 w-4 text-gold-300 shrink-0" />
+                      <Clock className="h-4 w-4 text-[#2E8E82] shrink-0" />
                       {(viewEv.startDate || viewEv.date)} · {formatTime12Hour(viewEv.startTime)}{viewEv.endTime ? ` – ${formatTime12Hour(viewEv.endTime)}` : ""}
                     </span>
                   </div>
@@ -1559,7 +1639,7 @@ export function EventsView({
                     onClick={() => startEditEvent(viewEv)}
                     disabled={isSubmitting || locked}
                     title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
-                    className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-5 py-2.5 text-[15px] font-semibold text-white hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="btn-live-navy inline-flex items-center gap-2 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-5 py-2.5 text-[15px] font-semibold text-white shadow-sm transition hover:border-[#274A77] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Pencil className="h-4 w-4" /> {t("editTitle")}
                   </button>
@@ -1567,20 +1647,20 @@ export function EventsView({
                     onClick={() => setEventToDelete(viewEv.id)}
                     disabled={locked}
                     title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
-                    className="inline-flex items-center gap-2 rounded-full border border-red-500/25 bg-white/[0.04] px-5 py-2.5 text-[15px] font-semibold text-red-400 hover:bg-red-500/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="inline-flex items-center gap-2 rounded-full border border-red-600 bg-red-600 px-5 py-2.5 text-[15px] font-semibold text-white shadow-sm transition hover:border-red-700 hover:bg-red-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Archive className="h-4 w-4" /> {t("deleteTitle")}
                   </button>
                 </div>
               </div>
 
-              <div className="border-b border-white/10 flex gap-6 overflow-x-auto">
+              <div className="dash-tile inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full p-1">
                 {tabs.map((tab) => (
                   <button
                     key={tab.key}
                     onClick={() => { if (tab.key !== detailTab) flashDetail(); setDetailTab(tab.key); }}
-                    className={`pb-3 px-1 text-[15px] font-semibold border-b-2 whitespace-nowrap transition ${
-                      detailTab === tab.key ? "border-[#4FBEB0] text-[#4FBEB0]" : "border-transparent text-white/50 hover:text-white"
+                    className={`whitespace-nowrap rounded-full px-5 py-2 text-[14px] font-semibold transition ${
+                      detailTab === tab.key ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/60 hover:text-white"
                     }`}
                   >
                     {tab.label}{tab.count !== undefined ? ` (${tab.count})` : ""}
@@ -1592,7 +1672,7 @@ export function EventsView({
                 <div className="space-y-5">
                   {detailSwitching && (
                     <>
-                      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
+                      <div className="dash-card rounded-[28px] p-5 space-y-3">
                         <Skeleton className="h-3 w-28" />
                         <Skeleton className="h-4 w-2/3" />
                         <div className="pt-4 mt-4 border-t border-white/10 space-y-3">
@@ -1602,7 +1682,7 @@ export function EventsView({
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         {[0, 1, 2].map((k) => (
-                          <div key={k} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 flex flex-col items-center gap-2.5">
+                          <div key={k} className="dash-card rounded-[28px] p-4 flex flex-col items-center gap-2.5">
                             <Skeleton className="h-3 w-24" />
                             <Skeleton className="h-5 w-20" />
                           </div>
@@ -1615,42 +1695,28 @@ export function EventsView({
                       </div>
                     </>
                   )}
-                  <div className={`rounded-2xl border border-white/10 bg-white/[0.04] p-5 ${detailSwitching ? "hidden" : ""}`}>
-                    <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-2">{t("descriptionLabel")}</h3>
+                  <div className={`dash-card rounded-[32px] p-5 sm:p-6 ${detailSwitching ? "hidden" : ""}`}>
+                    <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#2E8E82] mb-2">{t("descriptionLabel")}</h3>
                     <p className="text-[15px] text-white leading-relaxed whitespace-pre-wrap">{viewEv.description || t("noDescription")}</p>
                     {viewEv.notificationMessage && (
                       <div className="mt-4 pt-4 border-t border-white/10">
-                        <h4 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-1.5">{t("notificationPreview")}</h4>
-                        <p className="text-[15px] text-[#7DD8CB] bg-[#4FBEB0]/10 rounded-xl p-3">{viewEv.notificationMessage}</p>
+                        <h4 className="text-[13px] font-bold uppercase tracking-wide text-[#2E8E82] mb-1.5">{t("notificationPreview")}</h4>
+                        <p className="text-[15px] text-[#2E8E82] bg-[#4FBEB0]/10 rounded-xl p-3">{viewEv.notificationMessage}</p>
                       </div>
                     )}
                   </div>
 
-                  {/* Solid-colored to match the Dashboard's Residents / Active
-                      Memberships / Overdue Returns stat cards -- same three
-                      colors, just flat instead of the Dashboard's gradient.
-                      These already read fine on the dark page, so only the
-                      surrounding surfaces needed to change. */}
-                  <div className={`grid grid-cols-1 sm:grid-cols-3 gap-4 ${detailSwitching ? "hidden" : ""}`}>
-                    <div className="rounded-2xl bg-sage-700 p-4 text-center">
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/90">{t("coverageStatLabel")}</p>
-                      <p className="mt-1.5 text-base font-bold text-white break-words">{coverageDisplay}</p>
-                    </div>
-                    <button
-                      type="button"
+                  <div className={`report-stagger grid grid-cols-1 gap-4 sm:grid-cols-3 ${detailSwitching ? "hidden" : ""}`}>
+                    <KpiCard value={coverageDisplay} label={t("coverageStatLabel")} icon={Users} gradient="" className="!shadow-[0_14px_34px_rgba(15,23,42,0.18)]" />
+                    <KpiCard
+                      value={viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined ? `₱${Number(viewEv.approvedBudget).toLocaleString()}` : "—"}
+                      label={t("approvedBudgetStatLabel")}
+                      icon={Wallet}
+                      gradient=""
+                      className="!shadow-[0_14px_34px_rgba(15,23,42,0.18)]"
                       onClick={() => setDetailTab("budget")}
-                      title={t("budgetTabLabel")}
-                      className="rounded-2xl bg-gradient-to-br from-gold-500 to-gold-700 p-4 text-center transition hover:brightness-110 active:scale-[0.99]"
-                    >
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/90">{t("approvedBudgetStatLabel")}</p>
-                      <p className="mt-1.5 text-base font-bold text-white">
-                        {viewEv.approvedBudget !== null && viewEv.approvedBudget !== undefined ? `₱${Number(viewEv.approvedBudget).toLocaleString()}` : "—"}
-                      </p>
-                    </button>
-                    <div className="rounded-2xl bg-[#5C2A1E] p-4 text-center">
-                      <p className="text-[13px] font-semibold uppercase tracking-wide text-white/90">{t("attendeesStatLabel")}</p>
-                      <p className="mt-1.5 text-base font-bold text-white">{signedInCount}</p>
-                    </div>
+                    />
+                    <KpiCard value={signedInCount} label={t("attendeesStatLabel")} icon={ClipboardList} gradient="" className="!shadow-[0_14px_34px_rgba(15,23,42,0.18)]" />
                   </div>
 
                   <div className={`flex flex-wrap gap-3 ${detailSwitching ? "hidden" : ""}`}>
@@ -1658,14 +1724,14 @@ export function EventsView({
                       type="button"
                       disabled
                       title={t("featureComingSoonHint")}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] text-white/40 px-4 py-2.5 text-[15px] font-semibold opacity-70 cursor-not-allowed"
+                      className="dash-tile inline-flex items-center gap-2 rounded-full text-white/45 px-5 py-2.5 text-[15px] font-semibold opacity-80 cursor-not-allowed"
                     >
                       <Megaphone className="h-4 w-4" /> {t("broadcastSmsButton")}
                     </button>
                     <button
                       type="button"
                       onClick={openEventReport}
-                      className="inline-flex items-center gap-2 rounded-full bg-[#1E3A5F] px-4 py-2.5 text-[15px] font-semibold text-white transition hover:bg-[#274A77] active:scale-95"
+                      className="btn-live-navy inline-flex items-center gap-2 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-5 py-2.5 text-[15px] font-semibold text-white shadow-sm transition hover:border-[#274A77] active:scale-95"
                     >
                       <ClipboardList className="h-4 w-4" /> {t("generateReportButton")}
                     </button>
@@ -1739,11 +1805,11 @@ export function EventsView({
               )}
 
               {detailTab === "attendance" && (
-                <div className="space-y-4">
+                <div className="dash-card space-y-5 rounded-[32px] p-4 sm:p-6">
                   {/* Same search bar card/input pattern as the Residents,
                       Households, Memberships and main Events search --
                       the status filter sits alongside it, unchanged. */}
-                  <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                  <div>
                     <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
                       <div className="relative flex-1 min-w-[220px]">
                         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
@@ -1752,7 +1818,7 @@ export function EventsView({
                           value={attendanceSearch}
                           onChange={(e) => setAttendanceSearch(e.target.value)}
                           placeholder={t("searchResidentNamePlaceholder")}
-                          className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                          className="h-11 w-full rounded-full border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                         />
                         {attendanceSearch && (
                           <button
@@ -1779,15 +1845,15 @@ export function EventsView({
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-white/10 w-full overflow-x-auto">
+                  <div className="w-full overflow-x-auto rounded-2xl border border-white/10">
                     <table className="rtable w-full text-base min-w-[680px]">
                       <thead className="bg-white/[0.06] sticky top-0 z-10">
                         <tr>
-                          <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[20%]">{t("idNumberColumn")}</th>
-                          <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[28%]">{t("residentNameColumn")}</th>
-                          <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[20%]">{t("timeInColumn")}</th>
-                          <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[20%]">{t("timeOutColumn")}</th>
-                          <th className="text-left px-5 py-4 text-[15px] font-bold text-white w-[12%]">{t("statusColumn")}</th>
+                          <th className="text-left px-5 py-3.5 text-xs font-bold uppercase tracking-wide text-white/60 w-[20%]">{t("idNumberColumn")}</th>
+                          <th className="text-left px-5 py-3.5 text-xs font-bold uppercase tracking-wide text-white/60 w-[28%]">{t("residentNameColumn")}</th>
+                          <th className="text-left px-5 py-3.5 text-xs font-bold uppercase tracking-wide text-white/60 w-[20%]">{t("timeInColumn")}</th>
+                          <th className="text-left px-5 py-3.5 text-xs font-bold uppercase tracking-wide text-white/60 w-[20%]">{t("timeOutColumn")}</th>
+                          <th className="text-left px-5 py-3.5 text-xs font-bold uppercase tracking-wide text-white/60 w-[12%]">{t("statusColumn")}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1814,11 +1880,11 @@ export function EventsView({
                             if (recStatus.label === "Complete") statusColor = "text-[#7DD8CB] bg-[#4FBEB0]/15";
                             if (recStatus.label === "Incomplete") statusColor = "text-gold-300 bg-gold-400/15";
                             if (recStatus.label === "Missed") statusColor = "text-red-400 bg-red-500/15";
-                            if (recStatus.label === "Upcoming") statusColor = "text-[#9CC4FF] bg-[#6BA8FF]/15";
+                            if (recStatus.label === "Upcoming") statusColor = "text-[#4A90B8] bg-[#146088]/15";
                             if (recStatus.label === "Ongoing") statusColor = "text-[#7DD8CB] bg-[#4FBEB0]/15";
 
                             return (
-                              <tr key={i} className="border-t border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition-colors">
+                              <tr key={i} className="border-t border-white/10 hover:bg-[#4FBEB0]/[0.06] transition-colors">
                                 <td className="px-5 py-5 font-mono text-[15px] text-white/80">{record.userCode ? highlightAttendanceText(record.userCode, attendanceSearch) : "—"}</td>
                                 <td className="px-5 py-5 text-white">{highlightAttendanceText(record.residentName, attendanceSearch)}</td>
                                 <td className="px-5 py-5 text-white">
@@ -1861,17 +1927,17 @@ export function EventsView({
                           <button
                             onClick={() => { flashDetail(); setAttendanceCurrentPage(p => Math.max(1, p - 1)); }}
                             disabled={attendanceCurrentPage === 1}
-                            className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                            className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                           >
                             ←
                           </button>
-                          <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                          <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold">
                             {attendanceCurrentPage}
                           </span>
                           <button
                             onClick={() => { flashDetail(); setAttendanceCurrentPage(p => Math.min(attendanceTotalPages, p + 1)); }}
                             disabled={attendanceCurrentPage === attendanceTotalPages}
-                            className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                            className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                           >
                             →
                           </button>
@@ -1884,11 +1950,11 @@ export function EventsView({
               {detailTab === "inventory" && (
                 <div className="space-y-5">
                   {eventInventoryLoading || detailSwitching ? (
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3">
+                    <div className="dash-card rounded-[28px] p-5 space-y-3">
                       {[0, 1, 2].map((k) => <Skeleton key={k} className="h-16 w-full rounded-xl" />)}
                     </div>
                   ) : eventInventory.items.length === 0 ? (
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-8 text-center text-white/55">
+                    <div className="dash-card rounded-[28px] p-8 text-center text-white/55">
                       {t("eventInventoryEmpty")}
                     </div>
                   ) : (
@@ -1908,53 +1974,47 @@ export function EventsView({
                           .sort((x, y) => Number(y.out > 0) - Number(x.out > 0)); // items still out first
                         return (
                           <>
-                            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-                              <div className="flex flex-wrap items-end justify-between gap-3">
-                                <div>
-                                  <p className="text-xs font-bold uppercase tracking-wide text-white/55">{t("eventInventoryProgress")}</p>
-                                  <p className="mt-1 text-3xl font-black leading-none text-white">
-                                    {pctOf(backAll, totalAll)}%
-                                    <span className="ml-2 text-sm font-semibold text-white/50">{t("eventInventoryPctReturned")}</span>
-                                  </p>
-                                </div>
-                                <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-white/60">
-                                  <span>{t("eventInventoryItemsDone").replace("{a}", String(doneItems)).replace("{b}", String(items.length))}</span>
-                                  {notBackAll > 0 && (
-                                    <span
-                                      className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white/70"
-                                      title={t("eventInventoryNotBackNote").replace("{n}", String(notBackAll))}
-                                    >
-                                      {t("eventInventoryNotBackShort").replace("{n}", String(notBackAll))}
-                                    </span>
-                                  )}
-                                </p>
-                              </div>
-                              <div
-                                role="progressbar"
-                                aria-valuemin={0}
-                                aria-valuemax={100}
-                                aria-valuenow={pctOf(backAll, totalAll)}
-                                className="mt-4 flex h-3 w-full overflow-hidden rounded-full bg-white/10"
-                              >
-                                <div className="h-full bg-[#4FBEB0] transition-all" style={{ width: `${pctOf(backAll, totalAll)}%` }} />
-                                {notBackAll > 0 && <div className="h-full bg-white/25 transition-all" style={{ width: `${pctOf(notBackAll, totalAll)}%` }} />}
-                              </div>
-                              <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                                {([
-                                  { key: "borrowed", label: t("eventInventoryBorrowed"), value: totalAll, bg: "bg-sage-700", Icon: Package },
-                                  { key: "out", label: t("eventInventoryStillOut"), value: outAll, bg: "bg-gold-600", Icon: Clock },
-                                  { key: "back", label: t("eventInventoryReturned"), value: backAll, bg: "bg-sage-800", Icon: CheckCircle2 },
-                                ] as const).map(({ key, label, value, bg, Icon }) => (
-                                  <div key={key} className={`flex items-center gap-4 rounded-2xl ${bg} px-5 py-4`}>
-                                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/20">
-                                      <Icon className="h-6 w-6 text-white" />
-                                    </span>
-                                    <div className="min-w-0">
-                                      <p className="text-[13px] font-bold uppercase tracking-wide text-white/85">{label}</p>
-                                      <p className="mt-1 text-3xl font-black leading-none text-white">{value}</p>
-                                    </div>
+                            <div className="dash-card rounded-[32px] p-6 sm:p-8">
+                              <div className="flex flex-col items-center gap-8 md:flex-row">
+                                <div className="relative flex h-44 w-44 shrink-0 items-center justify-center">
+                                  <svg viewBox="0 0 160 160" className="absolute inset-0 -rotate-90">
+                                    <circle cx="80" cy="80" r="68" fill="none" stroke="currentColor" strokeWidth="14" className="text-white/10" />
+                                    <circle cx="80" cy="80" r="68" fill="none" stroke="#2E8E82" strokeWidth="14" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 68 * pctOf(backAll, totalAll) / 100} ${2 * Math.PI * 68}`} />
+                                  </svg>
+                                  <div className="text-center">
+                                    <p className="font-display text-4xl font-extrabold leading-none text-white">{pctOf(backAll, totalAll)}%</p>
+                                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-white/50">{t("eventInventoryPctReturned")}</p>
                                   </div>
-                                ))}
+                                </div>
+                                <div className="min-w-0 flex-1 text-center md:text-left">
+                                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#2E8E82]">{t("eventInventoryProgress")}</p>
+                                  <h2 className="mt-1.5 font-display text-2xl font-extrabold leading-tight text-white sm:text-3xl">
+                                    {outAll === 0 ? t("eventInventoryStatusReturned") : `${outAll} ${t("eventInventoryStillOut")}`}
+                                  </h2>
+                                  <p className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-white/55 md:justify-start">
+                                    <span>{t("eventInventoryItemsDone").replace("{a}", String(doneItems)).replace("{b}", String(items.length))}</span>
+                                    {notBackAll > 0 && (
+                                      <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white/70" title={t("eventInventoryNotBackNote").replace("{n}", String(notBackAll))}>
+                                        {t("eventInventoryNotBackShort").replace("{n}", String(notBackAll))}
+                                      </span>
+                                    )}
+                                  </p>
+                                  <div className="mt-5 grid grid-cols-3 gap-3">
+                                    {([
+                                      { label: t("eventInventoryBorrowed"), value: totalAll, Icon: Package, warn: false },
+                                      { label: t("eventInventoryStillOut"), value: outAll, Icon: Clock, warn: outAll > 0 },
+                                      { label: t("eventInventoryReturned"), value: backAll, Icon: CheckCircle2, warn: false },
+                                    ] as const).map(({ label, value, Icon, warn }) => (
+                                      <div key={label} className="dash-card rounded-2xl p-3.5 text-left !shadow-[0_14px_34px_rgba(15,23,42,0.18)]">
+                                        <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${warn ? "bg-[#F5C451]/25" : "bg-[#4FBEB0]/15"}`}>
+                                          <Icon className={`h-[18px] w-[18px] ${warn ? "text-[#B7841A]" : "text-[#2E8E82]"}`} />
+                                        </span>
+                                        <p className="mt-2.5 font-display text-3xl font-extrabold leading-none tabular-nums text-white">{value}</p>
+                                        <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-white/55">{label}</p>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
                               </div>
                             </div>
 
@@ -1970,7 +2030,7 @@ export function EventsView({
                                   aria-pressed={invFilter === k}
                                   onClick={() => setInvFilter(k)}
                                   className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
-                                    invFilter === k ? "bg-[#4FBEB0] text-[#0A0E1A]" : "bg-white/[0.06] text-white/70 hover:bg-white/10"
+                                    invFilter === k ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "dash-tile text-white/70 hover:text-white"
                                   }`}
                                 >
                                   {label} <span className="ml-1 opacity-70">{n}</span>
@@ -1978,9 +2038,9 @@ export function EventsView({
                               ))}
                             </div>
 
-                            <div className="space-y-3">
+                            <div className="grid gap-4 xl:grid-cols-2">
                               {visible.length === 0 && (
-                                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center text-white/50">
+                                <div className="dash-card rounded-[28px] p-6 text-center text-white/50 xl:col-span-2">
                                   {t("eventInventoryFilterEmpty")}
                                 </div>
                               )}
@@ -1988,7 +2048,7 @@ export function EventsView({
                                 const pct = pctOf(row.returned, row.total);
                                 const notBackPct = pctOf(row.lost, row.total);
                                 return (
-                                  <div key={row.inventory_item_id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+                                  <div key={row.inventory_item_id} className="dash-card rounded-[28px] p-5 sm:p-6">
                                     <div className="flex flex-wrap items-center gap-3">
                                       {row.photo_url ? (
                                         <button
@@ -2026,38 +2086,21 @@ export function EventsView({
                                       </span>
                                     </div>
 
-                                    <div
-                                      role="progressbar"
-                                      aria-valuemin={0}
-                                      aria-valuemax={100}
-                                      aria-valuenow={pct}
-                                      className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-white/10"
-                                    >
-                                      <div className="h-full bg-[#4FBEB0] transition-all" style={{ width: `${pct}%` }} />
-                                      {row.lost > 0 && <div className="h-full bg-white/25 transition-all" style={{ width: `${notBackPct}%` }} />}
-                                    </div>
 
-                                    <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-                                      {([["out", t("eventInventoryStillOut")], ["returned", t("eventInventoryReturned")]] as const).map(([k, title]) => {
+                                    <div className="mt-4 flex flex-wrap items-center gap-2.5">
+                                      {([["out", t("eventInventoryStillOut"), Clock], ["returned", t("eventInventoryReturned"), CheckCircle2]] as const).map(([k, title, KIcon]) => {
                                         const units = k === "out" ? row.out_units : row.returned_units;
                                         const total = k === "out" ? row.out : row.returned;
                                         return (
-                                          <div key={k} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
-                                            <div className="flex items-center justify-between">
-                                              <p className="text-xs font-bold uppercase tracking-wide text-white/55">{title}</p>
-                                              <p className="text-sm font-bold text-white">{total}</p>
-                                            </div>
-                                            <div className="mt-2 flex min-h-[26px] flex-wrap gap-1.5">
-                                              {total === 0 ? (
-                                                <span className="text-sm text-white/40">{k === "out" ? t("eventInventoryNoneOut") : t("eventInventoryNoneBack")}</span>
-                                              ) : (
-                                                BORROW_CONDITIONS.filter((c) => (units[c.label.replace("condition", "")] ?? 0) > 0).map((c) => (
-                                                  <span key={c.key} className={`rounded-full px-3 py-1 text-xs font-semibold ${c.chip}`}>
-                                                    {units[c.label.replace("condition", "")]} {t(c.label)}
-                                                  </span>
-                                                ))
-                                              )}
-                                            </div>
+                                          <div key={k} className="dash-tile inline-flex flex-wrap items-center gap-2 rounded-full py-1.5 pl-1.5 pr-4">
+                                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#4FBEB0]/15"><KIcon className="h-4 w-4 text-[#2E8E82]" /></span>
+                                            <span className="text-xs font-bold uppercase tracking-wide text-white/55">{title}</span>
+                                            <span className="font-display text-lg font-extrabold tabular-nums leading-none text-white">{total}</span>
+                                            {total > 0 && BORROW_CONDITIONS.filter((c) => (units[c.label.replace("condition", "")] ?? 0) > 0).map((c) => (
+                                              <span key={c.key} className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${c.chip}`}>
+                                                {units[c.label.replace("condition", "")]} {t(c.label)}
+                                              </span>
+                                            ))}
                                           </div>
                                         );
                                       })}
@@ -2072,14 +2115,15 @@ export function EventsView({
                       })()}
 
                       {eventInventory.returns.length > 0 && (
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-                          <h3 className="text-[13px] font-bold uppercase tracking-wide text-[#7DD8CB] mb-3">{t("eventInventoryReturnLog")}</h3>
-                          <div className="space-y-3">
+                        <div className="dash-card rounded-[28px] p-5 sm:p-6">
+                          <h3 className="mb-4 font-display text-xl font-extrabold text-white">{t("eventInventoryReturnLog")}</h3>
+                          <div className="relative space-y-3 pl-7 before:absolute before:bottom-2 before:left-[9px] before:top-2 before:w-px before:bg-white/15">
                             {eventInventory.returns.map((r) => {
                               const photos = r.evidence_photo_urls ?? [];
                               const itemName = tc(r.name, language as any);
                               return (
-                                <div key={r.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-4 flex items-start gap-4">
+                                <div key={r.id} className="dash-tile relative rounded-2xl p-4 flex items-start gap-4">
+                                  <span className="absolute -left-[26px] top-6 h-3 w-3 rounded-full border-2 border-white bg-[#2E8E82] shadow" />
                                   {r.photo_url ? (
                                     <button
                                       type="button"
@@ -2146,7 +2190,7 @@ export function EventsView({
               )}
 
               {detailTab === "budget" && (
-                <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-5 sm:p-8">
+                <div className="dash-card rounded-3xl p-5 sm:p-8">
                   <EventBudgetWorkspace
                     event={viewEv}
                     showHeader={false}
@@ -2158,7 +2202,7 @@ export function EventsView({
 
               {detailTab === "feedback" && (
                 <div className="space-y-5">
-                  <div className="flex flex-wrap gap-2.5">
+                  <div className="dash-card inline-flex max-w-full items-center gap-1 rounded-full p-1.5">
                     {([
                       { key: "ratings", label: t("absTabRatings"), count: eventFeedback.length },
                       { key: "reasons", label: t("absTabReasons"), count: eventAbsences.length },
@@ -2168,7 +2212,7 @@ export function EventsView({
                         type="button"
                         onClick={() => setFeedbackSubTab(tab.key)}
                         className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition ${
-                          feedbackSubTab === tab.key ? "bg-sage-700 text-white shadow-sm" : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                          feedbackSubTab === tab.key ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/60 hover:bg-white/[0.08] hover:text-white"
                         }`}
                       >
                         {tab.label}
@@ -2178,7 +2222,7 @@ export function EventsView({
                   </div>
                   <div className={feedbackSubTab === "ratings" ? "space-y-5" : "hidden"}>
                   {feedbackLoading || detailSwitching ? (
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 flex flex-col items-center">
+                    <div className="dash-card rounded-[32px] p-6 flex flex-col items-center">
                       <Skeleton className="h-10 w-16" />
                       <Skeleton className="mt-2 h-3 w-28" />
                       <div className="mt-3 flex justify-center gap-1">
@@ -2189,32 +2233,51 @@ export function EventsView({
                       <Skeleton className="mt-2 h-3 w-20" />
                     </div>
                   ) : (
-                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-6 text-center">
-                      <p className="text-4xl font-black text-white">{averageRating > 0 ? averageRating.toFixed(1) : "—"}</p>
-                      <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-white/45">{t("averageRatingLabel")}</p>
-                      <div className="mt-2.5 flex justify-center gap-1">
-                        {[1, 2, 3, 4, 5].map((n) => {
-                          // Whole, half or empty star (4.5 -> four and a half).
-                          const rounded = Math.round(averageRating * 2) / 2;
-                          const fill = Math.max(0, Math.min(1, rounded - (n - 1)));
-                          return (
-                            <span key={n} className="relative inline-block h-5 w-5">
-                              <Star className="absolute inset-0 h-5 w-5 text-white/15" />
-                              <span className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
-                                <Star className="h-5 w-5 max-w-none text-amber-400 fill-amber-400" />
-                              </span>
-                            </span>
-                          );
-                        })}
+                    <div className="dash-card rounded-[32px] p-6 sm:p-8">
+                      <div className="flex flex-col items-center gap-8 md:flex-row">
+                        <div className="shrink-0 text-center md:w-56">
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#2E8E82]">{t("averageRatingLabel")}</p>
+                          <p className="mt-2 font-display text-6xl font-extrabold leading-none text-white">{averageRating > 0 ? averageRating.toFixed(1) : "—"}</p>
+                          <div className="mt-3 flex justify-center gap-1">
+                            {[1, 2, 3, 4, 5].map((n) => {
+                              // Whole, half or empty star (4.5 -> four and a half).
+                              const rounded = Math.round(averageRating * 2) / 2;
+                              const fill = Math.max(0, Math.min(1, rounded - (n - 1)));
+                              return (
+                                <span key={n} className="relative inline-block h-6 w-6">
+                                  <Star className="absolute inset-0 h-6 w-6 text-white/15" />
+                                  <span className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${fill * 100}%` }}>
+                                    <Star className="h-6 w-6 max-w-none text-amber-400 fill-amber-400" />
+                                  </span>
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <p className="mt-2 text-xs text-white/50">{eventFeedback.length} {t("ratingsCountLabel")}</p>
+                        </div>
+                        <div className="w-full flex-1 space-y-2.5">
+                          {[5, 4, 3, 2, 1].map((star) => {
+                            const count = eventFeedback.filter((f) => Math.round(Number(f.rating)) === star).length;
+                            const pctStar = eventFeedback.length ? Math.round((count / eventFeedback.length) * 100) : 0;
+                            return (
+                              <div key={star} className="flex items-center gap-3">
+                                <span className="flex w-8 shrink-0 items-center gap-1 text-sm font-bold text-white">{star}<Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" /></span>
+                                <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                                  <div className="h-full rounded-full bg-[#2E8E82] transition-all" style={{ width: `${pctStar}%` }} />
+                                </div>
+                                <span className="w-8 shrink-0 text-right text-xs font-semibold tabular-nums text-white/55">{count}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                      <p className="mt-1.5 text-xs text-white/45">{eventFeedback.length} {t("ratingsCountLabel")}</p>
                     </div>
                   )}
 
                   {feedbackLoading || detailSwitching ? (
                     <div className="space-y-2">
                       {Array.from({ length: 4 }).map((_, i) => (
-                        <div key={i} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 flex items-start gap-3">
+                        <div key={i} className="dash-card rounded-[24px] p-4 flex items-start gap-3">
                           <Skeleton className="h-10 w-10 rounded-full shrink-0" />
                           <div className="flex-1 space-y-2">
                             <Skeleton className="h-4 w-1/3" />
@@ -2225,14 +2288,14 @@ export function EventsView({
                       ))}
                     </div>
                   ) : eventFeedback.length === 0 ? (
-                    <p className="text-sm text-white/40 italic bg-white/[0.03] rounded-2xl p-6 text-center">{t("noFeedbackYetLabel")}</p>
+                    <p className="dash-card rounded-[28px] p-8 text-center text-sm italic text-white/50">{t("noFeedbackYetLabel")}</p>
                   ) : (
                     <div className="space-y-2">
                       {paginatedFeedback.map((f) => {
                         const name = f.user ? `${f.user.first_name} ${f.user.last_name}` : t("unknownItemLabel");
                         const initials = f.user ? `${f.user.first_name?.charAt(0) ?? ""}${f.user.last_name?.charAt(0) ?? ""}` : "?";
                         return (
-                          <div key={f.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                          <div key={f.id} className="dash-card rounded-[24px] p-4 sm:p-5">
                             {/* <FeedbackComment
                               role="staff"
                               kind="rating"
@@ -2269,17 +2332,17 @@ export function EventsView({
                               <button
                                 onClick={() => { flashDetail(); setFeedbackCurrentPage(p => Math.max(1, p - 1)); }}
                                 disabled={feedbackCurrentPage === 1}
-                                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                                className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                               >
                                 ←
                               </button>
-                              <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                              <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold">
                                 {feedbackCurrentPage}
                               </span>
                               <button
                                 onClick={() => { flashDetail(); setFeedbackCurrentPage(p => Math.min(feedbackTotalPages, p + 1)); }}
                                 disabled={feedbackCurrentPage === feedbackTotalPages}
-                                className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                                className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                               >
                                 →
                               </button>
@@ -2293,13 +2356,13 @@ export function EventsView({
                   {feedbackSubTab === "reasons" && (
                     <div className="space-y-4">
                       {eventAbsences.length > 0 && (
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-white/45">{t("absSummary")}</p>
+                        <div className="dash-card rounded-[28px] p-5 sm:p-6">
+                          <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#2E8E82]">{t("absSummary")}</p>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {Object.entries(eventAbsences.reduce<Record<string, number>>((acc, r) => { acc[r.reason] = (acc[r.reason] ?? 0) + 1; return acc; }, {}))
                               .sort((a, b) => b[1] - a[1])
                               .map(([reason, n]) => (
-                                <span key={reason} className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.05] px-3.5 py-1.5 text-sm text-white">
+                                <span key={reason} className="dash-tile inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-sm text-white">
                                   {t(`absReason_${reason}`)}
                                   <span className="rounded-full bg-[#4FBEB0]/20 px-2 py-0.5 text-xs font-bold text-[#7DD8CB]">{n}</span>
                                 </span>
@@ -2308,14 +2371,14 @@ export function EventsView({
                         </div>
                       )}
                       {eventAbsences.length === 0 ? (
-                        <p className="text-sm text-white/40 italic bg-white/[0.03] rounded-2xl p-6 text-center">{t("absNoneYet")}</p>
+                        <p className="dash-card rounded-[28px] p-8 text-center text-sm italic text-white/50">{t("absNoneYet")}</p>
                       ) : (
                         <div className="space-y-2">
                           {eventAbsences.map((r) => {
                             const name = r.user ? `${r.user.first_name} ${r.user.last_name}` : t("unknownItemLabel");
                             const initials = r.user ? `${r.user.first_name?.charAt(0) ?? ""}${r.user.last_name?.charAt(0) ?? ""}` : "?";
                             return (
-                              <div key={r.id} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                              <div key={r.id} className="dash-card rounded-[24px] p-4 sm:p-5">
                                 {/* <FeedbackComment
                                   role="staff"
                                   kind="absence"
@@ -2350,27 +2413,72 @@ export function EventsView({
               Households/Memberships background and palette. The Add/Edit
               Event modal further down stays in the original light theme,
               same scoping used on those pages. */}
-          <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+          <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
           <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="dash-card flex flex-col justify-between gap-4 rounded-[32px] p-5 sm:flex-row sm:items-center sm:p-6">
             <div>
-              <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("events")}</h1>
+              <h1
+                className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-short"
+              >
+                {t("events")}
+              </h1>
               <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("eventsPageSubtitle")}</p>
             </div>
             <button
               type="button"
               onClick={openAddEventModal}
               disabled={openSkeleton || loading || pageSwitching}
-              className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
+              className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
             >
               {t("postEvent")}
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
                 <Plus className="h-5 w-5 text-white" />
               </span>
             </button>
           </div>
 
-          <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+          <div className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            {(() => {
+              const days: Record<string, number> = {};
+              for (const ev of localEvents) {
+                const st = parseEventDateTime(ev.event_start) ?? parseEventDateTime(ev.date) ?? parseEventDateTime(ev.startDate);
+                if (!st) continue;
+                const en = parseEventDateTime(ev.event_end) ?? parseEventDateTime(ev.endDate) ?? st;
+                const cur = new Date(st.getFullYear(), st.getMonth(), st.getDate());
+                const last = new Date(en.getFullYear(), en.getMonth(), en.getDate());
+                for (let i = 0; i < 31 && cur <= last; i++) {
+                  const k = dayKey(cur);
+                  days[k] = (days[k] ?? 0) + 1;
+                  cur.setDate(cur.getDate() + 1);
+                }
+              }
+              return <WeekStrip days={days} selected={selectedDate} onSelect={setSelectedDate} locale={locale} />;
+            })()}
+            <div className="dash-card rounded-[32px] p-3">
+            <div className="report-stagger grid grid-cols-2 gap-3">
+              {([
+                { key: "ongoing", Key: "Ongoing", icon: Clock },
+                { key: "upcoming", Key: "Upcoming", icon: Calendar },
+                { key: "past", Key: "Past", icon: Archive },
+              ] as const).map((c, i) => (
+                <div key={c.key} className={i === 2 ? "col-span-2" : ""}>
+                <KpiCard
+                  value={countsLoading ? 0 : statusCounts[c.key]}
+                  label={eventStatusLabel(c.Key)}
+                  description={t(STATUS_META[c.Key].hint)}
+                  icon={c.icon}
+                  gradient=""
+                  delay={i * 70}
+                  className="!shadow-[0_14px_34px_rgba(15,23,42,0.18)]"
+                  onClick={() => { setEventFilter(c.key); setCurrentPage(1); }}
+                />
+                </div>
+              ))}
+            </div>
+            </div>
+          </div>
+          <div className="space-y-6">
+          <div className="dash-card space-y-4 rounded-[32px] p-4 sm:p-6">
             <QuickTabs
               value={eventTab}
               onChange={(k) => setEventTab(k as typeof eventTab)}
@@ -2433,17 +2541,17 @@ export function EventsView({
                 <button
                   onClick={() => goToPage(Math.max(1, currentPage - 1))}
                   disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                  className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
                   ←
                 </button>
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sage-700 text-sm font-bold text-white shadow-sm">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-sm font-bold text-white shadow-sm">
                   {currentPage}
                 </span>
                 <button
                   onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
                   disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                  className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
                 >
                   →
                 </button>
@@ -2455,9 +2563,9 @@ export function EventsView({
           {pageLoading || openSkeleton ? (
             <div className="space-y-3">
               <Skeleton className="h-4 w-40" />
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="flex gap-5 rounded-2xl border border-white/10 bg-white/[0.04] py-5 pl-7 pr-5">
+                  <div key={i} className="dash-card flex gap-5 rounded-[28px] py-5 pl-7 pr-5">
                     <Skeleton className="h-20 w-20 shrink-0 rounded-2xl" />
                     <div className="min-w-0 flex-1">
                       <Skeleton className="h-4 w-2/3" />
@@ -2474,7 +2582,7 @@ export function EventsView({
               </div>
             </div>
           ) : paginatedEvents.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-10 text-center text-sm text-white/50">
+            <div className="dash-card rounded-[32px] p-10 text-center text-sm text-white/50">
               {t("noEventsMatchStaff")}
             </div>
           ) : (
@@ -2492,7 +2600,7 @@ export function EventsView({
                       <span className="h-px flex-1 bg-white/10" />
                       <span className="text-[11px] text-white/35">{t(meta.hint)}</span>
                     </div>
-                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                    <div className="space-y-3">
                       {items.map((e) => {
                         const status = getEventStatus(e);
                         const locked = isEventLocked(status.label);
@@ -2506,58 +2614,64 @@ export function EventsView({
                           <div
                             key={e.id}
                             onClick={() => setViewEv(e)}
-                            className="group relative flex cursor-pointer gap-4 overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04] py-4 pl-6 pr-4 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.06]"
+                            className="dash-card group relative flex cursor-pointer flex-col gap-4 overflow-hidden rounded-[28px] py-5 pl-8 pr-5 transition-all duration-300 hover:border-[#4FBEB0]/50 hover:shadow-md sm:flex-row sm:items-center sm:gap-5"
                           >
-                            <span className={`absolute inset-y-0 left-0 w-1.5 ${meta.accent}`} />
+                            <span className={`absolute inset-y-0 left-0 w-2 ${meta.accent}`} />
 
-                            <div className="flex h-[72px] w-[72px] shrink-0 flex-col items-center justify-center rounded-2xl bg-white/10">
-                              <span className="text-xs font-bold uppercase tracking-wider text-[#7DD8CB]">
+                            <div className="dash-tile flex h-[76px] w-[76px] shrink-0 flex-col items-center justify-center rounded-2xl">
+                              <span className="text-xs font-bold uppercase tracking-wider text-[#2E8E82]">
                                 {startDt ? startDt.toLocaleDateString(locale, { month: "short" }) : "—"}
                               </span>
-                              <span className="mt-0.5 text-2xl font-bold leading-none text-white">{startDt ? startDt.getDate() : "—"}</span>
+                              <span className="mt-0.5 font-display text-3xl font-extrabold leading-none text-white">{startDt ? startDt.getDate() : "—"}</span>
                             </div>
 
                             <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-2">
-                                <h2 className="min-w-0 break-words text-base font-bold leading-snug text-white">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h2 className="min-w-0 break-words font-display text-lg font-extrabold leading-snug text-white">
                                   {highlightText(tc(e.title, language as any), eventSearch)}
                                 </h2>
-                                <div className="flex shrink-0 items-center gap-0.5">
-                                  <button
-                                    onClick={(ev) => { ev.stopPropagation(); startEditEvent(e); }}
-                                    disabled={isSubmitting || locked}
-                                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
-                                    className="rounded-full p-1.5 text-white/50 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    onClick={(ev) => { ev.stopPropagation(); setEventToDelete(e.id); }}
-                                    disabled={locked}
-                                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
-                                    className="rounded-full p-1.5 text-white/50 transition hover:bg-red-500/10 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
-                                  >
-                                    <Archive className="h-4 w-4" />
-                                  </button>
-                                </div>
-                              </div>
-
-                              {rel && <p className={`mt-0.5 text-xs font-semibold ${meta.text}`}>{rel}</p>}
-
-                              <p className="mt-2.5 flex items-center gap-2 text-sm text-white/55">
-                                <MapPin className="h-3.5 w-3.5 shrink-0 text-gold-300" />
-                                <span className="truncate">{highlightText(tc(e.location, language as any), eventSearch)}</span>
-                              </p>
-                              <p className="mt-1 flex items-center gap-2 text-sm text-white/55">
-                                <Clock className="h-3.5 w-3.5 shrink-0 text-gold-300" />
-                                <span className="truncate">
-                                  {(e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || "")} · {formatTime12Hour(e.startTime)}{e.endTime ? ` – ${formatTime12Hour(e.endTime)}` : ""}
+                                <span className="dash-tile inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-bold text-white/80">
+                                  <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                                  {eventStatusLabel(chipKey(e, status.label))}
                                 </span>
-                              </p>
+                              </div>
+                              {rel && <p className={`mt-0.5 text-xs font-semibold ${meta.text}`}>{rel}</p>}
+                              <div className="mt-2.5 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-white/55">
+                                <span className="inline-flex min-w-0 items-center gap-2">
+                                  <MapPin className="h-3.5 w-3.5 shrink-0 text-[#2E8E82]" />
+                                  <span className="truncate">{highlightText(tc(e.location, language as any), eventSearch)}</span>
+                                </span>
+                                <span className="inline-flex min-w-0 items-center gap-2">
+                                  <Clock className="h-3.5 w-3.5 shrink-0 text-[#2E8E82]" />
+                                  <span className="truncate">
+                                    {(e.startDate && e.endDate ? (e.startDate === e.endDate ? e.startDate : `${e.startDate} - ${e.endDate}`) : e.date || "")} · {formatTime12Hour(e.startTime)}{e.endTime ? ` – ${formatTime12Hour(e.endTime)}` : ""}
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
 
-                              <div className="mt-3.5 flex items-center justify-between gap-2 border-t border-white/10 pt-3.5 text-[13px] text-white/50">
-                                <span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4" /> {signedIn} {t("attendeesCountLabel")}</span>
-                                <span className="truncate font-medium" title={getCoverageLabel(e)}>{getCoverageLabel(e)}</span>
+                            <div className="flex shrink-0 items-center justify-between gap-4 border-t border-white/10 pt-3 sm:flex-col sm:items-end sm:justify-center sm:gap-2 sm:border-0 sm:pt-0">
+                              <div className="flex flex-col items-start gap-1 text-[13px] text-white/55 sm:items-end">
+                                <span className="inline-flex items-center gap-1.5 font-semibold text-white/80"><Users className="h-4 w-4 text-[#2E8E82]" /> {signedIn} {t("attendeesCountLabel")}</span>
+                                <span className="max-w-[200px] truncate font-medium" title={getCoverageLabel(e)}>{getCoverageLabel(e)}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={(ev) => { ev.stopPropagation(); startEditEvent(e); }}
+                                  disabled={isSubmitting || locked}
+                                  title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
+                                  className="btn-live-navy flex h-10 w-10 items-center justify-center rounded-xl border border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm transition hover:border-[#274A77] active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <Pencil className="h-4 w-4 text-white" />
+                                </button>
+                                <button
+                                  onClick={(ev) => { ev.stopPropagation(); setEventToDelete(e.id); }}
+                                  disabled={locked}
+                                  title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
+                                  className="flex h-10 w-10 items-center justify-center rounded-xl border border-red-600 bg-red-600 text-white shadow-sm transition hover:border-red-700 hover:bg-red-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <Archive className="h-4 w-4 text-white" />
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -2569,6 +2683,7 @@ export function EventsView({
               })}
             </div>
           )}
+          </div>
           </div>
           </div>
         </>
@@ -2585,14 +2700,14 @@ export function EventsView({
         <>
           <style>{`
             @keyframes eventFormSlideIn {
-              from { transform: translateX(100%); }
-              to { transform: translateX(0); }
+              from { opacity: 0; }
+              to { opacity: 1; }
             }
-            .event-form-slide-in { animation: eventFormSlideIn 280ms ease-out; }
+            .event-form-slide-in { animation: none; }
           `}</style>
           <SlideOutGhost />
-          <div className="fixed inset-0 bg-black/80 z-50" onClick={closeEventModal} />
-          <div className="resident-form-panel event-form-slide-in fixed inset-y-0 right-0 z-50 w-full sm:w-1/2 bg-[#0A0E1A] border-l border-white/10 shadow-2xl overflow-y-auto">
+          <div className="staff-drawer-backdrop bg-black/80 z-50" onClick={closeEventModal} />
+          <div className="resident-form-panel event-form-slide-in staff-drawer-panel fixed z-50 bg-[#0A0E1A] overflow-y-auto">
           <img
             src="/logo-removebg-preview.png"
             alt=""
@@ -2605,9 +2720,9 @@ export function EventsView({
               type="button"
               onClick={closeEventModal}
               disabled={isSubmitting}
-              className="inline-flex items-center gap-2 text-base font-semibold text-white hover:opacity-70 transition mb-8 disabled:opacity-50"
+              className="dash-tile inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/80 hover:text-white transition mb-8 disabled:opacity-50"
             >
-              <ArrowLeft className="h-5 w-5" /> {t("cancelLabel")}
+              <ChevronLeft className="h-4 w-4" /> {t("cancelLabel")}
             </button>
 
             <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white text-center tracking-tight">
@@ -2849,14 +2964,14 @@ export function EventsView({
                   title={venueConflict ? t("venueBookedTitle") : isEventFormUnchanged ? t("noChangesToSaveHint") : undefined}
                   className={`group w-full inline-flex items-center justify-center gap-3 rounded-full border pl-6 pr-2 py-2 text-base font-semibold uppercase tracking-wide shadow-sm transition-all duration-500 ease-out ${
                     !isSubmitting && !isEventFormUnchanged && !venueConflict
-                      ? "border-[#1E3A5F] bg-[#1E3A5F] text-white hover:border-[#122436] hover:bg-[#122436] hover:shadow-md"
+                      ? "form-glass-btn text-white"
                       : "border-white/10 bg-white/[0.02] text-white/30 cursor-not-allowed"
                   }`}
                 >
                   {isSubmitting ? t("savingLabel") : (editingEvent ? t("updateEvent") : t("postEvent"))}
                   <span
                     className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors duration-500 ease-out ${
-                      !isSubmitting && !isEventFormUnchanged ? "bg-[#0A0E1A] group-hover:bg-white/15" : "bg-white/5"
+                      !isSubmitting && !isEventFormUnchanged ? "bg-white/20 group-hover:bg-white/30" : "bg-white/5"
                     }`}
                   >
                     <Save className={`h-5 w-5 ${!isSubmitting && !isEventFormUnchanged ? "text-white" : "text-white/20"}`} />

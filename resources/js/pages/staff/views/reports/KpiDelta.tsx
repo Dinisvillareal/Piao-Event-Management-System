@@ -48,13 +48,13 @@ export default function KpiDelta({
   }
 
   const healthy = direction === "flat" || good === "neutral" ? null : (direction === "up") === (good === "up");
-  const tone = healthy === null ? "text-white/85" : healthy ? "text-emerald-200" : "text-red-200";
+  const tone = healthy === null ? "text-white/70" : healthy ? "text-emerald-600" : "text-red-500";
   const Icon = direction === "up" ? TrendingUp : direction === "down" ? TrendingDown : Minus;
 
   return (
     <span
       title={tip}
-      className={`mt-2 inline-flex items-center gap-1 rounded-full bg-black/25 px-2 py-0.5 text-[11px] font-bold print:hidden ${tone}`}
+      className={`mt-2 inline-flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[11px] font-bold print:hidden ${tone}`}
     >
       <Icon className="h-3 w-3" strokeWidth={3} />
       {text}

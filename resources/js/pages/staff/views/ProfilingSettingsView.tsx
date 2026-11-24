@@ -79,6 +79,8 @@ export default function ProfilingSettingsView() {
   // only one taxonomy's card is on screen at a time instead of three
   // stacked light cards competing for attention on one long page.
   const [activeTab, setActiveTab] = useState<"brackets" | "civil" | "current">("brackets");
+  // Which tab's add/edit pop-up is open (null = none).
+  const [formTab, setFormTab] = useState<"brackets" | "civil" | "current" | null>(null);
   // Brief skeleton flash on every tab switch, same pattern as the Returns
   // page's Pending/Released/Undone tabs -- all three lists here are
   // already loaded together up front, so without this a tab click would
@@ -116,7 +118,7 @@ export default function ProfilingSettingsView() {
     if (totalPages <= 1) return null;
     const current = safePageOf(tab, total);
     return (
-      <div className="flex flex-col sm:flex-row gap-3 justify-between items-center px-4 sm:px-5 py-3 border-t border-white/10">
+      <div className="flex flex-col sm:flex-row gap-3 justify-between items-center pt-4">
         <p className="text-sm text-white/45 text-center sm:text-left">
           {t("pageOfLabel")} {current} {t("ofPagesLabel")} {totalPages} • {total} {t("recordsLabelShort")} • {PER_PAGE} {t("perPage")}
         </p>
@@ -126,17 +128,17 @@ export default function ProfilingSettingsView() {
             onClick={() => goPage(tab, Math.max(1, current - 1))}
             disabled={current === 1}
             aria-label={t("previousPageLabel")}
-            className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
+            className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition"
           >
             ←
           </button>
-          <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">{current}</span>
+          <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold">{current}</span>
           <button
             type="button"
             onClick={() => goPage(tab, Math.min(totalPages, current + 1))}
             disabled={current === totalPages}
             aria-label={t("nextPageLabel")}
-            className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
+            className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition"
           >
             →
           </button>
@@ -172,16 +174,19 @@ export default function ProfilingSettingsView() {
     const empty = { id: null, label: "", min_age: "", max_age: "" };
     setBracketForm(empty);
     setOriginalBracketForm(empty);
+    setFormTab(null);
   };
   const resetStatusForm = () => {
     const empty = { id: null, label: "" };
     setStatusForm(empty);
     setOriginalStatusForm(empty);
+    setFormTab(null);
   };
   const resetCurrentStatusForm = () => {
     const empty = { id: null, label: "", category: "other" };
     setCurrentStatusForm(empty);
     setOriginalCurrentStatusForm(empty);
+    setFormTab(null);
   };
   const isBracketFormUnchanged =
     !!bracketForm.id &&
@@ -460,11 +465,11 @@ export default function ProfilingSettingsView() {
        taxonomies switched between via pill tabs rather than stacked
        vertically, so this reads as one more module of the same system
        instead of a leftover light-themed settings screen. */
-    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
-      <div className="space-y-6 max-w-4xl">
-        <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("profilingSettingsTitle")}</h1>
-          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("profilingSettingsSubtitle")}</p>
+    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
+      <div className="space-y-6">
+        <div className="dash-card rounded-[32px] p-5 sm:p-6">
+          <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("profilingSettingsTitle")}</h1>
+          <p className="mt-1.5 text-sm text-white/55 max-w-xl">{t("profilingSettingsSubtitle")}</p>
         </div>
 
         {/* Section switcher -- three standalone pill buttons, same pattern
@@ -476,10 +481,10 @@ export default function ProfilingSettingsView() {
           <button
             type="button"
             onClick={() => switchTab("brackets")}
-            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
               activeTab === "brackets"
-                ? "bg-sage-700 text-white shadow-sm"
-                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
+                : "dash-card text-white/60 hover:text-white"
             }`}
           >
             <Users2 className="h-4 w-4" />
@@ -495,10 +500,10 @@ export default function ProfilingSettingsView() {
           <button
             type="button"
             onClick={() => switchTab("civil")}
-            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
               activeTab === "civil"
-                ? "bg-sage-700 text-white shadow-sm"
-                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
+                : "dash-card text-white/60 hover:text-white"
             }`}
           >
             <Heart className="h-4 w-4" />
@@ -514,10 +519,10 @@ export default function ProfilingSettingsView() {
           <button
             type="button"
             onClick={() => switchTab("current")}
-            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-[15px] font-bold transition ${
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
               activeTab === "current"
-                ? "bg-sage-700 text-white shadow-sm"
-                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
+                : "dash-card text-white/60 hover:text-white"
             }`}
           >
             <Tag className="h-4 w-4" />
@@ -536,15 +541,16 @@ export default function ProfilingSettingsView() {
             (icon + title + hint), only rendered while its pill above is
             active. Teal accent, matching the app's primary brand accent. */}
         {activeTab === "brackets" && (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
-          <div className="px-4 sm:px-5 py-4 border-b border-white/10 flex items-center gap-3.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/15 text-[#7DD8CB]">
+        <div className="dash-card rounded-[32px] overflow-hidden">
+          <div className="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82] text-white">
               <Users2 className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-base font-bold text-white">{t("ageBracketsTitle")}</p>
+              <p className="font-display text-lg font-extrabold text-white">{t("ageBracketsTitle")}</p>
               <p className="text-[13px] text-white/45">{t("ageBracketsDesc")}</p>
             </div>
+            <button type="button" onClick={() => { resetBracketForm(); setFormTab("brackets"); }} className="ml-auto inline-flex h-12 shrink-0 items-center gap-2.5 rounded-full border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-slate-50 active:scale-95"><Plus className="h-5 w-5" />{t("addAgeBracketLabel")}</button>
           </div>
 
           {loading || tabSwitching ? (
@@ -560,13 +566,14 @@ export default function ProfilingSettingsView() {
               ))}
             </div>
           ) : (
-            <>
+            <div className="p-4 sm:p-5">
+              <div className="min-w-0">
               {ageBrackets.length > 0 && (
-                <ul className="divide-y divide-white/[0.06]">
+                <ul className="space-y-3">
                   {pageSlice("brackets", ageBrackets).map((b) => (
-                    <li key={b.id} className="flex items-center justify-between gap-3.5 px-5 sm:px-6 py-3.5">
+                    <li key={b.id} className="dash-card !shadow-[0_8px_22px_rgba(15,23,42,0.09)] flex items-center justify-between gap-3.5 rounded-[22px] px-4 sm:px-5 py-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="shrink-0 h-10 w-10 rounded-full bg-[#4FBEB0]/10 text-[#7DD8CB] flex items-center justify-center">
+                        <div className="shrink-0 h-10 w-10 rounded-full bg-[#2E8E82]/12 text-[#2E8E82] flex items-center justify-center">
                           <Users2 className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
@@ -574,26 +581,27 @@ export default function ProfilingSettingsView() {
                           <p className="text-[13px] text-white/45">{b.min_age} - {b.max_age ?? "∞"} {t("yearsOldSuffix")}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
                           onClick={() => {
                             const initial = { id: b.id, label: b.label, min_age: String(b.min_age), max_age: b.max_age === null ? "" : String(b.max_age) };
                             setBracketForm(initial);
+                            setFormTab("brackets");
                             setOriginalBracketForm(initial);
                           }}
-                          className="p-2 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition"
+                          className="btn-live-navy inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm transition hover:bg-[#274A77] active:scale-95"
                           title={t("editLabel")}
                         >
-                          <Pencil className="h-[18px] w-[18px]" />
+                          <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
                           onClick={() => setPendingDelete({ type: "bracket", id: b.id, label: b.label })}
-                          className="p-2 rounded-full text-white/50 hover:bg-red-500/10 hover:text-red-400 transition"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-600 bg-red-600 text-white shadow-sm transition hover:bg-red-700 active:scale-95"
                           title={t("deleteTitle")}
                         >
-                          <Trash2 className="h-[18px] w-[18px]" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </li>
@@ -601,17 +609,20 @@ export default function ProfilingSettingsView() {
                 </ul>
               )}
               {renderPager("brackets", ageBrackets.length)}
+              </div>
 
-              <form onSubmit={submitBracket} noValidate className="border-t border-white/10 p-4 sm:p-5 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-white/40">
+              {formTab === "brackets" && (
+              <Portal><div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) resetBracketForm(); }}>
+              <form onSubmit={submitBracket} noValidate className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+                <p className="font-display text-xl font-extrabold text-white">
                   {bracketForm.id ? t("editAgeBracketLabel") : t("addAgeBracketLabel")}
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <input
                     value={bracketForm.label}
                     onChange={(e) => setBracketForm((p) => ({ ...p, label: e.target.value }))}
                     placeholder={t("bracketLabelPlaceholder")}
-                    className="rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                    className="dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.16)] rounded-full px-5 py-3.5 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                     required
                   />
                   {/* Our own stepper instead of the browser's native
@@ -625,7 +636,7 @@ export default function ProfilingSettingsView() {
                     value={bracketForm.min_age}
                     onChange={(v) => setBracketForm((p) => ({ ...p, min_age: v }))}
                     placeholder={t("minAgePlaceholder")}
-                    className="w-full rounded-full border border-white/10 bg-white/[0.04] pl-4 pr-7 py-2.5 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                    className="w-full dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.16)] rounded-full pl-5 pr-7 py-3 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                   />
                   <NumberStepper
                     fullWidth
@@ -633,19 +644,19 @@ export default function ProfilingSettingsView() {
                     value={bracketForm.max_age}
                     onChange={(v) => setBracketForm((p) => ({ ...p, max_age: v }))}
                     placeholder={t("maxAgeOpenEndedPlaceholder")}
-                    className="w-full rounded-full border border-white/10 bg-white/[0.04] pl-4 pr-7 py-2.5 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                    className="w-full dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.16)] rounded-full pl-5 pr-7 py-3 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                   />
                 </div>
-                <div className="flex gap-2 justify-end">
-                  {bracketForm.id && (
-                    <button type="button" onClick={resetBracketForm} className="px-5 py-2.5 rounded-full border border-white/15 text-white text-[15px] hover:bg-white/10 transition">
+                <div className="flex gap-2 justify-end [&>button]:flex-1">
+                                      <button type="button" onClick={resetBracketForm} className="dash-tile inline-flex min-h-10 items-center rounded-full px-5 text-sm font-semibold text-white/80 hover:text-white transition">
                       {t("cancelLabel")}
                     </button>
-                  )}
-                  <SaveButton size="sm" className="whitespace-nowrap" active={!(savingBracket || isBracketFormUnchanged)} title={isBracketFormUnchanged ? t("noChangesToSaveHint") : undefined}>{bracketForm.id ? t("saveChanges") : t("addAgeBracketLabel")}</SaveButton>
+                  <SaveButton size="sm" className="w-full whitespace-nowrap" active={!(savingBracket || isBracketFormUnchanged)} title={isBracketFormUnchanged ? t("noChangesToSaveHint") : undefined}>{bracketForm.id ? t("saveChanges") : t("addAgeBracketLabel")}</SaveButton>
                 </div>
               </form>
-            </>
+              </div></Portal>
+            )}
+            </div>
           )}
         </div>
         )}
@@ -653,15 +664,16 @@ export default function ProfilingSettingsView() {
         {/* Civil Status -- same card/list/form pattern, gold accent to tell
             it apart from Age Brackets at a glance. */}
         {activeTab === "civil" && (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
-          <div className="px-4 sm:px-5 py-4 border-b border-white/10 flex items-center gap-3.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold-400/15 text-gold-300">
+        <div className="dash-card rounded-[32px] overflow-hidden">
+          <div className="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82] text-white">
               <Heart className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-base font-bold text-white">{t("civilStatusesTitle")}</p>
+              <p className="font-display text-lg font-extrabold text-white">{t("civilStatusesTitle")}</p>
               <p className="text-[13px] text-white/45">{t("civilStatusesDesc")}</p>
             </div>
+            <button type="button" onClick={() => { resetStatusForm(); setFormTab("civil"); }} className="ml-auto inline-flex h-12 shrink-0 items-center gap-2.5 rounded-full border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-slate-50 active:scale-95"><Plus className="h-5 w-5" />{t("addCivilStatusLabel")}</button>
           </div>
 
           {loading || tabSwitching ? (
@@ -674,37 +686,39 @@ export default function ProfilingSettingsView() {
               ))}
             </div>
           ) : (
-            <>
+            <div className="p-4 sm:p-5">
+              <div className="min-w-0">
               {civilStatuses.length > 0 && (
-                <ul className="divide-y divide-white/[0.06]">
+                <ul className="space-y-3">
                   {pageSlice("civil", civilStatuses).map((s) => (
-                    <li key={s.id} className="flex items-center justify-between gap-3.5 px-5 sm:px-6 py-3.5">
+                    <li key={s.id} className="dash-card !shadow-[0_8px_22px_rgba(15,23,42,0.09)] flex items-center justify-between gap-3.5 rounded-[22px] px-4 sm:px-5 py-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="shrink-0 h-10 w-10 rounded-full bg-gold-400/10 text-gold-300 flex items-center justify-center">
+                        <div className="shrink-0 h-10 w-10 rounded-full bg-[#2E8E82]/12 text-[#2E8E82] flex items-center justify-center">
                           <Heart className="h-4 w-4" />
                         </div>
                         <p className="text-[15px] font-semibold text-white truncate">{tc(s.label, language as any)}</p>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
                           onClick={() => {
                             const initial = { id: s.id, label: s.label };
                             setStatusForm(initial);
+                            setFormTab("civil");
                             setOriginalStatusForm(initial);
                           }}
-                          className="p-2 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition"
+                          className="btn-live-navy inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm transition hover:bg-[#274A77] active:scale-95"
                           title={t("editLabel")}
                         >
-                          <Pencil className="h-[18px] w-[18px]" />
+                          <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
                           onClick={() => setPendingDelete({ type: "civilStatus", id: s.id, label: s.label })}
-                          className="p-2 rounded-full text-white/50 hover:bg-red-500/10 hover:text-red-400 transition"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-600 bg-red-600 text-white shadow-sm transition hover:bg-red-700 active:scale-95"
                           title={t("deleteTitle")}
                         >
-                          <Trash2 className="h-[18px] w-[18px]" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </li>
@@ -712,30 +726,33 @@ export default function ProfilingSettingsView() {
                 </ul>
               )}
               {renderPager("civil", civilStatuses.length)}
+              </div>
 
-              <form onSubmit={submitStatus} noValidate className="border-t border-white/10 p-4 sm:p-5 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-white/40">
+              {formTab === "civil" && (
+              <Portal><div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) resetStatusForm(); }}>
+              <form onSubmit={submitStatus} noValidate className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+                <p className="font-display text-xl font-extrabold text-white">
                   {statusForm.id ? t("editCivilStatusLabel") : t("addCivilStatusLabel")}
                 </p>
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col gap-3">
                   <input
                     value={statusForm.label}
                     onChange={(e) => setStatusForm((p) => ({ ...p, label: e.target.value }))}
                     placeholder={t("statusLabelPlaceholder")}
-                    className="flex-1 rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-gold-400/20 focus:border-gold-400/50"
+                    className="flex-1 dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.16)] rounded-full px-5 py-3.5 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-gold-400/20 focus:border-gold-400/50"
                     required
                   />
-                  <div className="flex gap-2 justify-end">
-                    {statusForm.id && (
-                      <button type="button" onClick={resetStatusForm} className="px-5 py-2.5 rounded-full border border-white/15 text-white text-[15px] hover:bg-white/10 transition">
+                  <div className="flex gap-2 justify-end [&>button]:flex-1">
+                                          <button type="button" onClick={resetStatusForm} className="dash-tile inline-flex min-h-10 items-center rounded-full px-5 text-sm font-semibold text-white/80 hover:text-white transition">
                         {t("cancelLabel")}
                       </button>
-                    )}
-                    <SaveButton size="sm" className="whitespace-nowrap" active={!(savingStatus || isStatusFormUnchanged)} title={isStatusFormUnchanged ? t("noChangesToSaveHint") : undefined}>{statusForm.id ? t("saveChanges") : t("addCivilStatusLabel")}</SaveButton>
+                    <SaveButton size="sm" className="w-full whitespace-nowrap" active={!(savingStatus || isStatusFormUnchanged)} title={isStatusFormUnchanged ? t("noChangesToSaveHint") : undefined}>{statusForm.id ? t("saveChanges") : t("addCivilStatusLabel")}</SaveButton>
                   </div>
                 </div>
               </form>
-            </>
+              </div></Portal>
+            )}
+            </div>
           )}
         </div>
         )}
@@ -743,15 +760,16 @@ export default function ProfilingSettingsView() {
         {/* Current Status -- same pattern again, sage accent (the app's
             third brand color) so all three tabs are visually distinct. */}
         {activeTab === "current" && (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
-          <div className="px-4 sm:px-5 py-4 border-b border-white/10 flex items-center gap-3.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sage-400/15 text-sage-300">
+        <div className="dash-card rounded-[32px] overflow-hidden">
+          <div className="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82] text-white">
               <Tag className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-base font-bold text-white">{t("currentStatusesTitle")}</p>
+              <p className="font-display text-lg font-extrabold text-white">{t("currentStatusesTitle")}</p>
               <p className="text-[13px] text-white/45">{t("currentStatusesDesc")}</p>
             </div>
+            <button type="button" onClick={() => { resetCurrentStatusForm(); setFormTab("current"); }} className="ml-auto inline-flex h-12 shrink-0 items-center gap-2.5 rounded-full border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-slate-50 active:scale-95"><Plus className="h-5 w-5" />{t("addCurrentStatusLabel")}</button>
           </div>
 
           {loading || tabSwitching ? (
@@ -764,13 +782,14 @@ export default function ProfilingSettingsView() {
               ))}
             </div>
           ) : (
-            <>
+            <div className="p-4 sm:p-5">
+              <div className="min-w-0">
               {currentStatuses.length > 0 && (
-                <ul className="divide-y divide-white/[0.06]">
+                <ul className="space-y-3">
                   {pageSlice("current", currentStatuses).map((s) => (
-                    <li key={s.id} className="flex items-center justify-between gap-3.5 px-5 sm:px-6 py-3.5">
+                    <li key={s.id} className="dash-card !shadow-[0_8px_22px_rgba(15,23,42,0.09)] flex items-center justify-between gap-3.5 rounded-[22px] px-4 sm:px-5 py-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="shrink-0 h-10 w-10 rounded-full bg-sage-400/10 text-sage-300 flex items-center justify-center">
+                        <div className="shrink-0 h-10 w-10 rounded-full bg-[#2E8E82]/12 text-[#2E8E82] flex items-center justify-center">
                           <Tag className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
@@ -778,26 +797,27 @@ export default function ProfilingSettingsView() {
                           <p className="text-xs text-white/45 truncate">{t(`csGroup_${s.category ?? "other"}`)}</p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-1 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
                           onClick={() => {
                             const initial = { id: s.id, label: s.label, category: s.category ?? "other" };
                             setCurrentStatusForm(initial);
+                            setFormTab("current");
                             setOriginalCurrentStatusForm(initial);
                           }}
-                          className="p-2 rounded-full text-white/50 hover:bg-white/10 hover:text-white transition"
+                          className="btn-live-navy inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm transition hover:bg-[#274A77] active:scale-95"
                           title={t("editLabel")}
                         >
-                          <Pencil className="h-[18px] w-[18px]" />
+                          <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           type="button"
                           onClick={() => setPendingDelete({ type: "currentStatus", id: s.id, label: s.label })}
-                          className="p-2 rounded-full text-white/50 hover:bg-red-500/10 hover:text-red-400 transition"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-red-600 bg-red-600 text-white shadow-sm transition hover:bg-red-700 active:scale-95"
                           title={t("deleteTitle")}
                         >
-                          <Trash2 className="h-[18px] w-[18px]" />
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
                     </li>
@@ -805,42 +825,45 @@ export default function ProfilingSettingsView() {
                 </ul>
               )}
               {renderPager("current", currentStatuses.length)}
+              </div>
 
-              <form onSubmit={submitCurrentStatus} noValidate className="border-t border-white/10 p-4 sm:p-5 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wide text-white/40">
+              {formTab === "current" && (
+              <Portal><div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) resetCurrentStatusForm(); }}>
+              <form onSubmit={submitCurrentStatus} noValidate className="w-full max-w-md rounded-[30px] border border-white/10 bg-[#0A0E1A] p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+                <p className="font-display text-xl font-extrabold text-white">
                   {currentStatusForm.id ? t("editCurrentStatusLabel") : t("addCurrentStatusLabel")}
                 </p>
-                <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex flex-col gap-3">
                   <input
                     value={currentStatusForm.label}
                     onChange={(e) => setCurrentStatusForm((p) => ({ ...p, label: e.target.value }))}
                     placeholder={t("currentStatusLabelPlaceholder")}
-                    className="flex-1 rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-400/20 focus:border-sage-400/50"
+                    className="flex-1 dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.16)] rounded-full px-5 py-3.5 text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-400/20 focus:border-sage-400/50"
                     required
                   />
-                  <div className="sm:w-60">
+                  <div className="w-full">
                     <FormSelect
                       value={currentStatusForm.category}
                       onChange={(e) => setCurrentStatusForm((p) => ({ ...p, category: e.target.value }))}
-                      className="w-full appearance-none rounded-full border border-white/25 px-5 py-3.5 pr-11 text-base bg-white/10 text-white focus:outline-none focus:ring-2 focus:ring-sage-400/20 focus:border-sage-400/50"
+                      className="w-full dash-card !shadow-[0_8px_20px_rgba(15,23,42,0.16)] appearance-none rounded-full px-5 py-3.5 pr-11 text-base text-white focus:outline-none focus:ring-2 focus:ring-sage-400/20 focus:border-sage-400/50"
                     >
                       {CS_CATEGORIES.map((c) => (
                         <option key={c} value={c} className="bg-[#0A0E1A] text-white">{t(`csGroup_${c}`)}</option>
                       ))}
                     </FormSelect>
                   </div>
-                  <div className="flex gap-2 justify-end">
-                    {currentStatusForm.id && (
-                      <button type="button" onClick={resetCurrentStatusForm} className="px-5 py-2.5 rounded-full border border-white/15 text-white text-[15px] hover:bg-white/10 transition">
+                  <div className="flex gap-2 justify-end [&>button]:flex-1">
+                                          <button type="button" onClick={resetCurrentStatusForm} className="dash-tile inline-flex min-h-10 items-center rounded-full px-5 text-sm font-semibold text-white/80 hover:text-white transition">
                         {t("cancelLabel")}
                       </button>
-                    )}
-                    <SaveButton size="sm" className="whitespace-nowrap" active={!(savingCurrentStatus || isCurrentStatusFormUnchanged)} title={isCurrentStatusFormUnchanged ? t("noChangesToSaveHint") : undefined}>{currentStatusForm.id ? t("saveChanges") : t("addCurrentStatusLabel")}</SaveButton>
+                    <SaveButton size="sm" className="w-full whitespace-nowrap" active={!(savingCurrentStatus || isCurrentStatusFormUnchanged)} title={isCurrentStatusFormUnchanged ? t("noChangesToSaveHint") : undefined}>{currentStatusForm.id ? t("saveChanges") : t("addCurrentStatusLabel")}</SaveButton>
                   </div>
                 </div>
                 <p className="text-xs text-white/45">{t("csCategoryHint")}</p>
               </form>
-            </>
+              </div></Portal>
+            )}
+            </div>
           )}
         </div>
         )}
@@ -850,6 +873,7 @@ export default function ProfilingSettingsView() {
 
         <ConfirmDialog
           open={confirmBracketSave}
+          z={100}
           icon={bracketForm.id ? <Pencil size={32} /> : <Plus size={32} />}
           title={bracketForm.id ? t("confirmUpdateAgeBracketTitle") : t("confirmAddAgeBracketTitle")}
           body={bracketForm.id ? t("confirmUpdateAgeBracketBody") : t("confirmAddAgeBracketBody")}
@@ -861,6 +885,7 @@ export default function ProfilingSettingsView() {
 
         <ConfirmDialog
           open={confirmStatusSave}
+          z={100}
           icon={statusForm.id ? <Pencil size={32} /> : <Plus size={32} />}
           title={statusForm.id ? t("confirmUpdateCivilStatusTitle") : t("confirmAddCivilStatusTitle")}
           body={statusForm.id ? t("confirmUpdateCivilStatusBody") : t("confirmAddCivilStatusBody")}
@@ -872,6 +897,7 @@ export default function ProfilingSettingsView() {
 
         <ConfirmDialog
           open={confirmCurrentStatusSave}
+          z={100}
           icon={currentStatusForm.id ? <Pencil size={32} /> : <Plus size={32} />}
           title={currentStatusForm.id ? t("confirmUpdateCurrentStatusTitle") : t("confirmAddCurrentStatusTitle")}
           body={currentStatusForm.id ? t("confirmUpdateCurrentStatusBody") : t("confirmAddCurrentStatusBody")}

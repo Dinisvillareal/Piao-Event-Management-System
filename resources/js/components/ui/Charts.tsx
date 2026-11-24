@@ -136,10 +136,10 @@ export { TEAL, TEAL_LIGHT, ORANGE };
 export const CHART_COLORS = ["#35a597", "#b98a22", "#3987e5", "#d9654f", "#9085e9"] as const;
 /** The dashed "previous period" line -- a neutral, so it never competes with a data hue. */
 export const CHART_PREVIOUS = "#8d96ab";
-/** Soft pastel set for "who is who" charts (gender, shares, age): blue, pink, lime, lavender, peach, then a neutral. */
-export const CHART_SOFT = ["#B9E1EC", "#F9CFDD", "#DDE98F", "#CBC5F2", "#F7DDB0"] as const;
-/** The same hues one step deeper -- for a hovered / selected column or a thin bar. */
-export const CHART_SOFT_DEEP = ["#79BDD3", "#EFA3BD", "#BFD25E", "#A59BE0", "#EDB872"] as const;
+/** "Who is who" charts (gender, shares, age) use the report teal and its tints, so every graphic looks the same. */
+export const CHART_SOFT = ["#BFE6E0", "#D9F0EC", "#9FD6CD", "#E8F6F3", "#CDEAE5"] as const;
+/** The same teal family one step deeper -- the main bar colour first, then lighter and darker tints for more segments. */
+export const CHART_SOFT_DEEP = ["#35a597", "#86d1c6", "#1f7a70", "#b5e4dc", "#5bbfb0"] as const;
 export const CHART_SOFT_NEUTRAL = "#B7C0CF";
 
 const inkSoft = "text-white/45 print:text-gray-500";

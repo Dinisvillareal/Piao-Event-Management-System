@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import Portal from "./Portal";
 import { Check, ChevronDown, Languages } from "lucide-react";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { LANGUAGES, LanguageCode } from "../../i18n/translations";
@@ -17,20 +18,44 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
   );
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  // The list is drawn on top of the whole page (in <body>), placed under the button, so no header or page
+  // content can ever cover or clip it.
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
 
   const current = LANGUAGES.find((l) => l.code === language) ?? LANGUAGES[0];
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = buttonRef.current?.getBoundingClientRect();
+      if (r) setPos({ top: Math.round(r.bottom + 6), right: Math.max(8, Math.round(window.innerWidth - r.right)) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open]);
 
   // Close when clicking outside the trigger/panel.
   useEffect(() => {
     if (!open) return;
     const handleClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target) || listRef.current?.contains(target)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, [open]);
+
+  // Keyboard users land on the list as soon as it opens.
+  useEffect(() => {
+    if (open && pos) listRef.current?.focus();
+  }, [open, !!pos]);
 
   const choose = (code: LanguageCode) => {
     setLanguage(code, { userId });
@@ -81,13 +106,16 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
         <ChevronDown className={`h-4 w-4 text-white/70 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
       </button>
 
-      {open && (
+      {open && pos && (
+        <Portal>
         <ul
+          ref={listRef}
           role="listbox"
           aria-label={t("interfaceLanguage")}
           tabIndex={-1}
           onKeyDown={handleListKeyDown}
-          className="absolute right-0 z-50 mt-1.5 min-w-[10rem] overflow-hidden rounded-2xl border border-white/10 bg-[#0A0E1A] py-1 shadow-xl"
+          style={{ top: pos.top, right: pos.right }}
+          className="fixed z-[300] min-w-[10rem] overflow-hidden rounded-2xl border border-white/10 bg-[#0A0E1A] py-1 shadow-xl outline-none"
         >
           {LANGUAGES.map((l, i) => {
             const selected = l.code === language;
@@ -114,6 +142,7 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
             );
           })}
         </ul>
+        </Portal>
       )}
     </div>
   );

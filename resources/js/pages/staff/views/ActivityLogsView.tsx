@@ -450,7 +450,7 @@ export default function ActivityLogsView() {
       desc: t("totalLoggedActivitiesStatDesc"),
       value: totalRecords,
       icon: ActivityIcon,
-      gradient: "from-sage-800 to-[#1C2E2B]",
+      gradient: "from-sage-400 to-sage-700",
     },
     {
       key: "page",
@@ -466,7 +466,7 @@ export default function ActivityLogsView() {
       desc: t("latestActivityStatDesc"),
       value: relativeTimeLabel(stats.latestAt),
       icon: Clock,
-      gradient: "from-gold-400 to-gold-700",
+      gradient: "from-sage-400 to-sage-700",
       isText: true,
     },
     {
@@ -475,7 +475,7 @@ export default function ActivityLogsView() {
       desc: t("securityAuthEventsStatDesc"),
       value: stats.systemEvents,
       icon: ShieldAlert,
-      gradient: "from-[#8A3D2C] to-[#5C2A1E]",
+      gradient: "from-sage-400 to-sage-700",
     },
   ];
 
@@ -501,11 +501,11 @@ export default function ActivityLogsView() {
         pages, so Activity Logs reads as part of the same system instead
         of the old light "paper" page. This page has no add/edit modal of
         its own, just the feed below. */}
-    <div ref={topRef} className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div ref={topRef} className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="dash-card flex flex-wrap items-center justify-between gap-3 rounded-[32px] p-5 sm:p-6">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("activitylogs")}</h1>
+          <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("activitylogs")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("activityLogsSubtitle")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -515,9 +515,9 @@ export default function ActivityLogsView() {
             onClick={() => openExportDialog("excel")}
             disabled={loading || totalRecords === 0}
             title={t("activityExportExcelTitle")}
-            className="inline-flex h-10 items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 text-[13px] font-semibold text-white transition-all duration-300 hover:border-[#1E3A5F] hover:bg-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40"
+            className="btn-live-navy inline-flex h-10 items-center gap-2 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-5 text-[13px] font-semibold text-white shadow-sm transition-all duration-300 hover:bg-[#274A77] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <FileSpreadsheet className="h-4 w-4 text-[#7DD8CB]" />
+            <FileSpreadsheet className="h-4 w-4 text-white" />
             {t("resExportExcel")}
           </button>
           <button
@@ -525,13 +525,13 @@ export default function ActivityLogsView() {
             onClick={() => openExportDialog("pdf")}
             disabled={loading || totalRecords === 0}
             title={t("activityExportPdfTitle")}
-            className="inline-flex h-10 items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-4 text-[13px] font-semibold text-white transition-all duration-300 hover:border-[#1E3A5F] hover:bg-[#1E3A5F] disabled:cursor-not-allowed disabled:opacity-40"
+            className="btn-live-navy inline-flex h-10 items-center gap-2 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-5 text-[13px] font-semibold text-white shadow-sm transition-all duration-300 hover:bg-[#274A77] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <FileText className="h-4 w-4 text-gold-300" />
+            <FileText className="h-4 w-4 text-white" />
             {t("resExportPdf")}
           </button>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 shrink-0">
+        <div className="dash-tile dash-mint flex items-center gap-2 rounded-full px-3.5 py-2 shrink-0">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
@@ -552,7 +552,7 @@ export default function ActivityLogsView() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+      <div className="dash-card rounded-[32px] p-4 sm:p-5">
         <FilterBar
           search={{ value: searchQuery, onChange: setSearchQuery, placeholder: t("searchActivitiesPlaceholder") }}
           filters={[{ key: "type", label: t("typeColumn"), value: filterType, onChange: setFilterType, options: typeOptions, searchable: true }]}
@@ -569,7 +569,7 @@ export default function ActivityLogsView() {
 
       <p className="text-xs text-white/45">{t("showingPerPage").replace("{n}", String(itemsPerPage))}</p>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-6">
+      <div className="p-1 sm:p-2">
         <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
         {loading ? (
           <div>{Array(6).fill(0).map((_, i) => <SkeletonItem key={i} />)}</div>
@@ -582,7 +582,7 @@ export default function ActivityLogsView() {
           groupedActivities.map((group) => (
             <div key={group.key} className="mb-6 last:mb-0">
               <div className="flex items-center gap-3 mb-4">
-                <span className="text-xs font-bold uppercase tracking-wide text-white bg-white/10 rounded-full px-3 py-1 shrink-0">
+                <span className="text-xs font-bold uppercase tracking-wide text-white bg-gradient-to-r from-[#0B0F14] to-[#18212B] rounded-full px-3.5 py-1.5 shrink-0 shadow-sm">
                   {group.label}
                 </span>
                 <span className="h-px flex-1 bg-white/10" />
@@ -609,7 +609,7 @@ export default function ActivityLogsView() {
                         <Icon className="h-4 w-4" />
                       </span>
 
-                      <div className="rounded-xl -mx-2 px-2 py-1.5 transition-colors group-hover:bg-white/[0.05]">
+                      <div className="dash-card !shadow-[0_8px_22px_rgba(15,23,42,0.09)] rounded-[22px] px-4 py-3.5 transition group-hover:-translate-y-0.5 group-hover:!border-[#4FBEB0]/50">
                         <div className="flex items-start justify-between gap-3 flex-wrap">
                           <div className="min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
@@ -653,17 +653,17 @@ export default function ActivityLogsView() {
             <button
               onClick={() => goToPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+              className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >
               ←
             </button>
-            <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+            <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold">
               {currentPage}
             </span>
             <button
               onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+              className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
             >
               →
             </button>
