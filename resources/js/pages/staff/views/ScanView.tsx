@@ -2,7 +2,7 @@ import { highlightMatches } from "../../../lib/highlight";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Camera, CameraOff, CheckCircle, XCircle, AlertTriangle, LogIn, LogOut, IdCard, ScanLine, Search, ChevronDown } from "lucide-react";
+import { Camera, X, CheckCircle, XCircle, AlertTriangle, LogIn, LogOut, IdCard, ScanLine, Search, ChevronDown } from "lucide-react";
 import { Scanner } from '@yudiel/react-qr-scanner';
 import api from "../../../lib/api";
 import { queueAttendance, classifyFailure } from "../../../lib/offlineQueue";
@@ -59,6 +59,19 @@ export default function ScanView({ events, residents, memberships, loading = fal
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [attendance, setAttendance] = useState<Record<string, AttendanceEntry[]>>({});
   const [isCameraOn, setIsCameraOn] = useState(false);
+
+  // The camera opens full screen. It adds one history step so the phone's
+  // Back button simply closes the camera and returns to this page.
+  useEffect(() => {
+    if (!isCameraOn) return;
+    window.history.pushState({ scanCamera: true }, "");
+    const onPop = () => setIsCameraOn(false);
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      if (window.history.state && window.history.state.scanCamera) window.history.back();
+    };
+  }, [isCameraOn]);
   const [closingTime, setClosingTime] = useState("");
   const [isDeadlineActive, setIsDeadlineActive] = useState(false);
   const [scanMode, setScanMode] = useState<"in" | "out">("in");
@@ -908,33 +921,17 @@ export default function ScanView({ events, residents, memberships, loading = fal
                 {checkInMethod === "camera" ? t("oneQrPerResident") : t("typeResidentIdOrName")}
               </p>
             </div>
-            {checkInMethod === "camera" && (
-              <button
-                type="button"
-                onClick={() => setIsCameraOn(!isCameraOn)}
-                disabled={!isDeadlineActive}
-                className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors ${
-                  !isDeadlineActive
-                    ? "bg-white/10 text-white/40 cursor-not-allowed"
-                    : isCameraOn
-                    ? "bg-red-500 text-white hover:bg-red-600"
-                    : "bg-[#2E8E82] text-white hover:bg-[#25756B]"
-                }`}
-              >
-                {isCameraOn ? <CameraOff className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
-              </button>
-            )}
           </div>
 
           <div className="p-5 space-y-5">
             {bodyLoading ? stepsSkeleton : (
-            <div className="dash-tile space-y-4 rounded-[24px] p-5">
+            <div className="dash-tile space-y-4 rounded-[24px] p-4 sm:p-5">
               <div ref={eventDropdownRef} className="relative">
                 <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#2E8E82]">{t("selectEventStep1")}</label>
                 <button
                   type="button"
                   onClick={() => setEventDropdownOpen((v) => !v)}
-                  className="dash-card flex h-12 w-full items-center justify-between gap-2 rounded-full px-5 text-left text-[15px] transition hover:border-[#4FBEB0] focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/30"
+                  className="dash-card flex h-12 w-full items-center justify-between gap-2 rounded-full px-4 text-left text-[14px] sm:px-5 sm:text-[15px] transition hover:border-[#4FBEB0] focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/30"
                 >
                   <span className={ev ? "truncate font-medium text-white" : "text-white/40"}>
                     {ev ? ev.title : t("selectEventStep1")}
@@ -1019,20 +1016,20 @@ export default function ScanView({ events, residents, memberships, loading = fal
                   <button
                     type="button"
                     onClick={() => { setCheckInMethod("camera"); setManualQuery(""); }}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-3 text-[15px] font-semibold transition-colors ${
+                    className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-2 py-3 text-[12.5px] font-semibold transition-colors sm:px-3 sm:text-[15px] ${
                       checkInMethod === "camera" ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "dash-card text-white/60 hover:text-white"
                     }`}
                   >
-                    <ScanLine className="h-4 w-4" /> {t("cameraScanLabel")}
+                    <ScanLine className="h-4 w-4 max-sm:hidden" /> {t("cameraScanLabel")}
                   </button>
                   <button
                     type="button"
                     onClick={() => { setCheckInMethod("manual"); setIsCameraOn(false); }}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-3 text-[15px] font-semibold transition-colors ${
+                    className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-2 py-3 text-[12.5px] font-semibold transition-colors sm:px-3 sm:text-[15px] ${
                       checkInMethod === "manual" ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "dash-card text-white/60 hover:text-white"
                     }`}
                   >
-                    <IdCard className="h-4 w-4" /> {t("manualPhysicalIdLabel")}
+                    <IdCard className="h-4 w-4 max-sm:hidden" /> <span className="truncate sm:hidden">{t("manualPhysicalIdLabel").split(" · ")[0]}</span><span className="truncate max-sm:hidden">{t("manualPhysicalIdLabel")}</span>
                   </button>
                 </div>
               </div>
@@ -1043,7 +1040,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                   <button
                     onClick={() => setScanMode("in")}
                     disabled={scanMode === "out"}
-                    className={`flex-1 rounded-full px-3 py-3 text-[15px] font-semibold transition-colors ${
+                    className={`flex-1 rounded-full px-3 py-3 text-[14px] font-semibold transition-colors sm:text-[15px] ${
                       scanMode === "in"
                         ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm hover:brightness-125"
                         : "dash-card text-white/30 cursor-not-allowed opacity-60"
@@ -1054,7 +1051,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                   <button
                     onClick={() => setScanMode("out")}
                     disabled={scanMode === "in"}
-                    className={`flex-1 rounded-full px-3 py-3 text-[15px] font-semibold transition-colors ${
+                    className={`flex-1 rounded-full px-3 py-3 text-[14px] font-semibold transition-colors sm:text-[15px] ${
                       scanMode === "out"
                         ? "bg-gold-400 text-[#08130F] shadow-sm hover:bg-gold-500"
                         : "dash-card text-white/30 cursor-not-allowed opacity-60"
@@ -1074,7 +1071,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                 {/* Read-only -- this window comes from the event's own Start
                     Time / Call Time fields (set on the Events screen), not
                     typed in here each session. */}
-                <div className="dash-card rounded-full px-5 py-3 text-[15px] text-white">
+                <div className="dash-card rounded-full px-4 py-3 text-[14px] text-white sm:px-5 sm:text-[15px]">
                   {windowNotYetOpen
                     ? `${t("opensAtLabel")} ${formatEventOptionDateTime(windowNotYetOpen) || windowNotYetOpen}`
                     : closingTime
@@ -1086,9 +1083,9 @@ export default function ScanView({ events, residents, memberships, loading = fal
             )}
 
             {bodyLoading && !(checkInMethod === "camera" && isCameraOn) ? cameraSkeleton : checkInMethod === "camera" ? (
-              <div className="relative overflow-hidden rounded-[24px] bg-black min-h-[380px]">
+              <div>
                 {isCameraOn ? (
-                  <div className="absolute inset-0 h-full w-full">
+                  <Portal><div className="fixed inset-0 z-[70] bg-black">
                     <Scanner
                       onScan={(result) => {
                         if (result && result.length > 0) {
@@ -1129,12 +1126,28 @@ export default function ScanView({ events, residents, memberships, loading = fal
                         <span className="font-semibold text-white">{t("blurryLabel")}</span> {t("movePhoneCloserNote")}
                       </div>
                     </div>
-                  </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsCameraOn(false)}
+                      aria-label={t("closeCameraButton")}
+                      title={t("closeCameraButton")}
+                      className="absolute right-4 top-4 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-black/60 text-white backdrop-blur transition hover:bg-black/80 active:scale-95"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div></Portal>
                 ) : (
-                  <div className="absolute inset-0 flex h-full w-full flex-col items-center justify-center gap-2 text-white/50">
-                    <Camera className="h-9 w-9" />
-                    <p className="text-[15px]">{t("cameraOffClickToStart")}</p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsCameraOn(true)}
+                    disabled={!isDeadlineActive}
+                    className="btn-live-navy group inline-flex w-full items-center justify-between gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] py-2 pl-6 pr-2 text-base font-semibold !text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    {t("openCameraButton")}
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 group-hover:bg-white/25">
+                      <Camera className="h-5 w-5 text-white" />
+                    </span>
+                  </button>
                 )}
               </div>
             ) : (

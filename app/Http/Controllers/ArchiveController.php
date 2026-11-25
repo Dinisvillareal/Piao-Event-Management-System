@@ -244,6 +244,44 @@ class ArchiveController extends Controller
             'deletedBy' => $r->deleted_by,
         ])->values();
 
+        // Extra detail for deleted events (when/where/who it was for), so the phone screen can show the
+        // event as its usual card. Best effort only -- the list works without it.
+        $eventDetails = [];
+        $eventIds = $rows->where('type', 'event')->pluck('id')->all();
+        if (!empty($eventIds)) {
+            try {
+                $evs = DB::table('events')->whereIn('id', $eventIds)
+                    ->select('id', 'description', 'location', 'event_start', 'event_end', 'membership_ids')->get();
+                $decode = function ($raw) {
+                    if (is_array($raw)) return $raw;
+                    $d = is_string($raw) ? json_decode($raw, true) : null;
+                    return is_array($d) ? $d : [];
+                };
+                $memberIds = [];
+                foreach ($evs as $e) {
+                    $memberIds = array_merge($memberIds, $decode($e->membership_ids));
+                }
+                $memberNames = empty($memberIds) ? collect() : DB::table('memberships')->whereIn('id', array_unique($memberIds))->pluck('name', 'id');
+                foreach ($evs as $e) {
+                    $eventDetails[(int) $e->id] = [
+                        'description' => $e->description,
+                        'location' => $e->location,
+                        'event_start' => $e->event_start ? date('c', strtotime($e->event_start)) : null,
+                        'event_end' => $e->event_end ? date('c', strtotime($e->event_end)) : null,
+                        'coverage' => collect($decode($e->membership_ids))->map(fn ($i) => $memberNames[$i] ?? null)->filter()->values()->all(),
+                    ];
+                }
+            } catch (\Throwable $ex) {
+                $eventDetails = [];
+            }
+        }
+        $rows = $rows->map(function ($r) use ($eventDetails) {
+            if ($r['type'] === 'event' && isset($eventDetails[$r['id']])) {
+                $r['details'] = $eventDetails[$r['id']];
+            }
+            return $r;
+        })->values();
+
         return response()->json(Paged::body($paginator, $rows, ['stats' => $stats]));
     }
 
@@ -366,6 +404,25 @@ class ArchiveController extends Controller
                                 'read'                    => false,
                                 'updated_at'              => now(),
                             ]);
+
+                        [$fbOk, $fbMessage] = app(\App\Services\FacebookService::class)->postEvent(
+                            '✅ Event Re-opened: ' . $item->name,
+                            //$staffName . ' • ' . $item->name . ' — This event has been re-opened and is active again. Please check the app for the updated schedule.'
+                            'This event has been re-opened and is active again. Please check the app for the updated schedule.'
+                        );
+                        if (!$fbOk) {
+                            \Illuminate\Support\Facades\Log::warning('Facebook reopen post failed: ' . $fbMessage, ['event' => $item->name]);
+                        }
+
+                        // Same SMS parity as FB: blast the re-opening to household heads.
+                        try {
+                            app(\App\Services\SmsService::class)->broadcastToAllHouseholdHeads(
+                                $item->id,
+                                'RE-OPENED: ' . $item->name . ' — This event has been re-opened. Check the app for the updated schedule.'
+                            );
+                        } catch (\Throwable $e) {
+                            \Illuminate\Support\Facades\Log::warning('SMS reopen broadcast failed: ' . $e->getMessage(), ['event' => $item->name]);
+                        }
 
                         DB::commit();
 
@@ -526,3 +583,4 @@ class ArchiveController extends Controller
         }
     }
 }
+

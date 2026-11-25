@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { CheckCheck, Filter, MessageSquareText, Star } from "lucide-react";
 import api from "../../../lib/api";
-import SearchBar from "../../../components/ui/SearchBar";
-import FilterDropdown from "../../../components/ui/FilterDropdown";
+import FilterBar from "../../../components/ui/FilterBar";
 import Skeleton from "../../../components/ui/Skeleton";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { notifyStaffAlertsChanged, STAFF_ALERTS_CHANGED, useStaffAlertsUnread } from "../../../lib/staffAlertsStore";
@@ -112,49 +111,37 @@ export default function FeedbackAlertsPanel() {
     // (static) and only the list below scrolls.
     <div className="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
       <div className="shrink-0">
-      <div className="dash-card rounded-[28px] p-3">
-        <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-          <div className="flex-1 min-w-[220px]">
-            <SearchBar value={search} onChange={setSearch} placeholder={t("alertsSearchPlaceholder")} dark />
-          </div>
-          <FilterDropdown
-            value={kind}
-            onChange={(v) => setKind(v as "all" | "rating" | "absence")}
-            options={kindOptions}
-            className="h-11 pl-10 pr-8 shrink-0"
-            icon={<MessageSquareText className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-            dark
-          />
-          {kind !== "absence" && (<FilterDropdown
-            value={rating}
-            onChange={setRating}
-            options={ratingOptions}
-            className="h-11 pl-10 pr-8 shrink-0"
-            icon={<Star className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-            dark
-          />)}
-          <FilterDropdown
-            value={status}
-            onChange={setStatus}
-            options={statusOptions}
-            className="h-11 pl-10 pr-8 shrink-0"
-            icon={<Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
-            dark
-          />
+      <div className="dash-card tight-after mt-4 rounded-[28px] p-3 sm:p-4">
+        <FilterBar
+          search={{ value: search, onChange: setSearch, placeholder: t("alertsSearchPlaceholder") }}
+          filters={[
+            {
+              key: "kind", label: t("fltFeedbackType"), value: kind, onChange: (v) => setKind(v as "all" | "rating" | "absence"), options: kindOptions,
+              icon: <MessageSquareText className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />,
+            },
+            ...(kind !== "absence" ? [{
+              key: "rating", label: t("fltRating"), value: rating, onChange: setRating, options: ratingOptions,
+              icon: <Star className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />,
+            }] : []),
+            { key: "status", label: t("statusColumn"), value: status, onChange: setStatus, options: statusOptions },
+          ]}
+          childrenLabel={t("alertsMarkAll")}
+          count={loading ? undefined : { shown: total }}
+        >
           <button
             type="button"
             onClick={markAll}
             disabled={unread === 0}
-            className="inline-flex h-11 items-center gap-2 dash-card rounded-full px-5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
+            className="dash-tile inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full px-5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40 max-sm:w-full"
           >
             <CheckCheck className="h-4 w-4 text-[#7DD8CB]" />
             {t("alertsMarkAll")}
           </button>
-        </div>
+        </FilterBar>
       </div>
 
-      <p className="mt-2 text-xs text-white/40">{loading ? 0 : total} {t("alertsFoundCount")} — {t("showingLabel")} {PER_PAGE} {t("perPage")}</p>
-      <div className="mt-4 flex h-8 justify-end">
+      <p className="mt-2 text-xs text-white/40 max-sm:mt-0">{t("showingPerPage").replace("{n}", String(PER_PAGE))}</p>
+      <div className="mt-4 flex h-8 justify-end max-sm:mt-0 max-sm:h-auto">
         {lastPage > 1 && !loading && (
           <div className="flex items-center gap-2">
             <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
@@ -165,7 +152,7 @@ export default function FeedbackAlertsPanel() {
       </div>
       </div>
 
-      <div className="mt-4 space-y-3 pb-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+      <div className="mt-4 max-sm:mt-3 space-y-3 pb-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)
         ) : rows.length === 0 ? (
@@ -176,13 +163,42 @@ export default function FeedbackAlertsPanel() {
           </div>
         ) : (
           rows.map((a) => (
+            <Fragment key={a.id}>
+            {/* Phones: one compact row, like the resident Notifications list -- avatar, a one-line title,
+                the stars + comment on one line, and the date on the right. Tap it to open. */}
             <div
-              key={a.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => (a.event_id ? open(a) : markRead(a))}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (a.event_id) open(a); else markRead(a); } }}
+              className={`flex cursor-pointer items-center gap-3 rounded-[28px] border px-5 py-5 transition-all duration-200 active:scale-[0.985] sm:hidden ${a.read ? "dash-card" : "dash-card !border-[#4FBEB0]/60"}`}
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#4FBEB0]/40 to-gold-400/30 text-sm font-bold text-white">
+                {initialsOf(a.title)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm text-white">
+                  <span className="font-bold">{subject(a)}</span> {verb(a)}
+                  {a.event_name && <> {t("alertOn")} <span className="font-semibold">{a.event_name}</span></>}
+                </p>
+                <div className="mt-1.5 flex min-w-0 items-center gap-2">
+                  <span className="shrink-0"><RatingOrReason a={a} size="h-3 w-3" /></span>
+                  <p className={`min-w-0 truncate text-xs ${a.comment ? "italic text-white/70" : "italic text-white/40"}`}>
+                    {a.comment ? <>&ldquo;{a.comment}&rdquo;</> : t("alertsNoComment")}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-1.5 text-xs text-white/40">
+                <span className="whitespace-nowrap">{new Date(a.created_at).toLocaleDateString("en-GB")}</span>
+                {!a.read && <span className="h-2.5 w-2.5 rounded-full bg-red-500" aria-label={t("alertsTabUnread")} />}
+              </div>
+            </div>
+            <div
               role={a.event_id ? "button" : undefined}
               tabIndex={a.event_id ? 0 : undefined}
               onClick={a.event_id ? () => open(a) : undefined}
               onKeyDown={a.event_id ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(a); } } : undefined}
-              className={`flex flex-col gap-4 rounded-[28px] border p-4 sm:flex-row sm:items-start sm:p-5 ${a.event_id ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40" : ""} transition-all duration-250 ease-out hover:-translate-y-1 active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100 ${a.read ? "dash-card" : "dash-card !border-[#4FBEB0]/60"}`}
+              className={`max-sm:hidden flex flex-col gap-4 rounded-[28px] border p-4 sm:flex-row sm:items-start sm:p-5 ${a.event_id ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40" : ""} transition-all duration-250 ease-out hover:-translate-y-1 active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100 ${a.read ? "dash-card" : "dash-card !border-[#4FBEB0]/60"}`}
             >
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#4FBEB0]/40 to-gold-400/30 text-base font-bold text-white">
                 {initialsOf(a.title)}
@@ -214,6 +230,7 @@ export default function FeedbackAlertsPanel() {
                 )}
               </div>
             </div>
+            </Fragment>
           ))
         )}
       </div>

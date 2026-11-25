@@ -879,7 +879,7 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
           type="button"
           onClick={() => setShowAddModal(true)}
           disabled={loading || pageSwitching}
-          className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
+          className="btn-live-navy group inline-flex max-sm:w-full max-sm:justify-between items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
         >
           {t("newMembershipGroupButton")}
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
@@ -889,14 +889,14 @@ export default function QRCodesView({ highlightText }: QRCodesViewProps) {
       </div>
 
       <div className="dash-card rounded-[32px] p-4 sm:p-6">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+        <div className="relative" data-phone-filterbar>
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40 max-sm:h-5 max-sm:w-5 max-sm:text-white/50" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t("searchMembershipsAdminPlaceholder")}
-            className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+            className="phone-search h-11 w-full rounded-full border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 max-sm:h-12 max-sm:rounded-full max-sm:pl-12 max-sm:text-[15px] focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
           />
           {searchQuery && (
             <button

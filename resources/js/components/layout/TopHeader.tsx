@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { SquareMenu, Menu, Settings, LogOut, ChevronDown, Volume2, VolumeX } from "lucide-react";
 import { getSoundPref, setSoundPref, MEMBER_SOUND_KEY, SOUND_CHANGED_EVENT } from "../../lib/alertSound";
-import LanguageSwitcher from "../ui/LanguageSwitcher";
-import ThemeToggle from "../ui/ThemeToggle";
-import DefaultAvatar from "../ui/DefaultAvatar";
+import HeaderPreferences from "../ui/HeaderPreferences";
+import UserAvatar from "../ui/UserAvatar";
+import useMyPhoto from "../../hooks/useMyPhoto";
 import { useLanguage } from "../../i18n/LanguageContext";
 
 interface TopHeaderProps {
   memberName: string;
   onMenuClick?: () => void;
   userId?: string | number;
+  userCode?: string;
   onNavigate?: (key: string) => void;
 }
 
@@ -17,8 +18,9 @@ interface TopHeaderProps {
 // (pages/staff/components/TopHeader.tsx), plus the initials avatar it
 // already shows next to "Signed in as" -- the member header was missing
 // that touch, which is what made it read as the less-finished of the two.
-export default function TopHeader({ memberName, onMenuClick, userId, onNavigate }: TopHeaderProps) {
+export default function TopHeader({ memberName, onMenuClick, userId, userCode, onNavigate }: TopHeaderProps) {
   const { t } = useLanguage();
+  const photo = useMyPhoto();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [soundOn, setSoundOn] = useState(() => getSoundPref(MEMBER_SOUND_KEY));
@@ -44,13 +46,13 @@ export default function TopHeader({ memberName, onMenuClick, userId, onNavigate 
           <Menu className="h-5 w-5" />
         </button>
         <SquareMenu className="h-5 w-5 shrink-0 text-[#7DD8CB]" />
+        <p className="m-0 min-w-0 truncate text-xs font-semibold uppercase leading-snug tracking-[0.12em] text-white/60 sm:hidden">{t("portalMemberShort")}</p>
         <p className="m-0 hidden min-w-0 truncate text-[11px] uppercase leading-snug tracking-[0.12em] text-white/40 sm:block lg:tracking-[0.2em]">
           {t("memberPortal")}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5 sm:gap-3 lg:gap-4">
-        <ThemeToggle />
-        <LanguageSwitcher userId={userId} />
+      <div className="flex shrink-0 items-center gap-2.5 sm:gap-3 lg:gap-4">
+        <HeaderPreferences userId={userId} />
         <div ref={ref} className="relative">
           <button
             type="button"
@@ -59,7 +61,7 @@ export default function TopHeader({ memberName, onMenuClick, userId, onNavigate 
             aria-expanded={open}
             className="flex items-center gap-2.5 rounded-full py-1 pl-1 pr-1.5 transition hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 sm:pr-3"
           >
-            <DefaultAvatar className="h-8 w-8" title={memberName} />
+            <UserAvatar src={photo} className="h-8 w-8" title={memberName} />
             <div className="hidden text-left leading-tight sm:block">
               <p className="text-xs text-white/40">{t("signedInAs")}</p>
               {memberName ? (
@@ -74,9 +76,10 @@ export default function TopHeader({ memberName, onMenuClick, userId, onNavigate 
           {open && (
             <div role="menu" className="absolute right-0 top-full z-50 mt-2 w-72 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-white/15 bg-[#0A0E1A] p-2 shadow-2xl">
               <div className="flex items-center gap-3 px-3 py-3">
-                <DefaultAvatar className="h-11 w-11" title={memberName} />
+                <UserAvatar src={photo} className="h-11 w-11" title={memberName} />
                 <div className="min-w-0">
                   <p className="truncate text-base font-bold text-white">{memberName}</p>
+                  {userCode && <p className="text-sm font-semibold text-[#7DD8CB]">{userCode}</p>}
                   <p className="text-sm text-white/50">{t("memberRole")}</p>
                 </div>
               </div>

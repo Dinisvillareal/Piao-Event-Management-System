@@ -22,6 +22,7 @@ type Me = {
   is_head_staff: boolean;
   last_login_at: string | null;
   two_factor_enabled: boolean;
+  validation_id_url?: string | null;
 };
 type SecAlert = { id: number; type: string; title: string; message: string; read: boolean; created_at: string };
 
@@ -170,47 +171,90 @@ export default function MyAccountView() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_320px] lg:items-start">
         {/* Left: who you are, and the menu -- one card. */}
         <aside className="lg:sticky lg:top-4">
-          <section className="dash-card overflow-hidden rounded-[32px] !shadow-[0_14px_34px_rgba(15,23,42,0.14)]">
-            <div className="px-6 pb-5 pt-7 text-center">
-              {!me ? (
-                <div aria-busy="true" className="flex flex-col items-center">
-                  <Skeleton className="h-20 w-20 !rounded-full" />
-                  <Skeleton className="mt-4 h-6 w-40" />
-                  <Skeleton className="mt-2 h-4 w-20" />
-                </div>
+          <section className="dash-card relative overflow-hidden rounded-3xl">
+            {/* Cover, fading into the card like the resident profile (mask works in light and dark) */}
+            <div
+              className="absolute inset-x-0 top-0 h-[270px] bg-gradient-to-br from-[#0F2A4A] via-[#135863] to-[#2E8E82]"
+              style={{ WebkitMaskImage: "linear-gradient(to bottom, #000 80%, transparent 100%)", maskImage: "linear-gradient(to bottom, #000 80%, transparent 100%)" }}
+            >
+              {me?.validation_id_url ? (
+                <img src={me.validation_id_url} alt="" className="h-full w-full object-cover object-[50%_14%]" />
               ) : (
-                <>
-                  <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gold-400 text-2xl font-bold text-[#08130F] ring-4 ring-white shadow-md">{initials}</div>
-                  <h2 className="mt-4 font-display text-xl font-extrabold text-white">{me.first_name} {me.last_name}</h2>
-                  <p className="text-sm text-white/55">{me.user_code}</p>
-                  <span className={`${pill} mt-3 ${me.is_head_staff ? "bg-gold-400/20 text-gold-300" : "bg-[#4FBEB0]/15 text-[#2E8E82]"}`}>
-                    {me.is_head_staff ? <><Crown className="h-3.5 w-3.5" /> {t("secHeadStaff")}</> : t("staffOption")}
-                  </span>
-                </>
+                <div className="flex h-full w-full items-start justify-center pt-8">
+                  {me ? (
+                    <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gold-400 text-4xl font-extrabold text-[#08130F] ring-4 ring-white/80 shadow-xl">{initials}</div>
+                  ) : (
+                    <Skeleton className="h-28 w-28 !rounded-full" />
+                  )}
+                </div>
               )}
             </div>
-            <nav className="border-t border-white/10 p-3">
-              {([
-                { key: "password", label: t("changePassword"), icon: KeyRound, badge: null as string | null },
-                { key: "twostep", label: t("secTwoStepTitle"), icon: Smartphone, badge: me ? (me.two_factor_enabled ? t("secStatusOn") : t("secStatusOff")) : null },
-                { key: "alerts", label: t("secAlertsTitle"), icon: BellRing, badge: unread > 0 ? String(unread) : null },
-              ] as const).map((it) => {
-                const on = section === it.key;
-                return (
-                  <button
-                    key={it.key}
-                    type="button"
-                    onClick={() => setSection(it.key)}
-                    className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-[15px] font-semibold transition ${on ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/75 hover:bg-[#4FBEB0]/[0.08] hover:text-white"}`}
-                  >
-                    <it.icon className={`h-[18px] w-[18px] shrink-0 ${on ? "text-white" : "text-[#2E8E82]"}`} />
-                    <span className="min-w-0 flex-1 truncate">{it.label}</span>
-                    {it.badge && <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${on ? "bg-white/20 text-white" : it.key === "alerts" ? "bg-red-500/15 text-red-500" : "bg-[#F5C451]/25 text-[#9A6B00]"}`}>{it.badge}</span>}
-                    <ChevronRight className={`h-4 w-4 shrink-0 ${on ? "text-white/70" : "text-white/30"}`} />
-                  </button>
-                );
-              })}
-            </nav>
+
+            <div className="relative z-10 space-y-3.5 px-4 pb-4 pt-[168px]">
+              {/* Name panel */}
+              <div className="profile-glass rounded-2xl px-5 py-5 text-center">
+                {!me ? (
+                  <div aria-busy="true" className="flex flex-col items-center">
+                    <Skeleton className="h-6 w-40" />
+                    <Skeleton className="mt-2 h-4 w-20" />
+                  </div>
+                ) : (
+                  <>
+                    <h2 className="break-words font-display text-2xl font-extrabold leading-tight text-white">{me.first_name} {me.last_name}</h2>
+                    <p className="mt-1 font-mono text-sm text-white/55">{me.user_code}</p>
+                    <span className={`${pill} mt-3 ${me.is_head_staff ? "bg-gold-400/20 text-gold-300" : "bg-[#4FBEB0]/15 text-[#2E8E82]"}`}>
+                      {me.is_head_staff ? <><Crown className="h-3.5 w-3.5" /> {t("secHeadStaff")}</> : t("staffOption")}
+                    </span>
+                    <dl className="mt-4 text-sm">
+                      <div className="flex items-center justify-between gap-3 border-t border-white/15 py-2.5">
+                        <dt className="shrink-0 text-white/50">{t("secLastSignIn")}</dt>
+                        <dd className="min-w-0 truncate text-right font-semibold text-white">{when(me.last_login_at)}</dd>
+                      </div>
+                    </dl>
+                  </>
+                )}
+              </div>
+
+              {/* At a glance */}
+              {me && (
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="min-w-0 rounded-2xl border border-white/20 bg-white/10 px-2 py-3 text-center backdrop-blur-xl">
+                    <p className="text-2xl font-black leading-tight text-white">{me.two_factor_enabled ? t("secStatusOn") : t("secStatusOff")}</p>
+                    <p className="mt-0.5 truncate text-xs font-medium text-white/60">{t("secTwoStepTitle")}</p>
+                    <span className={`mx-auto mt-1.5 block h-1 w-8 rounded-full ${me.two_factor_enabled ? "bg-[#4FBEB0]" : "bg-gold-400"}`} />
+                  </div>
+                  <div className="min-w-0 rounded-2xl border border-white/20 bg-white/10 px-2 py-3 text-center backdrop-blur-xl">
+                    <p className="text-2xl font-black leading-tight text-white">{unread}</p>
+                    <p className="mt-0.5 truncate text-xs font-medium text-white/60">{t("secAlertsTitle")}</p>
+                    <span className={`mx-auto mt-1.5 block h-1 w-8 rounded-full ${unread > 0 ? "bg-red-400" : "bg-[#4FBEB0]"}`} />
+                  </div>
+                </div>
+              )}
+
+              {/* Menu */}
+              <nav className="rounded-2xl border border-white/20 bg-white/[0.06] p-2 backdrop-blur-xl">
+                {([
+                  { key: "password", label: t("changePassword"), icon: KeyRound, badge: null as string | null },
+                  { key: "twostep", label: t("secTwoStepTitle"), icon: Smartphone, badge: me ? (me.two_factor_enabled ? t("secStatusOn") : t("secStatusOff")) : null },
+                  { key: "alerts", label: t("secAlertsTitle"), icon: BellRing, badge: unread > 0 ? String(unread) : null },
+                ] as const).map((it) => {
+                  const on = section === it.key;
+                  return (
+                    <button
+                      key={it.key}
+                      type="button"
+                      onClick={() => setSection(it.key)}
+                      className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-[15px] font-semibold transition ${on ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] !text-white shadow-sm" : "text-white/75 hover:bg-[#4FBEB0]/[0.08] hover:text-white"}`}
+                    >
+                      <it.icon className={`h-[18px] w-[18px] shrink-0 ${on ? "text-white" : "text-[#2E8E82]"}`} />
+                      <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                      {it.badge && <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${on ? "bg-white/20 text-white" : it.key === "alerts" ? "bg-red-500/15 text-red-500" : "bg-[#F5C451]/25 text-[#9A6B00]"}`}>{it.badge}</span>}
+                      <ChevronRight className={`h-4 w-4 shrink-0 ${on ? "text-white/70" : "text-white/30"}`} />
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
           </section>
         </aside>
 
@@ -328,7 +372,7 @@ export default function MyAccountView() {
         </div>
 
         {/* Right: a quick security check. */}
-        <aside className="space-y-5 lg:col-span-2 xl:col-span-1 xl:sticky xl:top-4">
+        <aside className="space-y-5 max-sm:hidden lg:col-span-2 xl:col-span-1 xl:sticky xl:top-4">
           <section className="dash-card rounded-[32px] p-6">
             {!me ? (
               <Skeleton className="h-40 w-full !rounded-2xl" />

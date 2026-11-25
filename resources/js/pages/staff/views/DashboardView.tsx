@@ -423,32 +423,54 @@ export default function DashboardView({
             </p>
           </div>
 
-          <div className="dash-card flex flex-wrap items-center gap-x-1 gap-y-2 rounded-[36px] p-3 sm:flex-nowrap">
+          {/* Phones: the five quick actions as one row of icon buttons (Scan QR highlighted). */}
+          <div className="dash-card grid grid-cols-5 gap-2 rounded-[28px] p-3 sm:hidden">
+            {[0, 1, 3, 4, 2].map((i) => {
+              const action = quickActions[i];
+              const primary = i === 2;
+              return (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={action.onClick}
+                  title={action.label}
+                  aria-label={action.label}
+                  className={`flex h-12 items-center justify-center rounded-2xl transition active:scale-95 ${primary ? "bg-[#2E8E82] !text-white shadow-sm" : "bg-white/[0.04] text-[#2E8E82]"}`}
+                >
+                  <action.icon className="h-5 w-5" />
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="dash-card max-sm:hidden grid grid-cols-3 items-stretch gap-2 rounded-[28px] p-3 sm:flex sm:flex-nowrap sm:items-center sm:gap-x-1 sm:gap-y-2 sm:rounded-[36px]">
             {[quickActions[0], quickActions[1], quickActions[3]].map((action, i) => (
               <React.Fragment key={action.label}>
                 {i > 0 && <span className="hidden h-7 w-px shrink-0 bg-white/10 sm:block" />}
                 <button
                   onClick={action.onClick}
-                  className="flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2.5 rounded-full px-3 text-sm font-semibold text-white/85 transition hover:bg-white/[0.06] sm:px-4"
+                  className="flex min-h-[76px] min-w-0 flex-1 flex-col items-center justify-center gap-1.5 rounded-2xl bg-white/[0.04] px-1.5 text-center text-xs font-semibold leading-tight text-white/85 transition hover:bg-white/[0.06] sm:min-h-12 sm:flex-row sm:gap-2.5 sm:rounded-full sm:bg-transparent sm:px-4 sm:text-sm"
                 >
                   <action.icon className="h-5 w-5 shrink-0 text-[#2E8E82]" />
-                  <span className="truncate">{action.label}</span>
+                  <span className="w-full truncate sm:w-auto">{action.label}</span>
                 </button>
               </React.Fragment>
             ))}
+            <div className="col-span-3 grid grid-cols-2 gap-2 sm:contents">
             <button
               onClick={quickActions[4].onClick}
-              className="dash-tile flex min-h-12 shrink-0 items-center gap-2 rounded-full px-5 text-sm font-bold text-white/85 sm:ml-2"
+              className="dash-tile flex min-h-12 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full px-4 text-sm font-bold text-white/85 sm:ml-2 sm:px-5"
             >
               {React.createElement(quickActions[4].icon, { className: "h-4 w-4 text-[#2E8E82]" })}
               {quickActions[4].label}
             </button>
             <button
               onClick={quickActions[2].onClick}
-              className="flex min-h-12 shrink-0 items-center gap-2 rounded-full bg-[#2E8E82] px-6 text-sm font-bold text-white shadow-sm transition hover:bg-[#267a70] active:scale-[0.98]"
+              className="flex min-h-12 min-w-0 shrink-0 items-center justify-center gap-2 rounded-full bg-[#2E8E82] px-4 text-sm font-bold !text-white shadow-sm sm:px-6 transition hover:bg-[#267a70] active:scale-[0.98]"
             >
               {quickActions[2].label}
             </button>
+            </div>
           </div>
         </div>
 
@@ -523,7 +545,7 @@ export default function DashboardView({
                           <button
                             onClick={() => setActive("events")}
                             className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition active:scale-[0.99] ${
-                              first ? "bg-gradient-to-br from-[#0B0F14] to-[#18212B] text-white shadow-[0_14px_30px_-16px_rgba(8,12,20,0.8)] hover:brightness-110" : "dash-tile hover:border-[#4FBEB0]/50"
+                              first ? "featured-glass bg-gradient-to-br from-[#0B0F14] to-[#18212B] text-white shadow-[0_14px_30px_-16px_rgba(8,12,20,0.8)] hover:brightness-110" : "dash-tile hover:border-[#4FBEB0]/50"
                             }`}
                           >
                             <span className="min-w-0 flex-1">
@@ -569,20 +591,21 @@ export default function DashboardView({
             </div>
 
             {/* Legend-style pill: today's live numbers */}
-            <div className="dash-tile dash-mint mx-3 mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-full px-5 py-3">
-              {liveBadge}
+            <div className="dash-tile dash-mint mx-3 mb-3 flex flex-wrap items-center gap-x-5 gap-y-3 rounded-3xl px-4 py-3.5 sm:rounded-full sm:px-5 sm:py-3">
+              <div className="w-full sm:w-auto">{liveBadge}</div>
+              <div className="grid w-full grid-cols-3 gap-2 sm:contents">
               {[
                 { label: t("dashStaffActionsToday"), value: stats.actionsToday, dot: "bg-[#2E8E82]" },
                 { label: t("dashStaffActiveToday"), value: stats.activeStaffToday, dot: "bg-[#F5C451]" },
                 { label: t("dashEventsToday"), value: stats.eventsToday, dot: "bg-[#146088]" },
               ].map((x) => (
-                <span key={x.label} className="inline-flex items-center gap-2 text-xs font-semibold text-white/75">
-                  <span className={`h-2 w-2 rounded-full ${x.dot}`} />
-                  {x.label}
-                  <span className="font-display text-sm font-extrabold tabular-nums text-white">{x.value}</span>
+                <span key={x.label} className="inline-flex min-w-0 flex-col-reverse items-start gap-0.5 text-[11px] font-semibold leading-tight text-white/75 sm:flex-row sm:items-center sm:gap-2 sm:text-xs">
+                  <span className="inline-flex items-center gap-1.5"><span className={`h-2 w-2 shrink-0 rounded-full ${x.dot}`} />{x.label}</span>
+                  <span className="font-display text-xl font-extrabold tabular-nums text-white sm:text-sm">{x.value}</span>
                 </span>
               ))}
-              <span className="ml-auto text-[11px] text-white/40">
+              </div>
+              <span className="w-full text-[11px] leading-snug text-white/40 sm:ml-auto sm:w-auto">
                 {!lastAction
                   ? t("dashNoStaffActivity")
                   : t("dashLastAction")
@@ -609,7 +632,7 @@ export default function DashboardView({
               level="H"
               includeMargin={true}
             />
-            <div className="flex items-center justify-center p-6 sm:w-64 sm:shrink-0">
+            <div className="flex items-center justify-center p-6 max-sm:order-2 sm:w-64 sm:shrink-0">
               <button
                 type="button"
                 onClick={() => posterPreview && setShowPosterPreview(true)}
@@ -633,23 +656,22 @@ export default function DashboardView({
               <span className="dash-canvas absolute -left-3 -top-3 h-6 w-6 rounded-full border border-white/10" />
               <span className="dash-canvas absolute -bottom-3 -left-3 h-6 w-6 rounded-full border border-white/10" />
             </div>
-            <div className="border-t-2 border-dashed border-white/15 sm:hidden" />
+            <div className="order-3 border-t-2 border-dashed border-white/15 sm:hidden" />
 
-            <div className="flex min-w-0 flex-1 flex-col justify-center p-6 sm:p-8">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/15">
+            <div className="flex min-w-0 flex-1 flex-col justify-center text-center max-sm:contents sm:p-8 sm:text-left">
+              <div className="max-sm:order-1 max-sm:px-5 max-sm:pt-6 max-sm:text-center">
+              <div className="flex flex-col items-center gap-3 sm:flex-row">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#2E8E82]/25 bg-[#4FBEB0]/15">
                   <ScanLine className="h-5 w-5 text-[#2E8E82]" />
                 </span>
-                <h2 className="font-display text-2xl font-extrabold text-white">{t("dashSystemQrCode")}</h2>
+                <h2 className="font-display text-xl font-extrabold text-white sm:text-2xl">{t("dashSystemQrCode")}</h2>
               </div>
-              <p className="mt-3 text-[15px] text-white/50">{t("dashSystemQrDesc")}</p>
-              <div className="mt-6 border-t border-white/10 pt-5">
-                <p className="font-display text-lg font-bold text-white">Barangay e-Membership</p>
-                <p className="mt-1 text-sm text-white/50">{t("dashPrintPostHall")}</p>
+              <p className="mt-3 text-sm text-white/55 sm:text-[15px]">{t("dashSystemQrDesc")}</p>
               </div>
+              <p className="mt-4 rounded-2xl bg-white/[0.05] px-4 py-3 max-sm:order-4 max-sm:mx-5 text-xs text-white/55 sm:text-sm">{t("dashPrintPostHall")}</p>
               <button
                 onClick={downloadQRCode}
-                className="btn-live-navy group mt-5 inline-flex w-fit items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md active:scale-95"
+                className="btn-live-navy group mt-5 inline-flex max-sm:order-4 max-sm:mx-5 max-sm:mb-5 items-center justify-between gap-3 sm:w-fit sm:justify-start rounded-full border border-[#1E3A5F] bg-[#1E3A5F] py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md active:scale-95"
               >
                 {t("dashDownloadQrPoster")}
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 transition-colors duration-300 ease-out group-hover:bg-white/30">

@@ -6,9 +6,10 @@ import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FormSelect from "../../../components/ui/FormSelect";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
+import { Package, Plus, X, MapPin, Trash2, Pencil, AlertTriangle, Search, Layers, RefreshCw, Eye, ImagePlus, Filter, ChevronLeft, ChevronRight, CheckCircle2, TrendingDown } from "lucide-react";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
+import SpeedDial from "../../../components/ui/SpeedDial";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import NumberStepper from "../../../components/ui/NumberStepper";
@@ -458,7 +459,7 @@ export default function InventoryView() {
           <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("barangayInventory")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("inventorySubtitle")}</p>
         </div>
-        <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0">
+        <div className="flex items-center gap-2.5 max-sm:w-full self-start sm:self-auto shrink-0">
           {/* Genuinely live -- fetchStats() re-polls /inventory every 20s
               (see effect above), this just renders how long ago that last
               landed, ticking every second off nowTick. */}
@@ -472,7 +473,7 @@ export default function InventoryView() {
           <button
             onClick={openAdd}
             disabled={loading || pageSwitching}
-            className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
+            className="btn-live-navy group inline-flex max-sm:w-full max-sm:justify-between items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
           >
             {t("addItem")}
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
@@ -482,7 +483,7 @@ export default function InventoryView() {
         </div>
       </div>
 
-        <div className="report-stagger grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        <div className="report-stagger grid grid-cols-2 gap-3 max-sm:hidden sm:gap-4 lg:grid-cols-4">
           {[
             { value: stats.totalItems, label: t("totalItemsStatLabel"), description: t("totalItemsStatDesc"), icon: Package, gradient: "from-sage-400 to-sage-700" },
             { value: stats.totalUnits, label: t("unitsInStockStatLabel"), description: t("unitsInStockStatDesc"), icon: Layers, gradient: "from-sage-400 to-sage-700" },
@@ -496,14 +497,27 @@ export default function InventoryView() {
         </div>
 
       <div className="dash-card space-y-4 rounded-[32px] p-4 sm:p-5">
-        <QuickTabs
+        <SpeedDial
           value={invTab}
-          onChange={(k) => setInvTab(k as InvTab)}
-          tabs={([
-            ["all", false], ["on-loan", false], ["low", true], ["attention", true],
-          ] as [InvTab, boolean][]).map(([k, alert]) => ({ key: k, label: tabLabels[k], count: tabCount(k), alert }))}
+          items={(["all", "on-loan", "low", "attention"] as InvTab[]).map((k) => ({
+            key: k,
+            label: tabLabels[k],
+            count: tabCount(k),
+            icon: k === "all" ? Package : k === "on-loan" ? RefreshCw : k === "low" ? TrendingDown : AlertTriangle,
+            onSelect: () => setInvTab(k),
+          }))}
         />
         <FilterBar
+          tabsOnPhone={false}
+          tabs={
+            <QuickTabs
+              value={invTab}
+              onChange={(k) => setInvTab(k as InvTab)}
+              tabs={([
+                ["all", false], ["on-loan", false], ["low", true], ["attention", true],
+              ] as [InvTab, boolean][]).map(([k, alert]) => ({ key: k, label: tabLabels[k], count: tabCount(k), alert, icon: k === "all" ? <Package /> : k === "on-loan" ? <RefreshCw /> : k === "low" ? <TrendingDown /> : <AlertTriangle /> }))}
+            />
+          }
           search={{ value: search, onChange: setSearch, placeholder: t("searchInventoryPlaceholder") }}
           filters={[{
             key: "condition", label: t("conditionColumn"), value: conditionFilter, defaultValue: "", onChange: setConditionFilter,
@@ -711,7 +725,7 @@ export default function InventoryView() {
       )}
       </div>
 
-      <aside className="space-y-5 xl:sticky xl:top-4">
+      <aside className="space-y-5 max-xl:hidden xl:sticky xl:top-4">
         {([
           {
             key: "attention",

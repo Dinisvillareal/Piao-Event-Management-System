@@ -11,12 +11,13 @@ import type { ResponseFields } from "../../../components/ui/FeedbackComment";
 import {
   Filter, X, LogIn, LogOut, ChevronLeft, Archive,
   Package, Trash2, Star, Plus, Pencil, Calendar, MapPin, Clock, Search, ChevronDown,
-  Megaphone, ClipboardList, Users, Wallet, AlertTriangle, ArrowLeft, Save, Download, Printer, CheckCircle2, ChevronRight, Eye,
+  Megaphone, ClipboardList, Users, Wallet, AlertTriangle, ArrowLeft, Save, Download, Printer, CheckCircle2, ChevronRight, Eye, LayoutList, CalendarCheck, CalendarRange, MessageSquareWarning,
 } from "lucide-react";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
+import SpeedDial from "../../../components/ui/SpeedDial";
 import KpiCard from "../../../components/ui/KpiCard";
 import DatePicker from "../../../components/ui/DatePicker";
 import TimePicker from "../../../components/ui/TimePicker";
@@ -1595,13 +1596,36 @@ export function EventsView({
           const coverageDisplay = coverageNames.length === 0 ? t("allResidentsCoverageLabel") : coverageNames.join(", ");
           const signedInCount = getFullAttendanceList(viewEv.id, getMembersForEvent(viewEv)).filter((a: any) => a.timeIn || a.timeOut).length;
 
-          const tabs: { key: typeof detailTab; label: string; count?: number }[] = [
-            { key: "overview", label: t("overviewTabLabel") },
-            { key: "attendance", label: t("attendanceTabLabel"), count: fullAttendanceCountForTab },
-            { key: "inventory", label: t("inventoryTabLabel"), count: eventInventoryLoading ? (viewEv.inventoryCount ?? 0) : (eventInventory.items.length || viewEv.inventoryCount || 0) },
-            { key: "budget", label: t("budgetTabLabel") },
-            { key: "feedback", label: t("feedbackTabLabel"), count: eventFeedback.length },
+          const tabs: { key: typeof detailTab; label: string; count?: number; Icon: any }[] = [
+            { key: "overview", label: t("overviewTabLabel"), Icon: ClipboardList },
+            { key: "attendance", label: t("attendanceTabLabel"), Icon: Users, count: fullAttendanceCountForTab },
+            { key: "inventory", label: t("inventoryTabLabel"), Icon: Package, count: eventInventoryLoading ? (viewEv.inventoryCount ?? 0) : (eventInventory.items.length || viewEv.inventoryCount || 0) },
+            { key: "budget", label: t("budgetTabLabel"), Icon: Wallet },
+            { key: "feedback", label: t("feedbackTabLabel"), Icon: Star, count: eventFeedback.length },
           ];
+
+          const eventActions = (
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    onClick={() => startEditEvent(viewEv)}
+                    disabled={isSubmitting || locked}
+                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
+                    aria-label={t("editTitle")}
+                    className="btn-live-navy inline-flex items-center justify-center max-sm:h-11 max-sm:w-11 max-sm:p-0 gap-2 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-5 py-2.5 text-[15px] font-semibold text-white shadow-sm transition hover:border-[#274A77] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Pencil className="h-4 w-4" /> <span className="max-sm:hidden">{t("editTitle")}</span>
+                  </button>
+                  <button
+                    onClick={() => setEventToDelete(viewEv.id)}
+                    disabled={locked}
+                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
+                    aria-label={t("deleteTitle")}
+                    className="inline-flex items-center justify-center max-sm:h-11 max-sm:w-11 max-sm:p-0 gap-2 rounded-full border border-red-600 bg-red-600 px-5 py-2.5 text-[15px] font-semibold text-white shadow-sm transition hover:border-red-700 hover:bg-red-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Archive className="h-4 w-4" /> <span className="max-sm:hidden">{t("deleteTitle")}</span>
+                  </button>
+                </div>
+          );
 
           return (
             // Full-bleed dark navy wrapper -- same technique and palette as
@@ -1610,12 +1634,15 @@ export function EventsView({
             // same system instead of the light page it used to be.
             <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
             <div className="space-y-6">
-              <button
-                onClick={() => setViewEv(null)}
-                className="dash-tile inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/80 hover:text-white transition"
-              >
-                <ChevronLeft className="h-4 w-4" /> {t("backToEventsLabel")}
-              </button>
+              <div className="flex items-center justify-between gap-3">
+                <button
+                  onClick={() => setViewEv(null)}
+                  className="dash-tile inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/80 hover:text-white transition"
+                >
+                  <ChevronLeft className="h-4 w-4" /> {t("backToEventsLabel")}
+                </button>
+                <div className="sm:hidden">{eventActions}</div>
+              </div>
 
               <div className="dash-card flex flex-col gap-4 rounded-[32px] p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
                 <div className="min-w-0">
@@ -1634,36 +1661,25 @@ export function EventsView({
                     </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => startEditEvent(viewEv)}
-                    disabled={isSubmitting || locked}
-                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("editTitle")}
-                    className="btn-live-navy inline-flex items-center gap-2 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-5 py-2.5 text-[15px] font-semibold text-white shadow-sm transition hover:border-[#274A77] active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Pencil className="h-4 w-4" /> {t("editTitle")}
-                  </button>
-                  <button
-                    onClick={() => setEventToDelete(viewEv.id)}
-                    disabled={locked}
-                    title={locked ? (status.label === "Ongoing" ? t("ongoingEventLockedHint") : t("pastEventLockedHint")) : t("deleteTitle")}
-                    className="inline-flex items-center gap-2 rounded-full border border-red-600 bg-red-600 px-5 py-2.5 text-[15px] font-semibold text-white shadow-sm transition hover:border-red-700 hover:bg-red-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Archive className="h-4 w-4" /> {t("deleteTitle")}
-                  </button>
-                </div>
+                <div className="max-sm:hidden">{eventActions}</div>
               </div>
 
-              <div className="dash-tile inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full p-1">
+              <div className="dash-tile flex max-w-full items-center gap-1 overflow-x-auto rounded-full p-1 sm:inline-flex">
                 {tabs.map((tab) => (
                   <button
                     key={tab.key}
+                    title={tab.label}
+                    aria-label={tab.label}
                     onClick={() => { if (tab.key !== detailTab) flashDetail(); setDetailTab(tab.key); }}
-                    className={`whitespace-nowrap rounded-full px-5 py-2 text-[14px] font-semibold transition ${
-                      detailTab === tab.key ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/60 hover:text-white"
+                    className={`relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full transition max-sm:h-10 max-sm:flex-1 sm:px-5 sm:py-2 text-[14px] font-semibold ${
+                      detailTab === tab.key ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] !text-white shadow-sm" : "text-white/60 hover:text-white"
                     }`}
                   >
-                    {tab.label}{tab.count !== undefined ? ` (${tab.count})` : ""}
+                    <tab.Icon className="h-[18px] w-[18px] shrink-0 sm:hidden" />
+                    <span className="max-sm:hidden">{tab.label}{tab.count !== undefined ? ` (${tab.count})` : ""}</span>
+                    {tab.count !== undefined && tab.count > 0 && (
+                      <span className={`absolute right-1 top-0.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[9px] font-bold leading-none sm:hidden ${detailTab === tab.key ? "bg-white/25 text-white" : "bg-[#2E8E82] !text-white"}`}>{tab.count > 99 ? "99+" : tab.count}</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -1810,15 +1826,15 @@ export function EventsView({
                       Households, Memberships and main Events search --
                       the status filter sits alongside it, unchanged. */}
                   <div>
-                    <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-                      <div className="relative flex-1 min-w-[220px]">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="relative min-w-0 flex-1 basis-[180px] sm:min-w-[220px]">
                         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
                         <input
                           type="text"
                           value={attendanceSearch}
                           onChange={(e) => setAttendanceSearch(e.target.value)}
                           placeholder={t("searchResidentNamePlaceholder")}
-                          className="h-11 w-full rounded-full border border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+                          className="phone-search h-11 max-sm:h-12 w-full rounded-full border border-white/10 bg-white/[0.03] pl-11 max-sm:pl-12 pr-[4.5rem] text-sm max-sm:text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
                         />
                         {attendanceSearch && (
                           <button
@@ -1837,6 +1853,7 @@ export function EventsView({
                           value={attendanceStatusFilter}
                           onChange={setAttendanceStatusFilter}
                           options={attendanceFilterOptions}
+                          iconOnlyOnMobile
                           className="h-11 pl-9 pr-8"
                           icon={<Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
                           dark
@@ -1974,21 +1991,21 @@ export function EventsView({
                           .sort((x, y) => Number(y.out > 0) - Number(x.out > 0)); // items still out first
                         return (
                           <>
-                            <div className="dash-card rounded-[32px] p-6 sm:p-8">
-                              <div className="flex flex-col items-center gap-8 md:flex-row">
-                                <div className="relative flex h-44 w-44 shrink-0 items-center justify-center">
+                            <div className="dash-card rounded-[28px] p-5 sm:rounded-[32px] sm:p-8">
+                              <div className="flex flex-col items-center gap-5 sm:gap-8 md:flex-row">
+                                <div className="relative flex h-32 w-32 shrink-0 items-center justify-center sm:h-44 sm:w-44">
                                   <svg viewBox="0 0 160 160" className="absolute inset-0 -rotate-90">
-                                    <circle cx="80" cy="80" r="68" fill="none" stroke="currentColor" strokeWidth="14" className="text-white/10" />
+                                    <circle cx="80" cy="80" r="68" fill="none" stroke="rgba(46,142,130,0.18)" strokeWidth="14" />
                                     <circle cx="80" cy="80" r="68" fill="none" stroke="#2E8E82" strokeWidth="14" strokeLinecap="round" strokeDasharray={`${2 * Math.PI * 68 * pctOf(backAll, totalAll) / 100} ${2 * Math.PI * 68}`} />
                                   </svg>
                                   <div className="text-center">
-                                    <p className="font-display text-4xl font-extrabold leading-none text-white">{pctOf(backAll, totalAll)}%</p>
+                                    <p className="font-display text-3xl font-extrabold leading-none text-white sm:text-4xl">{pctOf(backAll, totalAll)}%</p>
                                     <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-white/50">{t("eventInventoryPctReturned")}</p>
                                   </div>
                                 </div>
-                                <div className="min-w-0 flex-1 text-center md:text-left">
+                                <div className="w-full min-w-0 flex-1 text-center md:text-left">
                                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#2E8E82]">{t("eventInventoryProgress")}</p>
-                                  <h2 className="mt-1.5 font-display text-2xl font-extrabold leading-tight text-white sm:text-3xl">
+                                  <h2 className="mt-1 font-display text-xl font-extrabold leading-tight text-white sm:text-3xl">
                                     {outAll === 0 ? t("eventInventoryStatusReturned") : `${outAll} ${t("eventInventoryStillOut")}`}
                                   </h2>
                                   <p className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-white/55 md:justify-start">
@@ -1999,18 +2016,18 @@ export function EventsView({
                                       </span>
                                     )}
                                   </p>
-                                  <div className="mt-5 grid grid-cols-3 gap-3">
+                                  <div className="mt-4 grid grid-cols-1 gap-2.5 sm:mt-5 sm:grid-cols-3 sm:gap-3">
                                     {([
                                       { label: t("eventInventoryBorrowed"), value: totalAll, Icon: Package, warn: false },
                                       { label: t("eventInventoryStillOut"), value: outAll, Icon: Clock, warn: outAll > 0 },
                                       { label: t("eventInventoryReturned"), value: backAll, Icon: CheckCircle2, warn: false },
                                     ] as const).map(({ label, value, Icon, warn }) => (
-                                      <div key={label} className="dash-card rounded-2xl p-3.5 text-left !shadow-[0_14px_34px_rgba(15,23,42,0.18)]">
-                                        <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${warn ? "bg-[#F5C451]/25" : "bg-[#4FBEB0]/15"}`}>
+                                      <div key={label} className="dash-card flex items-center gap-3 rounded-2xl p-3 text-left !shadow-[0_14px_34px_rgba(15,23,42,0.18)] sm:block sm:p-3.5">
+                                        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${warn ? "bg-[#F5C451]/25" : "bg-[#4FBEB0]/15"}`}>
                                           <Icon className={`h-[18px] w-[18px] ${warn ? "text-[#B7841A]" : "text-[#2E8E82]"}`} />
                                         </span>
-                                        <p className="mt-2.5 font-display text-3xl font-extrabold leading-none tabular-nums text-white">{value}</p>
-                                        <p className="mt-1 text-[11px] font-bold uppercase tracking-wide text-white/55">{label}</p>
+                                        <p className="font-display text-2xl font-extrabold leading-none tabular-nums text-white max-sm:order-last max-sm:ml-auto sm:mt-2.5 sm:text-3xl">{value}</p>
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-white/55 max-sm:flex-1 sm:mt-1">{label}</p>
                                       </div>
                                     ))}
                                   </div>
@@ -2202,7 +2219,7 @@ export function EventsView({
 
               {detailTab === "feedback" && (
                 <div className="space-y-5">
-                  <div className="dash-card inline-flex max-w-full items-center gap-1 rounded-full p-1.5">
+                  <div className="dash-card mx-auto flex w-fit max-w-full items-center gap-1 rounded-full p-1.5 sm:mx-0">
                     {([
                       { key: "ratings", label: t("absTabRatings"), count: eventFeedback.length },
                       { key: "reasons", label: t("absTabReasons"), count: eventAbsences.length },
@@ -2211,7 +2228,7 @@ export function EventsView({
                         key={tab.key}
                         type="button"
                         onClick={() => setFeedbackSubTab(tab.key)}
-                        className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-bold transition ${
+                        className={`inline-flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-bold transition sm:px-5 sm:text-sm ${
                           feedbackSubTab === tab.key ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/60 hover:bg-white/[0.08] hover:text-white"
                         }`}
                       >
@@ -2428,7 +2445,7 @@ export function EventsView({
               type="button"
               onClick={openAddEventModal}
               disabled={openSkeleton || loading || pageSwitching}
-              className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
+              className="btn-live-navy group inline-flex max-sm:w-full max-sm:justify-between items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
             >
               {t("postEvent")}
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
@@ -2437,7 +2454,7 @@ export function EventsView({
             </button>
           </div>
 
-          <div className="grid items-stretch gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+          <div className="grid items-stretch gap-5 max-sm:hidden lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
             {(() => {
               const days: Record<string, number> = {};
               for (const ev of localEvents) {
@@ -2455,13 +2472,13 @@ export function EventsView({
               return <WeekStrip days={days} selected={selectedDate} onSelect={setSelectedDate} locale={locale} />;
             })()}
             <div className="dash-card rounded-[32px] p-3">
-            <div className="report-stagger grid grid-cols-2 gap-3">
+            <div className="report-stagger grid grid-cols-1 gap-3 sm:grid-cols-2">
               {([
                 { key: "ongoing", Key: "Ongoing", icon: Clock },
                 { key: "upcoming", Key: "Upcoming", icon: Calendar },
                 { key: "past", Key: "Past", icon: Archive },
               ] as const).map((c, i) => (
-                <div key={c.key} className={i === 2 ? "col-span-2" : ""}>
+                <div key={c.key} className={i === 2 ? "sm:col-span-2" : ""}>
                 <KpiCard
                   value={countsLoading ? 0 : statusCounts[c.key]}
                   label={eventStatusLabel(c.Key)}
@@ -2479,17 +2496,29 @@ export function EventsView({
           </div>
           <div className="space-y-6">
           <div className="dash-card space-y-4 rounded-[32px] p-4 sm:p-6">
-            <QuickTabs
+            <SpeedDial
               value={eventTab}
-              onChange={(k) => setEventTab(k as typeof eventTab)}
-              tabs={[
-                { key: "all", label: t("tabAll"), count: countsLoading ? 0 : eventTabCounts.all },
-                { key: "today", label: t("tabToday"), count: countsLoading ? 0 : eventTabCounts.today },
-                { key: "week", label: t("tabThisWeek"), count: countsLoading ? 0 : eventTabCounts.week },
-                { key: "feedback", label: t("tabNeedsFeedback"), count: countsLoading ? 0 : eventTabCounts.feedback },
-              ]}
+              items={([
+                { key: "all", label: t("tabAll"), icon: LayoutList, count: countsLoading ? 0 : eventTabCounts.all },
+                { key: "today", label: t("tabToday"), icon: CalendarCheck, count: countsLoading ? 0 : eventTabCounts.today },
+                { key: "week", label: t("tabThisWeek"), icon: CalendarRange, count: countsLoading ? 0 : eventTabCounts.week },
+                { key: "feedback", label: t("tabNeedsFeedback"), icon: MessageSquareWarning, count: countsLoading ? 0 : eventTabCounts.feedback },
+              ] as const).map((o) => ({ ...o, onSelect: () => setEventTab(o.key) }))}
             />
             <FilterBar
+              tabsOnPhone={false}
+              tabs={
+                <QuickTabs
+                  value={eventTab}
+                  onChange={(k) => setEventTab(k as typeof eventTab)}
+                  tabs={[
+                    { key: "all", label: t("tabAll"), count: countsLoading ? 0 : eventTabCounts.all },
+                    { key: "today", label: t("tabToday"), count: countsLoading ? 0 : eventTabCounts.today },
+                    { key: "week", label: t("tabThisWeek"), count: countsLoading ? 0 : eventTabCounts.week },
+                    { key: "feedback", label: t("tabNeedsFeedback"), count: countsLoading ? 0 : eventTabCounts.feedback },
+                  ]}
+                />
+              }
               search={{ value: eventSearch, onChange: setEventSearch, placeholder: t("searchEventsPlaceholder") }}
               filters={[
                 {
@@ -2882,8 +2911,9 @@ export function EventsView({
                                 <button
                                   type="button"
                                   onClick={() => removeBorrowRow(row.inventoryItemId)}
-                                  className="text-white/50 hover:text-red-400 transition shrink-0"
+                                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-500/40 bg-red-500/15 !text-red-500 transition hover:bg-red-500 hover:!text-white"
                                   title={t("removeLabel")}
+                                  aria-label={t("removeLabel")}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </button>

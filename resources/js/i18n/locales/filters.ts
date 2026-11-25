@@ -37,6 +37,10 @@ export const filtersTranslations: Dict = {
   fltAllCurrent: { en: "All current statuses", tl: "Lahat ng kasalukuyang katayuan", ceb: "Tanang karon nga kahimtang" },
   fltAnyMembership: { en: "Any membership", tl: "Anumang membership", ceb: "Bisan unsang membership" },
   fltMembership: { en: "Membership", tl: "Membership", ceb: "Membership" },
+  portalStaffShort: { en: "Staff", tl: "Kawani", ceb: "Kawani" },
+  portalMemberShort: { en: "Member", tl: "Miyembro", ceb: "Miyembro" },
+  fltFeedbackType: { en: "Type", tl: "Uri", ceb: "Tipo" },
+  fltRating: { en: "Rating", tl: "Rating", ceb: "Rating" },
   fltInMembership: { en: "In: {name}", tl: "Sa: {name}", ceb: "Sa: {name}" },
   fltStaffOnly: { en: "Staff accounts", tl: "Mga staff account", ceb: "Mga staff account" },
 

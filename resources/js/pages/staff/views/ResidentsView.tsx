@@ -1,3 +1,4 @@
+import { notifyMyPhotoChanged } from "../../../hooks/useMyPhoto";
 import PhotoViewer from "../../../components/ui/PhotoViewer";
 import Portal from "../../../components/ui/Portal";
 import PagerSkeleton from "../../../components/ui/PagerSkeleton";
@@ -7,6 +8,7 @@ import { highlightMatches } from "../../../lib/highlight";
 import SuffixSelect from "../../../components/ui/SuffixSelect";
 import FilterBar, { type FilterDef, type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
+import SpeedDial from "../../../components/ui/SpeedDial";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FormSelect from "../../../components/ui/FormSelect";
 import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
@@ -46,6 +48,9 @@ import {
   ListChecks,
   Eye,
   KeyRound,
+  Users,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import DatePicker from "../../../components/ui/DatePicker";
 import SearchableSelect from "../../../components/ui/SearchableSelect";
@@ -53,6 +58,8 @@ import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import SlideOutGhost from "../../../components/ui/SlideOutGhost";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
+import SearchBar from "../../../components/ui/SearchBar";
+import { matchesSearch } from "../../../lib/search";
 import DefaultAvatar from "../../../components/ui/DefaultAvatar";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -355,6 +362,7 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
   const [showQrDownloadConfirm, setShowQrDownloadConfirm] = useState(false);
   const [showQrDownloadSuccess, setShowQrDownloadSuccess] = useState(false);
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceRecord[]>([]);
+  const [attHistSearch, setAttHistSearch] = useState("");
   const [attendanceLoading, setAttendanceLoading] = useState(false);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
   const [qrCardUrl, setQrCardUrl] = useState<string | null>(null);
@@ -759,6 +767,7 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
     setShowQrPanel(false);
     setShowQrDownloadConfirm(false);
     setShowQrDownloadSuccess(false);
+    setAttHistSearch("");
     if (!viewRecord) {
       setAttendanceHistory([]);
       return;
@@ -871,6 +880,7 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
       if (!res.ok) throw new Error("photo failed");
       const body = await safeParseJson(res);
       await fetchResidents();
+      notifyMyPhotoChanged();
       // Keep the open viewer on the new photo.
       setPhotoPreviewModal((m) => (m && m.editFor === pendingPhoto.residentId ? { ...m, url: body.validation_id_url || m.url, size: null } : m));
       setPendingPhoto(null);
@@ -1217,6 +1227,7 @@ export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: b
       if (editBody?.activation_slip) setActivationSlip(editBody.activation_slip);
       else setShowUpdateSuccess(true);
       fetchResidents();
+      if (editPhotoFile) notifyMyPhotoChanged();
     } catch (e) {
       console.error("Update error:", e);
       setApiErrorTitle(t("errorTitle"));
@@ -1874,7 +1885,7 @@ const handleDeleteResident = async () => {
               value={membershipSearch}
               onChange={(e) => setMembershipSearch(e.target.value)}
               placeholder={t("resSearchMembershipPrograms")}
-              className="h-12 w-full rounded-full border border-white/25 bg-white/10 pl-11 pr-[4.5rem] text-base text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
+              className="phone-search h-11 max-sm:h-12 w-full rounded-full border border-white/10 bg-white/[0.03] pl-11 max-sm:pl-12 pr-[4.5rem] text-sm max-sm:text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             />
             {membershipSearch && (
               <button
@@ -2108,7 +2119,7 @@ const handleDeleteResident = async () => {
         <button
           onClick={handleOpenAddForm}
           disabled={loading || pageSwitching}
-          className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
+          className="btn-live-navy group inline-flex max-sm:w-full max-sm:justify-between items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
         >
           {t("resRegisterResident")}
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
@@ -2117,18 +2128,31 @@ const handleDeleteResident = async () => {
         </button>
       </div>
 
+      {/* Filters + the list they filter: one joined block on phones so it is clear what the filters act on. */}
+      <div className="flex flex-col gap-6">
       {/* Quick tabs + search / filters / sort / chips */}
       <div className="dash-card space-y-4 rounded-[32px] p-4 sm:p-6">
-        <QuickTabs
+        <SpeedDial
           value={membershipFilter}
-          onChange={(k) => { setMembershipFilter(k as typeof membershipFilter); goToPage(1); }}
-          tabs={[
-            { key: "all", label: t("allRecordsOption"), count: tabTotals.all },
-            { key: "members", label: t("tabMembers"), count: membersCount },
-            { key: "not-members", label: t("resNotYetMembers"), count: tabTotals.not_members },
+          items={[
+            { key: "all", label: t("allRecordsOption"), icon: Users, count: tabTotals.all, onSelect: () => { setMembershipFilter("all"); goToPage(1); } },
+            { key: "members", label: t("tabMembers"), icon: UserCheck, count: membersCount, onSelect: () => { setMembershipFilter("members"); goToPage(1); } },
+            { key: "not-members", label: t("resNotYetMembers"), icon: UserX, count: tabTotals.not_members, onSelect: () => { setMembershipFilter("not-members"); goToPage(1); } },
           ]}
         />
         <FilterBar
+          tabsOnPhone={false}
+          tabs={
+            <QuickTabs
+              value={membershipFilter}
+              onChange={(k) => { setMembershipFilter(k as typeof membershipFilter); goToPage(1); }}
+              tabs={[
+                { key: "all", label: t("allRecordsOption"), count: tabTotals.all, icon: <Users /> },
+                { key: "members", label: t("tabMembers"), count: membersCount, icon: <UserCheck /> },
+                { key: "not-members", label: t("resNotYetMembers"), count: tabTotals.not_members, icon: <UserX /> },
+              ]}
+            />
+          }
           search={{ value: residentSearch, onChange: setResidentSearch, placeholder: t("searchByIdNameContactPlaceholder") }}
           filters={residentFilterDefs}
           sort={{ value: sortKey, onChange: setSortKey, options: residentSortOptions }}
@@ -2297,6 +2321,7 @@ const handleDeleteResident = async () => {
       </div>
       </div>
       </div>
+      </div>
 
       {/* ─── Resident profile page ──────────────────────────────────────── */}
       {viewRecord && (() => {
@@ -2383,7 +2408,7 @@ const handleDeleteResident = async () => {
               />
 
               <div className="relative z-10 mx-auto w-full max-w-[1680px] px-4 pb-12 pt-7 sm:px-8 sm:pt-8 2xl:px-12">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => setViewRecord(null)}
@@ -2391,13 +2416,15 @@ const handleDeleteResident = async () => {
                   >
                     <ChevronLeft className="h-4 w-4" /> {t("resBackToList")}
                   </button>
-                  <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="flex items-center gap-2 sm:flex-wrap sm:gap-2.5">
                     {r.deleted_at === null && (
                       <button
                         onClick={() => setDeleteRecord(r.id)}
-                        className="group inline-flex items-center gap-3 rounded-full border border-red-600 bg-red-600 py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-red-700 hover:bg-red-700 active:scale-95"
+                        aria-label={t("archiveActivityOption")}
+                        title={t("archiveActivityOption")}
+                        className="group inline-flex items-center gap-3 rounded-full border border-red-600 bg-red-600 py-1.5 pl-5 pr-1.5 max-sm:gap-0 max-sm:p-1.5 text-[15px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-red-700 hover:bg-red-700 active:scale-95"
                       >
-                        {t("archiveActivityOption")}
+                        <span className="max-sm:hidden">{t("archiveActivityOption")}</span>
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
                           <Archive className="h-[18px] w-[18px] text-white" />
                         </span>
@@ -2406,9 +2433,11 @@ const handleDeleteResident = async () => {
                     {r.deleted_at === null && !r.hasAccount && (
                       <button
                         onClick={() => setAddAccountFor(r.id)}
-                        className="group inline-flex items-center gap-3 rounded-full border border-slate-300 bg-white py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-slate-900 shadow-md transition-all duration-500 ease-out hover:border-slate-400 hover:bg-slate-100 active:scale-95"
+                        aria-label={t("resAddAccount")}
+                        title={t("resAddAccount")}
+                        className="group inline-flex items-center gap-3 rounded-full border border-slate-300 bg-white py-1.5 pl-5 pr-1.5 max-sm:gap-0 max-sm:p-1.5 text-[15px] font-semibold text-slate-900 shadow-md transition-all duration-500 ease-out hover:border-slate-400 hover:bg-slate-100 active:scale-95"
                       >
-                        {t("resAddAccount")}
+                        <span className="max-sm:hidden">{t("resAddAccount")}</span>
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900/10 transition-colors duration-500 ease-out group-hover:bg-slate-900/15">
                           <UserPlus className="h-[18px] w-[18px] text-slate-900" />
                         </span>
@@ -2420,9 +2449,11 @@ const handleDeleteResident = async () => {
                           setEditFromProfile(r.id);
                           setEditRecord(r.id);
                         }}
-                        className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95"
+                        aria-label={t("editRecordTitle")}
+                        title={t("editRecordTitle")}
+                        className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95 max-sm:gap-0 max-sm:p-1.5"
                       >
-                        {t("editRecordTitle")}
+                        <span className="max-sm:hidden">{t("editRecordTitle")}</span>
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
                           <Pencil className="h-[18px] w-[18px] text-white" />
                         </span>
@@ -2590,6 +2621,11 @@ const handleDeleteResident = async () => {
                       <h2 className="mb-5 border-b border-white/15 pb-3 text-sm font-bold uppercase tracking-wider text-white/80">
                         {t("resAttendanceHistory")}
                       </h2>
+                      {!attendanceLoading && attendanceHistory.length > 0 && (
+                        <div className="mb-4">
+                          <SearchBar dark value={attHistSearch} onChange={setAttHistSearch} placeholder={t("searchAttendancePlaceholder")} />
+                        </div>
+                      )}
                       {attendanceLoading ? (
                         <div className="space-y-2">
                           {Array.from({ length: 3 }).map((_, i) => (
@@ -2604,9 +2640,14 @@ const handleDeleteResident = async () => {
                         </div>
                       ) : attendanceHistory.length === 0 ? (
                         <p className="text-base italic text-white/40">{t("resNoAttendanceYet")}</p>
+                      ) : attHistSearch.trim() && !attendanceHistory.some((a) => matchesSearch(attHistSearch, a.isEventDeleted ? t("resDeletedEvent") : a.eventTitle, a.eventDate ? formatDateShort(a.eventDate, locale) : "", attendanceStatusLabel(a.status))) ? (
+                        <p className="text-base italic text-white/40">{t("noAttendanceMatch")}</p>
                       ) : (
                         <div className="space-y-2">
-                          {attendanceHistory.slice(0, 8).map((a) => (
+                          {(attHistSearch.trim()
+                            ? attendanceHistory.filter((a) => matchesSearch(attHistSearch, a.isEventDeleted ? t("resDeletedEvent") : a.eventTitle, a.eventDate ? formatDateShort(a.eventDate, locale) : "", attendanceStatusLabel(a.status)))
+                            : attendanceHistory.slice(0, 8)
+                          ).map((a) => (
                             <div key={a.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 text-base transition hover:bg-white/[0.05]">
                               <div className="min-w-0">
                                 <p className="truncate font-medium text-white">{a.isEventDeleted ? t("resDeletedEvent") : a.eventTitle}</p>

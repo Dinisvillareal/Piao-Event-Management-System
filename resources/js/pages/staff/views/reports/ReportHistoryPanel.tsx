@@ -155,16 +155,18 @@ export default function ReportHistoryPanel({
         <p className="mt-1 max-w-3xl text-sm text-white/50">{t("rpHistSub")}</p>
       </div>
 
-      <QuickTabs
-        value={scope}
-        onChange={(k) => setScope(k as "all" | "mine")}
-        tabs={[
-          { key: "all", label: t("rpHistEveryone") },
-          { key: "mine", label: t("rpHistMine") },
-        ]}
-      />
 
       <FilterBar
+        tabs={
+          <QuickTabs
+            value={scope}
+            onChange={(k) => setScope(k as "all" | "mine")}
+            tabs={[
+              { key: "all", label: t("rpHistEveryone") },
+              { key: "mine", label: t("rpHistMine") },
+            ]}
+          />
+        }
         search={{ value: search, onChange: setSearch, placeholder: t("rpHistSearch") }}
         filters={[
           { key: "type", label: t("rpHistType"), value: type, defaultValue: "all", onChange: setType, options: typeOptions },

@@ -1,10 +1,14 @@
 // Pill tabs with live counts -- the "quick filter" row that sits above a list
 // ("All 24 · Today 2 · This week 5"). One look for every page; the active tab
 // is the same sage pill the Residents page always used.
+import type { ReactNode } from "react";
+
 export interface QuickTab {
   key: string;
   label: string;
   count?: number;
+  /** Optional icon -- on phones the label hides and only the icon (+ count) shows. */
+  icon?: ReactNode;
   /** Tint the count (e.g. red for things that need attention). */
   alert?: boolean;
 }
@@ -47,9 +51,11 @@ export default function QuickTabs({
     );
   }
   return (
-    <div role="tablist" className={`flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${className}`}>
-      {tabs.map((tab) => {
+    <div role="tablist" className={`flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${tabs.length > 0 && tabs.every((x) => x.icon) ? "max-sm:justify-center" : "max-sm:grid max-sm:grid-cols-2 max-sm:gap-2 max-sm:overflow-visible"} ${className}`}>
+      {tabs.map((tab, idx) => {
         const on = tab.key === value;
+        // Phones (text tabs): an even 2-column grid; an odd last tab spans the full row.
+        const lastOdd = !tab.icon && tabs.length % 2 === 1 && idx === tabs.length - 1;
         return (
           <button
             key={tab.key}
@@ -57,11 +63,14 @@ export default function QuickTabs({
             aria-selected={on}
             type="button"
             onClick={() => { if (!on) onChange(tab.key); }}
-            className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
+            title={tab.label}
+            aria-label={tab.label}
+            className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors ${tab.icon ? "max-sm:gap-2 max-sm:px-5 max-sm:py-2.5" : (`max-sm:w-full max-sm:min-w-0 max-sm:justify-between max-sm:gap-1.5 max-sm:px-3.5 max-sm:py-2 max-sm:text-[13px] ${lastOdd ? "max-sm:col-span-2" : ""}`)} ${
               on ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "bg-white/[0.04] text-white/60 hover:bg-white/[0.08]"
             }`}
           >
-            {tab.label}
+            {tab.icon && <span className="flex shrink-0 items-center max-sm:[&>svg]:h-5 max-sm:[&>svg]:w-5 [&>svg]:h-4 [&>svg]:w-4">{tab.icon}</span>}
+            <span className={tab.icon ? "max-sm:hidden" : "max-sm:truncate"}>{tab.label}</span>
             {tab.count !== undefined && (
               <span
                 className={`inline-flex min-w-[1.4rem] items-center justify-center rounded-full px-1.5 py-0.5 text-[11px] font-bold leading-none ${

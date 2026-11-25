@@ -867,7 +867,7 @@ import SearchBar from "../../../components/ui/SearchBar";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import { QRCodeCanvas } from "qrcode.react";
-import { QrCode, Download } from "lucide-react";
+import { QrCode, Download, BadgeCheck } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import Skeleton from "../../../components/ui/Skeleton";
 import { tc } from "../../../lib/contentTranslations";
@@ -1035,7 +1035,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
     // column widths, spacing and card ratio) so every block sits exactly where
     // its real counterpart will land and nothing shifts when the data arrives.
     return (
-      <div className="h-full dash-canvas p-4 sm:p-8 flex flex-col">
+      <div className="h-full dash-canvas p-4 sm:p-8 flex flex-col max-sm:!pt-[calc(76px+1rem)]">
         <div className="flex-shrink-0 pb-6">
           <div className="dash-card rounded-[32px] p-5 sm:p-6">
             <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("myQrAndMemberships")}</h1>
@@ -1047,7 +1047,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
           <div className="flex flex-col lg:flex-row gap-6 items-start">
             {/* LEFT: ID panel */}
             <div className="w-full lg:w-[460px] lg:shrink-0 lg:sticky lg:top-4">
-              <div className="flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+              <div className="flex flex-col items-center dash-card rounded-[28px] p-5 sm:p-6">
                 <Skeleton className="aspect-[1011/638] w-full rounded-2xl" />
                 <Skeleton className="mt-4 h-4 w-44" />
                 <Skeleton className="mt-4 h-[50px] w-full rounded-full" />
@@ -1056,13 +1056,15 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
             {/* RIGHT: search + count + cards */}
             <div className="w-full lg:flex-1 lg:min-w-0">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                <SearchBar
-                  value={searchQuery}
-                  onChange={setSearchQuery}
-                  placeholder={t("searchMembershipsPlaceholder")}
-                  dark
-                />
+              <div className="dash-card rounded-[32px] p-4 sm:p-6">
+                <div data-phone-filterbar>
+                  <SearchBar
+                    value={searchQuery}
+                    onChange={setSearchQuery}
+                    placeholder={t("searchMembershipsPlaceholder")}
+                    dark
+                  />
+                </div>
               </div>
               <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
                 <p className="text-xs text-white/40">
@@ -1085,7 +1087,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
 
   if (error) {
     return (
-      <div className="h-full bg-[#0A0E1A] p-5">
+      <div className="h-full dash-canvas p-5 max-sm:!pt-[calc(76px+1rem)]">
         <div className="bg-red-500/10 border border-red-500/25 rounded-xl p-4 text-red-400">
           <p className="font-semibold">{t("errorLabel")}</p>
           <p className="text-sm mt-1">{error}</p>
@@ -1096,7 +1098,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
   }
 
   return (
-    <div className="h-full dash-canvas p-4 sm:p-8 flex flex-col"> 
+    <div className="h-full dash-canvas p-4 sm:p-8 flex flex-col max-sm:!pt-[calc(76px+1rem)]"> 
     {/* <div className="h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 flex flex-col overflow-hidden"> */}
       {/* Fixed header: title + subtitle */}
       <div className="flex-shrink-0 pb-6">
@@ -1157,8 +1159,8 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
             </div></Portal>
           )}
 
-          <div className="w-full lg:w-[460px] lg:shrink-0 lg:sticky lg:top-4">
-            <div className="flex flex-col items-center rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+          <div className="w-full lg:w-[460px] lg:shrink-0 lg:sticky lg:top-4 max-lg:order-1">
+            <div className="flex flex-col items-center dash-card rounded-[28px] p-5 sm:p-6">
               {/* Hi-res QR, off-screen, used only to paint the ID card */}
               {qrData && (
                 <div ref={hiResQrRef} aria-hidden="true" style={{ position: "absolute", left: -99999, top: 0, pointerEvents: "none" }}>
@@ -1202,13 +1204,13 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                 disabled={!qrData}
                 className={`group mt-4 inline-flex w-full items-center justify-center gap-3 rounded-full border pl-5 pr-1.5 py-1.5 text-[15px] font-semibold shadow-sm transition-all duration-500 ease-out ${
                   qrData
-                    ? 'border-[#E5E7EB] bg-white text-[#1A1A1A] hover:bg-[#F3F4F6] hover:shadow-md cursor-pointer'
+                    ? 'btn-live-navy border-[#1E3A5F] bg-[#1E3A5F] !text-white hover:shadow-lg cursor-pointer'
                     : 'border-white/10 bg-white/10 text-white/30 cursor-not-allowed'
                 }`}
               >
                 {t("downloadQrCode")}
-                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ease-out ${qrData ? 'bg-[#F3F4F6] group-hover:bg-white' : 'bg-white/10'}`}>
-                  <Download className={`h-4 w-4 ${qrData ? 'text-[#1A1A1A]' : 'text-white/30'}`} />
+                <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors duration-300 ease-out ${qrData ? '!bg-white/15 group-hover:!bg-white/25' : 'bg-white/10'}`}>
+                  <Download className={`h-4 w-4 ${qrData ? '!text-white' : 'text-white/30'}`} />
                 </span>
               </button>
             </div>
@@ -1218,35 +1220,41 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
               `min-h` on the grid region prevents the page height from
               changing when switching between pages with different card
               counts, which would otherwise cause the layout to jump. */}
-          <div className="w-full lg:flex-1 lg:min-w-0">
+          <div className="w-full lg:flex-1 lg:min-w-0 max-lg:contents">
             {allMemberships.length > 0 && (
               <>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
-                  <SearchBar
-                    value={searchQuery}
-                    onChange={setSearchQuery}
-                    placeholder={t("searchMembershipsPlaceholder")}
-                    dark
-                  />
+                <div className="dash-card rounded-[32px] p-4 sm:p-6 max-lg:order-3 max-lg:w-full max-lg:-mt-3">
+                  <div data-phone-filterbar>
+                    <SearchBar
+                      value={searchQuery}
+                      onChange={setSearchQuery}
+                      placeholder={t("searchMembershipsPlaceholder")}
+                      dark
+                    />
+                  </div>
                 </div>
-                <div className="mt-2 flex items-center justify-between gap-3 flex-wrap">
+                <h2 className="mt-5 flex items-center gap-2.5 font-display text-lg font-extrabold text-white max-lg:order-2 max-lg:mt-4 max-lg:w-full">
+                  <span className="h-5 w-1.5 rounded-full bg-gradient-to-b from-[#4FBEB0] to-[#F5C451]" />
+                  {t("memberships")}
+                </h2>
+                <div className="mt-2 flex items-center justify-between gap-3 flex-wrap max-lg:order-4 max-lg:w-full max-lg:-mt-3">
                   <p className="text-xs text-white/40">
                     {pageSwitching ? 0 : totalItems} {t("membershipsFoundCount")} — {t("showingLabel")} {itemsPerPage} {t("perPage")}
                   </p>
                   {totalPages > 1 && ((pageSwitching) ? <PagerSkeleton /> : (
                     <div className="flex items-center gap-2">
                       <button onClick={() => goToPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
-                        className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
-                      <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">{currentPage}</span>
+                        className="h-8 w-8 dash-tile rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95">←</button>
+                      <span className="h-8 w-8 rounded-full bg-gradient-to-br from-[#0B0F14] to-[#18212B] text-white border border-white/10 shadow-md flex items-center justify-center text-sm font-bold">{currentPage}</span>
                       <button onClick={() => goToPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                        className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">→</button>
+                        className="h-8 w-8 dash-tile rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95">→</button>
                     </div>
                   ))}
                 </div>
               </>
             )}
 
-            <div className="mt-4 min-h-[500px]">
+            <div className="mt-4 min-h-[500px] max-lg:order-5 max-lg:w-full max-lg:-mt-3">
               {pageSwitching ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {Array.from({ length: 6 }).map((_, i) => (
@@ -1254,7 +1262,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   ))}
                 </div>
               ) : allMemberships.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-96 bg-white/[0.04] rounded-2xl border border-white/10">
+                <div className="dash-card flex flex-col items-center justify-center h-96 rounded-[28px]">
                   <svg className="w-24 h-24 text-white/15 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                   </svg>
@@ -1263,7 +1271,7 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   <div className="mt-6 text-sm text-white/50 bg-white/[0.05] px-4 py-2 rounded-lg">{t("needAssistance")}</div>
                 </div>
               ) : displayMemberships.length === 0 && searchQuery ? (
-                <div className="flex flex-col items-center justify-center h-64 bg-white/[0.04] rounded-2xl border border-white/10">
+                <div className="dash-card flex flex-col items-center justify-center h-64 rounded-[28px]">
                   <svg className="w-16 h-16 text-white/15 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
@@ -1275,19 +1283,26 @@ export default function QRCodesView({ highlightText, userId, userCode, fullName 
                   {displayMemberships.map((m: any) => (
                     <div
                       key={m.id}
-                      className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden hover:bg-white/[0.06] transition-all duration-200 flex flex-col min-h-[128px]"
+                      className="dash-card rounded-[28px] overflow-hidden hover:-translate-y-0.5 transition-all duration-200 flex flex-col min-h-[168px]"
                     >
-                      <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
-                      <div className="p-5 flex-1 flex flex-col justify-center">
-                        <h2 className="text-base font-bold text-white break-words">
-                          {highlightText(tc(m.name, language as any), searchQuery)}
-                        </h2>
+                      <div className="p-6 sm:p-7 flex-1">
+                        <div className="flex items-start gap-3.5">
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82] text-white shadow-sm">
+                            <BadgeCheck className="h-5 w-5" />
+                          </span>
+                          <div className="min-w-0 flex-1 self-center">
+                            <h2 className="text-base font-bold leading-snug text-white break-words">
+                              {highlightText(tc(m.name, language as any), searchQuery)}
+                            </h2>
+                          </div>
+                        </div>
                         {m.description && (
-                          <p className="text-sm text-white/50 mt-2 break-words">
+                          <p className="mt-4 text-sm leading-relaxed text-white/55 break-words">
                             {highlightText(tc(m.description, language as any), searchQuery)}
                           </p>
                         )}
                       </div>
+                      <div className="h-1 bg-gradient-to-r from-[#2E8E82] via-[#4FBEB0] to-[#F5C451] opacity-80" />
                     </div>
                   ))}
                 </div>

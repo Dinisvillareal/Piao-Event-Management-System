@@ -1,13 +1,14 @@
 import KpiCard from "../../../components/ui/KpiCard";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useEffect, useRef, useState } from "react";
-import { Lock, Banknote, PiggyBank, AlertTriangle, ChevronRight, Wallet } from "lucide-react";
+import { Lock, Banknote, PiggyBank, AlertTriangle, ChevronRight, ChevronDown, TrendingUp, Wallet, LayoutList, Clock, CalendarClock, Archive } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import Skeleton from "../../../components/ui/Skeleton";
 import DatePicker from "../../../components/ui/DatePicker";
 import FormDrawer from "../../../components/ui/FormDrawer";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
+import SpeedDial from "../../../components/ui/SpeedDial";
 import SimplePager from "../../../components/ui/SimplePager";
 import { useLanguage } from "../../../i18n/LanguageContext";
 
@@ -30,6 +31,7 @@ const EVENTS_PAGE_SIZE = 9;
 export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption[] }) {
   const { t, locale, language } = useLanguage();
   const [search, setSearch] = useState("");
+  const [trendOpen, setTrendOpen] = useState(false); // phones: the spending chart starts collapsed
   // Left list: which time bucket to show. "all" keeps every bucket on screen, in sections.
   const [timeTab, setTimeTab] = useState<"all" | "ongoing" | "upcoming" | "past">("all");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -215,8 +217,8 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
         Expense modal is darkened along with the page, matching the
         Households/Inventory Edit modal treatment. */}
     <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
-    <div className="space-y-6">
-      <div className="dash-card flex flex-col justify-between gap-4 rounded-[32px] p-5 sm:flex-row sm:items-center sm:p-6">
+    <div className="space-y-6 max-sm:flex max-sm:flex-col">
+      <div className="dash-card flex flex-col justify-between gap-4 rounded-[32px] p-5 sm:flex-row sm:items-center sm:p-6 max-sm:order-[-3]">
         <div>
           <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("budget")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("budgetSubtitle")}</p>
@@ -236,7 +238,29 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
       {/* Portfolio KPI strip -- same gradient-card language as the
           Dashboard's stat strip, computed across every event (see
           fetchPortfolio above), not just the one currently selected. */}
-      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5">
+      {/* Phones: title, then search + filters, then ONE compact summary card (2x2 figures) and a collapsible spending chart, then the list. */}
+      <div className="sm:space-y-6 max-sm:flex max-sm:flex-col max-sm:gap-3 max-sm:order-[-1]">
+      <div className="dash-card rounded-[28px] p-4 sm:hidden">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+          {([
+            { label: t("totalApprovedBudgetStatLabel"), value: Number(portfolioSummary.total_approved_budget || 0), money: true, icon: Wallet, tone: "" },
+            { label: t("totalSpentStatLabel"), value: Number(portfolioSummary.total_expenses || 0), money: true, icon: Banknote, tone: "" },
+            { label: t("remainingBudgetStatLabel"), value: Number(portfolioSummary.total_remaining || 0), money: true, icon: PiggyBank, tone: "text-[#2E8E82]" },
+            { label: t("eventsOverBudgetStatLabel"), value: Number(portfolioSummary.events_over_budget || 0), money: false, icon: AlertTriangle, tone: Number(portfolioSummary.events_over_budget || 0) > 0 ? "text-red-500" : "" },
+          ]).map((c, i) => (
+            <div key={i} className={`min-w-0 ${i % 2 === 1 ? "border-l border-white/10 pl-4" : ""} ${i > 1 ? "border-t border-white/10 pt-4" : ""}`}>
+              <div className="flex items-center gap-1.5 text-white/50">
+                <c.icon className="h-3.5 w-3.5 shrink-0 text-[#2E8E82]" />
+                <span className="truncate text-[11px] font-bold uppercase tracking-wide">{c.label}</span>
+              </div>
+              {initialLoading ? <Skeleton className="mt-2 h-6 w-24" /> : (
+                <p className={`mt-1.5 truncate font-display text-xl font-extrabold tabular-nums ${c.tone || "text-white"}`}>{c.money ? money(c.value) : c.value}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-5 max-sm:hidden">
         {[
           { value: Number(portfolioSummary.total_approved_budget || 0), label: t("totalApprovedBudgetStatLabel"), description: t("totalApprovedBudgetStatDesc"), icon: Wallet, gradient: "from-sage-400 to-sage-700" },
           { value: Number(portfolioSummary.total_expenses || 0), label: t("totalSpentStatLabel"), description: t("totalSpentStatDesc"), icon: Banknote, gradient: "from-sage-400 to-sage-700" },
@@ -255,6 +279,17 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
 
       {/* One graphic: spending over time (curve with a hover tooltip). */}
       {portfolio && (
+        <>
+        <button
+          type="button"
+          onClick={() => setTrendOpen((v) => !v)}
+          aria-expanded={trendOpen}
+          className="dash-card flex w-full items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left sm:hidden"
+        >
+          <span className="flex items-center gap-2.5 text-[15px] font-bold text-white"><TrendingUp className="h-5 w-5 text-[#2E8E82]" />{t("rpSpendTrendTitle")}</span>
+          <ChevronDown className={`h-4 w-4 text-white/60 transition-transform ${trendOpen ? "rotate-180" : ""}`} />
+        </button>
+        <div className={trendOpen ? "" : "max-sm:hidden"}>
         <ChartCard title={t("rpSpendTrendTitle")} desc={t("rpSpendTrendDesc")}>
           {portfolio.trend && portfolio.trend.points?.length >= 2 ? (
             <LineChart
@@ -267,21 +302,36 @@ export default function BudgetView({ allEvents = [] }: { allEvents?: EventOption
             <p className="py-14 text-center text-sm italic text-white/40">{t("rpNoTrend")}</p>
           )}
         </ChartCard>
+        </div>
+        </>
       )}
+      </div>
 
       {/* Toolbar: status tabs + search / budget health / sort / date, then the event cards. */}
-      <div className="dash-card space-y-4 rounded-[32px] p-4 sm:p-5">
-        <QuickTabs
+      <div className="dash-card space-y-4 rounded-[32px] p-4 sm:p-5 max-sm:order-[-2]">
+        <SpeedDial
           value={timeTab}
-          onChange={(k) => setTimeTab(k as typeof timeTab)}
-          tabs={[
-            { key: "all", label: t("budgetFilterAll"), count: countsReady ? counts.status.all : undefined },
-            { key: "ongoing", label: t("timeTabOngoing"), count: countsReady ? counts.status.ongoing : undefined },
-            { key: "upcoming", label: t("timeTabUpcoming"), count: countsReady ? counts.status.upcoming : undefined },
-            { key: "past", label: t("timeTabPast"), count: countsReady ? counts.status.past : undefined },
-          ]}
+          items={([
+            { key: "all", label: t("budgetFilterAll"), icon: LayoutList, count: countsReady ? counts.status.all : undefined },
+            { key: "ongoing", label: t("timeTabOngoing"), icon: Clock, count: countsReady ? counts.status.ongoing : undefined },
+            { key: "upcoming", label: t("timeTabUpcoming"), icon: CalendarClock, count: countsReady ? counts.status.upcoming : undefined },
+            { key: "past", label: t("timeTabPast"), icon: Archive, count: countsReady ? counts.status.past : undefined },
+          ] as const).map((o) => ({ ...o, onSelect: () => setTimeTab(o.key) }))}
         />
         <FilterBar
+          tabsOnPhone={false}
+          tabs={
+            <QuickTabs
+              value={timeTab}
+              onChange={(k) => setTimeTab(k as typeof timeTab)}
+              tabs={[
+                { key: "all", label: t("budgetFilterAll"), count: countsReady ? counts.status.all : undefined },
+                { key: "ongoing", label: t("timeTabOngoing"), count: countsReady ? counts.status.ongoing : undefined },
+                { key: "upcoming", label: t("timeTabUpcoming"), count: countsReady ? counts.status.upcoming : undefined },
+                { key: "past", label: t("timeTabPast"), count: countsReady ? counts.status.past : undefined },
+              ]}
+            />
+          }
           search={{ value: search, onChange: setSearch, placeholder: t("searchEventsPlaceholder") }}
           filters={[{
             key: "budget", label: t("budgetFilterLabel"), value: budgetFilter, onChange: (v) => setBudgetFilter(v as typeof budgetFilter),

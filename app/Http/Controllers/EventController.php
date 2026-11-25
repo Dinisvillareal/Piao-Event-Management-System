@@ -895,13 +895,35 @@ class EventController extends Controller
                 ->whereIn('type', ['event_announcement', 'event_updated'])
                 ->update([
                     'type' => 'event_deleted',
-                    'title' => '❌ Event Cancelled: ' . $eventName,
+                    'title' => 'Event Cancelled: ' . $eventName,
                     'message' => 'Staff: ' . $user->last_name . ' • ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.',
                     'is_updated' => true,
                     'read' => false,
                     'updated_at_notification' => now(),
                     'updated_at' => now(),
                 ]);
+
+
+             [$fbOk, $fbMessage] = app(FacebookService::class)->postEvent(
+                '❌ Event Cancelled: ' . $eventName,
+                //'Staff: ' . $user->last_name . ' • ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.'
+                'We apologize for the inconvenience.'
+            );
+            if (!$fbOk) {
+                \Illuminate\Support\Facades\Log::warning('Facebook cancel post failed: ' . $fbMessage, ['event' => $eventName]);
+            }
+
+
+            // Same SMS parity as FB: blast the cancellation to household heads.
+            try {
+                app(SmsService::class)->broadcastToAllHouseholdHeads(
+                    $event->id,
+                    'CANCELLED: ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.'
+                );
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('SMS cancel broadcast failed: ' . $e->getMessage(), ['event' => $eventName]);
+            }
+
 
             // ✅ Step 3: Log the archive action
             $this->createLog('Archive Event', 'Events', "Archived event: {$eventName}");
@@ -2028,3 +2050,4 @@ class EventController extends Controller
         ]);
     }
 }
+

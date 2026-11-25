@@ -54,6 +54,8 @@ interface FilterDropdownProps {
   /** While true the panel is forced shut -- lets a caller open its own popup
       (confirm / result dialog) without the open panel hovering over it. */
   forceClose?: boolean;
+  /** Phones: show only the icon (a small round button, with a dot when a filter is on). */
+  iconOnlyOnMobile?: boolean;
 }
 
 /**
@@ -95,6 +97,7 @@ export default function FilterDropdown({
   onRemoveOption,
   footer,
   forceClose = false,
+  iconOnlyOnMobile = false,
 }: FilterDropdownProps) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
@@ -194,16 +197,16 @@ export default function FilterDropdown({
           dark
             ? "border-white/10 bg-white/[0.03] focus:border-[#4FBEB0]/50 focus:ring-[#4FBEB0]/20"
             : "border-[#E6E0D3] bg-white focus:border-sage-400 focus:ring-sage-700/20"
-        } ${className}`}
+        } ${className} ${iconOnlyOnMobile ? "max-sm:!w-11 max-sm:!min-w-0 max-sm:!px-0 max-sm:justify-center" : ""}`}
       >
         {/* Chevron lives inside the button's own flex row (not absolutely
             positioned over the label) so it always reserves its own space
             next to the text via `gap-2` -- a caller that forgets extra
             right-padding for a long label ("All Conditions") can no longer
             end up with the chevron drawn on top of the tail of the text. */}
-        <span className={`truncate flex-1 text-left ${showingPlaceholder ? (dark ? "text-white/50" : "text-gray-400") : (dark ? "text-white" : "text-[#1A1A1A]")}`}>{selectedLabel}</span>
+        <span className={`truncate flex-1 text-left ${iconOnlyOnMobile ? "max-sm:hidden" : ""} ${showingPlaceholder ? (dark ? "text-white/50" : "text-gray-400") : (dark ? "text-white" : "text-[#1A1A1A]")}`}>{selectedLabel}</span>
         <ChevronDown
-          className={`h-4 w-4 shrink-0 transition-transform ${dark ? "text-white/40" : "text-[#6B7280]"} ${open ? "rotate-180" : ""}`}
+          className={`h-4 w-4 shrink-0 transition-transform ${iconOnlyOnMobile ? "max-sm:hidden" : ""} ${dark ? "text-white/40" : "text-[#6B7280]"} ${open ? "rotate-180" : ""}`}
         />
         {/* The icon renders INSIDE the button (which now carries its own
             `relative`) instead of as a sibling positioned against the
@@ -215,6 +218,9 @@ export default function FilterDropdown({
             guarantees it stays centered no matter what happens to the
             wrapper around it. */}
         {icon}
+        {iconOnlyOnMobile && options.length > 0 && value !== options[0].value && (
+          <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-[#2E8E82] ring-2 ring-[#0A0E1A] sm:hidden" />
+        )}
       </button>
 
       {open && panelPos &&

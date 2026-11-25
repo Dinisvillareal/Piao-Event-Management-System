@@ -13,6 +13,7 @@ import SimplePager from "../../../components/ui/SimplePager";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import FilterBar, { type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
+import SpeedDial from "../../../components/ui/SpeedDial";
 import Portal from "../../../components/ui/Portal";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import ActivationSlipModal, { type ActivationSlip } from "../../../components/auth/ActivationSlipModal";
@@ -383,7 +384,7 @@ export default function StaffAccountsView() {
         </div>
       )}
 
-      <div className="report-stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="report-stagger grid grid-cols-2 gap-4 max-sm:hidden lg:grid-cols-4">
         {loading ? [0, 1, 2, 3].map((i) => <StatCardSkeleton key={i} />) : (
           <>
             <KpiCard value={data?.staff.length ?? 0} label={t("secStatStaff")} description={t("secStatStaffDesc")} icon={Users} gradient="from-sage-400 to-sage-700" delay={0} />
@@ -396,10 +397,20 @@ export default function StaffAccountsView() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(380px,1fr)] lg:items-start">
         {/* ── Left: the team ── */}
-        <SectionCard icon={<Users className="h-5 w-5" />} title={t("secStaffTeam")} desc={t("secStaffTeamDesc")}>
+        <SectionCard icon={<Users className="h-5 w-5" />} title={t("secStaffTeam")} badge={loading ? undefined : (data?.staff.length ?? 0)} desc={t("secStaffTeamDesc")}>
           {!loading && (
             <div className="mb-4 space-y-3">
+              <SpeedDial
+                value={teamTab}
+                items={([
+                  { key: "all", label: t("tabAll"), icon: Users, count: tabCounts.all },
+                  { key: "active", label: t("tabActive"), icon: ShieldCheck, count: tabCounts.active },
+                  { key: "suspended", label: t("tabSuspended"), icon: Ban, count: tabCounts.suspended },
+                  { key: "no-2fa", label: t("tabNoTwoStep"), icon: KeyRound, count: tabCounts.no2fa },
+                ] as const).map((o) => ({ ...o, onSelect: () => setTeamTab(o.key) }))}
+              />
               <QuickTabs
+                className="max-sm:!hidden"
                 value={teamTab}
                 onChange={(k) => setTeamTab(k as typeof teamTab)}
                 tabs={[

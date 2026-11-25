@@ -412,7 +412,7 @@ export default function HouseholdsView() {
           type="button"
           onClick={openAdd}
           disabled={loading}
-          className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
+          className="btn-live-navy group inline-flex max-sm:w-full max-sm:justify-between items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
         >
           {t("addHouseholdLabel")}
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
@@ -624,33 +624,37 @@ export default function HouseholdsView() {
                         </div>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center justify-between gap-3 sm:flex-wrap">
                         <button
                           type="button"
                           onClick={() => setPickerFor(h.id)}
-                          className="group inline-flex items-center gap-3 rounded-full border border-slate-300 bg-white py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-slate-900 shadow-md transition-all duration-500 ease-out hover:border-slate-400 hover:bg-slate-100 active:scale-95"
+                          aria-label={t("addMemberLabel")}
+                          title={t("addMemberLabel")}
+                          className="group inline-flex items-center gap-3 rounded-full border border-slate-300 bg-white py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-slate-900 shadow-md transition-all duration-500 ease-out hover:border-slate-400 hover:bg-slate-100 active:scale-95 max-sm:gap-0 max-sm:p-1.5"
                         >
-                          {t("addMemberLabel")}
+                          <span className="max-sm:hidden">{t("addMemberLabel")}</span>
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900/10 transition-colors duration-500 ease-out group-hover:bg-slate-900/15">
                             <UserPlus className="h-[18px] w-[18px] text-slate-900" />
                           </span>
                         </button>
-                        <div className="flex items-center gap-1 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0 sm:gap-1">
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); openEdit(h); }}
-                            className="btn-live-navy inline-flex items-center gap-1.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-[#274A77] active:scale-95"
+                            className="btn-live-navy inline-flex items-center justify-center gap-1.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] px-4 py-2 text-sm font-semibold !text-white shadow-sm transition hover:border-[#274A77] active:scale-95 max-sm:h-10 max-sm:w-10 max-sm:p-0"
                             title={t("editLabel")}
+                            aria-label={t("editLabel")}
                           >
-                            <Pencil className="h-4 w-4" /> {t("editLabel")}
+                            <Pencil className="h-4 w-4" /> <span className="max-sm:hidden">{t("editLabel")}</span>
                           </button>
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setDeleteRecord(h); }}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-red-600 bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:border-red-700 hover:bg-red-700 active:scale-95"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-full border border-red-600 bg-red-600 px-4 py-2 text-sm font-semibold !text-white shadow-sm transition hover:border-red-700 hover:bg-red-700 active:scale-95 max-sm:h-10 max-sm:w-10 max-sm:p-0"
                             title={t("deleteTitle")}
+                            aria-label={t("deleteTitle")}
                           >
-                            <Trash2 className="h-4 w-4" /> {t("deleteTitle")}
+                            <Trash2 className="h-4 w-4" /> <span className="max-sm:hidden">{t("deleteTitle")}</span>
                           </button>
                         </div>
                       </div>

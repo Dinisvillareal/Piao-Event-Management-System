@@ -465,6 +465,7 @@ const PAGE_HEADINGS: Record<string, [string, string]> = {
 import { useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "../../components/layout/Sidebar";
 import TopHeader from "../../components/layout/TopHeader";
+import MobileBrandBanner from "../../components/layout/MobileBrandBanner";
 import SettingsView from "./views/SettingsView";
 import DashboardView, { MemberDashboardSkeleton } from "./views/DashboardView";
 import QRCodesView from "./views/QRCodesView";
@@ -814,7 +815,7 @@ export default function MemberDashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0E1A] text-white">
+    <div className="member-shell min-h-screen overflow-x-hidden bg-[#0A0E1A] text-white">
       <div className="flex min-h-screen">
         <Sidebar
           active={active}
@@ -827,7 +828,8 @@ export default function MemberDashboard() {
         />
 
         <main className="flex-1 min-w-0 flex flex-col">
-          <TopHeader memberName={member.name} onMenuClick={() => setMobileSidebarOpen(true)} userId={member.id} onNavigate={setActive} />
+          <TopHeader memberName={member.name} onMenuClick={() => setMobileSidebarOpen(true)} userId={member.id} userCode={member.user_code} onNavigate={setActive} />
+          <MobileBrandBanner />
           <OfflineBanner />
           <FeedbackPrompt />
           <MemberReplyAlerts active={active} onOpenEvents={(eventId) => { if (typeof eventId === "number") setFocusEventId(eventId); setActive("events"); }} onOpenNotifications={() => setActive("notify")} onUnreadChange={setReplyUnread} />
@@ -844,12 +846,12 @@ export default function MemberDashboard() {
               {/* Same behaviour as the staff portal: the shell (sidebar +
                   header) is always on screen and only the page body shows a
                   skeleton while the account loads. */}
-              {loading && active === "dashboard" && <MemberDashboardSkeleton memberName={member.first_name} />}
+              {loading && active === "dashboard" && <MemberDashboardSkeleton memberName={member.name} />}
               {loading && (active === "qr" || active === "settings") && (
-                <div className="h-full overflow-hidden bg-[#0A0E1A] p-4 sm:p-8">
-                  <div>
-                    <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t(PAGE_HEADINGS[active]?.[0] ?? "settings")}</h1>
-                    <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t(PAGE_HEADINGS[active]?.[1] ?? "memberSettingsSubtitle")}</p>
+                <div className="h-full overflow-hidden dash-canvas p-4 sm:p-8 max-sm:!pt-[calc(76px+1rem)]">
+                  <div className="dash-card rounded-[32px] p-5 sm:p-6">
+                    <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t(PAGE_HEADINGS[active]?.[0] ?? "settings")}</h1>
+                    <p className="mt-1.5 text-sm text-white/55 max-w-xl">{t(PAGE_HEADINGS[active]?.[1] ?? "memberSettingsSubtitle")}</p>
                   </div>
                     <div className="mt-6 space-y-3">
                       <Skeleton className="h-16 w-full rounded-2xl" />
