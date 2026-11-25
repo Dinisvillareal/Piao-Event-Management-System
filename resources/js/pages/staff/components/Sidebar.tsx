@@ -37,7 +37,7 @@ import api from "../../../lib/api";
 
 // --- NAVIGATION CONFIG ---
 export const NAV = [
-  { key: "dashboard", path: staffPathFor("dashboard"), label: "Dashboard", icon: LayoutDashboard },
+  { key: "dashboard", path: staffPathFor("dashboard"), label: "Overview", icon: LayoutDashboard },
   { key: "scan", path: staffPathFor("scan"), label: "QR Scanner", icon: ScanLine },
   { key: "residents", path: staffPathFor("residents"), label: "Residents", icon: Users },
   { key: "households", path: staffPathFor("households"), label: "Households", icon: Home },
@@ -277,8 +277,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
             />
           </div>
           <div>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-[#7DD8CB] font-medium">BARANGAY PIAO</p>
-            <h1 className="font-display text-[15px] font-bold text-white whitespace-nowrap leading-tight">e-Membership</h1>
+            <h1 className="font-display text-lg font-extrabold text-white whitespace-nowrap leading-tight">PiaoConnect</h1>
           </div>
         </div>
 

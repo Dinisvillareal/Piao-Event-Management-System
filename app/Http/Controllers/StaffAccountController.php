@@ -11,6 +11,7 @@ use App\Rules\StrongPassword;
 use App\Services\SecurityService;
 use App\Support\Paged;
 use App\Support\Totp;
+use App\Services\ActivationSlipService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
@@ -70,6 +71,7 @@ class StaffAccountController extends Controller
             'suspended_at' => $u->suspended_at,
             'last_login_at' => $u->last_login_at,
             'must_change_password' => (bool) $u->must_change_password,
+            'pending_activation' => (bool) $u->pending_activation,
             'two_factor_enabled' => $u->two_factor_enabled,
             'active_sessions' => $this->security->activeSessionCount($u),
         ];
@@ -156,7 +158,7 @@ class StaffAccountController extends Controller
     {
         $term = trim((string) $request->query('search', ''));
 
-        $q = User::where('role', 'Resident')->where('has_account', 1)->whereNull('suspended_at');
+        $q = User::where('role', 'Resident')->where('has_account', 1)->whereNotNull('password')->whereNull('suspended_at');
         if ($term !== '') {
             $like = '%' . str_replace(['%', '_'], ['\\%', '\\_'], $term) . '%';
             $q->where(fn ($w) => $w->where('first_name', 'like', $like)
@@ -184,7 +186,7 @@ class StaffAccountController extends Controller
         $me = $request->user();
         $this->security->requirePassword($me, $request->password);
 
-        $target = User::where('role', 'Resident')->where('has_account', 1)->findOrFail($request->user_id);
+        $target = User::where('role', 'Resident')->where('has_account', 1)->whereNotNull('password')->findOrFail($request->user_id);
 
         $target->role = 'Staff';
         $target->save();
@@ -200,9 +202,9 @@ class StaffAccountController extends Controller
 
     public function demote(Request $request, $id)
     {
-        $request->validate(['password' => 'required|string']);
+        $request->validate(['password' => 'required|string', 'otp' => 'nullable|string|max:20']);
         $me = $request->user();
-        $this->security->requirePassword($me, $request->password);
+        $this->security->requireSensitive($me, $request->password, $request->otp);
 
         $target = $this->staffTarget($id);
         if ($target->id === $me->id || $target->is_head_staff) {
@@ -228,9 +230,9 @@ class StaffAccountController extends Controller
 
     public function suspend(Request $request, $id)
     {
-        $request->validate(['password' => 'required|string']);
+        $request->validate(['password' => 'required|string', 'otp' => 'nullable|string|max:20']);
         $me = $request->user();
-        $this->security->requirePassword($me, $request->password);
+        $this->security->requireSensitive($me, $request->password, $request->otp);
 
         $target = $this->staffTarget($id);
         if ($target->id === $me->id || $target->is_head_staff) {
@@ -296,24 +298,23 @@ class StaffAccountController extends Controller
             return response()->json(['message' => 'Change your own password from My Account.'], 422);
         }
 
-        $temporary = $this->security->temporaryPassword();
-        $target->password = Hash::make($temporary);
-        $target->has_account = 1;
-        $target->must_change_password = true;
-        $target->password_changed_at = null;
-        $target->failed_login_attempts = 0;
-        $target->locked_until = null;
-        $target->save();
-        $this->security->revokeSessions($target);
+        // No password is made or shown: the old one stops working and a one-time activation
+        // slip is printed. The staff member chooses their own password with it.
+        $target->forceFill([
+            'has_account' => 1,
+            'failed_login_attempts' => 0,
+            'locked_until' => null,
+        ])->save();
+        $slip = app(ActivationSlipService::class)->issue($target, $me);
 
-        $this->createLog('Reset Staff Password', "Reset the password of {$target->user_code} (temporary password issued)");
+        $this->createLog('Reset Staff Password', "Reset the password of {$target->user_code}: the old password no longer works and an activation slip was printed");
         $this->security->alert($target, 'password_reset', 'Password reset',
-            'The Head Staff reset your password. Sign in with the temporary password and choose a new one.');
+            'The Head Staff reset your password and printed an activation slip for you. Use "Activate my account" on the sign-in page to choose a new password.');
         $this->security->alertAllStaff('password_reset', 'Staff password reset',
             "The password of {$this->fullName($target)} ({$target->user_code}) was reset by the Head Staff.", $target->id);
 
-        // Shown to the Head Staff exactly once.
-        return response()->json(['message' => 'Temporary password created.', 'temporary_password' => $temporary]);
+        // Shown to the Head Staff exactly once, to be printed.
+        return response()->json(['message' => 'Activation slip ready.', 'activation_slip' => $slip]);
     }
 
     // ------------------------------------------------------------------

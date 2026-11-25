@@ -187,7 +187,7 @@ export default function ReportHistoryPanel({
             const TypeIcon = TYPE_ICON[it.type] ?? CalendarDays;
             const FormatIcon = FORMAT_ICON[it.format] ?? FileText;
             return (
-              <div key={it.id} className="flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/[0.04] p-4 sm:flex-row sm:items-center sm:p-5">
+              <div key={it.id} className="flex flex-col gap-4 dash-tile rounded-2xl p-4 sm:flex-row sm:items-center sm:p-5">
                 <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ${TYPE_TINT[it.type] ?? TYPE_TINT.attendance}`}>
                   <TypeIcon className="h-6 w-6" />
                 </span>

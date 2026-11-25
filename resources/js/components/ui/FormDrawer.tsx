@@ -1,6 +1,6 @@
 import type { FormEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useLanguage } from "../../i18n/LanguageContext";
 import SlideOutGhost from "./SlideOutGhost";
 
@@ -17,17 +17,20 @@ export default function FormDrawer({
   footer,
   children,
   z = "z-50",
+  wide = false,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   onClose: () => void;
   onSubmit?: (e: FormEvent<HTMLFormElement>) => void;
-  footer: ReactNode;
+  footer?: ReactNode;
   children: ReactNode;
   z?: string;
+  /** A wider content area (for two-column layouts such as the event budget). */
+  wide?: boolean;
 }) {
   const { t } = useLanguage();
-  const panelClass = `resident-form-panel slide-over-in fixed inset-y-0 right-0 ${z} flex w-full flex-col overflow-hidden border-l border-white/10 bg-[#0A0E1A] shadow-2xl sm:w-1/2`;
+  const panelClass = `resident-form-panel slide-over-in staff-drawer-panel fixed ${z} flex flex-col overflow-hidden bg-[#0A0E1A]`;
   const inner = (
     <>
       <img
@@ -37,22 +40,24 @@ export default function FormDrawer({
         className="pointer-events-none absolute bottom-[-4rem] right-[-4rem] z-0 h-[28rem] w-[28rem] select-none object-contain opacity-[0.06] sm:h-[40rem] sm:w-[40rem]"
       />
       <div className="relative z-10 flex-1 overflow-y-auto px-6 py-10 sm:px-12 sm:py-14">
-        <div className="mx-auto w-full max-w-5xl">
+        <div className={`mx-auto w-full ${wide ? "max-w-[1280px]" : "max-w-5xl"}`}>
           <button
             type="button"
             onClick={onClose}
-            className="mb-8 inline-flex items-center gap-2 text-base font-semibold text-white transition hover:opacity-70"
+            className="dash-tile inline-flex min-h-10 items-center gap-1.5 rounded-full px-4 text-sm font-semibold text-white/80 hover:text-white transition mb-8"
           >
-            <ArrowLeft className="h-5 w-5" /> {t("cancel")}
+            <ChevronLeft className="h-4 w-4" /> {t("cancel")}
           </button>
           <h1 className="text-center font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl">{title}</h1>
           {subtitle && <p className="mx-auto mt-3 max-w-md text-center text-base text-white/60">{subtitle}</p>}
           <div className="mt-10 space-y-10">{children}</div>
         </div>
       </div>
-      <div className="relative z-10 shrink-0 border-t border-white/10 bg-[#0A0E1A] px-6 py-4 sm:px-12">
-        <div className="mx-auto w-full max-w-5xl">{footer}</div>
-      </div>
+      {footer && (
+        <div className="relative z-10 shrink-0 border-t border-white/10 bg-[#0A0E1A] px-6 py-4 sm:px-12">
+          <div className={`mx-auto w-full ${wide ? "max-w-[1280px]" : "max-w-5xl"}`}>{footer}</div>
+        </div>
+      )}
     </>
   );
   // Always rendered at the top of <body>, so the panel and its dimmed backdrop
@@ -61,7 +66,7 @@ export default function FormDrawer({
   const drawer = (
     <>
       <SlideOutGhost />
-      <div className={`fixed inset-0 ${z} bg-black/80`} onClick={onClose} />
+      <div className={`staff-drawer-backdrop ${z} bg-black/80`} onClick={onClose} />
       {onSubmit ? (
         <form onSubmit={onSubmit} noValidate className={panelClass}>{inner}</form>
       ) : (

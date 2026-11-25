@@ -40,7 +40,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   }, []);
 
   const navItems = [
-    { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { key: "dashboard", label: "Overview", icon: LayoutDashboard },
     { key: "qr", label: "My QR Code", icon: QrCode },
     { key: "attendance", label: "Attendance", icon: ClipboardCheck },
     { key: "events", label: "Events", icon: CalendarDays },
@@ -110,11 +110,8 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
             />
           </div>
           <div>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-[#7DD8CB] font-medium">
-              BARANGAY PIAO
-            </p>
-            <h1 className="font-display text-[15px] font-bold text-white whitespace-nowrap leading-tight">
-              e-Membership
+            <h1 className="font-display text-lg font-extrabold text-white whitespace-nowrap leading-tight">
+              PiaoConnect
             </h1>
           </div>
         </div>

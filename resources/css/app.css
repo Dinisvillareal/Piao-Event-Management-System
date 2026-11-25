@@ -131,25 +131,33 @@ input[type="password"]::-ms-reveal {
   }
 }
 
-/* Right-anchored slide-over used by every staff form (same as Create New Event). */
+/* Full-page staff forms (same as Edit Record): they simply open and close, no animation. */
 @keyframes slideOverIn {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
-.slide-over-in { animation: slideOverIn 280ms ease-out; }
+.slide-over-in { animation: none; }
+
+/* Slide-over forms fill the whole page area (like Edit Record): from the sidebar to the right edge and from just under
+   the top header down, so the header stays visible and clickable. --staff-panel-top is measured in Staff.tsx. */
+.staff-drawer-panel { top: var(--staff-panel-top, 73px); bottom: 0; left: 0; right: 0; }
+@media (min-width: 1280px) { .staff-drawer-panel { left: 340px; } }
+.staff-drawer-backdrop { position: fixed; top: var(--staff-panel-top, 73px); right: 0; bottom: 0; left: 0; }
+@keyframes slideBackdropIn { from { opacity: 0; } to { opacity: 1; } }
+@media (min-width: 1280px) { .staff-drawer-backdrop { left: 340px; } }
 @media (prefers-reduced-motion: reduce) { .slide-over-in { animation: none; } }
 
 /* ...and the way back out (see SlideOutGhost): the panel slides off to the right while its backdrop fades. */
 @keyframes slideOverOut {
-  from { transform: translateX(0); }
-  to { transform: translateX(100%); }
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 @keyframes slideBackdropOut {
   from { opacity: 1; }
   to { opacity: 0; }
 }
-.slide-over-out { animation: slideOverOut 240ms ease-in forwards; pointer-events: none; }
-.slide-backdrop-out { animation: slideBackdropOut 240ms ease-in forwards; pointer-events: none; }
+.slide-over-out { animation: none; display: none; pointer-events: none; }
+.slide-backdrop-out { animation: none; display: none; pointer-events: none; }
 
 /* Staff dashboard "upcoming events" timeline card: in light mode the body is
    plain white; the card has no outer border in either mode. */
@@ -202,6 +210,37 @@ html[data-theme="light"] .dash-shortcut:hover{border-color:rgba(46,142,130,.55) 
 html[data-theme="light"] .dash-shortcut:hover .dash-shortcut-icon{background-color:rgba(79,190,176,.28) !important}
 html[data-theme="light"] .dash-shortcut:hover .dash-shortcut-label{color:#0F172A !important}
 
+
+/* Page titles: one fixed-width gradient so every title shows the same colours from its first letter
+   (a short word like "Events" no longer ends up a different shade from a longer one). */
+.page-title-gradient {
+  background-image: linear-gradient(90deg, #F6D365 0%, #A9C98A 28%, #5BBBA6 55%, #2A8A93 78%, #146088 100%);
+  background-size: 576px 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+}
+.page-title-gradient.page-title-short { background-size: 290px 100%; }
+.page-title-gradient.page-title-fit { background-size: 100% 100%; display: inline-block; }
+
+/* Staff Dashboard "bento" layout: a calm canvas with rounded cards. Dark theme = slightly lighter dark
+   cards on the navy canvas; light theme = white cards on a soft grey canvas. */
+.dash-canvas { background-color: #0A0E1A; }
+.dash-card { background-color: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.08); }
+.dash-tile { background-color: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.07); transition: border-color .15s, background-color .15s, filter .15s; }
+.dash-tile:hover { background-color: rgba(255,255,255,.08); }
+html[data-theme="light"] .dash-canvas { background-color: #ffffff !important; }
+html[data-theme="light"] .dash-card { background-color: #ffffff !important; border-color: #E8EBEF; box-shadow: 0 6px 24px rgba(15,23,42,.06); }
+html[data-theme="light"] .dash-tile { background-color: #F1F3F5 !important; border-color: transparent; }
+html[data-theme="light"] .dash-tile:hover { background-color: #E6F5F2 !important; border-color: rgba(46,142,130,.45); }
+@media print {
+  .dash-card { background: #fff !important; border: 1px solid #d9dee5 !important; box-shadow: none !important; }
+  .dash-card, .dash-card * { color: #0F172A !important; }
+}
+.dash-mint { background-color: rgba(79,190,176,.10) !important; border: 1px solid rgba(79,190,176,.35) !important; }
+html[data-theme="light"] .dash-mint { background-color: #E6F5F2 !important; border-color: rgba(46,142,130,.45) !important; }
 
 /* Card colours for the phone/tablet table layout: the dark theme needs real white lines (the old
    "currentColor" border was dark-on-dark and vanished); the light theme keeps a soft slate line. */
@@ -276,3 +315,95 @@ html:not([data-theme="light"]) [class~="border-white/[0.06]"] { border-color: rg
 :where(html:not([data-theme="light"]) [class~="bg-[#DCEAE5]"]),
 :where(html:not([data-theme="light"]) [class~="bg-[#E6E0D3]"]),
 :where(html:not([data-theme="light"]) [class~="bg-[#ddd5ca]"]) { color: #1A1A1A; }
+
+/* Frosted-glass panel over a cover photo (resident profile): see-through, with the photo blurred behind it. */
+.profile-glass {
+  background: rgba(10, 14, 26, 0.38);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  backdrop-filter: blur(14px) saturate(1.3);
+}
+
+/* Translucent "live" gradient button (resident profile: View QR code): colours flow slowly, with a soft light sweep. */
+.profile-glass-btn {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(110deg,
+    rgba(79, 190, 176, 0.45), rgba(230, 180, 80, 0.38), rgba(236, 120, 170, 0.38),
+    rgba(120, 140, 240, 0.40), rgba(79, 190, 176, 0.45));
+  background-size: 300% 100%;
+  animation: profile-glass-flow 7s linear infinite;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+.profile-glass-btn::after,
+.form-glass-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 35%, rgba(255, 255, 255, 0.35) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: profile-glass-sheen 4.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes profile-glass-flow {
+  from { background-position: 0% 50%; }
+  to { background-position: 300% 50%; }
+}
+@keyframes profile-glass-sheen {
+  0%, 55% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+.form-glass-btn {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(110deg,
+    rgba(124, 92, 246, 0.50), rgba(59, 110, 240, 0.48), rgba(52, 190, 130, 0.46),
+    rgba(240, 200, 70, 0.46), rgba(124, 92, 246, 0.50));
+  background-size: 300% 100%;
+  animation: profile-glass-flow 7s linear infinite;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+.profile-glass-btn:hover, .form-glass-btn:hover { filter: brightness(1.15); animation-duration: 3.5s; }
+.form-glass-btn:active { transform: scale(0.98); }
+.profile-glass-btn:active { transform: scale(0.98); }
+@media (prefers-reduced-motion: reduce) {
+  .profile-glass-btn, .profile-glass-btn::after, .form-glass-btn, .form-glass-btn::after { animation: none; }
+}
+
+/* Dashboard hero card: yellow > green > teal > blue colours that slowly flow (same in light and dark theme). */
+.dash-hero-live {
+  background-image: linear-gradient(100deg, #F6D365 0%, #A9C98A 28%, #5BBBA6 55%, #2A8A93 78%, #146088 100%) !important;
+  background-size: 200% 200%;
+  animation: dash-hero-flow 14s ease-in-out infinite alternate;
+}
+@keyframes dash-hero-flow {
+  from { background-position: 0% 40%; }
+  to { background-position: 100% 60%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dash-hero-live { animation: none; }
+}
+
+/* Main action buttons (Register resident, Generate Report...): dark navy with a slow, live colour flow. */
+.btn-live-navy {
+  background-image: linear-gradient(110deg, #10264A 0%, #1A4373 25%, #135863 50%, #1A4373 75%, #10264A 100%) !important;
+  background-size: 300% 100%;
+  animation: btn-live-navy-flow 9s ease-in-out infinite alternate;
+}
+.btn-live-navy:hover { filter: brightness(1.2); animation-duration: 4s; }
+.btn-live-navy:disabled { animation: none; }
+@keyframes btn-live-navy-flow {
+  from { background-position: 0% 50%; }
+  to { background-position: 100% 50%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-live-navy { animation: none; }
+}

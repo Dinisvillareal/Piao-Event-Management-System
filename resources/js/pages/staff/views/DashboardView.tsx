@@ -4,7 +4,7 @@ import { SYSTEM_URL } from "../../../lib/siteUrl";
 import { useClockFormat } from "../../../lib/clockFormat";
 import React, { useState, useEffect, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
-import { UserPlus, CalendarPlus, ScanLine, Bell, BarChart3, Users, Award, CalendarDays, Undo2, Download, Activity, Clock } from "lucide-react";
+import { UserPlus, CalendarPlus, ScanLine, Bell, BarChart3, Users, Award, CalendarDays, Undo2, Download, Activity, Clock, ArrowUpRight, Plus } from "lucide-react";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
@@ -319,7 +319,7 @@ export default function DashboardView({
       route: "memberships",
       description: t("dashActiveMembershipTypesDesc"),
       icon: Award,
-      gradient: "from-gold-400 to-gold-700",
+      gradient: "from-sage-400 to-sage-700",
     },
     {
       value: stats.events,
@@ -327,7 +327,7 @@ export default function DashboardView({
       route: "events",
       description: upcomingEvents.length > 0 ? t("dashUpcomingThisYear").replace("{n}", String(upcomingEvents.length)) : t("dashUpcomingPastThisYear"),
       icon: CalendarDays,
-      gradient: "from-sage-800 to-[#1C2E2B]",
+      gradient: "from-sage-400 to-sage-700",
     },
     {
       value: overdueBorrows.length,
@@ -335,11 +335,11 @@ export default function DashboardView({
       route: "returns",
       description: overdueBorrows.length > 0 ? t("dashFlaggedReview") : t("dashAllReturnedOnTime"),
       icon: Undo2,
-      gradient: "from-[#8A3D2C] to-[#5C2A1E]",
+      gradient: "from-sage-400 to-sage-700",
     }
   ];
 
-  const quickActions = [
+  const quickActions: { label: string; icon: any; onClick: () => void }[] = [
     { label: t("dashAddResident"), icon: UserPlus, onClick: () => setActive("residents") },
     { label: t("dashCreateEvent"), icon: CalendarPlus, onClick: () => setActive("events") },
     { label: t("dashScanQr"), icon: ScanLine, onClick: () => setActive("scan") },
@@ -353,7 +353,7 @@ export default function DashboardView({
     // bare spinner, so the page's actual layout is visible immediately and
     // nothing jumps around once the real numbers arrive.
     return (
-      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] px-6 py-8 sm:px-10 sm:py-9">
+      <div className="dash-canvas -m-3 sm:-m-6 min-h-[calc(100dvh-73px)] px-6 py-8 sm:px-10 sm:py-9">
         <div className="w-full space-y-10">
           <div className="relative flex flex-col gap-6 py-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-5">
@@ -400,341 +400,348 @@ export default function DashboardView({
   );
 
   return (
-    // Full-bleed dark navy page -- cancels the shared content area's own
-    // padding so the Dashboard reads as its own immersive page, while every
-    // other staff view keeps its untouched light "paper" background.
-    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A]">
-      <div className="w-full space-y-6 px-6 py-8 sm:px-10 sm:py-9">
-        {/* Header: who / when on the left, the live clock + sync state on the right. */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="font-display text-2xl font-extrabold text-white sm:text-3xl">
-              {t("welcomeBack")}, {memberName}
-            </h1>
-            <p className="mt-1.5 text-sm text-white/55">
-              {currentTime.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+    // Full-bleed "bento" page: pill bars on top, then cards of different weights (dark pill, white cards,
+    // a live-gradient panel, a ticket-style QR card and one deep-green card).
+    <div className="dash-canvas -m-3 sm:-m-6 min-h-[calc(100dvh-73px)]">
+      <div className="mx-auto w-full max-w-[1600px] space-y-5 px-4 py-6 sm:px-8 sm:py-8">
+        {/* Row 1: dark brand pill + white action pill */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          <div className="flex min-w-0 flex-col justify-center px-2">
+            <p className="text-sm font-semibold text-white/55">{t("welcomeBack")}</p>
+            <p className="truncate font-display text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+              <span
+                style={{
+                  backgroundImage: "linear-gradient(90deg, #F6D365 0%, #A9C98A 28%, #5BBBA6 55%, #2A8A93 78%, #146088 100%)",
+                  WebkitBackgroundClip: "text",
+                  backgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  color: "transparent",
+                }}
+              >
+                {memberName}
+              </span>
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden text-right sm:block">
-              <div className="flex items-center justify-end gap-2">{liveBadge}</div>
-              <p className="mt-1 text-xs text-white/40">{syncText}</p>
-            </div>
+
+          <div className="dash-card flex flex-wrap items-center gap-x-1 gap-y-2 rounded-[36px] p-3 sm:flex-nowrap">
+            {[quickActions[0], quickActions[1], quickActions[3]].map((action, i) => (
+              <React.Fragment key={action.label}>
+                {i > 0 && <span className="hidden h-7 w-px shrink-0 bg-white/10 sm:block" />}
+                <button
+                  onClick={action.onClick}
+                  className="flex min-h-12 min-w-0 flex-1 items-center justify-center gap-2.5 rounded-full px-3 text-sm font-semibold text-white/85 transition hover:bg-white/[0.06] sm:px-4"
+                >
+                  <action.icon className="h-5 w-5 shrink-0 text-[#2E8E82]" />
+                  <span className="truncate">{action.label}</span>
+                </button>
+              </React.Fragment>
+            ))}
             <button
-              type="button"
-              onClick={toggleClockHour12}
-              title={clockHour12 ? "24-hour" : "12-hour"}
-              aria-label={clockHour12 ? "Switch to 24-hour clock" : "Switch to 12-hour clock"}
-              className="flex cursor-pointer select-none items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 transition hover:border-[#4FBEB0]/40 hover:bg-white/[0.08] active:scale-95"
+              onClick={quickActions[4].onClick}
+              className="dash-tile flex min-h-12 shrink-0 items-center gap-2 rounded-full px-5 text-sm font-bold text-white/85 sm:ml-2"
             >
-              <Clock className="h-4 w-4 text-[#4FBEB0]" />
-              <span className="font-display text-lg font-bold tabular-nums text-white">
-                {currentTime.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: clockHour12 })}
-              </span>
+              {React.createElement(quickActions[4].icon, { className: "h-4 w-4 text-[#2E8E82]" })}
+              {quickActions[4].label}
+            </button>
+            <button
+              onClick={quickActions[2].onClick}
+              className="flex min-h-12 shrink-0 items-center gap-2 rounded-full bg-[#2E8E82] px-6 text-sm font-bold text-white shadow-sm transition hover:bg-[#267a70] active:scale-[0.98]"
+            >
+              {quickActions[2].label}
             </button>
           </div>
         </div>
 
         <FeedWarning failedCount={failedCount} lastOkAt={lastSyncedAt} onRetry={retryFeeds} retrying={retrying} />
 
-        {/* Key numbers */}
-        <div className="report-stagger grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-          {statsCards.map((item, idx) => (
-            <KpiCard key={idx} value={item.value} label={item.label} description={item.description} icon={item.icon} gradient={item.gradient} delay={idx * 70} onClick={() => setActive(item.route)} />
-          ))}
-        </div>
-
-        {overdueBorrows.length > 0 && (
-          <button
-            onClick={() => setActive("returns")}
-            className="flex w-full flex-wrap items-center justify-between gap-4 rounded-2xl border border-gold-500/25 bg-gold-500/[0.08] p-5 text-left transition-colors hover:bg-gold-500/[0.12]"
-          >
-            <div>
-              <h2 className="text-lg font-bold text-gold-300">{t("overdueBorrowsTitle")}</h2>
-              <p className="mt-1 text-sm text-gold-100/80">
-                {overdueBorrows.length} {overdueBorrows.length === 1 ? t("eventSingularLabel") : t("eventPluralLabel")} &mdash; {t("overdueBorrowsSubtitle")}
-              </p>
-            </div>
-            <span className="shrink-0 rounded-full bg-gold-500 px-4 py-2.5 text-xs font-bold text-[#08130F]">
-              {t("reviewReturnsLabel")}
-            </span>
-          </button>
-        )}
-
-        {/* Shortcuts -- real navigation only. */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {quickActions.map((action) => (
-            <button
-              key={action.label}
-              onClick={action.onClick}
-              className="dash-shortcut group flex min-h-[52px] items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.04] py-2.5 pl-2.5 pr-4 sm:gap-3 sm:pr-5 text-left transition hover:border-[#4FBEB0]/40 hover:bg-white/[0.07]"
-            >
-              <span className="dash-shortcut-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/10 text-[#4FBEB0] transition group-hover:bg-[#4FBEB0]/20">
-                <action.icon className="h-[18px] w-[18px]" />
-              </span>
-              <span className="dash-shortcut-label min-w-0 line-clamp-2 text-[13px] font-semibold leading-tight sm:text-sm text-white/80 group-hover:text-white">{action.label}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-          <div className="flex flex-col gap-4">
-          {/* Today's Live Snapshot -- replaces the old static activity log
-              with a genuinely real-time panel: a ticking clock plus counts
-              derived from data the Dashboard already fetches (today's
-              activity log, overdue borrows, upcoming events), silently
-              refreshed every 30s so the numbers move on their own. */}
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06]">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="font-display text-xl font-bold text-white">{t("dashTodaySnapshot")}</h2>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#7DD8CB]">
-                    <span className="relative flex h-1.5 w-1.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75"></span>
-                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#4FBEB0]"></span>
-                    </span>
-                    {t("liveLabel")}
-                  </span>
-                </div>
-                <p className="mt-1 text-[15px] text-white/50">
-                  {currentTime.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' })}
+        {/* Row 2: attention card + live clock panel (left), greeting + events + stat cards (right) */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,4fr)_minmax(0,8fr)]">
+          <div className="dash-card flex flex-col rounded-[32px] p-3">
+            <div className="flex flex-1 flex-col p-3">
+              <div className="flex items-start justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] px-3 py-1.5 text-xs font-bold text-white">
+                  <Undo2 className="h-3.5 w-3.5 text-[#F5C451]" />
+                  {overdueBorrows.length > 0 ? `${overdueBorrows.length} ${t("dashFlaggedReview")}` : t("dashAllReturnedOnTime")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setActive("returns")}
+                  aria-label={t("reviewReturnsLabel")}
+                  title={t("reviewReturnsLabel")}
+                  className="dash-tile flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white/80"
+                >
+                  <ArrowUpRight className="h-5 w-5" />
+                </button>
+              </div>
+              <h2 className="mt-8 font-display text-2xl font-extrabold leading-tight text-white">
+                {overdueBorrows.length > 0 ? t("overdueBorrowsTitle") : t("dashAllReturnedOnTime")}
+              </h2>
+              {overdueBorrows.length > 0 && (
+                <p className="mt-2 text-sm text-white/55">
+                  {overdueBorrows.length} {overdueBorrows.length === 1 ? t("eventSingularLabel") : t("eventPluralLabel")} &mdash; {t("overdueBorrowsSubtitle")}
                 </p>
+              )}
+            </div>
+            <div className="dash-hero-live relative overflow-hidden rounded-[26px] bg-gradient-to-br from-[#F6D365] to-[#146088] p-5 text-[#0B2A3A]">
+              <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-white/30 blur-3xl" />
+              <p className="relative text-sm font-medium text-[#0B2A3A]/75">
+                {currentTime.toLocaleDateString(locale, { weekday: "long", month: "long", day: "numeric", year: "numeric" })}
+              </p>
+              <button
+                type="button"
+                onClick={toggleClockHour12}
+                title={clockHour12 ? "24-hour" : "12-hour"}
+                aria-label={clockHour12 ? "Switch to 24-hour clock" : "Switch to 12-hour clock"}
+                className="relative mt-3 flex w-fit cursor-pointer select-none items-center gap-2.5 rounded-full bg-white/45 px-5 py-2.5 transition hover:bg-white/60 active:scale-[0.98]"
+              >
+                <Clock className="h-4 w-4 text-[#0B2A3A]" />
+                <span className="font-display text-xl font-bold tabular-nums text-[#0B2A3A]">
+                  {currentTime.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: clockHour12 })}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div className="dash-card rounded-[32px] p-3">
+            <div className="grid grid-cols-1 gap-5 p-3 xl:grid-cols-2">
+              <div className="flex min-w-0 flex-col">
+                <h2 className="font-display text-2xl font-extrabold leading-tight text-white">{t("dashUpcomingTitle")}</h2>
+
+                {upcomingEvents.length === 0 ? (
+                  <p className="mt-5 rounded-2xl bg-white/[0.04] px-5 py-6 text-sm text-white/45">{t("dashNoUpcomingEvents")}</p>
+                ) : (
+                  <ul className="mt-5 flex flex-col gap-2.5">
+                    {upcomingEvents.slice(0, 3).map((ev, i) => {
+                      const d = new Date(ev.event_start ?? ev.date);
+                      const valid = !isNaN(d.getTime());
+                      const first = i === 0;
+                      const daysLeft = valid ? Math.max(0, Math.ceil((d.getTime() - currentTime.getTime()) / 86400000)) : 0;
+                      const ring = valid ? Math.max(0.06, Math.min(1, 1 - daysLeft / 30)) : 0.06;
+                      const circ = 2 * Math.PI * 22;
+                      return (
+                        <li key={ev.id ?? i}>
+                          <button
+                            onClick={() => setActive("events")}
+                            className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition active:scale-[0.99] ${
+                              first ? "bg-gradient-to-br from-[#0B0F14] to-[#18212B] text-white shadow-[0_14px_30px_-16px_rgba(8,12,20,0.8)] hover:brightness-110" : "dash-tile hover:border-[#4FBEB0]/50"
+                            }`}
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[15px] font-bold text-white">{tc(ev.name ?? ev.title, language as any)}</span>
+                              <span className={`mt-0.5 block truncate text-xs ${first ? "text-white/60" : "text-white/50"}`}>
+                                {valid && `${d.toLocaleDateString(locale, { month: "short", day: "numeric", year: "numeric" })} · ${d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" })}`}
+                                {ev.location ? ` · ${tc(ev.location, language as any)}` : ""}
+                              </span>
+                            </span>
+                            {valid && (
+                              <span className="relative flex h-12 w-12 shrink-0 items-center justify-center">
+                                <svg viewBox="0 0 52 52" className="absolute inset-0 -rotate-90">
+                                  <circle cx="26" cy="26" r="22" fill="none" stroke={first ? "rgba(255,255,255,0.18)" : "rgba(46,142,130,0.18)"} strokeWidth="4" />
+                                  <circle cx="26" cy="26" r="22" fill="none" stroke={first ? "#F5C451" : "#2E8E82"} strokeWidth="4" strokeLinecap="round" strokeDasharray={`${circ * ring} ${circ}`} />
+                                </svg>
+                                <span className="relative text-[11px] font-extrabold text-white">{daysLeft}d</span>
+                              </span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                <div className="mt-5 flex items-center gap-3">
+                  <button onClick={() => setActive("events")} className="inline-flex min-h-11 items-center rounded-full bg-[#2E8E82] px-6 text-sm font-bold text-white shadow-sm transition hover:bg-[#267a70] active:scale-[0.98]">
+                    {t("dashCreateEvent")}
+                  </button>
+                  <button onClick={() => setActive("events")} className="inline-flex min-h-11 items-center px-3 text-sm font-bold text-white/75 transition hover:text-white">
+                    {t("dashViewAll")}
+                  </button>
+                </div>
+              </div>
+
+              <div className="dash-card flex min-w-0 flex-col gap-3 rounded-[26px] p-3">
+                <div className="report-stagger grid grid-cols-2 gap-3">
+                  {statsCards.map((item, idx) => (
+                    <KpiCard key={idx} value={item.value} label={item.label} description={item.description} icon={item.icon} gradient={item.gradient} plain delay={idx * 70} className="!shadow-[0_14px_34px_rgba(15,23,42,0.18)]" onClick={() => setActive(item.route)} />
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3.5">
-              {(() => {
-                const snapshotTiles = [
-                  { label: t("dashStaffActionsToday"), value: stats.actionsToday, icon: Activity, tone: "text-[#4FBEB0]" },
-                  { label: t("dashStaffActiveToday"), value: stats.activeStaffToday, icon: Users, tone: "text-[#7DD8CB]" },
-                  { label: t("dashEventsToday"), value: stats.eventsToday, icon: CalendarDays, tone: "text-gold-400" },
-                  { label: t("dashNeedsAttention"), value: overdueBorrows.length, icon: Bell, tone: overdueBorrows.length > 0 ? "text-gold-300" : "text-[#4FBEB0]" },
-                ];
-
-                return snapshotTiles.map((tile) => (
-                  <div key={tile.label} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.03] p-3 min-[420px]:p-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="min-w-0 truncate font-display text-lg font-extrabold tabular-nums text-white min-[420px]:text-2xl">{tile.value}</span>
-                      <tile.icon className={`h-4 w-4 shrink-0 ${tile.tone}`} />
-                    </div>
-                    <p className="mt-1.5 text-[11px] font-semibold uppercase tracking-wide text-white/45">{tile.label}</p>
-                  </div>
-                ));
-              })()}
-            </div>
-
-            <div className="mt-5 border-t border-white/10 pt-4">
-              <p className="text-[11px] text-white/35">
+            {/* Legend-style pill: today's live numbers */}
+            <div className="dash-tile dash-mint mx-3 mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-full px-5 py-3">
+              {liveBadge}
+              {[
+                { label: t("dashStaffActionsToday"), value: stats.actionsToday, dot: "bg-[#2E8E82]" },
+                { label: t("dashStaffActiveToday"), value: stats.activeStaffToday, dot: "bg-[#F5C451]" },
+                { label: t("dashEventsToday"), value: stats.eventsToday, dot: "bg-[#146088]" },
+              ].map((x) => (
+                <span key={x.label} className="inline-flex items-center gap-2 text-xs font-semibold text-white/75">
+                  <span className={`h-2 w-2 rounded-full ${x.dot}`} />
+                  {x.label}
+                  <span className="font-display text-sm font-extrabold tabular-nums text-white">{x.value}</span>
+                </span>
+              ))}
+              <span className="ml-auto text-[11px] text-white/40">
                 {!lastAction
                   ? t("dashNoStaffActivity")
                   : t("dashLastAction")
                       .replace("{action}", String(lastAction?.action ?? "—"))
                       .replace("{user}", String(lastAction?.user_code ?? "staff"))
                       .replace("{time}", formatActivityDate(lastAction?.created_at ?? ""))}
-              </p>
-              <p className="mt-1 text-[11px] uppercase tracking-wide text-white/25">{t("dashAutoRefresh")}</p>
+              </span>
             </div>
           </div>
+        </div>
 
-          {/* Upcoming events -- an agenda: dark header, then one row per event
-              (date / name + venue / weekday + time). The rows share the card's
-              height equally, so it always ends level with the Budget Snapshot. */}
-          <div className="timeline-card flex flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
-            <div className="flex items-center gap-3 bg-gradient-to-r from-[#0A0E1A] via-[#123A38] to-[#1C5850] px-5 py-4">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10">
-                <CalendarDays className="h-4 w-4 text-white" />
-              </span>
-              <h2 className="min-w-0 flex-1 truncate font-display text-lg font-bold text-white">{t("dashUpcomingTitle")}</h2>
-              <button onClick={() => setActive("events")} className="-mr-2 inline-flex min-h-10 shrink-0 items-center px-2 text-xs font-bold text-white/70 transition hover:text-white hover:underline">
-                {t("dashViewAll")}
+        {/* Row 3: ticket-style QR card + deep-green budget card */}
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+          <div className="dash-card relative flex flex-col overflow-hidden rounded-[32px] sm:flex-row">
+            {/* The QR itself stays in the page (hidden) -- the poster is built from it. */}
+            <QRCodeCanvas
+              ref={setQrEl}
+              id="system-qr-code"
+              style={{ display: "none" }}
+              value={appUrl || " "}
+              size={1200}
+              bgColor="#ffffff"
+              fgColor="#0A0E1A"
+              level="H"
+              includeMargin={true}
+            />
+            <div className="flex items-center justify-center p-6 sm:w-64 sm:shrink-0">
+              <button
+                type="button"
+                onClick={() => posterPreview && setShowPosterPreview(true)}
+                aria-label={t("dashViewPoster")}
+                className="group relative w-full max-w-[13rem] overflow-hidden rounded-2xl bg-white/[0.03] p-1.5 transition hover:ring-2 hover:ring-[#4FBEB0]/60"
+              >
+                {posterPreview ? (
+                  <img src={posterPreview} alt={t("dashSystemQrCode")} className="mx-auto aspect-[1240/1754] w-full rounded-lg object-contain shadow-md" />
+                ) : posterFailed ? (
+                  <div className="mx-auto flex aspect-[1240/1754] w-full items-center justify-center rounded-lg bg-white/[0.04] p-4 text-center text-sm text-white/50">{t("dashPosterPreviewUnavailable")}</div>
+                ) : (
+                  <Skeleton className="mx-auto aspect-[1240/1754] w-full rounded-lg" />
+                )}
+                <span className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">{t("dashViewPoster")}</span>
               </button>
             </div>
 
-            {upcomingEvents.length === 0 ? (
-              <p className="px-5 py-6 text-sm text-white/45">{t("dashNoUpcomingEvents")}</p>
-            ) : (
-              <ul className="flex flex-1 flex-col">
-                {upcomingEvents.slice(0, 5).map((ev, i) => {
-                  const d = new Date(ev.event_start ?? ev.date);
-                  const valid = !isNaN(d.getTime());
-                  return (
-                    <li key={ev.id ?? i} className="flex flex-1 border-t border-white/10 first:border-t-0">
-                      <button
-                        onClick={() => setActive("events")}
-                        className="timeline-cell flex w-full items-center gap-4 px-5 py-3 text-left transition hover:bg-white/[0.07]"
-                      >
-                        <span className="flex w-14 shrink-0 flex-col items-center leading-none">
-                          <span className="text-[11px] font-extrabold uppercase text-[#7DD8CB]">{valid ? d.toLocaleDateString(locale, { month: "short" }) : ""}</span>
-                          <span className="mt-1 font-display text-3xl font-extrabold tracking-tight text-white [font-variant-numeric:tabular-nums]">{valid ? String(d.getDate()).padStart(2, "0") : "--"}</span>
-                          <span className="mt-1 text-[11px] font-semibold text-white/45">{valid ? d.getFullYear() : ""}</span>
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-[15px] font-bold text-white">{tc(ev.name ?? ev.title, language as any)}</span>
-                          <span className="mt-0.5 block truncate text-xs text-white/50">{tc(ev.location, language as any)}</span>
-                        </span>
-                        <span className="shrink-0 text-right">
-                          <span className="block text-xs font-bold text-white/85">{valid ? d.toLocaleDateString(locale, { weekday: "short" }) : ""}</span>
-                          <span className="block text-xs text-white/45">{valid ? d.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" }) : ""}</span>
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-          </div>
+            {/* Ticket perforation: dashed line with two notches */}
+            <div className="relative hidden w-0 sm:block">
+              <span className="absolute inset-y-0 left-0 border-l-2 border-dashed border-white/15" />
+              <span className="dash-canvas absolute -left-3 -top-3 h-6 w-6 rounded-full border border-white/10" />
+              <span className="dash-canvas absolute -bottom-3 -left-3 h-6 w-6 rounded-full border border-white/10" />
+            </div>
+            <div className="border-t-2 border-dashed border-white/15 sm:hidden" />
 
-          <div className="space-y-4">
-            {/* System QR Code -- keeps the icon-badge + dashed "scan target"
-                frame layout, but back on the same dark navy card treatment
-                as the rest of the dashboard instead of the light card this
-                briefly became. */}
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06]">
+            <div className="flex min-w-0 flex-1 flex-col justify-center p-6 sm:p-8">
               <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/10">
-                  <ScanLine className="h-5 w-5 text-[#4FBEB0]" />
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#4FBEB0]/15">
+                  <ScanLine className="h-5 w-5 text-[#2E8E82]" />
                 </span>
-                <h2 className="font-display text-xl font-bold text-white">{t("dashSystemQrCode")}</h2>
+                <h2 className="font-display text-2xl font-extrabold text-white">{t("dashSystemQrCode")}</h2>
               </div>
-              <p className="mt-3 text-[15px] text-white/50">
-                {t("dashSystemQrDesc")}
-              </p>
-
-              <div className="mt-5 flex flex-col items-start gap-5 sm:flex-row">
-                {/* The QR itself stays in the page (hidden) -- the poster is built from it. */}
-                <QRCodeCanvas
-                  ref={setQrEl}
-                  id="system-qr-code"
-                  style={{ display: "none" }}
-                  value={appUrl || " "}
-                  size={1200}
-                  bgColor="#ffffff"
-                  fgColor="#0A0E1A"
-                  level="H"
-                  includeMargin={true}
-                />
-                <button
-                  type="button"
-                  onClick={() => posterPreview && setShowPosterPreview(true)}
-                  aria-label={t("dashViewPoster")}
-                  className="group relative w-full shrink-0 overflow-hidden rounded-xl border-2 border-dashed border-white/15 bg-white/[0.03] p-2.5 transition hover:border-[#4FBEB0]/60 sm:w-56"
-                >
-                  {posterPreview ? (
-                    <img src={posterPreview} alt={t("dashSystemQrCode")} className="mx-auto aspect-[1240/1754] w-full max-w-[16rem] rounded-md object-contain shadow-md" />
-                  ) : posterFailed ? (
-                    <div className="mx-auto flex aspect-[1240/1754] w-full max-w-[16rem] items-center justify-center rounded-md bg-white/[0.04] p-4 text-center text-sm text-white/50">{t("dashPosterPreviewUnavailable")}</div>
-                  ) : (
-                    <Skeleton className="mx-auto aspect-[1240/1754] w-full max-w-[16rem] rounded-md" />
-                  )}
-                  <span className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full bg-black/70 px-3 py-1 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">{t("dashViewPoster")}</span>
-                </button>
-                <div className="flex-1">
-                  <p className="font-medium text-white">Barangay e-Membership</p>
-                  <p className="mt-1 text-sm text-white/50">
-                    {t("dashPrintPostHall")}
-                  </p>
-                  <button
-                    onClick={downloadQRCode}
-                    className="group mt-3 inline-flex items-center gap-3 rounded-full border border-[#E5E7EB] bg-white pl-5 pr-1.5 py-1.5 text-[15px] font-semibold text-[#1A1A1A] shadow-sm transition-all duration-300 ease-out hover:bg-[#F3F4F6] hover:shadow-md"
-                  >
-                    {t("dashDownloadQrPoster")}
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F3F4F6] transition-colors duration-300 ease-out group-hover:bg-white">
-                      <Download className="h-4 w-4 text-[#1A1A1A]" />
-                    </span>
-                  </button>
-                </div>
+              <p className="mt-3 text-[15px] text-white/50">{t("dashSystemQrDesc")}</p>
+              <div className="mt-6 border-t border-white/10 pt-5">
+                <p className="font-display text-lg font-bold text-white">Barangay e-Membership</p>
+                <p className="mt-1 text-sm text-white/50">{t("dashPrintPostHall")}</p>
               </div>
-            </div>
-
-            <ConfirmDialog
-              open={showQrDownloadConfirm}
-              icon={<Download className="h-6 w-6" />}
-              title={t("dashDownloadQrConfirmTitle")}
-              body={t("dashDownloadQrConfirmBody")}
-              cancelLabel={t("cancelLabel")}
-              confirmLabel={t("downloadLabel")}
-              onCancel={() => setShowQrDownloadConfirm(false)}
-              z={10100}
-              onConfirm={() => {
-                setShowQrDownloadConfirm(false);
-                setShowPosterPreview(false);
-                performQrDownload();
-              }}
-            />
-            {showPosterPreview && posterPreview && (
-              <Portal><div
-                className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-                onClick={() => setShowPosterPreview(false)}
-                role="dialog"
-                aria-modal="true"
+              <button
+                onClick={downloadQRCode}
+                className="btn-live-navy group mt-5 inline-flex w-fit items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] py-1.5 pl-5 pr-1.5 text-[15px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md active:scale-95"
               >
-                <div className="max-h-full" onClick={(e) => e.stopPropagation()}>
-                  <img src={posterPreview} alt={t("dashSystemQrCode")} className="max-h-[88vh] w-auto rounded-xl shadow-2xl" />
-                  <div className="mt-3 flex justify-center gap-3">
-                    <button onClick={() => setShowQrDownloadConfirm(true)} className="rounded-full bg-sage-700 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-sage-800">{t("dashDownloadQrPoster")}</button>
-                    <button onClick={() => setShowPosterPreview(false)} className="rounded-full border border-white/20 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">{t("closeLabel")}</button>
-                  </div>
-                </div>
-              </div></Portal>
-            )}
-            <StatusModal
-              open={showQrDownloadSuccess}
-              type="success"
-              title={t("dashDownloadComplete")}
-              message={t("dashQrSavedMessage")}
-              okLabel={t("okLabel")}
-              onClose={() => setShowQrDownloadSuccess(false)}
-            />
+                {t("dashDownloadQrPoster")}
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 transition-colors duration-300 ease-out group-hover:bg-white/30">
+                  <Download className="h-4 w-4 text-white" />
+                </span>
+              </button>
+            </div>
+          </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 transition-colors duration-300 hover:bg-white/[0.06]">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-display text-xl font-bold text-white">{t("dashBudgetSnapshot")}</h2>
-                  <p className="mt-1 text-[13px] text-white/50">{t("dashApprovedVsSpent").replace("{quarter}", getQuarterInfo().label)}</p>
-                </div>
-                <button onClick={() => setActive("budget")} className="-mr-2 inline-flex min-h-10 shrink-0 items-center px-2 text-xs font-bold text-[#7DD8CB] hover:underline">
-                  {t("dashViewAll")}
-                </button>
-              </div>
-
-              <div className="mt-4 space-y-3.5">
-                {!budgetSummary || budgetSummary.per_event.length === 0 ? (
-                  <p className="py-2 text-sm text-white/35">{t("dashNoApprovedBudgets")}</p>
-                ) : (
-                  (() => {
-                    // Each bar just gets the next color in this fixed
-                    // sequence, by position -- not tied to the percentage,
-                    // so five events all sitting in the high-80s/90s still
-                    // read as five distinct bars instead of one flat color.
-                    // Every tone here stays inside the navy / gold / teal
-                    // palette -- no maroon/rust.
-                    const barTones = ["bg-gold-500", "bg-[#4FBEB0]", "bg-gold-300", "bg-[#2E8E82]", "bg-gold-600", "bg-[#4FBEB0]/60", "bg-gold-400", "bg-[#2E8E82]/70"];
-                    return budgetSummary.per_event.slice(0, 5).map((ev: any, idx: number) => {
-                    const approved = Number(ev.approved_budget) || 0;
-                    const spent = Number(ev.total_expenses) || 0;
-                    const pct = approved > 0 ? Math.round((spent / approved) * 100) : 0;
-                    const barColor = barTones[idx % barTones.length];
-                    return (
-                      <div key={ev.id}>
-                        <div className="mb-1.5 flex justify-between gap-3 text-[13px]">
-                          <span className="truncate font-semibold text-white/85">{tc(ev.name, language as any)}</span>
-                          <span className="shrink-0 text-white/40">{pct}%</span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.min(pct, 100)}%` }}></div>
-                        </div>
-                      </div>
-                    );
-                    });
-                  })()
-                )}
+          <div className="dash-card relative flex flex-col overflow-hidden rounded-[32px] p-6 sm:p-8">
+            <span className="pointer-events-none absolute -bottom-12 -right-12 h-56 w-56 rounded-full border border-dashed border-white/10" />
+            <span className="pointer-events-none absolute -bottom-4 -right-4 h-32 w-32 rounded-full border border-dashed border-white/10" />
+            <div className="relative flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-display text-2xl font-extrabold uppercase tracking-tight text-white">{t("dashBudgetSnapshot")}</h2>
+                <p className="mt-1 text-[13px] text-white/50">{t("dashApprovedVsSpent").replace("{quarter}", getQuarterInfo().label)}</p>
               </div>
             </div>
 
+            <div className="relative mt-5 flex-1 space-y-3.5">
+              {!budgetSummary || budgetSummary.per_event.length === 0 ? (
+                <p className="py-2 text-sm text-white/45">{t("dashNoApprovedBudgets")}</p>
+              ) : (
+                budgetSummary.per_event.slice(0, 5).map((ev: any, idx: number) => {
+                  const approved = Number(ev.approved_budget) || 0;
+                  const spent = Number(ev.total_expenses) || 0;
+                  const pct = approved > 0 ? Math.round((spent / approved) * 100) : 0;
+                  const barTones = ["bg-[#2E8E82]", "bg-[#F5C451]", "bg-[#4FBEB0]", "bg-[#F5C451]/75", "bg-[#2E8E82]/70"];
+                  return (
+                    <div key={ev.id}>
+                      <div className="mb-1.5 flex justify-between gap-3 text-[13px]">
+                        <span className="truncate font-semibold text-white">{tc(ev.name, language as any)}</span>
+                        <span className="shrink-0 text-white/50">{pct}%</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                        <div className={`h-full rounded-full ${barTones[idx % barTones.length]}`} style={{ width: `${Math.min(pct, 100)}%` }}></div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <button
+              onClick={() => setActive("budget")}
+              className="relative mt-6 inline-flex min-h-11 w-fit items-center gap-2 rounded-full bg-gold-500 px-6 text-sm font-bold text-[#08130F] shadow-sm transition hover:brightness-105 active:scale-[0.98]"
+            >
+              {t("dashViewAll")}
+              <ArrowUpRight className="h-4 w-4" />
+            </button>
           </div>
         </div>
+
+      <ConfirmDialog
+        open={showQrDownloadConfirm}
+        icon={<Download className="h-6 w-6" />}
+        title={t("dashDownloadQrConfirmTitle")}
+        body={t("dashDownloadQrConfirmBody")}
+        cancelLabel={t("cancelLabel")}
+        confirmLabel={t("downloadLabel")}
+        onCancel={() => setShowQrDownloadConfirm(false)}
+        z={10100}
+        onConfirm={() => {
+          setShowQrDownloadConfirm(false);
+          setShowPosterPreview(false);
+          performQrDownload();
+        }}
+      />
+      {showPosterPreview && posterPreview && (
+        <Portal><div
+          className="fixed inset-0 z-[10050] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={() => setShowPosterPreview(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="max-h-full" onClick={(e) => e.stopPropagation()}>
+            <img src={posterPreview} alt={t("dashSystemQrCode")} className="max-h-[88vh] w-auto rounded-xl shadow-2xl" />
+            <div className="mt-3 flex justify-center gap-3">
+              <button onClick={() => setShowQrDownloadConfirm(true)} className="rounded-full bg-sage-700 px-6 py-2.5 text-sm font-bold text-white transition hover:bg-sage-800">{t("dashDownloadQrPoster")}</button>
+              <button onClick={() => setShowPosterPreview(false)} className="rounded-full border border-white/20 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10">{t("closeLabel")}</button>
+            </div>
+          </div>
+        </div></Portal>
+      )}
+      <StatusModal
+        open={showQrDownloadSuccess}
+        type="success"
+        title={t("dashDownloadComplete")}
+        message={t("dashQrSavedMessage")}
+        okLabel={t("okLabel")}
+        onClose={() => setShowQrDownloadSuccess(false)}
+      />
       </div>
     </div>
   );

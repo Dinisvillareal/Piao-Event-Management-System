@@ -112,7 +112,7 @@ export default function FeedbackAlertsPanel() {
     // (static) and only the list below scrolls.
     <div className="lg:flex lg:h-full lg:min-h-0 lg:flex-col">
       <div className="shrink-0">
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+      <div className="dash-card rounded-[28px] p-3">
         <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
           <div className="flex-1 min-w-[220px]">
             <SearchBar value={search} onChange={setSearch} placeholder={t("alertsSearchPlaceholder")} dark />
@@ -145,7 +145,7 @@ export default function FeedbackAlertsPanel() {
             type="button"
             onClick={markAll}
             disabled={unread === 0}
-            className="inline-flex h-11 items-center gap-2 rounded-full border border-white/15 bg-white/[0.04] px-5 text-sm font-semibold text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex h-11 items-center gap-2 dash-card rounded-full px-5 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-40"
           >
             <CheckCheck className="h-4 w-4 text-[#7DD8CB]" />
             {t("alertsMarkAll")}
@@ -157,9 +157,9 @@ export default function FeedbackAlertsPanel() {
       <div className="mt-4 flex h-8 justify-end">
         {lastPage > 1 && !loading && (
           <div className="flex items-center gap-2">
-            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
-            <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-semibold">{page}</span>
-            <button onClick={() => setPage((p) => Math.min(lastPage, p + 1))} disabled={page === lastPage} className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">→</button>
+            <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">←</button>
+            <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-semibold">{page}</span>
+            <button onClick={() => setPage((p) => Math.min(lastPage, p + 1))} disabled={page === lastPage} className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95">→</button>
           </div>
         )}
       </div>
@@ -169,7 +169,7 @@ export default function FeedbackAlertsPanel() {
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)
         ) : rows.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
+          <div className="dash-tile rounded-[28px] border border-dashed border-white/15 p-10 text-center text-white/50">
             <MessageSquareText size={40} className="mx-auto mb-3 text-white/20" />
             <p className="font-semibold text-white">{t("alertsEmpty")}</p>
             <p className="mt-1 text-sm">{t("alertsEmptyHint")}</p>
@@ -182,7 +182,7 @@ export default function FeedbackAlertsPanel() {
               tabIndex={a.event_id ? 0 : undefined}
               onClick={a.event_id ? () => open(a) : undefined}
               onKeyDown={a.event_id ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(a); } } : undefined}
-              className={`flex flex-col gap-4 rounded-2xl border border-l-4 border-l-gold-400 p-4 sm:flex-row sm:items-start sm:p-5 ${a.event_id ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40" : ""} transition-all duration-250 ease-out hover:shadow-[0_16px_28px_-8px_rgba(0,0,0,0.35)] hover:-translate-y-1 hover:bg-white/[0.07] active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100 ${a.read ? "border-white/10 bg-white/[0.03]" : "border-[#4FBEB0]/30 bg-[#4FBEB0]/[0.06]"}`}
+              className={`flex flex-col gap-4 rounded-[28px] border p-4 sm:flex-row sm:items-start sm:p-5 ${a.event_id ? "cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40" : ""} transition-all duration-250 ease-out hover:-translate-y-1 active:translate-y-0 active:scale-[0.985] active:shadow-none active:duration-100 ${a.read ? "dash-card" : "dash-card !border-[#4FBEB0]/60"}`}
             >
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#4FBEB0]/40 to-gold-400/30 text-base font-bold text-white">
                 {initialsOf(a.title)}
@@ -207,7 +207,7 @@ export default function FeedbackAlertsPanel() {
               </div>
               <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-col sm:items-stretch">
                 {!a.read && (
-                  <button type="button" onClick={(e) => { e.stopPropagation(); markRead(a); }} className="inline-flex items-center justify-center gap-1.5 rounded-full border border-white/15 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/[0.1] hover:text-white">
+                  <button type="button" onClick={(e) => { e.stopPropagation(); markRead(a); }} className="inline-flex items-center justify-center gap-1.5 dash-tile rounded-full px-4 py-2 text-sm font-semibold text-white/80 transition hover:text-white">
                     <CheckCheck className="h-4 w-4" />
                     {t("alertsMarkRead")}
                   </button>

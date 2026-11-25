@@ -1004,7 +1004,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
   return (
     <>
-      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8 print:!m-0 print:!p-0 print:bg-white print:!min-h-0">
+      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8 print:!m-0 print:!p-0 print:bg-white print:!min-h-0">
         <div className="space-y-6 print:space-y-3">
       {/* Not sticky -- matches every other converted page (Inventory, Budget,
           Returns, Activity Logs, Archive), none of which pin their header
@@ -1059,12 +1059,17 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           )}
         </div>
 
+        <div className="dash-card rounded-[32px] p-5 sm:p-6 print:hidden">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 print:hidden">
           {/* On-screen page title only -- the letterhead above already
               carries the report's own formal title for print, so this
               stays hidden on the printed page instead of duplicating it. */}
           <div className="print:hidden">
-            <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("reports")}</h1>
+            <h1
+              className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient"
+            >
+              {t("reports")}
+            </h1>
             <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("reportsSubtitle")}</p>
           </div>
           {view === "report" && (
@@ -1074,7 +1079,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                 type="button"
                 onClick={() => { setDrawerFormat("pdf"); setDrawerOpen(true); }}
                 disabled={loading || isEmpty}
-                className="group inline-flex items-center gap-3.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-7 pr-2 py-2 text-[17px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                className="btn-live-navy group inline-flex items-center gap-3.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-7 pr-2 py-2 text-[17px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
               >
                 {tUI("rpGenerate")}
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
@@ -1086,41 +1091,42 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         </div>
 
         {/* Step 1 per UC-10: choose a report type */}
-        <div className="mt-4 flex flex-wrap gap-2.5 print:hidden">
+        <div className="mt-5 flex flex-wrap gap-2 print:hidden">
           {REPORT_TYPES.map((rt) => (
             <button
               key={rt.key}
               onClick={() => handleReportTypeChange(rt.key)}
-              className={`inline-flex items-center gap-2.5 rounded-full px-5 py-3.5 text-[14px] font-semibold transition-colors ${
+              className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-[14px] font-semibold transition-colors ${
                 view === "report" && reportType === rt.key
-                  ? "bg-sage-700 text-white shadow-sm hover:bg-sage-800"
-                  : "border border-white/10 bg-white/[0.04] text-white/65 hover:border-white/30 hover:bg-white/10 hover:text-white"
+                  ? "bg-[#2E8E82] text-white shadow-sm hover:bg-[#267a70]"
+                  : "dash-tile text-white/70 hover:text-white"
               }`}
             >
-              <rt.icon className="h-[18px] w-[18px]" /> {t(rt.labelKey)}
+              <rt.icon className="h-4 w-4" /> {t(rt.labelKey)}
             </button>
           ))}
           <button
             onClick={() => setView("history")}
-            className={`inline-flex items-center gap-2.5 rounded-full px-5 py-3.5 text-[14px] font-semibold transition-colors ${
+            className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-[14px] font-semibold transition-colors ${
               view === "history"
-                ? "bg-sage-700 text-white shadow-sm hover:bg-sage-800"
-                : "border border-white/10 bg-white/[0.04] text-white/65 hover:border-white/30 hover:bg-white/10 hover:text-white"
+                ? "bg-[#2E8E82] text-white shadow-sm hover:bg-[#267a70]"
+                : "dash-tile text-white/70 hover:text-white"
             }`}
           >
-            <HistoryIcon className="h-[18px] w-[18px]" /> {tUI("rpHistoryTab")}
+            <HistoryIcon className="h-4 w-4" /> {tUI("rpHistoryTab")}
           </button>
+        </div>
         </div>
         {/* Step 2 per UC-10: one tidy toolbar -- period on top (quick choices on
             the left, exact dates on the right), the report's own filters below. */}
         {view === "report" && (
-          <div className="mt-5 rounded-2xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 print:hidden">
+          <div className="mt-5 dash-card rounded-[32px] p-4 sm:p-6 print:hidden">
             {usesDates && (
               <>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
                   <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-white/40">{tUI("rpPeriodLabel")}</span>
-                    <QuickTabs value={activePreset} onChange={applyPreset} tabs={presetTabs} className="flex-wrap overflow-visible pb-0" />
+                    <span className="w-14 shrink-0 text-xs font-semibold uppercase tracking-wide text-white/45">{tUI("rpPeriodLabel")}</span>
+                    <QuickTabs variant="segmented" value={activePreset} onChange={applyPreset} tabs={presetTabs} />
                   </div>
                   <div className="shrink-0 sm:ml-auto">
                     <DateRangePicker
@@ -1143,10 +1149,14 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                 <div className="my-4 h-px bg-white/10" />
               </>
             )}
-            <FilterBar filters={filterDefs} count={loading ? undefined : { shown: rowCount }} />
-            {previous && !loading && (
-              <p className="mt-3 text-xs text-white/40">{tUI("rpComparedWith").replace("{range}", prevRangeLabel)}</p>
-            )}
+            <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+              <span className="flex h-11 w-14 shrink-0 items-center text-xs font-semibold uppercase tracking-wide text-white/45">{tUI("rpFiltersLabel")}</span>
+              <FilterBar className="min-w-0 flex-1" filters={filterDefs} />
+            </div>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-white/10 pt-3 text-xs text-white/45">
+              <span>{loading ? "" : tUI("fltResults").replace("{n}", String(rowCount))}</span>
+              {previous && !loading && <span>{tUI("rpComparedWith").replace("{range}", prevRangeLabel)}</span>}
+            </div>
           </div>
         )}
       </div>
@@ -1184,36 +1194,38 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         </div>
       ) : reportType === "attendance" ? (
         <>
-          <div className={`report-stagger grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3 ${ph("summary")}`}>
-            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
-              <CalendarDays className="h-5 w-5 opacity-80" />
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)] lg:items-start print:block print:space-y-3">
+          <div className="min-w-0 space-y-6 print:space-y-3">
+          <div className={`report-stagger grid gap-4 grid-cols-2 xl:grid-cols-4 print:grid-cols-4 print:gap-3 ${ph("summary")}`}>
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+              <CalendarDays className="h-5 w-5 text-[#2E8E82]" />
               <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.total_events)}`}><AnimatedNumber value={summary.total_events} delay={0} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("eventsInRange")}</p>
               <KpiDelta t={tUI} cur={summary.total_events} prev={prevSummary?.total_events} mode="percent" tip={prevTip(prevSummary?.total_events ?? 0)} />
             </div>
-            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
-              <Users className="h-5 w-5 opacity-80" />
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+              <Users className="h-5 w-5 text-[#2E8E82]" />
               <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.total_attended)}`}><AnimatedNumber value={summary.total_attended} delay={70} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("attendanceRecordsLabel")}</p>
               <KpiDelta t={tUI} cur={summary.total_attended} prev={prevSummary?.total_attended} mode="percent" tip={prevTip(prevSummary?.total_attended ?? 0)} />
             </div>
-            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-800 to-[#1C2E2B] p-5 text-white shadow-sm">
-              <TrendingUp className="h-5 w-5 opacity-80" />
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+              <TrendingUp className="h-5 w-5 text-[#2E8E82]" />
               <h2 className="mt-2 text-3xl font-black"><AnimatedNumber value={summary.attendance_percentage} delay={140} decimals={1} />%</h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("attendanceRateLabel")}</p>
               <KpiDelta t={tUI} cur={summary.attendance_percentage} prev={prevSummary?.attendance_percentage} mode="points" tip={prevTip(`${prevSummary?.attendance_percentage ?? 0}%`)} />
             </div>
-            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-[#8A3D2C] to-[#5C2A1E] p-5 text-white shadow-sm">
-              <Star className="h-5 w-5 opacity-80" />
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+              <Star className="h-5 w-5 text-[#2E8E82]" />
               <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(summary.average_feedback_rating ?? "—")}`}><AnimatedNumber value={summary.average_feedback_rating} delay={210} decimals={1} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("avgFeedbackRating")}</p>
               <KpiDelta t={tUI} cur={summary.average_feedback_rating} prev={prevSummary?.average_feedback_rating} mode="count" decimals={1} tip={prevTip(prevSummary?.average_feedback_rating ?? "—")} />
             </div>
           </div>
 
-          <AttendanceCharts t={t} data={data} previous={previous} chartsClass={ph("charts")} ageClass={ph("age")} ageGroup={ageGroup} onAgeSelect={setAgeGroup} onOpenEvent={openEvent} />
+          <AttendanceCharts part="main" t={t} data={data} previous={previous} chartsClass={ph("charts")} ageClass={ph("age")} ageGroup={ageGroup} onAgeSelect={setAgeGroup} onOpenEvent={openEvent} />
 
-          <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("events")}`}>
+          <div className={`dash-card rounded-[32px] p-5 print:border-[#ddd5ca] print:bg-white ${ph("events")}`}>
             <h3 className="text-lg font-bold text-white mb-4 print:break-after-avoid print:text-[#005f63]">{t("perEventBreakdown")}</h3>
             <EventBreakdownTable
               events={perEvent}
@@ -1227,20 +1239,20 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           {/* On-screen attendee lists: one expandable row per event. Lists
               load on demand. (Hidden on paper -- the printed version below
               is built from the events picked in Print & Export Options.) */}
-          <div className="print:hidden rounded-[30px] border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+          <div className="print:hidden dash-card rounded-[32px] p-5 sm:p-6">
             <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
               <div>
                 <h3 className="text-lg font-bold text-white">{t("rptRecordsScreenTitle")}</h3>
                 <p className="mt-0.5 text-xs text-white/40">{t("rptRecordsScreenDesc")}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2.5">
-                <div className="inline-flex rounded-full border border-white/10 bg-white/[0.04] p-1">
+                <div className="inline-flex dash-tile rounded-full p-1">
                   {([["all", "rptAttAll"], ["present", "rptAttPresent"], ["absent", "rptAttAbsent"]] as [AttendeeFilter, string][]).map(([k, label]) => (
                     <button
                       key={k}
                       type="button"
                       onClick={() => setAttendeeFilter(k)}
-                      className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${attendeeFilter === k ? "bg-sage-700 text-white shadow-sm" : "text-white/55 hover:text-white"}`}
+                      className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${attendeeFilter === k ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/55 hover:text-white"}`}
                     >
                       {t(label)}
                     </button>
@@ -1249,7 +1261,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                 <button
                   type="button"
                   onClick={() => setExpandedEvents(expandedEvents.length === allEventIds.length ? [] : allEventIds)}
-                  className="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-xs font-semibold text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
+                  className="dash-tile rounded-full px-4 py-2 text-xs font-semibold text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
                 >
                   {expandedEvents.length === allEventIds.length ? t("rptCollapseAll") : t("rptExpandAll")}
                 </button>
@@ -1262,7 +1274,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                 const open = expandedEvents.includes(id);
                 const rows = attendeeCache[cacheKey(id)];
                 return (
-                  <div key={id} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
+                  <div key={id} className="overflow-hidden dash-tile rounded-2xl">
                     <button type="button" onClick={() => toggleExpanded(id)} className="flex w-full items-center gap-4 px-5 py-4 text-left transition hover:bg-white/[0.04]">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2.5">
@@ -1326,17 +1338,22 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
               })}
             </div>
           )}
+          </div>
+          <aside className="min-w-0 space-y-6 print:space-y-3">
+            <AttendanceCharts part="side" t={t} data={data} previous={previous} chartsClass={ph("charts")} ageClass={ph("age")} ageGroup={ageGroup} onAgeSelect={setAgeGroup} onOpenEvent={openEvent} />
+          </aside>
+          </div>
         </>
       ) : reportType === "membership" ? (
         <>
           <div className={`report-stagger grid gap-4 grid-cols-1 sm:grid-cols-2 print:grid-cols-2 print:gap-3 ${ph("summary")}`}>
-            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
-              <Award className="h-5 w-5 opacity-80" />
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+              <Award className="h-5 w-5 text-[#2E8E82]" />
               <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(membershipSummary.total_memberships)}`}><AnimatedNumber value={membershipSummary.total_memberships} delay={0} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalMembershipsLabel")}</p>
             </div>
-            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
-              <Users className="h-5 w-5 opacity-80" />
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+              <Users className="h-5 w-5 text-[#2E8E82]" />
               <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(membershipSummary.total_assignments)}`}><AnimatedNumber value={membershipSummary.total_assignments} delay={70} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalEnrolledResidentsLabel")}</p>
             </div>
@@ -1344,11 +1361,11 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
           <MembershipCharts t={t} data={data} className={ph("summary")} />
 
-          <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("memberships")}`}>
+          <div className={`dash-card rounded-[32px] p-5 print:border-[#ddd5ca] print:bg-white ${ph("memberships")}`}>
             <h3 className="text-lg font-bold text-white mb-3 print:break-after-avoid print:text-[#005f63]">{t("enrollmentByMembershipLabel")}</h3>
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {perMembership.map((m: any) => (
-                <div key={m.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-gray-100 print:bg-gray-50">
+                <div key={m.id} className="print:break-inside-avoid dash-tile rounded-2xl p-4 print:border-gray-100 print:bg-gray-50">
                   <p className="font-bold text-white text-sm truncate print:text-[#005f63]">{m.name}</p>
                   <p className="mt-1 text-2xl font-black text-white print:text-gray-800">{m.member_count}</p>
                   <p className="text-[11px] text-white/40 print:text-gray-500">{t("membersLabel")}</p>
@@ -1366,26 +1383,26 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         <>
           <div className={`space-y-4 print:space-y-3 ${ph("summary")}`}>
             <div className="report-stagger grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3">
-              <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
-                <Wallet className="h-5 w-5 opacity-80" />
+              <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+                <Wallet className="h-5 w-5 text-[#2E8E82]" />
                 <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_approved_budget))}`}><AnimatedNumber value={budgetSummary.total_approved_budget} format={peso} decimals={2} delay={0} /></h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalApprovedBudgetLabel")}</p>
               <KpiDelta t={tUI} cur={budgetSummary.total_approved_budget} prev={prevSummary?.total_approved_budget} mode="percent" good="neutral" tip={prevTip(peso(prevSummary?.total_approved_budget))} />
               </div>
-              <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
-                <TrendingUp className="h-5 w-5 opacity-80" />
+              <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+                <TrendingUp className="h-5 w-5 text-[#2E8E82]" />
                 <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_expenses))}`}><AnimatedNumber value={budgetSummary.total_expenses} format={peso} decimals={2} delay={70} /></h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalSpentLabel")}</p>
               <KpiDelta t={tUI} cur={budgetSummary.total_expenses} prev={prevSummary?.total_expenses} mode="percent" good="neutral" tip={prevTip(peso(prevSummary?.total_expenses))} />
               </div>
-              <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-800 to-[#1C2E2B] p-5 text-white shadow-sm">
-                <CalendarDays className="h-5 w-5 opacity-80" />
+              <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+                <CalendarDays className="h-5 w-5 text-[#2E8E82]" />
                 <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_remaining))}`}><AnimatedNumber value={budgetSummary.total_remaining} format={peso} decimals={2} delay={140} /></h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("remainingBudgetLabel")}</p>
               <KpiDelta t={tUI} cur={budgetSummary.total_remaining} prev={prevSummary?.total_remaining} mode="percent" tip={prevTip(peso(prevSummary?.total_remaining))} />
               </div>
-              <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-[#8A3D2C] to-[#5C2A1E] p-5 text-white shadow-sm">
-                <Star className="h-5 w-5 opacity-80" />
+              <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+                <Star className="h-5 w-5 text-[#2E8E82]" />
                 <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(budgetSummary.events_over_budget)}`}><AnimatedNumber value={budgetSummary.events_over_budget} delay={210} /></h2>
                 <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("eventsOverBudgetLabel")}</p>
               <KpiDelta t={tUI} cur={budgetSummary.events_over_budget} prev={prevSummary?.events_over_budget} mode="count" good="down" tip={prevTip(prevSummary?.events_over_budget ?? 0)} />
@@ -1393,22 +1410,22 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             </div>
 
             <div className="report-stagger grid gap-4 grid-cols-2 lg:grid-cols-4 print:grid-cols-4 print:gap-3">
-              <div className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-[#ddd5ca] print:bg-white">
+              <div className="print:break-inside-avoid dash-tile rounded-2xl p-4 print:border-[#ddd5ca] print:bg-white">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45 print:text-gray-500">{t("rptBudgetUsed")}</p>
                 <p className="mt-1 text-2xl font-black text-white print:text-[#005f63]"><AnimatedNumber value={budgetSummary.utilization_percentage ?? 0} decimals={1} delay={280} />%</p>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10 print:bg-gray-200">
                   <div className={`report-grow h-full ${(budgetSummary.utilization_percentage ?? 0) > 100 ? "bg-red-400" : "bg-[#4FBEB0]"}`} style={{ width: `${Math.min(100, budgetSummary.utilization_percentage ?? 0)}%` }} />
                 </div>
               </div>
-              <div className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-[#ddd5ca] print:bg-white">
+              <div className="print:break-inside-avoid dash-tile rounded-2xl p-4 print:border-[#ddd5ca] print:bg-white">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45 print:text-gray-500">{t("rptTotalOver")}</p>
                 <p className={`mt-1 font-black whitespace-nowrap ${statSize(peso(budgetSummary.total_over_amount))} ${(budgetSummary.total_over_amount ?? 0) > 0 ? "text-red-400 print:text-red-600" : "text-white print:text-[#005f63]"}`}><AnimatedNumber value={budgetSummary.total_over_amount ?? 0} format={peso} decimals={2} delay={320} /></p>
               </div>
-              <div className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-[#ddd5ca] print:bg-white">
+              <div className="print:break-inside-avoid dash-tile rounded-2xl p-4 print:border-[#ddd5ca] print:bg-white">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45 print:text-gray-500">{t("rptNearLimit")}</p>
                 <p className={`mt-1 text-2xl font-black ${(budgetSummary.events_near_limit ?? 0) > 0 ? "text-amber-300 print:text-amber-700" : "text-white print:text-[#005f63]"}`}><AnimatedNumber value={budgetSummary.events_near_limit ?? 0} delay={360} /></p>
               </div>
-              <div className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-4 print:border-[#ddd5ca] print:bg-white">
+              <div className="print:break-inside-avoid dash-tile rounded-2xl p-4 print:border-[#ddd5ca] print:bg-white">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45 print:text-gray-500">{t("rptExpenseEntries")}</p>
                 <p className="mt-1 text-2xl font-black text-white print:text-[#005f63]"><AnimatedNumber value={budgetSummary.total_expense_entries ?? 0} delay={400} /></p>
                 {(budgetSummary.events_without_budget ?? 0) > 0 && (
@@ -1464,7 +1481,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             )}
           </div>
 
-          <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("perEvent")}`}>
+          <div className={`dash-card rounded-[32px] p-5 print:border-[#ddd5ca] print:bg-white ${ph("perEvent")}`}>
             <h3 className="text-lg font-bold text-white mb-3 print:break-after-avoid print:text-[#005f63]">{t("budgetPerEventLabel")}</h3>
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {budgetPerEvent.map((ev: any) => {
@@ -1496,7 +1513,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           {/* Itemized expenses -- one expandable row per event on screen;
               printed as full tables (below) when selected. */}
           {budgetEventsAll.length > 0 && (
-            <div className="print:hidden rounded-[30px] border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+            <div className="print:hidden dash-card rounded-[32px] p-5 sm:p-6">
               <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-bold text-white">{t("rptExpensesTitle")}</h3>
@@ -1508,7 +1525,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                     const ids = budgetEventsAll.map((ev: any) => String(ev.id));
                     setExpandedEvents(expandedEvents.length === ids.length ? [] : ids);
                   }}
-                  className="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-xs font-semibold text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
+                  className="dash-tile rounded-full px-4 py-2 text-xs font-semibold text-white/70 transition hover:border-white/30 hover:bg-white/10 hover:text-white"
                 >
                   {expandedEvents.length === budgetEventsAll.length ? t("rptCollapseAll") : t("rptExpandAll")}
                 </button>
@@ -1581,7 +1598,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           )}
 
           {topExpenses.length > 0 && (
-            <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("topExpenses")}`}>
+            <div className={`dash-card rounded-[32px] p-5 print:border-[#ddd5ca] print:bg-white ${ph("topExpenses")}`}>
               <h3 className="text-lg font-bold text-white mb-3 print:break-after-avoid print:text-[#005f63]">{t("topExpensesLabel")}</h3>
               <div className="space-y-2">
                 {topExpenses.map((ex: any, i: number) => (
@@ -1598,7 +1615,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
           )}
 
           {unbudgeted.length > 0 && (
-            <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("noBudget")}`}>
+            <div className={`dash-card rounded-[32px] p-5 print:border-[#ddd5ca] print:bg-white ${ph("noBudget")}`}>
               <h3 className="text-lg font-bold text-white print:break-after-avoid print:text-[#005f63]">{t("rptNoBudgetTitle")}</h3>
               <p className="mt-0.5 mb-3 text-xs text-white/45 print:text-gray-500">{t("rptNoBudgetDesc")}</p>
               <div className="space-y-2">
@@ -1618,18 +1635,18 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
       ) : (
         <>
           <div className={`report-stagger grid gap-4 grid-cols-2 lg:grid-cols-3 print:grid-cols-3 print:gap-3 ${ph("summary")}`}>
-            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-sage-400 to-sage-700 p-5 text-white shadow-sm">
-              <Package className="h-5 w-5 opacity-80" />
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+              <Package className="h-5 w-5 text-[#2E8E82]" />
               <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.total_items)}`}><AnimatedNumber value={inventorySummary.total_items} delay={0} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalInventoryItemsLabel")}</p>
             </div>
-            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-gold-400 to-gold-700 p-5 text-white shadow-sm">
-              <TrendingUp className="h-5 w-5 opacity-80" />
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+              <TrendingUp className="h-5 w-5 text-[#2E8E82]" />
               <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.total_quantity)}`}><AnimatedNumber value={inventorySummary.total_quantity} delay={70} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("totalQuantityLabel")}</p>
             </div>
-            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 bg-gradient-to-r from-[#8A3D2C] to-[#5C2A1E] p-5 text-white shadow-sm">
-              <AlertTriangle className="h-5 w-5 opacity-80" />
+            <div className="print:break-inside-avoid rounded-[30px] print:rounded-2xl print:p-3.5 dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none p-5 text-white">
+              <AlertTriangle className="h-5 w-5 text-[#2E8E82]" />
               <h2 className={`mt-2 font-black whitespace-nowrap ${statSize(inventorySummary.lost_units ?? 0)}`}><AnimatedNumber value={inventorySummary.lost_units ?? 0} delay={140} /></h2>
               <p className="mt-1 text-xs font-semibold uppercase tracking-wide">{t("lostUnitsLabel")}</p>
             </div>
@@ -1637,11 +1654,11 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
 
           <InventoryCharts t={t} data={data} conditionLabel={conditionLabel} className={ph("condition")} />
 
-          <div className={`rounded-[30px] border border-white/10 bg-white/[0.03] p-5 print:border-[#ddd5ca] print:bg-white ${ph("items")}`}>
+          <div className={`dash-card rounded-[32px] p-5 print:border-[#ddd5ca] print:bg-white ${ph("items")}`}>
             <h3 className="text-lg font-bold text-white mb-3 print:break-after-avoid print:text-[#005f63]">{t("inventoryItemsLabel")}</h3>
             <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
               {inventoryItems.map((item: any) => (
-                <div key={item.id} className="print:break-inside-avoid rounded-2xl border border-white/10 bg-white/[0.04] p-5 print:border-gray-100 print:bg-gray-50">
+                <div key={item.id} className="print:break-inside-avoid dash-tile rounded-2xl p-5 print:border-gray-100 print:bg-gray-50">
                   <p className="font-bold text-white text-base truncate print:text-[#005f63]">{item.name}</p>
                   <p className="text-[13px] text-white/40 mt-1 print:text-gray-500">{item.storage_location || "—"}</p>
                   <div className="mt-3 flex items-center justify-between gap-3">

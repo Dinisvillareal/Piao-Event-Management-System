@@ -118,7 +118,32 @@ class Ch4AuthSecurityTest extends TestCase
         $target = $this->staff();
         $this->actingAs($h)->postJson("/staff-accounts/{$target->id}/reset-password", ['password' => 'Passw0rd!Strong#1', 'otp' => '000000'])
             ->assertStatus(422);
-        $this->actingAs($h)->postJson("/staff-accounts/{$target->id}/reset-password", ['password' => 'Passw0rd!Strong#1', 'otp' => $this->otp($secret)])
-            ->assertOk();
+        $res = $this->actingAs($h)->postJson("/staff-accounts/{$target->id}/reset-password", ['password' => 'Passw0rd!Strong#1', 'otp' => $this->otp($secret)])
+            ->assertOk()->assertJsonStructure(['activation_slip' => ['user_code', 'name', 'code', 'expires_at', 'issued_by']]);
+        $this->assertArrayNotHasKey('temporary_password', $res->json());
+        // the old password no longer works and only a hash of the code is kept
+        $fresh = $target->fresh();
+        $this->assertNull($fresh->password);
+        $this->assertTrue((bool) $fresh->pending_activation);
+        $this->assertNotSame($res->json('activation_slip.code'), $fresh->activation_code_hash);
+    }
+
+    public function test_suspend_remove_access_and_make_head_staff_need_password_and_authenticator_code(): void
+    {
+        $h = $this->headStaff();
+        $secret = $this->enableTwoFactor($h);
+        $target = $this->staff();
+        $pw = 'Passw0rd!Strong#1';
+
+        // password alone is not enough
+        $this->actingAs($h)->postJson("/staff-accounts/{$target->id}/suspend", ['password' => $pw])->assertStatus(422);
+        $this->actingAs($h)->postJson("/staff-accounts/{$target->id}/suspend", ['password' => $pw, 'otp' => '000000'])->assertStatus(422);
+        $this->assertNull($target->fresh()->suspended_at);
+        $this->actingAs($h)->postJson('/staff-accounts/transfer', ['to_user_id' => $target->id, 'password' => $pw])->assertStatus(422);
+        $this->actingAs($h)->postJson("/staff-accounts/{$target->id}/demote", ['password' => $pw])->assertStatus(422);
+        $this->assertSame('Staff', $target->fresh()->role);
+
+        $this->actingAs($h)->postJson("/staff-accounts/{$target->id}/suspend", ['password' => $pw, 'otp' => $this->otp($secret)])->assertOk();
+        $this->assertNotNull($target->fresh()->suspended_at);
     }
 }

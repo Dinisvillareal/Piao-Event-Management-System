@@ -794,7 +794,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
   // The card headings stay real text; the step labels and everything under them are placeholders.
   const stepLabel = () => <Skeleton className="mb-2 h-3 w-28" />;
   const stepsSkeleton = (
-<div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+<div className="dash-tile space-y-4 rounded-[24px] p-5">
               <div>
                 {stepLabel()}
                 <Skeleton className="h-11 w-full rounded-xl" />
@@ -831,14 +831,14 @@ export default function ScanView({ events, residents, memberships, loading = fal
     // Same structure as the page below (scanner card on the left; scan result and
     // attendance roster stacked on the right) so nothing jumps when it loads.
     return (
-      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+      <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
         <div className="space-y-6">
           <div>
             <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("scan")}</h1>
             <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("scanSubtitle")}</p>
           </div>
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+            <div className="dash-card overflow-hidden rounded-[32px]">
               <div className="flex items-center justify-between gap-3 border-b border-white/10 p-5">
                 <div className="min-w-0">
                   <h2 className="text-[17px] font-bold text-white">{t("cameraScannerLabel")}</h2>
@@ -853,7 +853,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
             </div>
 
             <div className="space-y-4">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+              <div className="dash-card overflow-hidden rounded-[32px]">
                 <div className="border-b border-white/10 p-5">
                   <h2 className="text-[17px] font-bold text-white">{t("scanResultTitle")}</h2>
                   <p className="mt-0.5 text-sm text-white/50">{t("scanResultSubtitle")}</p>
@@ -861,7 +861,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                 <div className="p-5">{resultSkeleton}</div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+              <div className="dash-card overflow-hidden rounded-[32px]">
                 <div className="border-b border-white/10 p-5">
                   <h2 className="text-base font-bold text-white">{t("attendanceRosterTitle")}</h2>
                   <Skeleton className="mt-2 h-3.5 w-2/5" />
@@ -888,17 +888,17 @@ export default function ScanView({ events, residents, memberships, loading = fal
   }
 
   return (
-    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="dash-card flex flex-col justify-between gap-4 rounded-[32px] p-5 sm:flex-row sm:items-center sm:p-6">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("scan")}</h1>
+          <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-short">{t("scan")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("scanSubtitle")}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+        <div className="dash-card overflow-hidden rounded-[32px]">
           <div className="flex items-center justify-between gap-3 border-b border-white/10 p-5">
             <div className="min-w-0">
               <h2 className="text-[17px] font-bold text-white">
@@ -918,7 +918,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                     ? "bg-white/10 text-white/40 cursor-not-allowed"
                     : isCameraOn
                     ? "bg-red-500 text-white hover:bg-red-600"
-                    : "bg-sage-700 text-white hover:bg-sage-800"
+                    : "bg-[#2E8E82] text-white hover:bg-[#25756B]"
                 }`}
               >
                 {isCameraOn ? <CameraOff className="h-5 w-5" /> : <Camera className="h-5 w-5" />}
@@ -928,13 +928,13 @@ export default function ScanView({ events, residents, memberships, loading = fal
 
           <div className="p-5 space-y-5">
             {bodyLoading ? stepsSkeleton : (
-            <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <div className="dash-tile space-y-4 rounded-[24px] p-5">
               <div ref={eventDropdownRef} className="relative">
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("selectEventStep1")}</label>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#2E8E82]">{t("selectEventStep1")}</label>
                 <button
                   type="button"
                   onClick={() => setEventDropdownOpen((v) => !v)}
-                  className="flex h-11 w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-left text-[15px] transition hover:border-sage-400 focus:outline-none focus:ring-2 focus:ring-sage-700/20"
+                  className="dash-card flex h-12 w-full items-center justify-between gap-2 rounded-full px-5 text-left text-[15px] transition hover:border-[#4FBEB0] focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/30"
                 >
                   <span className={ev ? "truncate font-medium text-white" : "text-white/40"}>
                     {ev ? ev.title : t("selectEventStep1")}
@@ -1014,13 +1014,13 @@ export default function ScanView({ events, residents, memberships, loading = fal
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("checkinMethodStep2")}</label>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#2E8E82]">{t("checkinMethodStep2")}</label>
                 <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => { setCheckInMethod("camera"); setManualQuery(""); }}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition-colors ${
-                      checkInMethod === "camera" ? "bg-sage-700 text-white shadow-sm" : "border border-white/10 bg-white/[0.03] text-white/50 hover:bg-sage-50/10"
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-3 text-[15px] font-semibold transition-colors ${
+                      checkInMethod === "camera" ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "dash-card text-white/60 hover:text-white"
                     }`}
                   >
                     <ScanLine className="h-4 w-4" /> {t("cameraScanLabel")}
@@ -1028,8 +1028,8 @@ export default function ScanView({ events, residents, memberships, loading = fal
                   <button
                     type="button"
                     onClick={() => { setCheckInMethod("manual"); setIsCameraOn(false); }}
-                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition-colors ${
-                      checkInMethod === "manual" ? "bg-sage-700 text-white shadow-sm" : "border border-white/10 bg-white/[0.03] text-white/50 hover:bg-sage-50/10"
+                    className={`flex flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-3 text-[15px] font-semibold transition-colors ${
+                      checkInMethod === "manual" ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "dash-card text-white/60 hover:text-white"
                     }`}
                   >
                     <IdCard className="h-4 w-4" /> {t("manualPhysicalIdLabel")}
@@ -1038,15 +1038,15 @@ export default function ScanView({ events, residents, memberships, loading = fal
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">{t("scanModeStep3")}</label>
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#2E8E82]">{t("scanModeStep3")}</label>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setScanMode("in")}
                     disabled={scanMode === "out"}
-                    className={`flex-1 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition-colors ${
+                    className={`flex-1 rounded-full px-3 py-3 text-[15px] font-semibold transition-colors ${
                       scanMode === "in"
-                        ? "bg-sage-700 text-white shadow-sm hover:bg-sage-800"
-                        : "border border-white/10 bg-white/[0.03] text-white/30 cursor-not-allowed opacity-60"
+                        ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm hover:brightness-125"
+                        : "dash-card text-white/30 cursor-not-allowed opacity-60"
                     }`}
                   >
                     {t("signInWord")}
@@ -1054,10 +1054,10 @@ export default function ScanView({ events, residents, memberships, loading = fal
                   <button
                     onClick={() => setScanMode("out")}
                     disabled={scanMode === "in"}
-                    className={`flex-1 rounded-xl px-3 py-2.5 text-[15px] font-semibold transition-colors ${
+                    className={`flex-1 rounded-full px-3 py-3 text-[15px] font-semibold transition-colors ${
                       scanMode === "out"
                         ? "bg-gold-400 text-[#08130F] shadow-sm hover:bg-gold-500"
-                        : "border border-white/10 bg-white/[0.03] text-white/30 cursor-not-allowed opacity-60"
+                        : "dash-card text-white/30 cursor-not-allowed opacity-60"
                     }`}
                   >
                     {t("signOutWord")}
@@ -1066,7 +1066,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
               </div>
 
               <div className="pt-4 border-t border-white/10">
-                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-sage-700/80">
+                <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-[#2E8E82]">
                   {windowNotYetOpen
                     ? (scanMode === "in" ? t("signInOpeningTimeLabel") : t("signOutOpeningTimeLabel"))
                     : (scanMode === "in" ? t("signInClosingTimeLabel") : t("signOutClosingTimeLabel"))}
@@ -1074,7 +1074,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                 {/* Read-only -- this window comes from the event's own Start
                     Time / Call Time fields (set on the Events screen), not
                     typed in here each session. */}
-                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-[15px] text-white">
+                <div className="dash-card rounded-full px-5 py-3 text-[15px] text-white">
                   {windowNotYetOpen
                     ? `${t("opensAtLabel")} ${formatEventOptionDateTime(windowNotYetOpen) || windowNotYetOpen}`
                     : closingTime
@@ -1086,7 +1086,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
             )}
 
             {bodyLoading && !(checkInMethod === "camera" && isCameraOn) ? cameraSkeleton : checkInMethod === "camera" ? (
-              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black min-h-[380px]">
+              <div className="relative overflow-hidden rounded-[24px] bg-black min-h-[380px]">
                 {isCameraOn ? (
                   <div className="absolute inset-0 h-full w-full">
                     <Scanner
@@ -1139,8 +1139,8 @@ export default function ScanView({ events, residents, memberships, loading = fal
               </div>
             ) : (
               // Adviser recommendation: "2 in 1 — Text/physical QR ID" manual lookup
-              <div className="rounded-2xl border border-white/10 bg-white/[0.03] min-h-[380px] p-5">
-                <div className="flex items-center gap-2 font-bold text-sage-800 mb-3">
+              <div className="dash-tile rounded-[24px] min-h-[380px] p-5">
+                <div className="flex items-center gap-2 font-bold text-white mb-3">
                   <IdCard className="h-4 w-4" /> {t("manualPhysicalIdCheckin")}
                 </div>
                 <div className="relative">
@@ -1150,7 +1150,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                     value={manualQuery}
                     onChange={(e: any) => setManualQuery(e.target.value)}
                     placeholder={t("typeResidentIdPlaceholder")}
-                    className="h-11 w-full rounded-xl border border-white/10 bg-white/[0.03] pl-11 pr-4 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                    className="dash-card h-11 w-full rounded-full pl-11 pr-4 text-[15px] text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
                   />
                 </div>
                 <div className="mt-3 space-y-2 max-h-[270px] overflow-y-auto">
@@ -1166,13 +1166,13 @@ export default function ScanView({ events, residents, memberships, loading = fal
                     <button
                       key={r.id ?? r.user_id ?? r.real_id}
                       onClick={() => handleManualSelect(r)}
-                      className="w-full flex items-center justify-between rounded-xl bg-white/[0.04] border border-white/10 px-4 py-3 text-left hover:border-sage-400 hover:shadow-sm transition"
+                      className="dash-card w-full flex items-center justify-between rounded-2xl px-4 py-3 text-left hover:border-[#4FBEB0] transition"
                     >
                       <div>
                         <p className="font-semibold text-white text-[15px]">{highlightMatches(`${r.first_name ?? ""} ${r.last_name ?? ""}`.trim(), manualQuery)}</p>
                         <p className="text-sm text-white/40">{highlightMatches(r.user_code, manualQuery)}</p>
                       </div>
-                      <span className="text-sm font-bold text-sage-700">{t("selectArrowLabel")}</span>
+                      <span className="text-sm font-bold text-[#2E8E82]">{t("selectArrowLabel")}</span>
                     </button>
                   ))}
                   {!manualQuery.trim() && (
@@ -1185,7 +1185,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
         </div>
 
         <div className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+          <div className="dash-card overflow-hidden rounded-[32px]">
             <div className="flex items-center justify-between gap-3 border-b border-white/10 p-5">
               <div className="min-w-0">
                 <h2 className="text-[17px] font-bold text-white">{t("scanResultTitle")}</h2>
@@ -1194,7 +1194,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
             </div>
             <div className="p-5">
               {bodyLoading ? resultSkeleton : !scan ? (
-                <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-8 text-center text-sm text-white/50">
+                <div className="dash-tile rounded-[24px] border border-dashed border-white/15 p-8 text-center text-sm text-white/50">
                   {t("noScanPerformedYet")}
                 </div>
               ) : (
@@ -1271,7 +1271,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                         <button
                           onClick={() => confirmAttendance()}
                           className={`mt-4 w-full py-3 text-base font-bold rounded-full transition-colors shadow-sm ${
-                            scanMode === "in" ? "text-white bg-sage-700 hover:bg-sage-800" : "text-[#08130F] bg-gold-400 hover:bg-gold-500"
+                            scanMode === "in" ? "text-white bg-[#2E8E82] hover:bg-[#25756B]" : "text-[#08130F] bg-gold-400 hover:bg-gold-500"
                           }`}
                         >
                           {t("confirmButtonPrefix")} {scanMode === "in" ? t("signInWord") : t("signOutWord")}
@@ -1284,7 +1284,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
             </div>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+          <div className="dash-card overflow-hidden rounded-[32px]">
             <div className="border-b border-white/10 p-5">
               <h2 className="text-base font-bold text-white">{t("attendanceRosterTitle")}</h2>
               <p className="mt-0.5 text-sm text-white/50">{rosterAll} {t("recordsForThisEvent")}</p>
@@ -1294,7 +1294,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                   value={rosterSearch}
                   onChange={(e) => setRosterSearch(e.target.value)}
                   placeholder={t("search")}
-                  className="h-10 w-full rounded-full border border-white/10 bg-white/[0.04] pl-10 pr-20 text-[15px] text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
+                  className="dash-tile h-10 w-full rounded-full pl-10 pr-20 text-[15px] text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-sage-700/20 focus:border-sage-400"
                 />
                 {rosterSearch && (
                   <button
@@ -1315,7 +1315,7 @@ export default function ScanView({ events, residents, memberships, loading = fal
                   return (
                     <div className="space-y-3">
                       {Array.from({ length: ROSTER_PER_PAGE }).map((_, k) => (
-                        <div key={k} className="p-4 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-between">
+                        <div key={k} className="dash-tile p-4 rounded-2xl flex items-center justify-between">
                           <div className="space-y-2">
                             <Skeleton className="h-4 w-40" />
                             <Skeleton className="h-3 w-28" />
@@ -1327,19 +1327,19 @@ export default function ScanView({ events, residents, memberships, loading = fal
                   );
                 }
                 if (!rosterAll) {
-                  return <p className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-center text-sm text-white/50">{t("noAttendeesYet")}</p>;
+                  return <p className="dash-tile rounded-[24px] border border-dashed border-white/15 p-6 text-center text-sm text-white/50">{t("noAttendeesYet")}</p>;
                 }
                 if (!list.length) {
-                  return <p className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-6 text-center text-sm text-white/50">{t("noMatchesFoundLabel")}</p>;
+                  return <p className="dash-tile rounded-[24px] border border-dashed border-white/15 p-6 text-center text-sm text-white/50">{t("noMatchesFoundLabel")}</p>;
                 }
                 return (
                   <div className="space-y-3">
                     {list.map((rec, i) => (
-                      <div key={rec.residentId} className="p-4 rounded-xl border border-white/10 bg-white/[0.03] flex items-center justify-between transition-colors">
+                      <div key={rec.residentId} className="dash-card p-4 rounded-2xl flex items-center justify-between transition-colors">
                         <div>
                           <p className="text-base font-semibold text-white">{start + i + 1}. {highlightMatches(rec.residentName, rosterSearch)}</p>
                           <div className="flex gap-4 mt-1 text-[13px] text-white/50 font-medium">
-                            <span className="flex items-center gap-1 text-sage-700"><LogIn className="h-3.5 w-3.5" /> {rec.timeIn ? highlightMatches(rec.timeIn, rosterSearch) : "—"}</span>
+                            <span className="flex items-center gap-1 text-[#2E8E82]"><LogIn className="h-3.5 w-3.5" /> {rec.timeIn ? highlightMatches(rec.timeIn, rosterSearch) : "—"}</span>
                             <span className="flex items-center gap-1 text-gold-300"><LogOut className="h-3.5 w-3.5" /> {rec.timeOut ? highlightMatches(rec.timeOut, rosterSearch) : "—"}</span>
                           </div>
                         </div>
@@ -1369,17 +1369,17 @@ export default function ScanView({ events, residents, memberships, loading = fal
                       onClick={() => setRosterPage(Math.max(1, current - 1))}
                       disabled={current === 1}
                       aria-label={t("previousPageLabel")}
-                      className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
+                      className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                     >
                       ←
                     </button>
-                    <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">{current}</span>
+                    <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold">{current}</span>
                     <button
                       type="button"
                       onClick={() => setRosterPage(Math.min(totalPages, current + 1))}
                       disabled={current === totalPages}
                       aria-label={t("nextPageLabel")}
-                      className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
+                      className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                     >
                       →
                     </button>

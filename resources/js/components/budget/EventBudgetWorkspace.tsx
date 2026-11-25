@@ -686,123 +686,121 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
               </div>
               </>
               )}
-              <div className={`rounded-2xl border p-6 ${budgetState === "over" ? "border-red-500/40 bg-red-500/[0.05]" : "border-white/10 bg-white/[0.03]"}`}>
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div>
-                    <p className="font-display text-3xl font-extrabold text-white [font-variant-numeric:tabular-nums]">{money(spentNum)}</p>
-                    <p className="mt-1 text-sm text-white/55">
-                      {t("spentOf")}
-                      {approvedNum !== null && ` ${t("ofLabel")} ${money(approvedNum)}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {lastSynced !== null && (
-                      <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-white/50" title={t("liveLabel")}>
-                        <span className="relative flex h-2 w-2">
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
-                          <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
-                        </span>
-                        {syncedLabel}
-                      </span>
-                    )}
-                    {canEditBudget && (
-                      <button
-                        type="button"
-                        onClick={openBudgetEdit}
-                        className="inline-flex items-center gap-2 rounded-full border border-white/15 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-white/10"
-                      >
-                        <Pencil className="h-4 w-4" /> {approvedNum === null ? t("budgetSetLabel") : t("budgetEditLabel")}
-                      </button>
-                    )}
-                    {budgetState === "over" && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2.5 py-1 text-xs font-bold text-red-300">
-                        <AlertTriangle className="h-3.5 w-3.5" /> {t("overBudget")}
-                      </span>
-                    )}
-                    {budgetState === "near" && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2.5 py-1 text-xs font-bold text-amber-300">
-                        <AlertTriangle className="h-3.5 w-3.5" /> {t("budgetNearLimit")}
-                      </span>
-                    )}
-                    {budgetState === "ok" && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[#4FBEB0]/15 px-2.5 py-1 text-xs font-bold text-[#7DD8CB]">
-                        <CheckCircle className="h-3.5 w-3.5" /> {t("budgetOnTrack")}
-                      </span>
-                    )}
-                  </div>
+              {/* Two columns on a wide screen (like the resident profile): the budget summary on the left, the work
+                  (add an expense / records) on the right. One column on a narrow screen. */}
+              <div className="grid gap-6 xl:grid-cols-[minmax(320px,380px)_minmax(0,1fr)] xl:items-start">
+              <aside className="space-y-4 xl:sticky xl:top-0">
+              <div className={`rounded-3xl border p-6 !shadow-[0_14px_34px_rgba(15,23,42,0.18)] ${budgetState === "over" ? "border-red-500/40 bg-red-500/[0.05]" : "dash-card"}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-white/60">{t("budgetSpentLabel")}</p>
+                  {budgetState === "over" && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2.5 py-1 text-xs font-bold text-red-300">
+                      <AlertTriangle className="h-3.5 w-3.5" /> {t("overBudget")}
+                    </span>
+                  )}
+                  {budgetState === "near" && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 px-2.5 py-1 text-xs font-bold text-amber-300">
+                      <AlertTriangle className="h-3.5 w-3.5" /> {t("budgetNearLimit")}
+                    </span>
+                  )}
+                  {budgetState === "ok" && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#4FBEB0]/15 px-2.5 py-1 text-xs font-bold text-[#7DD8CB]">
+                      <CheckCircle className="h-3.5 w-3.5" /> {t("budgetOnTrack")}
+                    </span>
+                  )}
                 </div>
+                <p className="mt-2 font-display text-4xl font-extrabold text-white [font-variant-numeric:tabular-nums]">{money(spentNum)}</p>
+                <p className="mt-1 text-base text-white/70">
+                  {t("spentOf")}
+                  {approvedNum !== null && ` ${t("ofLabel")} ${money(approvedNum)}`}
+                </p>
 
                 {approvedNum !== null ? (
                   <>
-                    <div className="mt-6 h-3 rounded-full bg-white/10 overflow-hidden">
+                    <div className="mt-5 h-2.5 overflow-hidden rounded-full bg-white/10">
                       <div
                         className={`h-full rounded-full transition-all ${budgetState === "over" ? "bg-red-500" : budgetState === "near" ? "bg-amber-400" : "bg-[#4FBEB0]"}`}
                         style={{ width: `${spentPct}%` }}
                       />
                     </div>
-                    <p className="mt-2 text-right text-xs font-semibold text-white/50">{t("budgetUsedPct").replace("{pct}", String(Math.round(usedPctRaw)))}</p>
+                    <p className="mt-2 text-right text-sm font-semibold text-white/65">{t("budgetUsedPct").replace("{pct}", String(Math.round(usedPctRaw)))}</p>
 
-                    <div className="mt-5 grid grid-cols-3 gap-3">
+                    <dl className="mt-4 divide-y divide-white/10 overflow-hidden rounded-2xl border border-white/10">
                       {[
                         { label: t("budgetApprovedLabel"), value: money(approvedNum), cls: "text-white" },
                         { label: t("budgetSpentLabel"), value: money(spentNum), cls: budgetState === "over" ? "text-red-300" : "text-white" },
                         budgetState === "over"
                           ? { label: t("budgetOverByLabel"), value: money(overByNum), cls: "text-red-300" }
                           : { label: t("budgetRemainingLabel"), value: money(remainingNum ?? 0), cls: budgetState === "near" ? "text-amber-300" : "text-[#7DD8CB]" },
-                      ].map((tile) => (
-                        <div key={tile.label} className="rounded-xl bg-white/[0.04] px-4 py-3.5">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">{tile.label}</p>
-                          <p className={`mt-1 text-lg font-bold [font-variant-numeric:tabular-nums] ${tile.cls}`}>{tile.value}</p>
+                      ].map((row) => (
+                        <div key={row.label} className="flex items-center justify-between gap-3 px-4 py-3">
+                          <dt className="text-sm font-semibold text-white/70">{row.label}</dt>
+                          <dd className={`text-lg font-bold [font-variant-numeric:tabular-nums] ${row.cls}`}>{row.value}</dd>
                         </div>
                       ))}
-                    </div>
+                    </dl>
 
                     {budgetState === "over" && (
-                      <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3.5 text-sm leading-relaxed text-red-200">
-                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                      <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3.5 text-sm leading-relaxed text-red-200">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                         <span>{t("budgetOverBanner").replace("{over}", money(overByNum)).replace("{pct}", String(Math.round(usedPctRaw)))}</span>
                       </div>
                     )}
                     {budgetState === "near" && (
-                      <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3.5 text-sm leading-relaxed text-amber-200">
-                        <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                      <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3.5 text-sm leading-relaxed text-amber-200">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                         <span>{t("budgetNearBanner").replace("{pct}", String(Math.round(usedPctRaw))).replace("{left}", money(remainingNum ?? 0))}</span>
                       </div>
                     )}
                   </>
                 ) : (
-                  <p className="mt-4 text-sm text-white/45 italic">{t("noApprovedBudgetYet")}</p>
+                  <p className="mt-4 text-sm italic text-white/45">{t("noApprovedBudgetYet")}</p>
+                )}
+
+                {canEditBudget && (
+                  <button
+                    type="button"
+                    onClick={openBudgetEdit}
+                    className="profile-glass-btn mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-bold"
+                  >
+                    <Pencil className="h-4 w-4" /> {approvedNum === null ? t("budgetSetLabel") : t("budgetEditLabel")}
+                  </button>
+                )}
+                {lastSynced !== null && (
+                  <p className="mt-4 flex items-center justify-center gap-1.5 text-sm font-medium text-white/65" title={t("liveLabel")}>
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
+                    </span>
+                    {syncedLabel}
+                  </p>
                 )}
               </div>
 
-              {isExpenseLocked && (
-                <p className="text-xs text-gold-300 bg-gold-400/10 border border-gold-400/25 rounded-full px-4 py-2">
-                  {t("expenseAddLockedHint")}
-                </p>
-              )}
-              {/* Two buttons switch between adding an expense and the records
-                  of what was already spent. The form is the default view, so
-                  it is already there -- no click needed to start adding. */}
-              <div className="flex items-center justify-between gap-4 flex-wrap border-b border-white/10 pb-6">
-                <div className="inline-flex items-center gap-3">
+              </aside>
+
+              <section className="min-w-0 space-y-5">
+              {/* Add an expense / the records of what was already spent. The form is the default view. */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="inline-flex max-w-full items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
                   <button
                     type="button"
                     onClick={() => setExpenseTab("add")}
-                    className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-bold transition ${
-                      expenseTab === "add" ? "bg-sage-700 text-white" : "border border-white/15 text-white/70 hover:bg-white/10 hover:text-white"
+                    className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-[15px] font-semibold transition ${
+                      expenseTab === "add" ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/75 hover:bg-white/[0.08] hover:text-white"
                     }`}
                   >
-                    <Plus className="h-[18px] w-[18px]" /> {t("addExpenseTitle")}
+                    <Plus className="h-4 w-4" /> {t("addExpenseTitle")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setExpenseTab("records")}
-                    className={`inline-flex items-center gap-2 rounded-full px-6 py-3 text-[15px] font-bold transition ${
-                      expenseTab === "records" ? "bg-sage-700 text-white" : "border border-white/15 text-white/70 hover:bg-white/10 hover:text-white"
+                    className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-[15px] font-semibold transition ${
+                      expenseTab === "records" ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/75 hover:bg-white/[0.08] hover:text-white"
                     }`}
                   >
-                    <FileText className="h-[18px] w-[18px]" /> {t("recordsTab")}
-                    <span className={`rounded-full px-2.5 py-0.5 text-[13px] font-semibold ${expenseTab === "records" ? "bg-white/20" : "bg-white/10"}`}>
+                    <FileText className="h-4 w-4" /> {t("recordsTab")}
+                    <span className={`rounded-full px-2 py-0.5 text-[12px] font-semibold ${expenseTab === "records" ? "bg-white/20" : "bg-white/10"}`}>
                       {summary.expenses.length}
                     </span>
                   </button>
@@ -812,17 +810,22 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                   onClick={() => { setExportIncludeMessage(true); setConfirmExportCsv(true); }}
                   disabled={summary.expenses.length === 0}
                   title={t("exportCsvLabel")}
-                  className="inline-flex items-center justify-center gap-1.5 rounded-full border border-white/15 text-white px-5 py-3 text-[15px] font-semibold hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-white/15 px-5 text-[15px] font-semibold text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <FileSpreadsheet className="h-[18px] w-[18px]" /> {t("exportCsvLabel")}
+                  <FileSpreadsheet className="h-4 w-4" /> {t("exportCsvLabel")}
                 </button>
               </div>
 
+              {isExpenseLocked && (
+                <p className="text-sm font-medium text-gold-300 bg-gold-400/10 border border-gold-400/25 rounded-full px-5 py-2.5">
+                  {t("expenseAddLockedHint")}
+                </p>
+              )}
               {expenseTab === "add" && (
               <form
                 onSubmit={handleAddExpense}
                 noValidate
-                className={`rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-4 ${isExpenseLocked ? "opacity-60" : ""}`}
+                className={`dash-card rounded-2xl p-5 space-y-4 ${isExpenseLocked ? "opacity-60" : ""}`}
               >
                 <fieldset disabled={isExpenseLocked} className="space-y-4 min-w-0">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -891,12 +894,12 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
               {expenseTab === "records" && (
               <div className="space-y-4">
                 {summary.expenses.length > 0 && (
-                  <div className="flex items-center justify-between gap-3 flex-wrap rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3.5 text-sm">
-                    <span className="text-white/60">{t("ledgerCount").replace("{n}", String(summary.expenses.length))}</span>
-                    <span className="text-white/60">
+                  <div className="dash-card flex items-center justify-between gap-3 flex-wrap rounded-2xl px-5 py-4 text-base">
+                    <span className="text-white/75">{t("ledgerCount").replace("{n}", String(summary.expenses.length))}</span>
+                    <span className="text-white/75">
                       {t("ledgerTotalSpent")}:{" "}
                       <span className={`font-bold ${budgetState === "over" ? "text-red-300" : "text-[#7DD8CB]"}`}>{money(spentNum)}</span>
-                      {approvedNum !== null && <span className="text-white/40"> / {money(approvedNum)}</span>}
+                      {approvedNum !== null && <span className="text-white/60"> / {money(approvedNum)}</span>}
                     </span>
                   </div>
                 )}
@@ -924,12 +927,12 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                       return (
                         <div
                           key={exp.id}
-                          className={`rounded-xl border px-5 py-4 ${meta?.over ? "border-red-500/30 bg-red-500/[0.06]" : "border-white/10 bg-white/[0.03]"}`}
+                          className={`rounded-2xl border px-5 py-5 ${meta?.over ? "border-red-500/30 bg-red-500/[0.06]" : "dash-card"}`}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                                <p className="text-[15px] font-semibold text-white truncate">{tc(exp.item, language as any)}</p>
+                                <p className="text-base font-semibold text-white truncate">{tc(exp.item, language as any)}</p>
                                 {receipts.length > 0 && (
                                   <button
                                     type="button"
@@ -950,10 +953,10 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                                   <span className="rounded-full border border-red-400/40 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-red-300">{t("ledgerOverBudgetTag")}</span>
                                 )}
                               </div>
-                              {exp.notes && <p className="mt-0.5 text-xs text-white/50 whitespace-pre-wrap break-words">{tc(exp.notes, language as any)}</p>}
+                              {exp.notes && <p className="mt-1 text-sm text-white/70 whitespace-pre-wrap break-words">{tc(exp.notes, language as any)}</p>}
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
-                              <span className={`mr-2 text-[15px] font-bold [font-variant-numeric:tabular-nums] ${meta?.over ? "text-red-300" : "text-[#7DD8CB]"}`}>{money(amt)}</span>
+                              <span className={`mr-2 text-lg font-extrabold [font-variant-numeric:tabular-nums] ${meta?.over ? "text-red-300" : "text-[#7DD8CB]"}`}>{money(amt)}</span>
                               {(exp.activity_log_urls?.length ?? 0) > 0 && (
                                 <button
                                   type="button"
@@ -971,26 +974,26 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                                 onClick={() => openEditExpense(exp)}
                                 disabled={isExpenseLocked}
                                 title={isExpenseLocked ? t("expenseEventLockedHint") : t("editLabel")}
-                                className="p-1.5 rounded-full text-white/60 hover:text-white hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-white/60"
+                                className="p-2 rounded-full text-white/70 hover:text-white hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-white/60"
                               >
-                                <Pencil className="h-3.5 w-3.5" />
+                                <Pencil className="h-4 w-4" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setDeleteExpense({ id: exp.id, item: exp.item, amount: amt })}
                                 disabled={isExpenseLocked}
                                 title={isExpenseLocked ? t("expenseEventLockedHint") : t("deleteTitle")}
-                                className="p-1.5 rounded-full text-white/60 hover:text-red-400 hover:bg-red-500/10 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-white/60"
+                                className="p-2 rounded-full text-white/70 hover:text-red-400 hover:bg-red-500/10 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-white/60"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
                           </div>
-                          <p className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/45">
+                          <p className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm text-white/65">
                             {dateLabel && <span>{dateLabel}</span>}
                             {exp.recorded_by && <span>{t("ledgerRecordedBy").replace("{name}", exp.recorded_by)}</span>}
                             {share !== null && <span>{t("ledgerShareOfBudget").replace("{pct}", String(Math.round(share)))}</span>}
-                            {meta && <span>{t("ledgerRunningTotal")}: <span className={meta.over ? "text-red-300 font-semibold" : "text-white/65"}>{money(meta.running)}</span></span>}
+                            {meta && <span>{t("ledgerRunningTotal")}: <span className={meta.over ? "text-red-300 font-semibold" : "text-white/85 font-semibold"}>{money(meta.running)}</span></span>}
                           </p>
                         </div>
                       );
@@ -999,6 +1002,8 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                 </div>
               </div>
               )}
+              </section>
+              </div>
             </div>
       )}
       <StatusModal open={!!error} type="error" title={t("errorTitle")} message={error || ""} okLabel={t("okLabel")} onClose={() => setError(null)} z={60} />
@@ -1096,8 +1101,8 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
       {showEditCancelConfirm && (
         <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowEditCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
+            <div className="mb-3 text-[#4FBEB0] flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-white mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
               <button onClick={() => setShowEditCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("stayButton")}</button>
@@ -1106,7 +1111,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                   setShowEditCancelConfirm(false);
                   setEditingExpense(null);
                 }}
-                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+                className="px-5 py-2.5 rounded-full bg-sage-700 text-white hover:bg-sage-800 transition"
               >
                 {t("discardCloseButton")}
               </button>

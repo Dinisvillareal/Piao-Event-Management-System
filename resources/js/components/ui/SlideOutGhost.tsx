@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 
 const SLIDE_IN_CLASSES = ["slide-over-in", "event-form-slide-in", "resident-profile-slide-in"];
-const OUT_MS = 240;
+const OUT_MS = 300;
 
 /**
  * Makes a right-hand slide-over slide back OUT when it closes, however it

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Download, Eye, FileText, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Eye, FileText, ImagePlus, X } from "lucide-react";
 import Portal from "./Portal";
 import ConfirmDialog from "./ConfirmDialog";
 import StatusModal from "./StatusModal";
@@ -32,6 +32,9 @@ interface PhotoViewerProps {
   meta?: string;
   /** Hide Download for files that are not saved yet (just-picked blob: files). */
   allowDownload?: boolean;
+  /** When given, an "Edit photo" button shows next to Download (for example to change a resident's photo). */
+  onEdit?: () => void;
+  editLabel?: string;
   onSelect: (url: string) => void;
   onClose: () => void;
   z?: number;
@@ -43,7 +46,7 @@ const extOf = (url: string) => {
   return dot === -1 ? "" : clean.slice(dot + 1).toLowerCase();
 };
 
-export default function PhotoViewer({ url, name, urls, mimes, label, meta, allowDownload = true, onSelect, onClose, z = 80 }: PhotoViewerProps) {
+export default function PhotoViewer({ url, name, urls, mimes, label, meta, allowDownload = true, onEdit, editLabel, onSelect, onClose, z = 80 }: PhotoViewerProps) {
   const { t } = useLanguage();
   const [confirmDownload, setConfirmDownload] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -177,7 +180,16 @@ export default function PhotoViewer({ url, name, urls, mimes, label, meta, allow
               ) : (
                 <span />
               )}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {onEdit && (
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[#4FBEB0]/40 px-5 py-2.5 text-sm font-semibold text-[#7DD8CB] transition hover:bg-[#4FBEB0]/10"
+                  >
+                    <ImagePlus className="h-4 w-4" /> {editLabel ?? t("editPhotoLabel")}
+                  </button>
+                )}
                 {canDownload && (
                   <button
                     type="button"

@@ -15,6 +15,8 @@ interface PhotoAttachmentProps {
   deleteLabel?: string;
   /** Label for the pick button when nothing is attached yet. */
   chooseLabel?: string;
+  /** "card" = a large preview with the file name and buttons underneath (for a form's side column). */
+  variant?: "row" | "card";
 }
 
 const BTN_WHITE =
@@ -44,7 +46,7 @@ function formatSize(bytes: number): string {
  * link that opens the preview) instead of a big inline picture, with the
  * same Replace / Preview (white) and Delete (red) buttons everywhere.
  */
-export default function PhotoAttachment({ file, url, onPick, onPreview, onDelete, deleteLabel, chooseLabel }: PhotoAttachmentProps) {
+export default function PhotoAttachment({ file, url, onPick, onPreview, onDelete, deleteLabel, chooseLabel, variant = "row" }: PhotoAttachmentProps) {
   const { t } = useLanguage();
   const inputRef = useRef<HTMLInputElement>(null);
   const has = !!file || !!url;
@@ -62,6 +64,56 @@ export default function PhotoAttachment({ file, url, onPick, onPreview, onDelete
   }, [file, url]);
   const name = file ? file.name : url ? fileNameFromUrl(url) : "";
   const meta = file ? `${t("photoImageKind")} · ${formatSize(file.size)}` : t("savedPhotoLabel");
+
+  if (variant === "card") {
+    const cardBtn = "inline-flex items-center justify-center gap-1.5 rounded-full border px-4 py-2.5 text-sm font-semibold transition";
+    return (
+      <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4 shadow-sm">
+        <input ref={inputRef} type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" className="hidden" onChange={onPick} />
+        <button
+          type="button"
+          onClick={has ? onPreview : () => inputRef.current?.click()}
+          title={has ? t("photoPreviewBtn") : chooseLabel ?? t("choosePhotoLabel")}
+          className="block aspect-square w-full overflow-hidden rounded-2xl border border-white/10 bg-black/20 transition hover:border-[#4FBEB0]/50"
+        >
+          {has && thumb && !thumbFailed ? (
+            <img src={thumb} alt="" onError={() => setThumbFailed(true)} className="h-full w-full object-cover" />
+          ) : (
+            <span className="flex h-full w-full flex-col items-center justify-center gap-2 text-white/40">
+              {has ? <ImageIcon className="h-10 w-10" /> : <ImagePlus className="h-10 w-10" />}
+              <span className="text-sm">{has ? name : t("noPhotoChosen")}</span>
+            </span>
+          )}
+        </button>
+        {has && (
+          <div className="mt-3 min-w-0">
+            <p className="truncate text-sm font-semibold text-white" title={name}>{name}</p>
+            <p className="text-xs text-white/50">{meta}</p>
+          </div>
+        )}
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            className={`${cardBtn} ${has ? "border-white/25 text-white hover:bg-white/15" : "col-span-2 border-[#4FBEB0]/40 text-[#7DD8CB] hover:bg-[#4FBEB0]/10"}`}
+          >
+            {!has && <ImagePlus className="h-4 w-4" />}
+            {has ? t("photoReplaceBtn") : chooseLabel ?? t("choosePhotoLabel")}
+          </button>
+          {has && (
+            <button type="button" onClick={onPreview} className={`${cardBtn} border-white/25 text-white hover:bg-white/15`}>
+              {t("photoPreviewBtn")}
+            </button>
+          )}
+          {has && onDelete && (
+            <button type="button" onClick={onDelete} className={`${cardBtn} col-span-2 border-red-500/30 text-red-400 hover:bg-red-500/10`}>
+              <Trash2 className="h-4 w-4" /> {deleteLabel ?? t("photoDeleteBtn")}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3.5">

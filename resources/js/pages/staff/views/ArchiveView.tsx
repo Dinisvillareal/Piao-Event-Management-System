@@ -289,7 +289,7 @@ export default function ArchiveView() {
       desc: t("itemsInTrashStatDesc"),
       value: stats.totalItems,
       icon: Trash2,
-      gradient: "from-sage-800 to-[#1C2E2B]",
+      gradient: "from-sage-400 to-sage-700",
       isText: false,
     },
     {
@@ -307,7 +307,7 @@ export default function ArchiveView() {
       desc: t("mostRecentDeletionStatDesc"),
       value: relativeTimeLabel(stats.newestAt),
       icon: Clock,
-      gradient: "from-gold-400 to-gold-700",
+      gradient: "from-sage-400 to-sage-700",
       isText: true,
     },
     {
@@ -316,7 +316,7 @@ export default function ArchiveView() {
       desc: t("oldestInTrashStatDesc"),
       value: stats.oldestDays,
       icon: AlertTriangle,
-      gradient: "from-[#8A3D2C] to-[#5C2A1E]",
+      gradient: "from-sage-400 to-sage-700",
       isText: false,
     },
   ];
@@ -340,14 +340,14 @@ export default function ArchiveView() {
         modals further below stay on their original light theme, same
         scoping used everywhere else -- there's no core edit form on this
         page to darken along with it. */}
-    <div ref={topRef} className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div ref={topRef} className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="dash-card flex flex-wrap items-center justify-between gap-3 rounded-[32px] p-5 sm:p-6">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("archive")}</h1>
-          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("archiveSubtitle")}</p>
+          <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("archive")}</h1>
+          <p className="mt-1.5 text-sm text-white/55 max-w-xl">{t("archiveSubtitle")}</p>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 shrink-0">
+        <div className="dash-tile dash-mint flex items-center gap-2 rounded-full px-3.5 py-2 shrink-0">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
@@ -367,7 +367,7 @@ export default function ArchiveView() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+      <div className="dash-card rounded-[32px] p-4 sm:p-5">
         <FilterBar
           search={{ value: searchQuery, onChange: setSearchQuery, placeholder: t("searchArchivePlaceholder") }}
           filters={[{ key: "type", label: t("typeColumn"), value: typeFilter, onChange: setTypeFilter, options: typeOptions, searchable: true }]}
@@ -386,18 +386,18 @@ export default function ArchiveView() {
       <p className="text-xs text-white/45">{t("showingPerPage").replace("{n}", String(itemsPerPage))}</p>
 
       {allTrashedItems.length === 0 && !loading ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-12 text-center text-white/45">
+        <div className="dash-card rounded-[32px] p-12 text-center text-white/45">
           <svg className="w-16 h-16 mx-auto mb-4 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
           </svg>
           <p>{t("noDeletedItems")}</p>
         </div>
       ) : (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+        <div className="dash-card rounded-[32px] overflow-hidden">
           <div className="overflow-x-auto">
             <table className="rtable w-full text-sm">
               <thead>
-                <tr className="border-b border-white/10">
+                <tr className="border-b border-white/10 bg-[#4FBEB0]/[0.06]">
                   <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("typeColumn")}</th>
                   <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("nameTitleColumn")}</th>
                   <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wide text-white">{t("deletedAtColumn")}</th>
@@ -410,7 +410,7 @@ export default function ArchiveView() {
                   Array(8).fill(0).map((_, i) => <SkeletonRow key={i} />)
                 ) : (
                   paginatedItems.map((item, index) => (
-                    <tr key={`${item.type}-${item.id}-${index}`} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.05] transition-colors">
+                    <tr key={`${item.type}-${item.id}-${index}`} className="border-b border-white/[0.06] last:border-0 hover:bg-[#4FBEB0]/[0.07] transition-colors">
                       <td className="py-3.5 px-4">
                         <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${TYPE_BADGE_STYLES[item.type] ?? "bg-white/10 text-white/60 border border-white/15"}`}>
                           {highlightMatches(t(TYPE_LABEL_KEYS[item.type]), searchQuery)}
@@ -423,7 +423,7 @@ export default function ArchiveView() {
                         <button
                           onClick={() => setRestoreItem(item)}
                           disabled={restoringId === item.id}
-                          className="p-2 rounded-full hover:bg-white/10 transition text-[#7DD8CB] active:bg-white/[0.15] disabled:opacity-50"
+                          className="btn-live-navy inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm transition hover:bg-[#274A77] active:scale-95 disabled:opacity-50"
                           title={t("restoreTitle")}
                         >
                           {restoringId === item.id ? (
@@ -451,15 +451,15 @@ export default function ArchiveView() {
             <button
               onClick={() => goToPage(p => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+              className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
             >←</button>
-            <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+            <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold">
               {currentPage}
             </span>
             <button
               onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+              className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
             >→</button>
           </div>
         </div>

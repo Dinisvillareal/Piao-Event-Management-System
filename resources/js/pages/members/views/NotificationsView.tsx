@@ -316,19 +316,19 @@ export default function NotificationsView({ highlightText }: NotificationsViewPr
    };
 
    return (
-       <div className="bg-[#0A0E1A] p-4 sm:p-8 h-[calc(100dvh-73px)] flex flex-col relative overflow-y-auto lg:overflow-visible">
+       <div className="dash-canvas p-4 sm:p-8 h-[calc(100dvh-73px)] flex flex-col relative overflow-y-auto lg:overflow-visible">
            {/* Fixed Header - Never scrolls */}
            <div className="flex-shrink-0 pb-6">
-               <div className="flex items-center justify-between">
+               <div className="dash-card rounded-[32px] p-5 sm:p-6 flex items-center justify-between">
                    <div>
-                       <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("notify")}</h1>
-                       <p className="mt-1.5 text-sm text-white/50 max-w-xl">
+                       <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("notify")}</h1>
+                       <p className="mt-1.5 text-sm text-white/55 max-w-xl">
                            {t("notificationsSubtitle")}
                        </p>
                    </div>
                    {/* Genuinely live -- fetchNotifications(true) silently
                        re-polls every 20s (see effect above). */}
-                   <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-white/50" title={t("liveLabel")}>
+                   <span className="dash-tile dash-mint hidden sm:inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium" title={t("liveLabel")}>
                        <span className="relative flex h-2 w-2">
                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
                            <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />

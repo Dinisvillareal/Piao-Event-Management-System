@@ -10,7 +10,7 @@ const TYPE_STYLES: Record<
   { Icon: React.ComponentType<{ size?: number; className?: string }>; accent: string; button: string }
 > = {
   success: { Icon: CheckCircle, accent: "text-sage-400", button: "bg-sage-700 hover:bg-sage-800 text-white" },
-  warning: { Icon: AlertTriangle, accent: "text-amber-400", button: "bg-amber-500 hover:bg-amber-600 text-white" },
+  warning: { Icon: AlertTriangle, accent: "text-[#4FBEB0]", button: "bg-sage-700 hover:bg-sage-800 text-white" },
   error: { Icon: XCircle, accent: "text-red-400", button: "bg-red-500 hover:bg-red-600 text-white" },
 };
 
@@ -53,7 +53,7 @@ export default function StatusModal({ open, type, title, message, okLabel, onClo
         onClick={(e) => e.stopPropagation()}
       >
         <div className={`mb-3 flex justify-center ${accent}`}>{icon ?? <Icon size={44} />}</div>
-        <h3 className={`text-xl font-bold mb-2 ${type === "success" ? "text-white" : accent}`}>{title}</h3>
+        <h3 className={`text-xl font-bold mb-2 ${type === "error" ? accent : "text-white"}`}>{title}</h3>
         <p className="text-[15px] text-white/50 mb-6">{message}</p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           {secondaryLabel && onSecondary && (

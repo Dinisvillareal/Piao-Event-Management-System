@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import ForgotPasswordModal from "../../components/auth/ForgotPasswordModal";
+import ActivateAccountModal from "../../components/auth/ActivateAccountModal";
 import { ArrowRight, Copy, LayoutDashboard, Users, CheckCircle, LogOut, AlertCircle, Info } from "lucide-react";
 import StatusModal from "../../components/ui/StatusModal";
 import SplashScreen from "../../components/ui/SplashScreen";
@@ -245,13 +246,16 @@ export default function LoginPage() {
   const [errorTitle, setErrorTitle] = useState("");
   const [credsWrong, setCredsWrong] = useState<"username" | "password" | null>(null);
   const [fieldErr, setFieldErr] = useState<{ username?: string; password?: string }>({});
-  const clearErrors = () => { setError(""); setErrorTitle(""); setCredsWrong(null); setFieldErr({}); };
+  // A friendly next step under the username error (activate now / contact the office).
+  const [helpCta, setHelpCta] = useState<{ kind: "pending" | "noaccount" | "notfound"; user: string } | null>(null);
+  const clearErrors = () => { setError(""); setErrorTitle(""); setCredsWrong(null); setFieldErr({}); setHelpCta(null); };
   const [isLoading, setIsLoading] = useState(false);
   const [keepSignedIn, setKeepSignedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   // Two-step login: asked for only after the password was right and the account has an authenticator.
   const [otpRequired, setOtpRequired] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+  const [showActivate, setShowActivate] = useState(false);
 
   // A notice left by the app when it signed the person out (inactivity, suspension...).
   useEffect(() => {
@@ -366,6 +370,7 @@ export default function LoginPage() {
           }
           const codeKey: Record<string, string> = {
             username_not_found: "loginErrUserNotFound",
+            pending_activation: "loginErrPendingActivation",
             no_portal_account: "loginErrNoPortalAccount",
             account_suspended: "loginErrSuspended",
             wrong_password: "loginErrWrongPassword",
@@ -375,6 +380,8 @@ export default function LoginPage() {
             setCredsWrong(data.field);
             const msg = codeKey[data.code] ? t(codeKey[data.code]) : (data.message || t("loginErrInvalidClear"));
             setFieldErr({ [data.field]: msg });
+            const kind = data.code === "pending_activation" ? "pending" : data.code === "no_portal_account" ? "noaccount" : data.code === "username_not_found" ? "notfound" : null;
+            setHelpCta(kind ? { kind, user: username.trim() } : null);
           } else if (!data.message || data.message === "Invalid credentials") {
             setCredsWrong("username");
             setErrorTitle(t("loginErrInvalidTitle"));
@@ -588,6 +595,28 @@ export default function LoginPage() {
                   onInput={() => { if (error || fieldErr.username || credsWrong) clearErrors(); }}
                 />
                 {fieldErr.username && <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-medium text-red-400"><AlertCircle className="h-4 w-4 shrink-0" />{fieldErr.username}</p>}
+                {helpCta && (
+                  <div className={`mt-3 rounded-2xl border p-4 ${helpCta.kind === "pending" ? "border-[#4FBEB0]/30 bg-[#4FBEB0]/10" : "border-white/15 bg-white/[0.06]"}`}>
+                    <p className="text-[13.5px] leading-relaxed text-white/80">
+                      {helpCta.kind === "pending" ? t("loginHelpPending") : helpCta.kind === "noaccount" ? t("loginHelpNoAccount") : t("loginHelpNotFound")}
+                    </p>
+                    {helpCta.kind === "pending" && (
+                      <button type="button" onClick={() => setShowActivate(true)} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-gold-400 to-[#4FBEB0] px-5 py-2.5 text-[14px] font-bold text-[#08130F] transition hover:opacity-90">
+                        {t("loginHelpActivateBtn")} <ArrowRight className="h-4 w-4" />
+                      </button>
+                    )}
+                    {helpCta.kind === "noaccount" && (
+                      <button type="button" onClick={() => { setShowContact(true); contactRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-white/25 bg-white/10 px-5 py-2.5 text-[14px] font-semibold text-white transition hover:bg-white/15">
+                        {t("loginHelpContactBtn")}
+                      </button>
+                    )}
+                    {helpCta.kind === "notfound" && (
+                      <button type="button" onClick={() => setShowActivate(true)} className="mt-3 text-[13px] font-semibold text-[#7DD8CB] hover:underline">
+                        {t("actLink")}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div>
@@ -724,7 +753,11 @@ export default function LoginPage() {
               </div>
             </form>
 
-            <p className="mt-8 text-center text-[12px] leading-relaxed text-white/35">
+            <p className="mt-6 text-center">
+              <button type="button" onClick={() => setShowActivate(true)} className="text-[14px] font-semibold text-[#7DD8CB] hover:underline">{t("actLink")}</button>
+            </p>
+
+            <p className="mt-6 text-center text-[12px] leading-relaxed text-white/35">
               {t("loginResidentNote")}
             </p>
           </div>
@@ -732,6 +765,7 @@ export default function LoginPage() {
       </div>
 
       {showForgot && <ForgotPasswordModal onClose={() => setShowForgot(false)} />}
+      {showActivate && <ActivateAccountModal initialUserCode={helpCta?.kind === "pending" ? helpCta.user : ""} onClose={() => { setShowActivate(false); }} onActivated={() => { clearErrors(); window.setTimeout(() => (document.querySelector('input[name="password"]') as HTMLInputElement | null)?.focus(), 50); }} />}
 
       {/* Giant watermark band -- a huge faint "PC" (PiaoConnect) outline
           behind a two-line statement, echoing the reference's oversized

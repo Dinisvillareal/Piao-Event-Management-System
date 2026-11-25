@@ -28,7 +28,7 @@ export default function SearchBar({ value, onChange, placeholder, className = ""
         placeholder={placeholder}
         className={`w-full border focus:outline-none transition ${
           dark
-            ? "h-11 rounded-xl border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+            ? "h-11 rounded-full border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
             : "h-14 rounded-full border-sage-200 bg-white pl-12 pr-24 text-base shadow-sm focus:ring-1 focus:border-sage-400 focus:ring-sage-700/20"
         }`}
       />

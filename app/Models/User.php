@@ -46,7 +46,17 @@ class User extends Authenticatable
         'failed_login_attempts',
         'locked_until',
         'last_login_ip',
+        'activation_code_hash',
+        'activation_failed_attempts',
     ];
+
+    /** A portal account that has been given but not activated yet (no password until the resident activates it). */
+    public function getPendingActivationAttribute(): bool
+    {
+        return (bool) ($this->attributes['has_account'] ?? false)
+            && empty($this->attributes['password'] ?? null)
+            && !empty($this->attributes['activation_code_hash'] ?? null);
+    }
 
     protected $casts = [
         'has_account' => 'boolean',
@@ -58,6 +68,7 @@ class User extends Authenticatable
         'locked_until' => 'datetime',
         'last_login_at' => 'datetime',
         'password_changed_at' => 'datetime',
+        'activation_expires_at' => 'datetime',
         'two_factor_confirmed_at' => 'datetime',
     ];
 
@@ -82,6 +93,7 @@ class User extends Authenticatable
         'age_group',
         'civil_status',
         'current_statuses',
+        'pending_activation',
     ];
 
     // =====================

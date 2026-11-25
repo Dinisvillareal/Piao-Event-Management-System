@@ -451,18 +451,18 @@ export default function InventoryView() {
         part of the same system instead of the old light "paper" page.
         Confirm/success/error/delete modals further below stay on their
         original light theme, same scoping used on every other staff view. */}
-    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
+    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="dash-card flex flex-col justify-between gap-4 rounded-[32px] p-5 sm:flex-row sm:items-center sm:p-6">
         <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("barangayInventory")}</h1>
+          <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("barangayInventory")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("inventorySubtitle")}</p>
         </div>
         <div className="flex items-center gap-2.5 self-start sm:self-auto shrink-0">
           {/* Genuinely live -- fetchStats() re-polls /inventory every 20s
               (see effect above), this just renders how long ago that last
               landed, ticking every second off nowTick. */}
-          <div className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3.5 py-2 text-xs font-medium text-white/50" title={t("liveLabel")}>
+          <div className="hidden sm:dash-tile dash-mint inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium text-white/70" title={t("liveLabel")}>
             <span className="relative flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
@@ -472,32 +472,30 @@ export default function InventoryView() {
           <button
             onClick={openAdd}
             disabled={loading || pageSwitching}
-            className="group inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/[0.04] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#1E3A5F] hover:bg-[#1E3A5F] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
+            className="btn-live-navy group inline-flex items-center gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold text-white shadow-sm transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] hover:shadow-md shrink-0 disabled:pointer-events-none disabled:opacity-50"
           >
             {t("addItem")}
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0A0E1A] transition-colors duration-500 ease-out group-hover:bg-white/15">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
               <Plus className="h-5 w-5 text-white" />
             </span>
           </button>
         </div>
       </div>
 
-      {/* KPI strip -- same gradient-card language as the Dashboard's stat
-          strip, so "at a glance" reads the same way on both pages. */}
-      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {[
-          { value: stats.totalItems, label: t("totalItemsStatLabel"), description: t("totalItemsStatDesc"), icon: Package, gradient: "from-sage-400 to-sage-700" },
-          { value: stats.totalUnits, label: t("unitsInStockStatLabel"), description: t("unitsInStockStatDesc"), icon: Layers, gradient: "from-sage-800 to-[#1C2E2B]" },
-          { value: stats.onLoanCount, label: t("onLoanStatLabel"), description: t("onLoanStatDesc"), icon: RefreshCw, gradient: "from-gold-400 to-gold-700" },
-          { value: stats.needsAttentionCount, label: t("needsAttentionStatLabel"), description: t("needsAttentionStatDesc"), icon: AlertTriangle, gradient: "from-[#8A3D2C] to-[#5C2A1E]" },
-        ].map((card, idx) => statsLoading ? (
-          <StatCardSkeleton key={idx} />
-        ) : (
-          <KpiCard key={idx} value={card.value} label={card.label} description={card.description} icon={card.icon} gradient={card.gradient} delay={idx * 70} />
-        ))}
-      </div>
+        <div className="report-stagger grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+          {[
+            { value: stats.totalItems, label: t("totalItemsStatLabel"), description: t("totalItemsStatDesc"), icon: Package, gradient: "from-sage-400 to-sage-700" },
+            { value: stats.totalUnits, label: t("unitsInStockStatLabel"), description: t("unitsInStockStatDesc"), icon: Layers, gradient: "from-sage-400 to-sage-700" },
+            { value: stats.onLoanCount, label: t("onLoanStatLabel"), description: t("onLoanStatDesc"), icon: RefreshCw, gradient: "from-sage-400 to-sage-700" },
+            { value: stats.needsAttentionCount, label: t("needsAttentionStatLabel"), description: t("needsAttentionStatDesc"), icon: AlertTriangle, gradient: "from-sage-400 to-sage-700" },
+          ].map((card, idx) => statsLoading ? (
+            <StatCardSkeleton key={idx} />
+          ) : (
+            <KpiCard key={idx} value={card.value} label={card.label} description={card.description} icon={card.icon} gradient={card.gradient} delay={idx * 70} />
+          ))}
+        </div>
 
-      <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 sm:p-4">
+      <div className="dash-card space-y-4 rounded-[32px] p-4 sm:p-5">
         <QuickTabs
           value={invTab}
           onChange={(k) => setInvTab(k as InvTab)}
@@ -530,9 +528,11 @@ export default function InventoryView() {
         />
       </div>
 
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="min-w-0 space-y-5">
       <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
       {loading || pageSwitching ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+        <div className="dash-card overflow-hidden rounded-[32px]">
           <div className="border-b border-white/10 px-4 py-3">
             <Skeleton className="h-3 w-24" />
           </div>
@@ -550,28 +550,28 @@ export default function InventoryView() {
           </div>
         </div>
       ) : viewItems.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/15 bg-white/[0.03] p-10 text-center text-white/50">
+        <div className="dash-tile rounded-[28px] border border-dashed border-white/15 p-10 text-center text-white/50">
           <Package size={40} className="mx-auto mb-3 text-white/20" />
           <p>{items.length === 0 && !search && !conditionFilter ? t("noInventoryItems") : t("fltNoMatches")}</p>
         </div>
       ) : (
         <>
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] overflow-hidden shadow-sm">
+        <div className="dash-card overflow-hidden rounded-[32px]">
           <div className="overflow-x-auto">
             <table className="rtable w-full text-sm">
               <thead>
                 <tr className="border-b border-white/10">
-                  <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("itemColumn")}</th>
-                  <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("conditionColumn")}</th>
-                  <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("quantityColumn")}</th>
-                  <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("storageLocationLabel")}</th>
-                  <th className="py-3 px-4 text-left text-xs font-bold uppercase tracking-wide text-white">{t("statusColumn")}</th>
-                  <th className="py-3 px-4 text-right text-xs font-bold uppercase tracking-wide text-white">{t("actionsColumn")}</th>
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wider text-white/55">{t("itemColumn")}</th>
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wider text-white/55">{t("conditionColumn")}</th>
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wider text-white/55">{t("quantityColumn")}</th>
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wider text-white/55">{t("storageLocationLabel")}</th>
+                  <th className="py-3 px-4 text-left text-[11px] font-bold uppercase tracking-wider text-white/55">{t("statusColumn")}</th>
+                  <th className="py-3 px-4 text-right text-[11px] font-bold uppercase tracking-wider text-white/55">{t("actionsColumn")}</th>
                 </tr>
               </thead>
               <tbody>
                 {paginatedItems.map((item) => (
-                  <tr key={item.id} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.05] transition-colors">
+                  <tr key={item.id} className="border-b border-white/[0.06] last:border-0 hover:bg-[#4FBEB0]/[0.06] transition-colors">
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="relative shrink-0">
@@ -636,7 +636,7 @@ export default function InventoryView() {
                           {t("overdueReturnBadge")}
                         </span>
                       ) : item.borrowed_quantity > 0 ? (
-                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold border border-white/10 bg-white/[0.04] text-white/50 whitespace-nowrap">{t("onLoanBadge")}</span>
+                        <span className="px-2.5 py-1 rounded-full text-xs font-semibold dash-tile text-white/60 whitespace-nowrap">{t("onLoanBadge")}</span>
                       ) : (
                         <span className="text-white/25">—</span>
                       )}
@@ -652,21 +652,21 @@ export default function InventoryView() {
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => setUnitsItem(item)}
-                          className="inline-flex h-10 w-10 items-center justify-center rounded-full transition sm:h-8 sm:w-8 text-white/50 hover:bg-white/10 hover:text-white"
+                          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 sm:h-9 sm:w-9"
                           title={t("unitsButtonTitle")}
                         >
                           <Layers className="h-4 w-4" />
                         </button>
-                        <button onClick={() => openEdit(item)} className="inline-flex h-10 w-10 items-center justify-center rounded-full text-white/50 hover:bg-white/10 hover:text-white transition sm:h-8 sm:w-8" title={t("editLabel")}>
+                        <button onClick={() => openEdit(item)} className="btn-live-navy inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#1E3A5F] bg-[#1E3A5F] text-white shadow-sm transition hover:bg-[#274A77] sm:h-9 sm:w-9" title={t("editLabel")}>
                           <Pencil className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => item.borrowed_quantity === 0 && setDeleteId(item.id)}
                           disabled={item.borrowed_quantity > 0}
-                          className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition sm:h-8 sm:w-8 ${
+                          className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition sm:h-9 sm:w-9 ${
                             item.borrowed_quantity > 0
-                              ? "text-white/20 cursor-not-allowed"
-                              : "text-white/50 hover:bg-red-500/10 hover:text-red-400"
+                              ? "bg-red-600 text-white cursor-not-allowed opacity-40"
+                              : "bg-red-600 text-white shadow-sm hover:bg-red-700"
                           }`}
                           title={item.borrowed_quantity > 0 ? t("itemCurrentlyBorrowedTooltip") : t("removeLabel")}
                         >
@@ -689,17 +689,17 @@ export default function InventoryView() {
                 <button
                   onClick={() => goToPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
+                  className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                 >
                   ←
                 </button>
-                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                <span className="h-8 w-8 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm flex items-center justify-center text-sm font-bold">
                   {currentPage}
                 </span>
                 <button
                   onClick={() => goToPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
+                  className="dash-tile h-8 w-8 rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition"
                 >
                   →
                 </button>
@@ -709,6 +709,77 @@ export default function InventoryView() {
         </div>
         </>
       )}
+      </div>
+
+      <aside className="space-y-5 xl:sticky xl:top-4">
+        {([
+          {
+            key: "attention",
+            title: t("needsAttentionStatLabel"),
+            sub: t("needsAttentionStatDesc"),
+            icon: AlertTriangle,
+            rows: allItems.filter((i) => !!i.overdue_borrow_event || Number(i.poor_quantity) > 0 || (i.lost_quantity ?? 0) > 0),
+          },
+          {
+            key: "loan",
+            title: t("onLoanStatLabel"),
+            sub: t("onLoanStatDesc"),
+            icon: RefreshCw,
+            rows: allItems.filter((i) => i.borrowed_quantity > 0),
+          },
+        ] as const).map((sec) => (
+          <div key={sec.key} className="dash-card rounded-[32px] p-5">
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82]">
+                <sec.icon className="h-5 w-5 text-white" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-display text-base font-extrabold text-white">{sec.title}</h3>
+                <p className="truncate text-xs text-white/50">{sec.sub}</p>
+              </div>
+              <span className="rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] px-2.5 py-1 text-xs font-bold text-white">{sec.rows.length}</span>
+            </div>
+            <div className="mt-4 space-y-2">
+              {statsLoading ? (
+                <Skeleton className="h-14 w-full rounded-2xl" />
+              ) : sec.rows.length === 0 ? (
+                <p className="dash-tile rounded-2xl px-4 py-5 text-center text-sm text-white/40">—</p>
+              ) : (
+                sec.rows.slice(0, 4).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSearch(tc(item.name, language as any))}
+                    className="dash-tile flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left"
+                  >
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-[#4FBEB0]/25 bg-[#4FBEB0]/10 text-[#2E8E82]">
+                      {item.photo_url ? <img src={item.photo_url} alt="" className="h-full w-full object-cover" /> : <Package className="h-4 w-4" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-white">{tc(item.name, language as any)}</span>
+                      <span className="block truncate text-xs text-white/45">{item.storage_location ? tc(item.storage_location, language as any) : "—"}</span>
+                    </span>
+                    {sec.key === "attention" ? (
+                      <span className="shrink-0 rounded-full bg-red-500/15 px-2.5 py-1 text-[11px] font-bold text-red-500">
+                        {item.overdue_borrow_event
+                          ? t("overdueReturnBadge")
+                          : (item.lost_quantity ?? 0) > 0
+                          ? t("lostUnitsBadge").replace("{n}", String(item.lost_quantity))
+                          : `${item.poor_quantity} ${t(CONDITION_LABEL_KEYS.Poor)}`}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 rounded-full bg-[#4FBEB0]/15 px-2.5 py-1 text-[11px] font-bold text-[#2E8E82]">
+                        {item.borrowed_quantity} · {t("onLoanBadge")}
+                      </span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        ))}
+      </aside>
+      </div>
       </div>
       </div>
 
@@ -722,19 +793,21 @@ export default function InventoryView() {
           onSubmit={handleFormSubmit}
           footer={<SaveButton className="w-full" active={hasFormChanges} title={!hasFormChanges ? t("noChangesToSaveHint") : undefined}>{editing ? t("updateItem") : t("addItem")}</SaveButton>}
         >
+          <div className="grid gap-8 lg:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] lg:items-start">
+          <div className="lg:sticky lg:top-0">
+            <label className="mb-2 block text-base font-semibold text-white">{t("photoRequiredLabel")}</label>
+            <PhotoAttachment
+              variant="card"
+              file={photoItems[0]?.file ?? null}
+              url={photoItems[0]?.url ?? null}
+              onPick={handlePhotoChange}
+              onPreview={() => photoItems[0] && setViewingPhoto({ url: photoItems[0].url, name: form.name || t("itemPhotoFallbackLabel") })}
+              onDelete={() => setPhotoItems([])}
+            />
+            <p className="mt-2 text-sm text-white/50">{t("fileHintImage")}</p>
+          </div>
+          <div className="min-w-0 space-y-10">
           <FormSection title={t("secItemDetails")} className="space-y-5">
-              <div>
-                <label className="block text-base font-semibold text-white mb-1.5">{t("photoRequiredLabel")}</label>
-                <PhotoAttachment
-                  file={photoItems[0]?.file ?? null}
-                  url={photoItems[0]?.url ?? null}
-                  onPick={handlePhotoChange}
-                  onPreview={() => photoItems[0] && setViewingPhoto({ url: photoItems[0].url, name: form.name || t("itemPhotoFallbackLabel") })}
-                  onDelete={() => setPhotoItems([])}
-                />
-                <p className="mt-2 text-sm text-white/50">{t("fileHintImage")}</p>
-              </div>
-
               <div>
                 <label className="block text-base font-semibold text-white mb-1.5">{t("itemNameRequired")}</label>
                 <input required value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" placeholder={t("opsPlaceholderPlasticChairs")} />
@@ -743,9 +816,9 @@ export default function InventoryView() {
           <FormSection title={t("secStock")} className="space-y-5">
               <div>
                 <label className="block text-base font-semibold text-white mb-1.5">{t("conditionUnitsLabel")}</label>
-                <div className="grid grid-cols-2 2xl:grid-cols-4 gap-x-3 gap-y-4">
+                <div className="grid grid-cols-2 gap-3">
                   {CONDITIONS.map((c) => (
-                    <div key={c} className="min-w-0">
+                    <div key={c} className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.03] p-3.5">
                       <span className={`mb-1.5 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${CONDITION_STYLES[c]}`}>{t(CONDITION_LABEL_KEYS[c])}</span>
                       <NumberStepper
                         min={0}
@@ -756,9 +829,10 @@ export default function InventoryView() {
                     </div>
                   ))}
                 </div>
-                <p className="mt-2 text-sm text-white/60 [font-variant-numeric:tabular-nums]">
-                  {t("totalInStockLabel")}: <span className="font-semibold text-white">{shownQuantity}</span>
-                </p>
+                <div className="mt-3 flex items-center justify-between rounded-2xl border border-[#4FBEB0]/25 bg-[#4FBEB0]/[0.07] px-4 py-3 [font-variant-numeric:tabular-nums]">
+                  <span className="text-sm font-semibold text-white/70">{t("totalInStockLabel")}</span>
+                  <span className="text-xl font-extrabold text-white">{shownQuantity}</span>
+                </div>
               </div>
               {editing && (
                 <p className="text-sm text-white/45">{t("editStockHint")}</p>
@@ -774,6 +848,8 @@ export default function InventoryView() {
                 <textarea value={form.notes} onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))} className="w-full rounded-3xl border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50" rows={3} />
               </div>
           </FormSection>
+          </div>
+          </div>
         </FormDrawer>
       )}
 
@@ -781,8 +857,8 @@ export default function InventoryView() {
       {showFormCancelConfirm && (
         <Portal><div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] px-4" onClick={() => setShowFormCancelConfirm(false)}>
           <div className="bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-md p-6 shadow-2xl text-center max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-amber-400 flex justify-center"><AlertTriangle size={40} /></div>
-            <h3 className="text-xl font-bold text-amber-400 mb-3">{t("unsavedChangesTitle")}</h3>
+            <div className="mb-3 text-[#4FBEB0] flex justify-center"><AlertTriangle size={40} /></div>
+            <h3 className="text-xl font-bold text-white mb-3">{t("unsavedChangesTitle")}</h3>
             <p className="text-white/50 mb-5">{t("unsavedChangesMessage")}</p>
             <div className="flex justify-center gap-4">
               <button onClick={() => setShowFormCancelConfirm(false)} className="px-5 py-2.5 rounded-full border border-white/15 text-white hover:bg-white/10 transition">{t("stayButton")}</button>
@@ -791,7 +867,7 @@ export default function InventoryView() {
                   setShowFormCancelConfirm(false);
                   closeForm();
                 }}
-                className="px-5 py-2.5 rounded-full bg-amber-500 text-white hover:bg-amber-600 transition"
+                className="px-5 py-2.5 rounded-full bg-sage-700 text-white hover:bg-sage-800 transition"
               >
                 {t("discardCloseButton")}
               </button>
