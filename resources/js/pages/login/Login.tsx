@@ -183,8 +183,8 @@ function LiveClock() {
 
   return (
     <div className="text-right">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">{t("loginPhilTime")}</p>
-      <p className="mt-0.5 text-[13px] font-medium text-white/90 [font-variant-numeric:tabular-nums] sm:hidden">{timeLabel}</p>
+      <p className="max-sm:hidden text-[11px] font-semibold uppercase tracking-[0.16em] text-white/45">{t("loginPhilTime")}</p>
+      <p className="text-[13px] font-semibold text-white/90 [font-variant-numeric:tabular-nums] sm:hidden">{timeLabel}</p>
       <p className="mt-0.5 hidden text-[13px] font-medium text-white/90 [font-variant-numeric:tabular-nums] sm:block">
         {t("loginDateAtTime").replace("{date}", dateLabel).replace("{time}", timeLabel)}
       </p>
@@ -522,16 +522,16 @@ export default function LoginPage() {
         </div>
 
         {/* Slim top bar -- logo on the left, the only real-time chrome on the right */}
-        <div className="relative z-10 flex items-center justify-between border-b border-white/10 px-4 py-3 sm:px-10 sm:py-4">
-          <div className="flex min-w-0 items-center gap-2.5">
+        <div className="relative z-10 flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3 sm:px-10 sm:py-4">
+          <div className="flex shrink-0 items-center gap-2.5">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/20 bg-white/10">
               <img src="/logo-removebg-preview.png" alt={t("loginLogoAlt")} className="h-full w-full object-contain" />
             </div>
-            <span className="truncate text-[13px] font-extrabold tracking-wide text-white">
+            <span className="whitespace-nowrap text-[13px] font-extrabold tracking-wide text-white">
               PIAO<span className="text-white/40">CONNECT</span>
             </span>
           </div>
-          <div className="flex shrink-0 items-center gap-2 sm:gap-4">
+          <div className="flex shrink-0 items-center gap-3 sm:gap-4">
             <div className="hidden items-center gap-2 sm:flex">
               <span className="relative flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
@@ -545,10 +545,10 @@ export default function LoginPage() {
         </div>
 
         {/* Wording on the left, the sign-in card on the right */}
-        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center gap-8 px-4 py-8 sm:gap-10 sm:px-10 sm:py-14 lg:flex-row lg:items-center lg:justify-between lg:gap-16">
+        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center gap-7 px-4 py-6 sm:gap-10 sm:px-10 sm:py-14 lg:flex-row lg:items-center lg:justify-between lg:gap-16">
           {/* Left: branding + wording */}
           <div className="w-full max-w-2xl text-center lg:text-left">
-            <p className="text-[12px] font-semibold uppercase tracking-[0.3em] text-white/60 sm:text-[15px]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.25em] text-white/60 sm:text-[15px] sm:tracking-[0.3em]">
               {t("loginWelcomeTo")}
             </p>
             <p className="mt-2 font-display text-[32px] font-extrabold uppercase leading-none tracking-tight min-[400px]:text-[40px] sm:text-[60px]">
@@ -562,30 +562,30 @@ export default function LoginPage() {
                 {t("loginCommunityName")}
               </span>
             </p>
-            <p className="mt-4 text-[12px] font-semibold uppercase tracking-[0.25em] text-white/50 sm:text-[14px] sm:tracking-[0.2em] sm:whitespace-nowrap">
+            <p className="mt-3 text-[11px] font-semibold uppercase leading-relaxed tracking-[0.18em] text-white/50 sm:mt-4 sm:text-[14px] sm:tracking-[0.2em] sm:whitespace-nowrap">
               {t("loginTagline")}
             </p>
-            <p className="mx-auto mt-6 max-w-lg text-[16px] leading-relaxed text-white/55 lg:mx-0">
+            <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-white/55 sm:mt-6 sm:text-[16px] lg:mx-0">
               {t("loginIntro")}
             </p>
           </div>
 
           {/* Right: the sign-in card */}
-          <div className="w-full max-w-lg rounded-3xl border border-white/15 bg-white/[0.07] p-6 shadow-[0_25px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-10">
+          <div className="w-full max-w-lg rounded-3xl border border-white/15 bg-white/[0.07] p-5 shadow-[0_25px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-10">
             <div className="text-center">
-              <h2 className="font-display text-[28px] font-bold text-white sm:text-[34px]">{t("welcomeBack")}</h2>
-              <p className="mt-2 text-[16px] text-white/55">
+              <h2 className="font-display text-2xl font-bold text-white sm:text-[34px]">{t("welcomeBack")}</h2>
+              <p className="mt-2 text-sm text-white/55 sm:text-[16px]">
                 {t("loginSubtitle")}
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} noValidate className="mt-8 space-y-5">
+            <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-4 sm:mt-8 sm:space-y-5">
               <div>
-                <label className="text-[15px] font-semibold text-white/80">{t("usernameLabel")}</label>
+                <label className="text-sm font-semibold text-white/80 sm:text-[15px]">{t("usernameLabel")}</label>
                 <input
                   type="text"
                   name="username"
-                  className={`w-full mt-1.5 rounded-xl border bg-white/5 px-4 py-3.5 text-[15px] text-white placeholder-white/30 transition focus:outline-none focus:ring-4 ${
+                  className={`w-full mt-1.5 rounded-xl border bg-white/5 px-4 py-3 text-[15px] text-white placeholder-white/30 sm:py-3.5 transition focus:outline-none focus:ring-4 ${
                     fieldErr.username || credsWrong === "username" ? "border-red-400 focus:border-red-400 focus:ring-red-400/15" : "border-white/15 focus:border-[#4FBEB0] focus:ring-[#4FBEB0]/15"
                   }`}
                   placeholder="PR-0001"
@@ -621,14 +621,14 @@ export default function LoginPage() {
 
               <div>
                 <div className="flex justify-between items-baseline text-sm">
-                  <label className="text-[15px] font-semibold text-white/80">{t("passwordLabel")}</label>
+                  <label className="text-sm font-semibold text-white/80 sm:text-[15px]">{t("passwordLabel")}</label>
                   <button type="button" onClick={() => setShowForgot(true)} className="text-[13px] font-semibold text-[#7DD8CB] hover:underline">{t("secForgotLink")}</button>
                 </div>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     name="password"
-                    className={`password-field w-full mt-1.5 rounded-xl border bg-white/5 px-4 py-3.5 pr-11 text-[15px] text-white placeholder-white/30 transition focus:outline-none focus:ring-4 ${
+                    className={`password-field w-full mt-1.5 rounded-xl border bg-white/5 px-4 py-3 pr-11 text-[15px] sm:py-3.5 text-white placeholder-white/30 transition focus:outline-none focus:ring-4 ${
                       fieldErr.password || credsWrong === "password" ? "border-red-400 focus:border-red-400 focus:ring-red-400/15" : "border-white/15 focus:border-[#4FBEB0] focus:ring-[#4FBEB0]/15"
                     }`}
                     placeholder="••••••••"
@@ -662,7 +662,7 @@ export default function LoginPage() {
 
               {otpRequired && (
                 <div>
-                  <label className="text-[15px] font-semibold text-white/80">{t("secAuthCodeLabel")}</label>
+                  <label className="text-sm font-semibold text-white/80 sm:text-[15px]">{t("secAuthCodeLabel")}</label>
                   <input
                     type="text"
                     name="otp"
@@ -691,7 +691,7 @@ export default function LoginPage() {
                   className="h-5 w-5 shrink-0 cursor-pointer rounded-md border-white/40 bg-white/10 text-[#4FBEB0] focus:ring-[#4FBEB0]"
                   disabled={isLoading}
                 />
-                <label htmlFor="keepSignedIn" className="cursor-pointer select-none text-[15px] text-white/75">
+                <label htmlFor="keepSignedIn" className="cursor-pointer select-none text-sm text-white/75 sm:text-[15px]">
                   {t("loginKeepSignedIn")}
                 </label>
               </div>
@@ -717,7 +717,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3.5 rounded-full font-bold text-[16px] shadow-sm transition text-[#08130F] flex items-center justify-center gap-2 bg-gradient-to-r from-gold-400 to-[#4FBEB0] hover:opacity-90 disabled:opacity-50"
+                className="w-full py-3 sm:py-3.5 rounded-full font-bold text-[15px] sm:text-[16px] shadow-sm transition text-[#08130F] flex items-center justify-center gap-2 bg-gradient-to-r from-gold-400 to-[#4FBEB0] hover:opacity-90 disabled:opacity-50"
               >
                 {isLoading ? t("loginSigningIn") : t("signInWord")}
                 {!isLoading && <ArrowRight className="h-4 w-4" />}
@@ -753,11 +753,11 @@ export default function LoginPage() {
               </div>
             </form>
 
-            <p className="mt-6 text-center">
+            <p className="mt-5 text-center sm:mt-6">
               <button type="button" onClick={() => setShowActivate(true)} className="text-[14px] font-semibold text-[#7DD8CB] hover:underline">{t("actLink")}</button>
             </p>
 
-            <p className="mt-6 text-center text-[12px] leading-relaxed text-white/35">
+            <p className="mt-4 text-center text-[11px] leading-relaxed text-white/35 sm:mt-6 sm:text-[12px]">
               {t("loginResidentNote")}
             </p>
           </div>
@@ -770,12 +770,12 @@ export default function LoginPage() {
       {/* Giant watermark band -- a huge faint "PC" (PiaoConnect) outline
           behind a two-line statement, echoing the reference's oversized
           agency-initials watermark, done with our own initials and copy. */}
-      <section className="login-band relative overflow-hidden bg-gradient-to-b from-[#0A0E1A] via-[#0D1526] to-[#0A0E1A] px-6 py-16 sm:px-10 sm:py-32">
+      <section className="login-band relative overflow-hidden bg-gradient-to-b from-[#0A0E1A] via-[#0D1526] to-[#0A0E1A] px-6 py-12 sm:px-10 sm:py-32">
         <div className="pointer-events-none absolute inset-0 flex select-none items-center justify-center overflow-hidden">
           <span
             className="login-band-mark font-display font-extrabold leading-none text-transparent"
             style={{
-              fontSize: "clamp(220px, 34vw, 480px)",
+              fontSize: "clamp(150px, 34vw, 480px)",
               WebkitTextStroke: "2px rgba(255,255,255,0.28)",
               color: "rgba(255,255,255,0.04)",
             }}
@@ -784,8 +784,8 @@ export default function LoginPage() {
           </span>
         </div>
 
-        <div className="relative mx-auto max-w-4xl text-center">
-          <p className="login-band-text text-[20px] font-bold leading-snug text-white sm:text-[28px]">
+        <div className="relative mx-auto max-w-3xl text-balance text-center">
+          <p className="login-band-text text-[18px] font-bold leading-snug text-white sm:text-[28px]">
             {t("loginBuildingPrefix")}{" "}
             <span className="login-band-gold bg-gradient-to-r from-gold-300 to-gold-400 bg-clip-text text-transparent">
               {t("loginBarangayWord")}
@@ -795,7 +795,8 @@ export default function LoginPage() {
               {t("loginCommittedTo")}
             </span>
           </p>
-          <p className="login-band-text mt-3 text-[18px] font-bold text-white sm:text-[24px]">
+          <span className="mx-auto mt-5 block h-px w-14 bg-gradient-to-r from-gold-400 to-[#4FBEB0] sm:mt-6 sm:w-20" aria-hidden="true" />
+          <p className="login-band-text mt-5 text-[15px] font-semibold leading-snug text-white/90 sm:mt-6 sm:text-[22px]">
             {t("loginOneAtATime")}
           </p>
         </div>

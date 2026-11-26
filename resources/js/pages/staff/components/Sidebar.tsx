@@ -277,7 +277,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
             />
           </div>
           <div>
-            <h1 className="font-display text-lg font-extrabold text-white whitespace-nowrap leading-tight">PiaoConnect</h1>
+            <h1 className="font-display text-lg font-extrabold text-white whitespace-nowrap leading-tight">Piao<span className="text-white/40">Connect</span></h1>
           </div>
         </div>
 
