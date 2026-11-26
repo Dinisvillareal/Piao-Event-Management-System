@@ -308,7 +308,7 @@
 import { scrollListIntoView } from "../../../lib/scrollToList";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { useState, useMemo, useEffect, useRef } from "react";
-import { Filter } from "lucide-react";
+import { Filter, CalendarDays, MapPin, CheckCircle2, Clock3, XCircle, Hourglass } from "lucide-react";
 import SearchBar from "../../../components/ui/SearchBar";
 import DatePicker from "../../../components/ui/DatePicker";
 import FilterDropdown from "../../../components/ui/FilterDropdown";
@@ -500,16 +500,16 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
     // h-full inherits from Members.tsx's h-full wrapper; flex flex-col
     // lets the header stay fixed and the list scroll independently.
     // <div className="h-full bg-[#0A0E1A] p-4 sm:p-8 flex flex-col"> if dili mugana ang right ubos ani ibalik ni
-    <div className="h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8 flex flex-col overflow-y-auto lg:overflow-hidden">
+    <div className="h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8 flex flex-col overflow-y-auto overflow-x-hidden lg:overflow-hidden">
       {/* Fixed Header */}
-      <div className="flex-shrink-0 pb-6">
-        <div className="w-full pr-4">
+      <div className="flex-shrink-0 pb-6 max-sm:pb-3">
+        <div className="w-full">
           <div className="dash-card rounded-[32px] p-5 sm:p-6">
             <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("attendanceRecords")}</h1>
             <p className="mt-1.5 text-sm text-white/55 max-w-xl">{t("attendanceSubtitle")}</p>
           </div>
 
-          <div className="dash-card mt-4 rounded-[32px] p-4 sm:p-5">
+          <div className="dash-card tight-after mt-4 rounded-[32px] p-4 sm:p-5">
             <FilterBar
               search={{ value: attendanceSearch, onChange: setAttendanceSearch, placeholder: t("searchAttendancePlaceholder") }}
               filters={[
@@ -543,23 +543,23 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
           {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
           <div className="flex justify-end mt-4 max-lg:mt-0">
             {totalPages > 1 && (loading ? null : (
-              <div className="flex items-center gap-2 max-lg:fixed max-lg:bottom-5 max-lg:right-5 max-lg:z-40 max-lg:rounded-full max-lg:border max-lg:border-white/15 max-lg:bg-[#0A0E1A]/95 max-lg:px-3 max-lg:py-2 max-lg:shadow-2xl max-lg:backdrop-blur">
+              <div className="flex items-center gap-2 max-lg:fixed max-lg:bottom-5 max-lg:right-5 max-sm:right-auto max-sm:left-4 max-lg:z-40 max-lg:rounded-full max-lg:border max-lg:border-white/15 max-lg:bg-[#0A0E1A]/95 max-lg:px-3 max-lg:py-2 max-lg:shadow-2xl max-lg:backdrop-blur">
                 <button
                   onClick={() => goToPage(p => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                  className="h-8 w-8 dash-tile rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
                 >
                   ←
                 </button>
 
-                <span className="h-8 w-8 rounded-full bg-sage-700 text-white shadow-sm flex items-center justify-center text-sm font-bold">
+                <span className="h-8 w-8 rounded-full bg-gradient-to-br from-[#0B0F14] to-[#18212B] text-white border border-white/10 shadow-md flex items-center justify-center text-sm font-bold">
                   {currentPage}
                 </span>
 
                 <button
                   onClick={() => goToPage(p => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
-                  className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                  className="h-8 w-8 dash-tile rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
                 >
                   →
                 </button>
@@ -575,7 +575,7 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
           <span ref={listTopRef} className="block h-0 w-0 !m-0 scroll-mt-24" />
           {pageSwitching || loading || pageLoading ? (
             Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
+              <div key={i} className="flex items-center justify-between gap-3 dash-tile rounded-2xl px-5 py-4">
                 <div className="min-w-0 flex-1 space-y-1.5">
                   <Skeleton className="h-3.5 w-40" />
                   <Skeleton className="h-3 w-28" />
@@ -584,39 +584,57 @@ export default function AttendanceView({ attendanceRecords, highlightText, allEv
               </div>
             ))
           ) : filteredAttendance.length === 0 ? (
-            <p className="text-white/40 italic">{t("noAttendanceMatch")}</p>
+            <div className="dash-card rounded-[28px] flex flex-col items-center justify-center h-48 text-center px-4"><Filter className="h-8 w-8 text-white/20 mb-2" /><p className="text-white/50">{t("noAttendanceMatch")}</p></div>
           ) : (
-            paginatedAttendance.map((rec) => (
+            paginatedAttendance.map((rec) => {
+              const st = attendanceStatus(rec);
+              const tone = st === 'complete' || st === 'ongoing'
+                ? { icon: <CheckCircle2 className="h-5 w-5" />, ring: 'bg-[#2E8E82]/15 text-[#2E8E82] border-[#2E8E82]/30' }
+                : st === 'incomplete'
+                ? { icon: <Clock3 className="h-5 w-5" />, ring: 'bg-[#F5C451]/20 text-[#B8860B] border-[#F5C451]/40' }
+                : st === 'upcoming'
+                ? { icon: <Hourglass className="h-5 w-5" />, ring: 'bg-[#6BA8FF]/15 text-[#3B82F6] border-[#6BA8FF]/35' }
+                : { icon: <XCircle className="h-5 w-5" />, ring: 'bg-red-500/15 text-red-500 border-red-500/30' };
+              const title = tc(rec.eventTitle, language as any);
+              const where = tc(rec.location, language as any);
+              return (
               <div key={rec.id}
-                className="rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] px-6 py-[18px] hover:bg-white/[0.06] transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex-1">
-                  <h3 className="text-[16.5px] font-bold text-white">{highlightText(tc(rec.eventTitle, language as any), attendanceSearch)}</h3>
-                  <p className="text-[13.5px] text-white/40 mt-1">{formatEventDateTime(rec.eventDate)}{formatEndTime(rec.eventEnd)} · {tc(rec.location, language as any)}</p>
+                className="dash-row dash-row-white relative rounded-[24px] px-4 sm:px-5 py-3 sm:py-3 transition-all duration-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div className="flex flex-1 min-w-0 items-start gap-3.5">
+                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${tone.ring}`}>{tone.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-[15px] font-bold text-white break-words max-lg:pr-20">{title ? highlightText(title, attendanceSearch) : '—'}</h3>
+                    <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-white/50 max-sm:flex-col max-sm:items-start">
+                      {rec.eventDate && <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 shrink-0" />{formatEventDateTime(rec.eventDate)}{formatEndTime(rec.eventEnd)}</span>}
+                      {where && <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 shrink-0" />{where}</span>}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5">
-                  <div className="text-right whitespace-nowrap">
-                    <span className="text-[13.5px] text-white/40">{t("timeInLabel")}</span>
-                    <span className={`ml-1.5 inline-block whitespace-nowrap text-[13.5px] font-medium px-2 py-0.5 rounded-full ${rec.timeIn ? 'text-[#7DD8CB] bg-[#4FBEB0]/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5 lg:pl-0 max-lg:grid max-lg:grid-cols-2 max-lg:gap-2 max-lg:border-t max-lg:border-white/10 max-lg:pt-3">
+                  <div className="whitespace-nowrap max-lg:flex max-lg:items-center max-lg:justify-start max-lg:gap-1 max-lg:rounded-xl max-lg:bg-white/[0.04] max-lg:px-3 max-lg:py-2">
+                    <span className="text-[13px] text-white/50 max-sm:text-xs">{t("timeInLabel")}</span>
+                    <span className={`ml-1.5 inline-block whitespace-nowrap text-[13px] max-sm:text-[11px] font-semibold px-2.5 max-sm:px-2 py-0.5 rounded-full border ${rec.timeIn ? '!text-white bg-gradient-to-r from-[#0B0F14] to-[#18212B] border-transparent' : 'text-white/30 bg-white/[0.05] border-white/10 italic'}`}>
                       {formatTimeOnly(rec.timeIn) || '—'}
                     </span>
                   </div>
-                  <div className="text-right whitespace-nowrap">
-                    <span className="text-[13.5px] text-white/40">{t("timeOutLabel")}</span>
-                    <span className={`ml-1.5 inline-block whitespace-nowrap text-[13.5px] font-medium px-2 py-0.5 rounded-full ${rec.timeOut ? 'text-gold-300 bg-gold-400/15' : 'text-white/30 bg-white/[0.05] italic'}`}>
+                  <div className="whitespace-nowrap max-lg:flex max-lg:items-center max-lg:justify-start max-lg:gap-1 max-lg:rounded-xl max-lg:bg-white/[0.04] max-lg:px-3 max-lg:py-2">
+                    <span className="text-[13px] text-white/50 max-sm:text-xs">{t("timeOutLabel")}</span>
+                    <span className={`ml-1.5 inline-block whitespace-nowrap text-[13px] max-sm:text-[11px] font-semibold px-2.5 max-sm:px-2 py-0.5 rounded-full border ${rec.timeOut ? '!text-white bg-gradient-to-r from-[#0B0F14] to-[#18212B] border-transparent' : 'text-white/30 bg-white/[0.05] border-white/10 italic'}`}>
                       {formatTimeOnly(rec.timeOut) || '—'}
                     </span>
                   </div>
-                  <span className={`whitespace-nowrap text-[12.5px] font-semibold px-3 py-1 rounded-full ${
-                    attendanceStatus(rec) === 'complete' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
-                    : attendanceStatus(rec) === 'incomplete' ? 'bg-gold-400/15 text-gold-300'
-                    : attendanceStatus(rec) === 'upcoming' ? 'bg-[#6BA8FF]/15 text-[#9CC4FF]'
-                    : attendanceStatus(rec) === 'ongoing' ? 'bg-[#4FBEB0]/15 text-[#7DD8CB]'
-                    : 'bg-red-500/15 text-red-400'}`}>
-                    {statusLabel(attendanceStatus(rec))}
+                  <span className={`whitespace-nowrap text-[12.5px] max-sm:text-[11px] font-semibold px-3 max-sm:px-2.5 py-1 max-sm:py-0.5 rounded-full border max-lg:absolute max-lg:right-4 max-lg:top-3.5 ${
+                    st === 'complete' ? 'bg-[#4FBEB0]/15 text-[#2E8E82] border-[#2E8E82]/30'
+                    : st === 'incomplete' ? 'bg-[#F5C451]/20 text-[#B8860B] border-[#F5C451]/40'
+                    : st === 'upcoming' ? 'bg-[#6BA8FF]/15 text-[#3B82F6] border-[#6BA8FF]/35'
+                    : st === 'ongoing' ? 'bg-[#4FBEB0]/15 text-[#2E8E82] border-[#2E8E82]/30'
+                    : 'bg-red-500/15 text-red-500 border-red-500/30'}`}>
+                    {statusLabel(st)}
                   </span>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>

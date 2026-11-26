@@ -20,7 +20,7 @@ export default function SearchBar({ value, onChange, placeholder, className = ""
   const { t } = useLanguage();
   return (
     <div className={`relative w-full ${className}`}>
-      <Search className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 ${dark ? "h-4 w-4 text-white/40" : "h-6 w-6 text-sage-700/80"}`} />
+      <Search className={`pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 ${dark ? "h-4 w-4 text-white/40 max-sm:h-5 max-sm:w-5 max-sm:text-white/50" : "h-6 w-6 text-sage-700/80"}`} />
       <input
         type="text"
         value={value}
@@ -28,7 +28,7 @@ export default function SearchBar({ value, onChange, placeholder, className = ""
         placeholder={placeholder}
         className={`w-full border focus:outline-none transition ${
           dark
-            ? "h-11 rounded-full border-white/10 bg-white/[0.03] pl-11 pr-[4.5rem] text-sm text-white placeholder:text-white/40 focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50"
+            ? `phone-search h-11 max-sm:h-12 rounded-full border-white/10 bg-white/[0.03] pl-11 max-sm:pl-12 pr-[4.5rem] text-sm max-sm:text-[15px] text-white placeholder:text-white/40 focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50`
             : "h-14 rounded-full border-sage-200 bg-white pl-12 pr-24 text-base shadow-sm focus:ring-1 focus:border-sage-400 focus:ring-sage-700/20"
         }`}
       />

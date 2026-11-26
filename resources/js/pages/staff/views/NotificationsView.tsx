@@ -1,3 +1,4 @@
+import SpeedDial from "../../../components/ui/SpeedDial";
 import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Filter, Users, Bell, X, Send, MapPin, Calendar, Clock, MessageSquare, FileText, Smartphone, Home } from "lucide-react";
@@ -270,8 +271,8 @@ export default function NotificationsView({ memberships = [], highlightText, ini
    return (
        <div className="-m-3 sm:-m-6 h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8 flex flex-col relative overflow-y-auto lg:overflow-visible">
            {/* Fixed Header - Never scrolls */}
-           <div className="flex-shrink-0 pb-6 shadow-b-sm">
-               <div className="dash-card flex items-center justify-between rounded-[32px] p-5 sm:p-6">
+           <div className="flex-shrink-0 pb-6 shadow-b-sm max-sm:flex max-sm:flex-col max-sm:pb-3">
+               <div className="dash-card flex items-center justify-between rounded-[32px] p-5 sm:p-6 max-sm:order-[-2]">
                    <div>
                        <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("notificationsAndAnnouncements")}</h1>
                        <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("staffNotificationsSubtitle")}</p>
@@ -280,18 +281,28 @@ export default function NotificationsView({ memberships = [], highlightText, ini
 
 
                {/* Flow switcher -- same pill buttons as Returns */}
-               <div className="mt-4 flex flex-wrap items-center gap-2.5">
+               <SpeedDial
+                   value={activeTab}
+                   items={[
+                       { key: "notifications", label: t("notify"), icon: Bell, count: loading && allTotal === 0 ? 0 : allTotal, onSelect: () => switchTab("notifications") },
+                       { key: "sms", label: t("householdSmsDeliveries"), icon: Smartphone, count: smsAllTotal, onSelect: () => switchTab("sms") },
+                       { key: "feedback", label: t("alertsTabLabel"), icon: MessageSquare, count: feedbackUnread, onSelect: () => switchTab("feedback") },
+                   ]}
+               />
+               <div className="mt-4 flex flex-wrap items-center gap-2.5 max-sm:hidden">
                    <button
                        type="button"
                        onClick={() => switchTab("notifications")}
-                       className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
+                       title={t("notify")}
+                       aria-label={t("notify")}
+                       className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition max-sm:gap-2 max-sm:px-5 max-sm:py-3 ${
                            activeTab === "notifications"
                                ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
                                : "dash-card text-white/60 hover:text-white"
                        }`}
                    >
-                       <Bell className="h-4 w-4" />
-                       {t("notify")}
+                       <Bell className="h-4 w-4 max-sm:h-5 max-sm:w-5" />
+                       <span className="max-sm:hidden">{t("notify")}</span>
                        <span className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${activeTab === "notifications" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
                            {loading && allTotal === 0 ? 0 : allTotal}
                        </span>
@@ -299,14 +310,16 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                    <button
                        type="button"
                        onClick={() => switchTab("sms")}
-                       className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
+                       title={t("householdSmsDeliveries")}
+                       aria-label={t("householdSmsDeliveries")}
+                       className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition max-sm:gap-2 max-sm:px-5 max-sm:py-3 ${
                            activeTab === "sms"
                                ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
                                : "dash-card text-white/60 hover:text-white"
                        }`}
                    >
-                       <Smartphone className="h-4 w-4" />
-                       {t("householdSmsDeliveries")}
+                       <Smartphone className="h-4 w-4 max-sm:h-5 max-sm:w-5" />
+                       <span className="max-sm:hidden">{t("householdSmsDeliveries")}</span>
                        <span className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${activeTab === "sms" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
                            {smsAllTotal}
                        </span>
@@ -314,14 +327,16 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                    <button
                        type="button"
                        onClick={() => switchTab("feedback")}
-                       className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
+                       title={t("alertsTabLabel")}
+                       aria-label={t("alertsTabLabel")}
+                       className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition max-sm:gap-2 max-sm:px-5 max-sm:py-3 ${
                            activeTab === "feedback"
                                ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm"
                                : "dash-card text-white/60 hover:text-white"
                        }`}
                    >
-                       <MessageSquare className="h-4 w-4" />
-                       {t("alertsTabLabel")}
+                       <MessageSquare className="h-4 w-4 max-sm:h-5 max-sm:w-5" />
+                       <span className="max-sm:hidden">{t("alertsTabLabel")}</span>
                        {feedbackUnread > 0 && (
                            <span className={`inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${activeTab === "feedback" ? "bg-white/20 text-white" : "bg-white/10 text-white/70"}`}>
                                {feedbackUnread > 99 ? "99+" : feedbackUnread}
@@ -331,7 +346,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                </div>
 
                {activeTab === "feedback" ? null : activeTab === "notifications" ? (<>
-               <div className="dash-card mt-4 rounded-[28px] p-3 sm:p-4">
+               <div className="dash-card tight-after mt-4 rounded-[28px] p-3 sm:p-4 max-sm:order-[-1]">
                    <FilterBar
                        search={{ value: searchQuery, onChange: setSearchQuery, placeholder: t("searchNotificationsPlaceholder") }}
                        filters={[
@@ -346,11 +361,11 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                    />
                </div>
 
-               <p className="mt-2 text-xs text-white/40">{t("showingPerPage").replace("{n}", String(itemsPerPage))}</p>
+               <p className="mt-2 text-xs text-white/40 max-sm:order-[-1] max-sm:mt-0">{t("showingPerPage").replace("{n}", String(itemsPerPage))}</p>
 
 
                {/* ✅ PAGINATION - ← 1 → STYLE */}
-               <div className="flex justify-end mt-4">
+               <div className="flex justify-end mt-4 max-sm:mt-0">
                    {totalPages > 1 && ((pageSwitching || loading) ? null : (
                        <div className="flex items-center gap-2">
                            <button
@@ -376,7 +391,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                    ))}
                </div>
                </>) : (<>
-               <div className="dash-card mt-4 rounded-[28px] p-3 sm:p-4">
+               <div className="dash-card tight-after mt-4 rounded-[28px] p-3 sm:p-4 max-sm:order-[-1]">
                    <FilterBar
                        search={{ value: smsSearch, onChange: setSmsSearch, placeholder: t("smsSearchPlaceholder") }}
                        filters={[{
@@ -393,8 +408,8 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                </div>
 
                {/* PAGINATION - ← 1 → STYLE (SINGLE NUMBER, RIGHT ALIGNED) */}
-               <p className="mt-4 text-xs text-white/40">{t("showingPerPage").replace("{n}", String(smsPerPage))}</p>
-               <div className="flex justify-end mt-4">
+               <p className="mt-4 text-xs text-white/40 max-sm:order-[-1] max-sm:mt-0">{t("showingPerPage").replace("{n}", String(smsPerPage))}</p>
+               <div className="flex justify-end mt-4 max-sm:mt-0">
                    {smsLastPage > 1 && ((smsLoading || pageSwitching) ? null : (
                        <div className="flex items-center gap-2">
                            <button
@@ -457,23 +472,23 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                                >
                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 w-full">
                                        <div className="flex-1 min-w-0">
-                                           <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs sm:text-sm">
-                                               <div className="flex items-center gap-2 flex-wrap">
-                                                   <span className="font-medium text-white shrink-0 text-xs sm:text-sm">{t("toColon")}</span>
-                                                   <span className="text-white/70 break-words text-xs sm:text-sm">
+                                           <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
+                                               <div className="flex items-center gap-2 flex-wrap max-sm:pr-24">
+                                                   <span className="font-medium text-white shrink-0 text-sm">{t("toColon")}</span>
+                                                   <span className="text-white/70 break-words text-sm">
                                                        {highlightText(targetText, searchQuery)}
                                                    </span>
                                                </div>
                                                <span className="text-white/30 hidden sm:block">•</span>
-                                               <div className="flex-1 mt-1.5 sm:mt-0">
-                                                   <div className="flex flex-wrap items-center gap-1.5">
-                                                       <span className="font-semibold text-[#7DD8CB] text-xs sm:text-sm">
+                                               <div className="flex-1 mt-1.5 sm:mt-0 min-w-0">
+                                                   <div className="flex flex-wrap items-center gap-1.5 max-sm:block max-sm:truncate">
+                                                       <span className="font-semibold text-[#7DD8CB] text-sm">
                                                            {highlightText(title, searchQuery)}
                                                        </span>
                                                        {actualMessage && (
                                                            <>
-                                                               <span className="text-white/30">—</span>
-                                                               <span className="text-white/60 break-words text-xs sm:text-sm">
+                                                               <span className="text-white/30 max-sm:mx-1.5">—</span>
+                                                               <span className="text-white/60 break-words text-sm">
                                                                    {highlightText(actualMessage, searchQuery)}
                                                                </span>
                                                            </>
@@ -483,7 +498,7 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                                            </div>
                                        </div>
                                        {/* Card date: DD/MM/YYYY */}
-                                       <div className="shrink-0 text-xs text-white/40 whitespace-nowrap">
+                                       <div className="shrink-0 text-xs text-white/40 whitespace-nowrap max-sm:absolute max-sm:right-5 max-sm:top-5">
                                            {formatDateCard(n.created_at)}
                                        </div>
                                    </div>
@@ -554,27 +569,27 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                        .notif-pop { animation: notif-pop-in 280ms cubic-bezier(0.22, 1, 0.36, 1) both }
                        @media (prefers-reduced-motion: reduce) { .notif-overlay, .notif-pop { animation: none } }
                    `}</style>
-                   <div className="notif-pop bg-[#0A0E1A] border border-white/10 rounded-[30px] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl transform transition-all">
-                       <div className="sticky top-0 bg-[#0A0E1A] px-8 py-6 border-b border-white/10 flex items-center justify-between rounded-t-[30px] z-10">
-                           <h3 className="text-2xl font-black text-white">{t("notificationDetails")}</h3>
+                   <div className="notif-pop bg-[#0A0E1A] border border-white/10 rounded-[24px] sm:rounded-[30px] w-full max-w-2xl max-h-[85vh] sm:max-h-[90vh] overflow-y-auto shadow-2xl transform transition-all">
+                       <div className="sticky top-0 bg-[#0A0E1A] px-6 py-5 sm:px-8 sm:py-6 border-b border-white/10 flex items-center justify-between rounded-t-[24px] sm:rounded-t-[30px] z-10">
+                           <h3 className="text-xl sm:text-2xl font-black text-white">{t("notificationDetails")}</h3>
                            <button
                                onClick={() => setSelectedNotification(null)}
-                               className="p-2.5 rounded-full hover:bg-white/10 transition-colors"
+                               className="p-2 sm:p-2.5 rounded-full hover:bg-white/10 transition-colors"
                            >
                                <X size={22} className="text-white/50" />
                            </button>
                        </div>
 
 
-                       <div className="px-8 py-7 space-y-5">
+                       <div className="px-6 py-6 sm:px-8 sm:py-7 space-y-5">
                            {/* Recipient and Sent Info */}
                            <div className="flex items-center justify-between w-full">
-                               <span className="text-base font-medium text-white/80">
+                               <span className="text-[15px] sm:text-base font-medium text-white/80">
                                    {t("recipientColon")} {selectedNotification.target_name || t("allResidentsOption")}
                                </span>
                                <div className="flex items-center gap-2 text-white/50">
                                    <Send size={18} className="text-[#4FBEB0]" />
-                                   <span className="text-[15px]">{formatDateModal(selectedNotification.created_at)}</span>
+                                   <span className="text-sm sm:text-[15px]">{formatDateModal(selectedNotification.created_at)}</span>
                                </div>
                            </div>
 
@@ -582,26 +597,26 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                            {/* Event Details */}
                            {selectedNotification.event && (
                                <div className="space-y-4 pt-5 border-t border-white/10">
-                                   <div className="flex items-start gap-4 text-white/70">
+                                   <div className="flex items-start gap-3.5 sm:gap-4 text-white/70">
                                        <Calendar size={20} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
-                                       <div className="text-base leading-relaxed">
+                                       <div className="text-[15px] sm:text-base leading-relaxed">
                                            <span className="font-medium text-white">{t("dateColon")}</span>{' '}
                                            <span>{formatEventDate(selectedNotification.event.event_start)}</span>
                                        </div>
                                    </div>
 
-                                   <div className="flex items-start gap-4 text-white/70">
+                                   <div className="flex items-start gap-3.5 sm:gap-4 text-white/70">
                                        <Clock size={20} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
-                                       <div className="text-base leading-relaxed">
+                                       <div className="text-[15px] sm:text-base leading-relaxed">
                                            <span className="font-medium text-white">{t("timeColon")}</span>{' '}
                                            <span>{formatEventTime(selectedNotification.event.event_start)}</span>
                                        </div>
                                    </div>
 
                                    {selectedNotification.event.location && (
-                                       <div className="flex items-start gap-4 text-white/70">
+                                       <div className="flex items-start gap-3.5 sm:gap-4 text-white/70">
                                            <MapPin size={20} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
-                                           <div className="text-base leading-relaxed">
+                                           <div className="text-[15px] sm:text-base leading-relaxed">
                                                <span className="font-medium text-white">{t("locationColon")}</span>{' '}
                                                <span>{selectedNotification.event.location}</span>
                                            </div>
@@ -609,9 +624,9 @@ export default function NotificationsView({ memberships = [], highlightText, ini
                                    )}
 
                                    {selectedNotification.event.description && (
-                                       <div className="flex items-start gap-4 text-white/70">
+                                       <div className="flex items-start gap-3.5 sm:gap-4 text-white/70">
                                            <FileText size={20} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
-                                           <div className="text-base leading-relaxed">
+                                           <div className="text-[15px] sm:text-base leading-relaxed">
                                                <span className="font-medium text-white">{t("eventDetailsColon")}</span>
                                                <p className="text-white/55 mt-1">{selectedNotification.event.description}</p>
                                            </div>
@@ -623,9 +638,9 @@ export default function NotificationsView({ memberships = [], highlightText, ini
 
                            {/* Message Content */}
                            <div className="space-y-2 pt-5 border-t border-white/10">
-                               <div className="flex items-start gap-4 text-white/70">
+                               <div className="flex items-start gap-3.5 sm:gap-4 text-white/70">
                                    <MessageSquare size={20} className="text-[#4FBEB0] mt-0.5 flex-shrink-0" />
-                                   <div className="text-base leading-relaxed">
+                                   <div className="text-[15px] sm:text-base leading-relaxed">
                                        <span className="font-medium text-white">{t("messageColon")}</span>
                                        <p className="text-white/70 mt-1">
                                            {parseMessage(selectedNotification).actualMessage ||

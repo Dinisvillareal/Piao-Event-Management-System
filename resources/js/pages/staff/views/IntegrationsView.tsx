@@ -3,6 +3,7 @@ import { MessageCircle, QrCode, CheckCircle2, Link2, Unlink } from "lucide-react
 import EyeToggleIcon from "../../../components/ui/EyeToggleIcon";
 import api, { apiErrorMessage } from "../../../lib/api";
 import SectionCard from "../../../components/ui/SectionCard";
+import SpeedDial from "../../../components/ui/SpeedDial";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
@@ -108,30 +109,37 @@ export default function IntegrationsView() {
   };
 
   const inputCls =
-    "w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 focus:border-[#4FBEB0]/50";
+    "w-full rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-sans text-white placeholder:text-white/40 focus:outline-none focus:border-[#4FBEB0]";
   const tabCls = (on: boolean) =>
-    `inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
+    `inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-bold transition ${
       on
-        ? "bg-sage-700 text-white shadow-sm"
-        : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+        ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] !text-white shadow-sm"
+        : "dash-card text-white/60 hover:text-white"
     }`;
 
   return (
     /* Dark-navy full-bleed page + pill tabs, same "moduling" as the Age &
        Status Categories settings page, instead of the old light paper cards. */
-    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] bg-[#0A0E1A] p-4 sm:p-8">
-      <div className="space-y-5 max-w-2xl">
-        <div>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white">{t("integrations")}</h1>
-          <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("integrationsSubtitle")}</p>
+    <div className="-m-3 sm:-m-6 min-h-[calc(100dvh-73px)] dash-canvas p-4 sm:p-8">
+      <div className="space-y-6">
+        <div className="dash-card rounded-[32px] p-5 sm:p-6">
+          <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("integrations")}</h1>
+          <p className="mt-1.5 max-w-2xl text-sm text-white/55">{t("integrationsSubtitle")}</p>
         </div>
 
-        <div className="flex flex-wrap gap-2.5">
+        <SpeedDial
+          value={activeTab}
+          items={[
+            { key: "facebook", label: t("facebookPageTitle"), icon: MessageCircle, onSelect: () => switchTab("facebook") },
+            { key: "qr", label: t("physicalQrIdTitle"), icon: QrCode, onSelect: () => switchTab("qr") },
+          ]}
+        />
+        <div className="flex flex-wrap gap-2.5 max-sm:hidden">
           <button type="button" onClick={() => switchTab("facebook")} className={tabCls(activeTab === "facebook")}>
             <MessageCircle className="h-4 w-4" />
             {t("facebookPageTitle")}
             {!loading && status?.connected && (
-              <span className="h-2 w-2 rounded-full bg-[#7DD8CB]" title={t("connectedToPageId")} aria-hidden="true" />
+              <span className="h-2 w-2 rounded-full bg-[#4FBEB0]" title={t("connectedToPageId")} aria-hidden="true" />
             )}
           </button>
           <button type="button" onClick={() => switchTab("qr")} className={tabCls(activeTab === "qr")}>
@@ -151,7 +159,7 @@ export default function IntegrationsView() {
               ) : (
                 <div>
                   {status?.connected ? (
-                    <div className="rounded-2xl border border-[#4FBEB0]/30 bg-[#4FBEB0]/[0.08] px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="rounded-2xl border border-[#4FBEB0]/30 bg-[#4FBEB0]/10 px-5 py-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 text-[#7DD8CB] text-sm font-semibold">
                         <CheckCircle2 className="h-5 w-5 shrink-0" />
                         {t("connectedToPageId")} {status.page_id}
@@ -198,7 +206,7 @@ export default function IntegrationsView() {
                       <button
                         type="submit"
                         disabled={saving}
-                        className="inline-flex items-center gap-2 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-bold px-6 py-2.5 transition shadow-sm disabled:opacity-60"
+                        className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] !text-white text-sm font-bold px-6 py-2.5 transition shadow-sm hover:opacity-90 disabled:opacity-60"
                       >
                         <Link2 className="h-5 w-5" /> {saving ? t("connecting") : t("connectPage")}
                       </button>

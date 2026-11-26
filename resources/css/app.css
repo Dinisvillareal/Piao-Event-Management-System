@@ -228,13 +228,24 @@ html[data-theme="light"] .dash-shortcut:hover .dash-shortcut-label{color:#0F172A
 /* Staff Dashboard "bento" layout: a calm canvas with rounded cards. Dark theme = slightly lighter dark
    cards on the navy canvas; light theme = white cards on a soft grey canvas. */
 .dash-canvas { background-color: #0A0E1A; }
-.dash-card { background-color: rgba(255,255,255,.045); border: 1px solid rgba(255,255,255,.08); }
+.dash-card { background-color: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08); }
 .dash-tile { background-color: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.07); transition: border-color .15s, background-color .15s, filter .15s; }
 .dash-tile:hover { background-color: rgba(255,255,255,.08); }
 html[data-theme="light"] .dash-canvas { background-color: #ffffff !important; }
 html[data-theme="light"] .dash-card { background-color: #ffffff !important; border-color: #E8EBEF; box-shadow: 0 6px 24px rgba(15,23,42,.06); }
 html[data-theme="light"] .dash-tile { background-color: #F1F3F5 !important; border-color: transparent; }
 html[data-theme="light"] .dash-tile:hover { background-color: #E6F5F2 !important; border-color: rgba(46,142,130,.45); }
+/* List rows that keep their own coloured left edge (member attendance / events / notification rows):
+   the same surface as .dash-tile, without its border shorthand, so the left accent colour is not overwritten. */
+.dash-row { background-color: rgba(255,255,255,.08); transition: background-color .15s, transform .2s, box-shadow .2s;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 2px 4px rgba(0,0,0,.55), 0 10px 22px rgba(0,0,0,.6), 0 20px 40px -10px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.09); }
+.dash-row:hover { background-color: rgba(255,255,255,.12); }
+html[data-theme="light"] .dash-row { background-color: #F1F3F5 !important;
+  box-shadow: 0 0 0 1px rgba(15,23,42,.07), 0 2px 4px rgba(15,23,42,.06), 0 12px 24px -8px rgba(15,23,42,.22); }
+html[data-theme="light"] .dash-row:hover { background-color: #E6F5F2 !important; box-shadow: 0 0 0 1px rgba(46,142,130,.35), 0 2px 4px rgba(15,23,42,.06), 0 16px 28px -8px rgba(15,23,42,.26); }
+.dash-shadow { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 2px 4px rgba(0,0,0,.55), 0 10px 22px rgba(0,0,0,.6), 0 20px 40px -10px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.09); }
+html[data-theme="light"] .dash-shadow { box-shadow: 0 0 0 1px rgba(15,23,42,.07), 0 2px 4px rgba(15,23,42,.06), 0 12px 24px -8px rgba(15,23,42,.22); }
+@media print { .dash-row, .dash-shadow { box-shadow: none !important; } }
 @media print {
   .dash-card { background: #fff !important; border: 1px solid #d9dee5 !important; box-shadow: none !important; }
   .dash-card, .dash-card * { color: #0F172A !important; }
@@ -407,3 +418,198 @@ html:not([data-theme="light"]) [class~="border-white/[0.06]"] { border-color: rg
 @media (prefers-reduced-motion: reduce) {
   .btn-live-navy { animation: none; }
 }
+
+/* Dark theme: shadowed cards (KPI cards, summary cards...). In the light theme these cards carry a soft dark
+   shadow that shows against white. A dark shadow is invisible on the navy page, so in the dark theme the same
+   cards get a layered black shadow (tight, medium and long), a slightly lighter surface than the panel they sit
+   on, and a thin light top edge, so the shadow reads against the panel instead of a glow. */
+html:not([data-theme="light"]) [class*="shadow-[0_"][class*="rgba(15,23,42"],
+html:not([data-theme="light"]) [class*="shadow-[0_"][class*="rgba(20,96,136"],
+html:not([data-theme="light"]) [class*="shadow-[0_"][class*="rgba(8,12,20"] {
+  background-color: rgba(255, 255, 255, .10) !important;
+  border-color: rgba(255, 255, 255, .26) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .26), 0 2px 4px rgba(0, 0, 0, .55), 0 10px 22px rgba(0, 0, 0, .65), 0 28px 56px -6px rgba(0, 0, 0, .95), inset 0 1px 0 rgba(255, 255, 255, .10) !important;
+}
+@media print { html:not([data-theme="light"]) [class*="shadow-[0_"] { box-shadow: none !important; } }
+
+/* Dark theme: near-black "selected / featured" pills and live-navy buttons.
+   In the light theme these dark fills stand out against white. On the dark navy canvas (#0A0E1A) the same
+   near-black fill blended in and the pill looked empty. In the dark theme they now use a steel navy blue
+   gradient (or a lifted blue) plus a thin light ring, so a dark-coloured item is never dark-on-dark. */
+html:not([data-theme="light"]) [class~="from-[#0B0F14]"][class~="to-[#18212B]"] {
+  /* darker steel navy, with a deep shadow below and a soft blue glow so the shadow shows on the dark page */
+  background-image: linear-gradient(135deg, #25405F 0%, #142640 100%) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .55), 0 10px 22px rgba(0, 0, 0, .65), 0 26px 50px -6px rgba(0, 0, 0, .95), inset 0 1px 0 rgba(255, 255, 255, .18), inset 0 0 0 1px rgba(255, 255, 255, .26) !important;
+}
+html:not([data-theme="light"]) .btn-live-navy {
+  background-image: linear-gradient(110deg, #1B4B8A 0%, #2A6DB0 25%, #1F8A94 50%, #2A6DB0 75%, #1B4B8A 100%) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .20);
+}
+/* Same for the navy Edit buttons (#1E3A5F): lifted to a lighter blue with a thin ring in the dark theme. */
+html:not([data-theme="light"]) [class~="bg-[#1E3A5F]"] {
+  background-color: #2F6AA8 !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .20);
+}
+
+/* Dark theme: white pill buttons ("Add member", "Add age brackets", "Register account"...).
+   A solid white pill is a light-theme look; on the dark page it glared. In the dark theme it becomes a soft
+   frosted-glass pill with light text. White pills inside a genuinely white panel (not the page root, which also carries bg-white) (light modals, pickers) are left
+   alone, so they still match their white background. */
+html:not([data-theme="light"]) button[class~="bg-white"][class~="rounded-full"]:not(:is([class~="bg-white"]:not([class~="min-h-screen"]), [class~="bg-gray-50"]:not([class~="min-h-screen"]), [class~="bg-slate-50"]:not([class~="min-h-screen"])) *) {
+  background-color: rgba(255, 255, 255, .10) !important;
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, .16) 0%, rgba(255, 255, 255, .06) 100%);
+  border-color: rgba(255, 255, 255, .24) !important;
+  color: #F1F5F9 !important;
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  backdrop-filter: blur(12px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), 0 10px 24px -12px rgba(0, 0, 0, .7) !important;
+}
+html:not([data-theme="light"]) button[class~="bg-white"][class~="rounded-full"]:not(:is([class~="bg-white"]:not([class~="min-h-screen"]), [class~="bg-gray-50"]:not([class~="min-h-screen"]), [class~="bg-slate-50"]:not([class~="min-h-screen"])) *):hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, .17) !important;
+  border-color: rgba(255, 255, 255, .38) !important;
+}
+html:not([data-theme="light"]) button[class~="bg-white"][class~="rounded-full"]:not(:is([class~="bg-white"]:not([class~="min-h-screen"]), [class~="bg-gray-50"]:not([class~="min-h-screen"]), [class~="bg-slate-50"]:not([class~="min-h-screen"])) *) [class*="text-slate-"],
+html:not([data-theme="light"]) button[class~="bg-white"][class~="rounded-full"]:not(:is([class~="bg-white"]:not([class~="min-h-screen"]), [class~="bg-gray-50"]:not([class~="min-h-screen"]), [class~="bg-slate-50"]:not([class~="min-h-screen"])) *) [class*="text-[#1A1A1A]"] { color: #F1F5F9 !important; }
+html:not([data-theme="light"]) button[class~="bg-white"][class~="rounded-full"]:not(:is([class~="bg-white"]:not([class~="min-h-screen"]), [class~="bg-gray-50"]:not([class~="min-h-screen"]), [class~="bg-slate-50"]:not([class~="min-h-screen"])) *) [class*="bg-slate-900/"] { background-color: rgba(255, 255, 255, .16) !important; }
+
+/* Dark theme: the featured (first) upcoming event on the staff Overview keeps its original near-black look,
+   with a thin light edge and a layered shadow so the shadow is clearly visible. Only this one element. */
+html:not([data-theme="light"]) button.featured-glass[class~="from-[#0B0F14]"][class~="to-[#18212B]"] {
+  background-image: linear-gradient(135deg, #0B0F14 0%, #18212B 100%) !important;
+  border: 1px solid rgba(255, 255, 255, .34) !important;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, .10), 0 2px 4px rgba(0, 0, 0, .6), 0 12px 26px rgba(0, 0, 0, .75), 0 28px 56px -8px rgba(0, 0, 0, 1), 0 22px 44px -14px rgba(130, 175, 230, .30), inset 0 1px 0 rgba(255, 255, 255, .10) !important;
+}
+
+/* Member attendance rows: white card in light mode (same shadow), keeps the dark-mode glass look. */
+html[data-theme="light"] .dash-row.dash-row-white { background-color: #FFFFFF !important; border: 1px solid rgba(46,142,130,.22); }
+html[data-theme="light"] .dash-row.dash-row-white:hover { background-color: #E6F5F2 !important; }
+
+/* Read-only "field" rows (member Settings profile): same look as the form inputs -- white pill, thin neutral border, soft shadow. */
+.dash-field { background-color: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.15);
+  box-shadow: 0 6px 16px -6px rgba(0,0,0,.6); }
+html[data-theme="light"] .dash-field { background-color: #FFFFFF !important; border-color: rgba(15,23,42,.14);
+  box-shadow: 0 6px 16px -6px rgba(15,23,42,.28), 0 1px 2px rgba(15,23,42,.06); }
+
+/* Small screens: softer corners and tighter padding so cards use the width, and 16px form text so iPhones do not zoom in. */
+@media (max-width: 639px) {
+  .dash-card[class*="rounded-[32px]"] { border-radius: 26px; }
+  .dash-card[class*="rounded-[28px]"] { border-radius: 24px; }
+  input, select, textarea { font-size: 16px; }
+}
+
+/* Phones: scale the whole UI down a little (rem-based sizes) so text and spacing do not feel oversized. */
+@media (max-width: 639px) {
+  html { font-size: 15px; }
+  .page-title-gradient { font-size: 1.75rem !important; line-height: 1.15 !important; }
+}
+
+/* Horizontal chip rows on phones: scroll sideways without a visible scrollbar. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Report summary tiles on phones: one full-width row each (icon tile on the left, number, label, change chip) -- same as the Dashboard stat cards. */
+@media screen and (max-width: 639px) {
+  .report-stagger > .dash-card:has(> svg:first-child) {
+    grid-column: 1 / -1; display: grid; grid-template-columns: 3rem minmax(0, 1fr); column-gap: .875rem;
+    align-items: center; padding: 1rem !important; text-align: left;
+  }
+  .report-stagger > .dash-card:has(> svg:first-child) > svg:first-child {
+    grid-row: 1 / span 4; width: 3rem; height: 3rem; padding: .8rem; border-radius: 1rem;
+    background: rgba(46,142,130,.12); border: 1px solid rgba(46,142,130,.25);
+  }
+  .report-stagger > .dash-card:has(> svg:first-child) > :not(svg) { grid-column: 2; }
+  .report-stagger > .dash-card:has(> svg:first-child) h2 { margin-top: 0 !important; font-size: 1.5rem; }
+  .report-stagger > .dash-card:has(> svg:first-child) p { margin-top: .125rem !important; }
+}
+
+/* Phone top bar: a floating glass pill (like the DOST SEI header) holding the menu, brand and controls. */
+.brand-glass { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+html[data-theme="light"] .brand-glass { background: rgba(15,23,42,.05) !important; border-color: rgba(15,23,42,.12) !important; }
+@media (max-width: 639px) {
+  .mobile-glass-header { background: rgba(10,14,26,.82); border: 1px solid rgba(255,255,255,.16); }
+  html[data-theme="light"] .mobile-glass-header { background: rgba(255,255,255,.85) !important; border-color: rgba(15,23,42,.1) !important; box-shadow: 0 10px 28px rgba(15,23,42,.18); }
+}
+
+/* The floating brand card is fixed under the top bar (76px), so the page scrolls under it: every page starts 76px lower instead. */
+@media screen and (max-width: 639px) {
+  #staff-content-scroll [class~="h-[calc(100dvh-73px)]"],
+  #staff-content-scroll [class~="min-h-[calc(100dvh-73px)]"],
+  .member-shell [class~="h-[calc(100dvh-73px)]"] [class~="h-[calc(100dvh-73px)]"] { padding-top: calc(76px + 1rem) !important; }
+}
+
+/* Floating brand card: see-through glass in a fixed colour per theme (grey in light mode, deep navy-grey in dark mode),
+   exactly like the DOST SEI header. The colour does not change on hover or scroll. */
+.brand-banner-glass {
+  background: rgba(28, 34, 46, 0.72) !important;
+  border: 0 !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+}
+html[data-theme="light"] .brand-banner-glass {
+  background: rgba(121, 125, 132, 0.52) !important; /* = #B2B5BA over the light page, same as DOST SEI */
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.10);
+}
+
+/* Phones: more breathing room and clear boundaries between sections (like the DOST SEI mobile site):
+   soft grey page, white cards that lift off it with a shadow, and bigger gaps between blocks. */
+@media screen and (max-width: 639px) {
+  html[data-theme="light"] .dash-canvas { background-color: #EEF1F4 !important; }
+  html[data-theme="light"] .dash-card { border-color: #E1E6EB; box-shadow: 0 10px 28px rgba(15, 23, 42, 0.10); }
+  html:not([data-theme="light"]) .dash-card { border-color: rgba(255, 255, 255, 0.12); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35); }
+  .dash-canvas .space-y-6 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.75rem !important; }
+  .dash-canvas .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.5rem !important; }
+  .dash-card .space-y-4 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.25rem !important; }
+  .dash-card .space-y-5 > :not([hidden]) ~ :not([hidden]) { margin-top: 1.5rem !important; }
+}
+
+/* Phone/tablet record cards: each person (row) lifts off the list with its own shadow, so it is obvious where one ends and the next begins. */
+@media screen and (max-width: 1023px) {
+  table.rtable tbody { padding: .75rem !important; }
+  table.rtable tbody > tr { margin-bottom: 1rem !important; border-radius: 1.1rem !important; }
+  html[data-theme="light"] table.rtable tbody > tr { box-shadow: 0 4px 14px rgba(15, 23, 42, .14), 0 1px 3px rgba(15, 23, 42, .08) !important; }
+  html:not([data-theme="light"]) table.rtable tbody > tr { box-shadow: 0 4px 14px rgba(0, 0, 0, .45) !important; }
+}
+@media screen and (min-width: 640px) and (max-width: 1023px) {
+  table.rtable tbody > tr { margin-bottom: 0 !important; }
+  table.rtable tbody { gap: 1rem !important; }
+}
+
+/* Phones: the search bar + filter button float on the page by themselves (no card around them). */
+@media screen and (max-width: 639px) {
+  html:root .dash-card:has(> [data-phone-filterbar]) { background: transparent !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; border-radius: 0 !important; overflow: visible; }
+  html[data-theme="light"] .phone-search { background-color: #ffffff !important; box-shadow: 0 6px 18px rgba(15, 23, 42, .10); }
+}
+
+/* Phone search bar: plain white (dark: plain tile), no outline until it is tapped, then one thin teal line. */
+@media screen and (max-width: 639px) {
+  .phone-search { border: 1px solid transparent !important; box-shadow: none !important; outline: none !important; transition: border-color .15s ease; }
+  .phone-search:focus { border-color: #4FBEB0 !important; box-shadow: none !important; outline: none !important; }
+  html[data-theme="light"] .phone-search, html[data-theme="light"] .phone-search:focus { background-color: #ffffff !important; }
+  html[data-theme="light"] .phone-search { box-shadow: 0 5px 16px rgba(15, 23, 42, .12), 0 1px 2px rgba(15, 23, 42, .06) !important; }
+  html:not([data-theme="light"]) .phone-search, html:not([data-theme="light"]) .phone-search:focus { background-color: rgba(255, 255, 255, .06) !important; }
+}
+
+/* Phones: the Reports filter options open in their own small card under the search-style pill. */
+@media screen and (max-width: 639px) {
+  .phone-panel { border: 1px solid rgba(255, 255, 255, .12); background: rgba(255, 255, 255, .06); border-radius: 1.25rem; padding: 1rem; }
+  html[data-theme="light"] .phone-panel { background: #ffffff; border-color: #E1E6EB; box-shadow: 0 10px 28px rgba(15, 23, 42, .10); }
+}
+
+/* Phones: leave generous room after the search bar so the next section clearly starts somewhere else. */
+@media screen and (max-width: 639px) {
+  html:root .dash-card:has(> [data-phone-filterbar]) { margin-bottom: 1.25rem !important; }
+}
+
+/* Phones: a few lists keep the results line close under their search bar. */
+@media screen and (max-width: 639px) {
+  html:root .dash-card.tight-after:has(> [data-phone-filterbar]) { margin-bottom: .5rem !important; }
+}
+
+/* Top bar: theme + language sit together in one soft floating pill (same idea as the phone speed-dial). */
+.topbar-group { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.topbar-divider { background: rgba(255,255,255,.16); }
+.topbar-icon { background: rgba(79,190,176,.16); color: #7DD8CB; }
+html[data-theme="light"] .topbar-group { background: #ffffff !important; border-color: #E1E6EB; box-shadow: 0 4px 14px rgba(15,23,42,.10); }
+html[data-theme="light"] .topbar-divider { background: #E1E6EB !important; }
+html[data-theme="light"] .topbar-icon { background: #E6F5F2 !important; color: #2E8E82 !important; }

@@ -7,10 +7,11 @@ import { LANGUAGES, LanguageCode } from "../../i18n/translations";
 interface LanguageSwitcherProps {
   userId?: string | number;
   className?: string;
+  grouped?: boolean;
 }
 
 /** UC-17: Switch Interface Language — compact selector for the top header. */
-export default function LanguageSwitcher({ userId, className = "" }: LanguageSwitcherProps) {
+export default function LanguageSwitcher({ userId, className = "", grouped = false }: LanguageSwitcherProps) {
   const { language, setLanguage, t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(() =>
@@ -99,11 +100,12 @@ export default function LanguageSwitcher({ userId, className = "" }: LanguageSwi
         aria-haspopup="listbox"
         aria-expanded={open}
         title={t("changeInterfaceLanguage")}
-        className="flex h-9 sm:h-10 items-center gap-1.5 sm:gap-2 rounded-full border border-white/40 bg-[#0A0E1A] pl-2.5 pr-2 sm:pl-3.5 sm:pr-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-white/10 hover:border-white/60 focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/60"
+        className={`flex items-center rounded-full text-sm font-medium text-white transition-colors focus:outline-none focus:ring-1 focus:ring-[#4FBEB0]/60 ${grouped ? "h-8 gap-2 pl-2.5 pr-2.5 hover:bg-white/10" : "h-9 sm:h-10 gap-2 sm:gap-2.5 border border-white/40 bg-[#0A0E1A] pl-3.5 pr-3 sm:pl-4 sm:pr-3.5 shadow-sm hover:bg-white/10 hover:border-white/60"}`}
       >
-        <Languages className="h-4 w-4 text-white/70" />
+        <Languages className="h-4 w-4 shrink-0 text-white/70" />
         <span className="hidden min-[420px]:inline">{current.label}</span>
-        <ChevronDown className={`h-4 w-4 text-white/70 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
+        <span className="px-0.5 text-xs font-bold uppercase tracking-wider min-[420px]:hidden">{current.code}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-white/70 transition-transform duration-150 ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && pos && (

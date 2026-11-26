@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { KeyRound, Globe, Home, User, Phone, Pencil } from "lucide-react";
+import { KeyRound, Globe, Home, User, Phone, Pencil, ChevronRight } from "lucide-react";
 import ChangePasswordForm from "../../../components/auth/ChangePasswordForm";
 import SectionCard from "../../../components/ui/SectionCard";
+import SpeedDial from "../../../components/ui/SpeedDial";
 import api from "../../../lib/api";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { LANGUAGES } from "../../../i18n/translations";
@@ -19,6 +20,7 @@ interface SettingsViewProps {
 export default function SettingsView({ member }: SettingsViewProps) {
   const { language, setLanguage, t } = useLanguage();
   const [profile, setProfile] = useState<any | null>(null);
+  const initials = (member.name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "R";
 
   // Section switcher -- same pill-tab pattern as the staff Settings page
   // (Age & Status Categories): one focused card at a time, with a brief
@@ -113,63 +115,99 @@ export default function SettingsView({ member }: SettingsViewProps) {
 
   return (
     <div className="h-[calc(100dvh-73px)] overflow-y-auto dash-canvas p-4 sm:p-8">
-    <div className="space-y-6 max-w-3xl">
+    <div className="space-y-6">
       <div className="dash-card rounded-[32px] p-5 sm:p-6">
         <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("settings")}</h1>
         <p className="mt-1.5 text-sm text-white/55 max-w-xl">{t("memberSettingsSubtitle")}</p>
       </div>
 
-      {/* Section switcher -- standalone pill buttons, same as the staff
-          Settings page. */}
-      <div className="flex flex-wrap gap-2.5">
-          <button
-            type="button"
-            onClick={() => switchTab("profile")}
-            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
-              activeTab === "profile"
-                ? "bg-sage-700 text-white shadow-sm"
-                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
-            }`}
-          >
-            <User className="h-4 w-4" />
-            {t("myProfile")}
-          </button>
-          <button
-            type="button"
-            onClick={() => switchTab("language")}
-            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
-              activeTab === "language"
-                ? "bg-sage-700 text-white shadow-sm"
-                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
-            }`}
-          >
-            <Globe className="h-4 w-4" />
-            {t("language")}
-          </button>
-          <button
-            type="button"
-            onClick={() => switchTab("password")}
-            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition ${
-              activeTab === "password"
-                ? "bg-sage-700 text-white shadow-sm"
-                : "border border-white/15 bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
-            }`}
-          >
-            <KeyRound className="h-4 w-4" />
-            {t("changePassword")}
-          </button>
-      </div>
+      <SpeedDial
+        value={activeTab}
+        items={[
+          { key: "profile", label: t("myProfile"), icon: User, onSelect: () => switchTab("profile") },
+          { key: "language", label: t("language"), icon: Globe, onSelect: () => switchTab("language") },
+          { key: "password", label: t("changePassword"), icon: KeyRound, onSelect: () => switchTab("password") },
+        ]}
+      />
 
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:items-start">
+      {/* Left: who you are, and the menu -- same card as the staff My Account page. */}
+      <aside className="lg:sticky lg:top-4">
+        <section className="dash-card relative overflow-hidden rounded-3xl">
+          <div
+            className="absolute inset-x-0 top-0 h-[270px] bg-gradient-to-br from-[#0F2A4A] via-[#135863] to-[#2E8E82]"
+            style={{ WebkitMaskImage: "linear-gradient(to bottom, #000 80%, transparent 100%)", maskImage: "linear-gradient(to bottom, #000 80%, transparent 100%)" }}
+          >
+            {profile?.validation_id_url ? (
+              <img src={profile.validation_id_url} alt="" className="h-full w-full object-cover object-[50%_14%]" />
+            ) : (
+              <div className="flex h-full w-full items-start justify-center pt-8">
+                {profile ? (
+                  <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gold-400 text-4xl font-extrabold text-[#08130F] ring-4 ring-white/80 shadow-xl">{initials}</div>
+                ) : (
+                  <Skeleton className="h-28 w-28 !rounded-full" />
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="relative z-10 space-y-3.5 px-4 pb-4 pt-[168px]">
+            <div className="profile-glass rounded-2xl px-5 py-5 text-center">
+              <h2 className="break-words font-display text-2xl font-extrabold leading-tight text-white">{member.name}</h2>
+              <p className="mt-1 font-mono text-sm text-white/55">{profile?.user_code ?? ""}</p>
+              <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#4FBEB0]/15 px-2.5 py-0.5 text-xs font-bold text-[#2E8E82]">{t("memberRole")}</span>
+            </div>
+
+            {profile && (
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="min-w-0 rounded-2xl border border-white/20 bg-white/10 px-2 py-3 text-center backdrop-blur-xl">
+                  <p className="text-2xl font-black leading-tight text-white">{profile.age != null ? profile.age : "—"}</p>
+                  <p className="mt-0.5 truncate text-xs font-medium text-white/60">{t("ageLabel")}</p>
+                  <span className="mx-auto mt-1.5 block h-1 w-8 rounded-full bg-[#4FBEB0]" />
+                </div>
+                <div className="min-w-0 rounded-2xl border border-white/20 bg-white/10 px-2 py-3 text-center backdrop-blur-xl">
+                  <p className="truncate text-2xl font-black leading-tight text-white">{profile.household ? profile.household.code : "—"}</p>
+                  <p className="mt-0.5 truncate text-xs font-medium text-white/60">{t("householdLabel")}</p>
+                  <span className="mx-auto mt-1.5 block h-1 w-8 rounded-full bg-gold-400" />
+                </div>
+              </div>
+            )}
+
+            <nav className="rounded-2xl border border-white/20 bg-white/[0.06] p-2 backdrop-blur-xl max-sm:hidden">
+              {([
+                { key: "profile" as const, label: t("myProfile"), icon: User },
+                { key: "language" as const, label: t("language"), icon: Globe },
+                { key: "password" as const, label: t("changePassword"), icon: KeyRound },
+              ]).map((it) => {
+                const on = activeTab === it.key;
+                return (
+                  <button
+                    key={it.key}
+                    type="button"
+                    onClick={() => switchTab(it.key)}
+                    className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-[15px] font-semibold transition ${on ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] !text-white shadow-sm" : "text-white/75 hover:bg-[#4FBEB0]/[0.08] hover:text-white"}`}
+                  >
+                    <it.icon className={`h-[18px] w-[18px] shrink-0 ${on ? "text-white" : "text-[#2E8E82]"}`} />
+                    <span className="min-w-0 flex-1 truncate">{it.label}</span>
+                    <ChevronRight className={`h-4 w-4 shrink-0 ${on ? "text-white/70" : "text-white/30"}`} />
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </section>
+      </aside>
+
+      <div className="min-w-0 space-y-6">
       {/* PROFILE / HOUSEHOLD INFO — UC-5 profiling display. Darkened like
           every other core content/edit card in the app -- this is where the
           resident actually edits their own contact number. */}
       {activeTab === "profile" && (
-      <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
-        <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
+      <div className="dash-card overflow-hidden rounded-[28px]">
         <div className="p-5 sm:p-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/15">
-              <User className="h-5 w-5 text-[#4FBEB0]" />
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#2E8E82]/30 bg-[#2E8E82]/15">
+              <User className="h-5 w-5 text-[#2E8E82]" />
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-black text-white">{t("myProfile")}</h2>
@@ -185,15 +223,15 @@ export default function SettingsView({ member }: SettingsViewProps) {
             </div>
           ) : (
             <div className="mt-6 space-y-3">
-              <div className="flex items-center justify-between rounded-full bg-white/[0.04] border border-white/10 px-5 py-3">
+              <div className="flex items-center justify-between gap-3 dash-field rounded-full max-sm:rounded-2xl px-5 py-3">
                 <span className="text-sm text-white/50">{t("addressLabel")}</span>
-                <span className="text-sm font-semibold text-white">{profile.address || t("notSet")}</span>
+                <span className="min-w-0 break-words text-right text-sm font-semibold text-white">{profile.address || t("notSet")}</span>
               </div>
 
               {/* Contact number -- the one field on this card residents can
                   actually edit themselves; everything else here (address,
                   age, household) is set by Staff during profiling. */}
-              <div className={`bg-white/[0.04] border border-white/10 px-5 py-3 ${editingContact ? "rounded-2xl" : "rounded-full"}`}>
+              <div className={`dash-field px-5 py-3 ${editingContact ? "rounded-2xl" : "rounded-full"}`}>
                 {!editingContact ? (
                   <div className="flex items-center justify-between">
                     <span className="flex items-center gap-1.5 text-sm text-white/50">
@@ -213,7 +251,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
                 ) : (
                   <div>
                     <span className="text-sm text-white/50">{t("contactNumberLabel")}</span>
-                    <div className="mt-2 flex gap-2">
+                    <div className="mt-2 flex gap-2 max-sm:flex-wrap">
                       <input
                         type="tel"
                         value={contactValue}
@@ -222,12 +260,12 @@ export default function SettingsView({ member }: SettingsViewProps) {
                         maxLength={11}
                         placeholder={t("contactNumberPlaceholder")}
                         disabled={contactSaving}
-                        className="min-w-0 flex-1 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 disabled:opacity-50"
+                        className="min-w-0 flex-1 max-sm:basis-full rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70 disabled:opacity-50"
                       />
                       <button
                         onClick={requestSaveContact}
                         disabled={contactSaving || !contactValue.trim() || contactUnchanged}
-                        className="shrink-0 rounded-full bg-sage-700 hover:bg-sage-800 text-white text-sm font-semibold px-4 disabled:opacity-50 transition"
+                        className="shrink-0 rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] hover:brightness-125 !text-white text-sm font-semibold px-4 disabled:opacity-50 transition"
                       >
                         {contactSaving ? t("savingLabel") : t("saveLabel")}
                       </button>
@@ -249,14 +287,14 @@ export default function SettingsView({ member }: SettingsViewProps) {
                 )}
               </div>
 
-              <div className="flex items-center justify-between rounded-full bg-white/[0.04] border border-white/10 px-5 py-3">
+              <div className="flex items-center justify-between gap-3 dash-field rounded-full max-sm:rounded-2xl px-5 py-3">
                 <span className="text-sm text-white/50">{t("ageLabel")}</span>
                 <span className="text-sm font-semibold text-white">
                   {profile.age != null ? `${profile.age} ${t("yrsOld")}` : t("notSet")}
                   {profile.age_group ? ` · ${profile.age_group}` : ""}
                 </span>
               </div>
-              <div className="flex items-center justify-between rounded-full bg-white/[0.04] border border-white/10 px-5 py-3">
+              <div className="flex items-center justify-between gap-3 dash-field rounded-full max-sm:rounded-2xl px-5 py-3">
                 <span className="flex items-center gap-1.5 text-sm text-white/50">
                   <Home className="h-3.5 w-3.5" /> {t("householdLabel")}
                 </span>
@@ -277,12 +315,11 @@ export default function SettingsView({ member }: SettingsViewProps) {
 
       {/* LANGUAGE — UC-17 Switch Interface Language */}
       {activeTab === "language" && (
-      <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] hover:bg-white/[0.06] transition-all duration-300">
-        <div className="h-1.5 bg-gradient-to-r from-gold-400 via-[#E8B84A] to-[#4FBEB0]" />
+      <div className="dash-card overflow-hidden rounded-[28px]">
         <div className="p-5 sm:p-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#4FBEB0]/15">
-              <Globe className="h-5 w-5 text-[#4FBEB0]" />
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#2E8E82]/30 bg-[#2E8E82]/15">
+              <Globe className="h-5 w-5 text-[#2E8E82]" />
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-black text-white">{t("language")}</h2>
@@ -304,7 +341,7 @@ export default function SettingsView({ member }: SettingsViewProps) {
                 onClick={() => setLanguage(opt.code, { userId: member.id })}
                 className={`rounded-full border-2 px-4 py-3 text-sm font-semibold transition-colors ${
                   language === opt.code
-                    ? "border-[#4FBEB0] bg-[#4FBEB0]/10 text-[#7DD8CB]"
+                    ? "border-[#2E8E82] bg-[#4FBEB0]/10 text-[#2E8E82]"
                     : "border-white/15 text-white/60 hover:border-[#4FBEB0]/50"
                 }`}
               >
@@ -330,6 +367,9 @@ export default function SettingsView({ member }: SettingsViewProps) {
           )}
         </SectionCard>
       )}
+
+      </div>
+      </div>
 
       {/* Peripheral alert modals -- the shared StatusModal, same as every
           other page's success/warning/error popups. The contact-number save

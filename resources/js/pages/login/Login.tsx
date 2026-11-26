@@ -545,7 +545,7 @@ export default function LoginPage() {
         </div>
 
         {/* Wording on the left, the sign-in card on the right */}
-        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center gap-10 px-5 py-10 sm:px-10 sm:py-14 lg:flex-row lg:items-center lg:justify-between lg:gap-16">
+        <div className="relative z-10 mx-auto flex w-full max-w-7xl flex-1 flex-col items-center gap-8 px-4 py-8 sm:gap-10 sm:px-10 sm:py-14 lg:flex-row lg:items-center lg:justify-between lg:gap-16">
           {/* Left: branding + wording */}
           <div className="w-full max-w-2xl text-center lg:text-left">
             <p className="text-[12px] font-semibold uppercase tracking-[0.3em] text-white/60 sm:text-[15px]">
@@ -571,9 +571,9 @@ export default function LoginPage() {
           </div>
 
           {/* Right: the sign-in card */}
-          <div className="w-full max-w-lg rounded-3xl border border-white/15 bg-white/[0.07] p-8 shadow-[0_25px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-10">
+          <div className="w-full max-w-lg rounded-3xl border border-white/15 bg-white/[0.07] p-6 shadow-[0_25px_70px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:p-10">
             <div className="text-center">
-              <h2 className="font-display text-[34px] font-bold text-white">{t("welcomeBack")}</h2>
+              <h2 className="font-display text-[28px] font-bold text-white sm:text-[34px]">{t("welcomeBack")}</h2>
               <p className="mt-2 text-[16px] text-white/55">
                 {t("loginSubtitle")}
               </p>
@@ -770,7 +770,7 @@ export default function LoginPage() {
       {/* Giant watermark band -- a huge faint "PC" (PiaoConnect) outline
           behind a two-line statement, echoing the reference's oversized
           agency-initials watermark, done with our own initials and copy. */}
-      <section className="login-band relative overflow-hidden bg-gradient-to-b from-[#0A0E1A] via-[#0D1526] to-[#0A0E1A] px-6 py-24 sm:px-10 sm:py-32">
+      <section className="login-band relative overflow-hidden bg-gradient-to-b from-[#0A0E1A] via-[#0D1526] to-[#0A0E1A] px-6 py-16 sm:px-10 sm:py-32">
         <div className="pointer-events-none absolute inset-0 flex select-none items-center justify-center overflow-hidden">
           <span
             className="login-band-mark font-display font-extrabold leading-none text-transparent"

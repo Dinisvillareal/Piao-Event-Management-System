@@ -531,7 +531,7 @@ export default function ActivityLogsView() {
             {t("resExportPdf")}
           </button>
         </div>
-        <div className="dash-tile dash-mint flex items-center gap-2 rounded-full px-3.5 py-2 shrink-0">
+        <div className="dash-tile dash-mint flex items-center gap-2 rounded-full px-3.5 py-2 shrink-0 max-sm:hidden">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
@@ -542,7 +542,7 @@ export default function ActivityLogsView() {
         </div>
       </div>
 
-      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 max-sm:hidden sm:gap-4">
         {statCards.map((card, idx) =>
           statsLoading ? (
             <StatCardSkeleton key={card.key} />

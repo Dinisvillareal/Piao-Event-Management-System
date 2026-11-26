@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import api, { apiErrorMessage } from "../../../lib/api";
 import DatePicker from "../../../components/ui/DatePicker";
 import FilterBar from "../../../components/ui/FilterBar";
+import SpeedDial from "../../../components/ui/SpeedDial";
 import NumberStepper from "../../../components/ui/NumberStepper";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import PhotoGallery, { PhotoItem, photoItemsFromUrls, appendPhotoFields, photoItemsChanged } from "../../../components/ui/PhotoGallery";
@@ -868,7 +869,7 @@ export default function ReturnsView() {
           <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("returnsTitle")}</h1>
           <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("returnsSubtitle")}</p>
         </div>
-        <div className="dash-tile dash-mint flex items-center gap-2 rounded-full px-3.5 py-2 shrink-0">
+        <div className="dash-tile dash-mint flex items-center gap-2 rounded-full px-3.5 py-2 shrink-0 max-sm:hidden">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
@@ -878,7 +879,7 @@ export default function ReturnsView() {
         </div>
       </div>
 
-      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 max-sm:hidden sm:gap-4">
         {statCards.map((card, idx) =>
           statsLoading ? (
             <StatCardSkeleton key={card.key} />
@@ -893,9 +894,25 @@ export default function ReturnsView() {
           search={{ value: search, onChange: setSearch, placeholder: t("searchReturnsPlaceholder") }}
           extraChips={endedDate ? [{ key: "ended", label: `${t("filterEndedDateLabel").replace(/:\s*$/, "")}: ${new Date(endedDate).toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => { setEndedDate(""); goToPage(1); } }] : []}
           onClearExtras={() => { setEndedDate(""); goToPage(1); }}
+          childrenLabel={t("filterEndedDateLabel").replace(/:\s*$/, "")}
+          panelExtra={
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+              {statCards.map((card, i) => (
+                <div key={card.key} className={`min-w-0 ${i % 2 === 1 ? "border-l border-white/10 pl-4" : ""} ${i > 1 ? "border-t border-white/10 pt-4" : ""}`}>
+                  <div className="flex items-center gap-1.5 text-white/50">
+                    <card.icon className="h-3.5 w-3.5 shrink-0 text-[#2E8E82]" />
+                    <span className="truncate text-[11px] font-bold uppercase tracking-wide">{card.label}</span>
+                  </div>
+                  {statsLoading ? <Skeleton className="mt-2 h-6 w-12" /> : (
+                    <p className="mt-1.5 font-display text-xl font-extrabold tabular-nums text-white">{card.value}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          }
         >
           <div className="flex shrink-0 items-center gap-2">
-            <span className="whitespace-nowrap text-xs font-semibold text-white/50">{t("filterEndedDateLabel")}</span>
+            <span className="whitespace-nowrap text-xs font-semibold text-white/50 max-sm:hidden">{t("filterEndedDateLabel")}</span>
             <div className="h-11">
               <DatePicker value={endedDate} onChange={(v: string) => { setEndedDate(v); goToPage(1); }} className="h-11 px-4" dark />
             </div>
@@ -911,7 +928,14 @@ export default function ReturnsView() {
           stages of one return process (Pending -> Release -> Released ->
           Undo -> back to Pending), so both pills always show a live count
           and an arrow between them makes the direction of travel obvious. */}
-      <div className="flex flex-wrap items-center gap-2.5">
+      <SpeedDial
+        value={activeTab}
+        items={[
+          { key: "pending", label: t("pendingReturnsTitle"), icon: PackageX, count: filteredEvents.length, onSelect: () => switchTab("pending") },
+          { key: "released", label: t("recentlyReleasedTitle"), icon: History, count: recentReleasesTotal, onSelect: () => switchTab("released") },
+        ]}
+      />
+      <div className="flex flex-wrap items-center gap-2.5 max-sm:hidden">
         <button
           type="button"
           onClick={() => switchTab("pending")}

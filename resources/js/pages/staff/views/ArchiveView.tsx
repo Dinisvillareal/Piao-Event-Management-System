@@ -3,7 +3,7 @@ import useFilterSwitching from "../../../hooks/useFilterSwitching";
 import { matchesSearch } from "../../../lib/search";
 import { highlightMatches } from "../../../lib/highlight";
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { RefreshCw, Filter, Search, Trash2, Layers, Clock, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Filter, Search, Trash2, Layers, Clock, AlertTriangle, ChevronLeft, ChevronRight, Calendar, Users, Award, Bell, Heart, Briefcase, Package, Wallet, Home, MapPin } from 'lucide-react';
 import FilterBar from '../../../components/ui/FilterBar';
 import StatusModal from '../../../components/ui/StatusModal';
 import { useLanguage } from "../../../i18n/LanguageContext";
@@ -52,6 +52,12 @@ const TYPE_BADGE_STYLES: Record<TrashedItem["type"], string> = {
   expense: "bg-white/10 text-white/60 border border-white/15",
 };
 
+// Phone view (like the Samsung Recycle bin): first the kinds of records in the trash, then the items of the one you tap.
+const TYPE_ICONS: Record<TrashedItem["type"], any> = {
+  event: Calendar, resident: Users, membership: Award, notification: Bell, age_bracket: Layers,
+  civil_status: Heart, current_status: Briefcase, inventory_item: Package, expense: Wallet, household: Home,
+};
+
 export default function ArchiveView() {
   const { t } = useLanguage();
   // One page of archived records, already filtered/sorted by the server, and the archive's own figures.
@@ -70,6 +76,15 @@ export default function ArchiveView() {
   // on, but the flash keeps page switches feeling consistent app-wide.
   const [pageSwitchingRaw, setPageSwitching] = useState(false);
   const [archiveSort, setArchiveSort] = useState('recent');
+  const [isPhone, setIsPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)');
+    const on = () => setIsPhone(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  // How many trashed records of each kind (phone category list).
+  const [typeCounts, setTypeCounts] = useState<Record<string, number> | null>(null);
   const filterSwitching = useFilterSwitching([typeFilter, searchQuery, archiveSort]);
   const pageSwitching = pageSwitchingRaw || filterSwitching;
   const pageSwitchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -206,6 +221,25 @@ export default function ArchiveView() {
       setRestoreItem(null); // Close confirmation modal
     }
   };
+
+  const showCategories = isPhone && typeFilter === 'all' && !searchQuery.trim();
+  useEffect(() => {
+    if (!showCategories) return;
+    let cancelled = false;
+    const kinds = Object.keys(TYPE_LABEL_KEYS);
+    Promise.all(kinds.map(async (k) => {
+      try {
+        const r = await fetch(`/api/archived?${new URLSearchParams({ paged: '1', type: k, page: '1', per_page: '1' })}`, {
+          credentials: 'include', headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        });
+        if (!r.ok) return [k, 0] as const;
+        const b = await r.json();
+        return [k, Number(b?.meta?.total ?? 0)] as const;
+      } catch { return [k, 0] as const; }
+    })).then((pairs) => { if (!cancelled) setTypeCounts(Object.fromEntries(pairs)); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCategories, lastUpdated]);
 
   const totalPages = Math.max(1, archiveMeta.last_page);
   const paginatedItems = allTrashedItems;
@@ -347,7 +381,7 @@ export default function ArchiveView() {
           <h1 className="font-display text-3xl font-extrabold tracking-tight sm:text-4xl page-title-gradient page-title-fit">{t("archive")}</h1>
           <p className="mt-1.5 text-sm text-white/55 max-w-xl">{t("archiveSubtitle")}</p>
         </div>
-        <div className="dash-tile dash-mint flex items-center gap-2 rounded-full px-3.5 py-2 shrink-0">
+        <div className="dash-tile dash-mint flex items-center gap-2 rounded-full px-3.5 py-2 shrink-0 max-sm:hidden">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#4FBEB0] opacity-75" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[#4FBEB0]" />
@@ -357,7 +391,7 @@ export default function ArchiveView() {
         </div>
       </div>
 
-      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="report-stagger grid grid-cols-2 lg:grid-cols-4 gap-3 max-sm:hidden sm:gap-4">
         {statCards.map((card, idx) =>
           statsLoading ? (
             <StatCardSkeleton key={card.key} />
@@ -383,6 +417,55 @@ export default function ArchiveView() {
         />
       </div>
 
+      {showCategories ? (
+        <div className="dash-card overflow-hidden rounded-[28px]">
+          {typeCounts === null ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-4 border-b border-white/10 px-5 py-4 last:border-0">
+                <div className="h-11 w-11 shrink-0 animate-pulse rounded-full bg-white/10" />
+                <div className="flex-1 space-y-2"><div className="h-4 w-1/2 animate-pulse rounded bg-white/10" /><div className="h-3 w-1/4 animate-pulse rounded bg-white/10" /></div>
+              </div>
+            ))
+          ) : Object.keys(TYPE_LABEL_KEYS).filter((k) => (typeCounts[k] ?? 0) > 0).length === 0 ? (
+            <div className="p-10 text-center text-white/45">{t("noDeletedItems")}</div>
+          ) : (
+            (Object.keys(TYPE_LABEL_KEYS) as TrashedItem["type"][]).filter((k) => (typeCounts[k] ?? 0) > 0).map((k) => {
+              const Icon = TYPE_ICONS[k];
+              const n = typeCounts[k] ?? 0;
+              return (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setTypeFilter(k)}
+                  className="flex w-full items-center gap-4 border-b border-white/10 px-5 py-4 text-left transition last:border-0 active:bg-white/[0.05]"
+                >
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#2E8E82]/15 text-[#2E8E82]">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[17px] font-semibold text-white">{t(TYPE_LABEL_KEYS[k])}</span>
+                    <span className="block text-sm text-white/55">{n === 1 ? t("archiveOneItem") : t("archiveNItems").replace("{n}", String(n))}</span>
+                  </span>
+                  <ChevronRight className="h-5 w-5 shrink-0 text-white/35" />
+                </button>
+              );
+            })
+          )}
+        </div>
+      ) : (
+      <>
+      {isPhone && typeFilter !== 'all' && (
+        <button
+          type="button"
+          onClick={() => setTypeFilter('all')}
+          className="flex items-center gap-2 text-left"
+          aria-label={t("archiveBackToTypes")}
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-white"><ChevronLeft className="h-5 w-5" /></span>
+          <span className="font-display text-xl font-extrabold text-white">{t(TYPE_LABEL_KEYS[typeFilter as TrashedItem["type"]] ?? "allTypes")}</span>
+          <span className="rounded-full bg-gradient-to-r from-[#0B0F14] to-[#18212B] px-2.5 py-0.5 text-xs font-bold !text-white">{archiveMeta.total}</span>
+        </button>
+      )}
       <p className="text-xs text-white/45">{t("showingPerPage").replace("{n}", String(itemsPerPage))}</p>
 
       {allTrashedItems.length === 0 && !loading ? (
@@ -393,7 +476,75 @@ export default function ArchiveView() {
           <p>{t("noDeletedItems")}</p>
         </div>
       ) : (
-        <div className="dash-card rounded-[32px] overflow-hidden">
+        <>
+        {isPhone && (
+          <div className="space-y-4">
+            {loading || pageSwitching ? (
+              Array.from({ length: 3 }).map((_, i) => <div key={i} className="dash-card h-40 animate-pulse rounded-[28px]" />)
+            ) : paginatedItems.map((item, index) => {
+              const d = item.originalData?.details;
+              const start = d?.event_start ? new Date(d.event_start) : null;
+              const end = d?.event_end ? new Date(d.event_end) : null;
+              const hm = (x: Date) => x.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+              const Icon = TYPE_ICONS[item.type] ?? Layers;
+              const footer = (
+                <div className="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-white/45">{t("deletedAtColumn")}</p>
+                    <p className="text-sm font-semibold text-white">{item.deletedAt}</p>
+                    <p className="truncate text-xs text-white/45">{t("deletedByColumn")}: {item.deletedBy}</p>
+                  </div>
+                  <button
+                    onClick={() => setRestoreItem(item)}
+                    disabled={restoringId === item.id}
+                    title={t("restoreTitle")}
+                    aria-label={t("restoreTitle")}
+                    className="btn-live-navy inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#1E3A5F] bg-[#1E3A5F] !text-white shadow-sm transition hover:bg-[#274A77] disabled:opacity-60"
+                  >
+                    {restoringId === item.id ? <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-[#4FBEB0]" /> : <RefreshCw size={18} />}
+                  </button>
+                </div>
+              );
+              if (item.type === 'event') {
+                return (
+                  <div key={`${item.type}-${item.id}-${index}`} className="dash-card relative overflow-hidden rounded-[28px] p-5 pl-7">
+                    <span className="absolute inset-y-0 left-0 w-2 bg-[#4FBEB0]" />
+                    {start && (
+                      <div className="flex h-20 w-20 flex-col items-center justify-center rounded-3xl bg-white/[0.06]">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-[#2E8E82]">{start.toLocaleDateString(undefined, { month: 'short' })}</span>
+                        <span className="font-display text-3xl font-extrabold leading-none text-white">{start.getDate()}</span>
+                      </div>
+                    )}
+                    <p className={`${start ? 'mt-4' : ''} font-display text-xl font-extrabold text-white`}>{highlightMatches(item.name, searchQuery)}</p>
+                    {d?.location && (
+                      <p className="mt-2 flex items-center gap-2 text-[15px] text-white/65"><MapPin className="h-4 w-4 shrink-0 text-[#2E8E82]" />{d.location}</p>
+                    )}
+                    {start && (
+                      <p className="mt-1.5 flex items-center gap-2 text-[15px] text-white/65"><Clock className="h-4 w-4 shrink-0 text-[#2E8E82]" />{start.toLocaleDateString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' })} · {hm(start)}{end ? ` – ${hm(end)}` : ''}</p>
+                    )}
+                    {d && (
+                      <p className="mt-3 flex items-center gap-2 text-sm text-white/55"><Users className="h-4 w-4 shrink-0 text-[#2E8E82]" />{d.coverage && d.coverage.length > 0 ? d.coverage.join(', ') : t("allResidentsCoverageLabel")}</p>
+                    )}
+                    {footer}
+                  </div>
+                );
+              }
+              return (
+                <div key={`${item.type}-${item.id}-${index}`} className="dash-card rounded-[28px] p-5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#2E8E82]/15 text-[#2E8E82]"><Icon className="h-5 w-5" /></span>
+                    <div className="min-w-0">
+                      <p className="break-words text-[17px] font-bold text-white">{highlightMatches(item.name, searchQuery)}</p>
+                      <p className="text-xs font-semibold text-white/50">{t(TYPE_LABEL_KEYS[item.type])}</p>
+                    </div>
+                  </div>
+                  {footer}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="dash-card overflow-hidden rounded-[32px] max-sm:hidden">
           <div className="overflow-x-auto">
             <table className="rtable w-full text-sm">
               <thead>
@@ -440,6 +591,7 @@ export default function ArchiveView() {
             </table>
           </div>
         </div>
+        </>
       )}
 
       {totalPages > 1 && ((pageSwitching || loading) ? <PagerSkeleton withLabel /> : (
@@ -464,6 +616,8 @@ export default function ArchiveView() {
           </div>
         </div>
       ))}
+      </>
+      )}
       </div>
       </div>
 

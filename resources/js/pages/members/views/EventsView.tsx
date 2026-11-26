@@ -1347,6 +1347,8 @@ import {
   HelpCircle,
   Lock,
   Trash2,
+  CalendarDays,
+  MapPin,
 } from "lucide-react";
 import FeedbackComment from "../../../components/ui/FeedbackComment";
 import type { ResponseFields } from "../../../components/ui/FeedbackComment";
@@ -1842,68 +1844,35 @@ export default function EventsView({
               <p className="mt-1.5 text-sm text-white/55 max-w-xl">{t("eventsSubtitle")}</p>
             </div>
 
-            <div className="dash-card mt-4 rounded-[32px] p-4 sm:p-5">
-              <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
-                <div className="flex-1 min-w-[220px]">
-                  <SearchBar
-                    value={eventSearch}
-                    onChange={setEventSearch}
-                    placeholder={t("searchEventsPlaceholder")}
-                    dark
-                  />
-                </div>
-
-                <FilterDropdown
-                  value={eventFilter}
-                  onChange={setEventFilter}
-                  options={[
-                    { value: "all", label: t("allEvents") },
-                    { value: "upcoming", label: t("upcomingEvents") },
-                    { value: "past", label: t("pastEvents") },
-                  ]}
-                  className="h-11 pl-10 pr-8 shrink-0"
-                  icon={
-                    <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />
-                  }
-                  dark
-                />
-
-                <FilterDropdown
-                  value={membershipFilter}
-                  onChange={setMembershipFilter}
-                  options={[
-                    { value: "all", label: t("allMembershipsOption") },
-                    ...userMemberships
-                      .slice()
-                      .sort((a, b) => a.name.localeCompare(b.name))
-                      .map((m) => ({ value: String(m.id), label: m.name })),
-                  ]}
-                  className="h-11 min-w-[220px] pl-10 pr-8 shrink-0"
-                  panelWidthPx={280}
-                  icon={
-                    <Filter className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />
-                  }
-                  dark
-                  searchable
-                  searchPlaceholder={t("search")}
-                  noResultsLabel={t("noMatchesFoundLabel")}
-                />
-
+            <div className="dash-card tight-after mt-4 rounded-[32px] p-4 sm:p-5">
+              <FilterBar
+                search={{ value: eventSearch, onChange: setEventSearch, placeholder: t("searchEventsPlaceholder") }}
+                filters={[
+                  {
+                    key: "when", label: t("statusColumn"), value: eventFilter, onChange: setEventFilter,
+                    options: [
+                      { value: "all", label: t("allEvents") },
+                      { value: "upcoming", label: t("upcomingEvents") },
+                      { value: "past", label: t("pastEvents") },
+                    ],
+                  },
+                  {
+                    key: "membership", label: t("fltMembership"), value: membershipFilter, onChange: setMembershipFilter, searchable: true, minWidthClass: "min-w-[220px]",
+                    options: [
+                      { value: "all", label: t("allMembershipsOption") },
+                      ...userMemberships.slice().sort((a, b) => a.name.localeCompare(b.name)).map((m) => ({ value: String(m.id), label: m.name })),
+                    ],
+                  },
+                ]}
+                count={pageSwitching || pageLoading ? undefined : { shown: eventMeta.total, total: visibleTotal }}
+                extraChips={dateFilter ? [{ key: "date", label: `${t("fltDateChip")}: ${new Date(dateFilter).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}`, onRemove: () => setDateFilter("") }] : []}
+                onClearExtras={() => setDateFilter("")}
+              >
                 <div className="h-11 w-full shrink-0 sm:w-[200px]">
-                  <DatePicker
-                    value={dateFilter}
-                    onChange={setDateFilter}
-                    placeholder={t("filterByDate")}
-                    dark
-                    className="h-11 pl-4 pr-4 py-2.5"
-                  />
+                  <DatePicker value={dateFilter} onChange={setDateFilter} placeholder={t("filterByDate")} dark className="h-11 pl-4 pr-4 py-2.5" />
                 </div>
-              </div>
+              </FilterBar>
             </div>
-
-            <p className="mt-2 text-xs text-white/40">
-              {eventMeta.total} of {visibleTotal} {t("eventsMatchCount")}
-            </p>
 
             {totalPages > 1 && (
               <div className="flex justify-end mt-4">
@@ -1911,19 +1880,19 @@ export default function EventsView({
                   <button
                     onClick={() => goToPage((p) => Math.max(1, (p as number) - 1))}
                     disabled={currentPage === 1}
-                    className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                    className="h-8 w-8 dash-tile rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
                   >
                     ←
                   </button>
 
-                  <span className="h-8 w-8 rounded-full bg-gold-400 text-[#08130F] shadow-sm flex items-center justify-center text-sm font-bold">
+                  <span className="h-8 w-8 rounded-full bg-gradient-to-br from-[#0B0F14] to-[#18212B] text-white border border-white/10 shadow-md flex items-center justify-center text-sm font-bold">
                     {currentPage}
                   </span>
 
                   <button
                     onClick={() => goToPage((p) => Math.min(totalPages, (p as number) + 1))}
                     disabled={currentPage === totalPages}
-                    className="h-8 w-8 rounded-full border border-white/10 bg-white/[0.04] text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-white/[0.08] transition-all active:scale-95"
+                    className="h-8 w-8 dash-tile rounded-full text-white/70 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-95"
                   >
                     →
                   </button>
@@ -1939,7 +1908,7 @@ export default function EventsView({
               {Array.from({ length: 4 }).map((_, i) => (
                 <div
                   key={i}
-                  className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 space-y-3"
+                  className="dash-card rounded-[28px] p-5 space-y-3"
                 >
                   <Skeleton className="h-4 w-2/3" />
                   <Skeleton className="h-3 w-1/2" />
@@ -1948,12 +1917,13 @@ export default function EventsView({
               ))}
             </div>
           ) : filteredEvents.length === 0 ? (
-            <p className="text-white/40 italic">{t("noEventsMatch")}</p>
+            <div className="dash-card rounded-[28px] flex flex-col items-center justify-center h-48 text-center px-4"><Filter className="h-8 w-8 text-white/20 mb-2" /><p className="text-white/50">{t("noEventsMatch")}</p></div>
           ) : (
             <div className="space-y-8">
               {Object.entries(groupedEvents).map(([dateLabel, eventsInGroup]) => (
                 <div key={dateLabel}>
-                  <h3 className="mb-4 border-b border-white/10 pb-2 text-lg font-bold text-white">
+                  <h3 className="mb-4 flex items-center gap-3 border-b border-white/10 pb-3 text-lg font-bold text-white">
+                    <span className="h-6 w-1.5 rounded-full bg-gradient-to-b from-[#4FBEB0] to-[#F5C451]" />
                     {dateLabel === THIS_WEEK_KEY ? t("thisWeekLabel") : dateLabel}
                   </h3>
                   <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
@@ -1981,28 +1951,32 @@ export default function EventsView({
                       return (
                         <div
                           key={e.id}
-                          className="relative rounded-3xl border-l-4 border-gold-400 border-y border-r border-white/10 bg-white/[0.04] p-5 hover:bg-white/[0.06] transition-all duration-200"
+                          className="dash-row dash-row-white relative rounded-[28px] p-5 sm:p-6 hover:-translate-y-0.5 transition-all duration-200"
                         >
-                          <div className="absolute top-4 right-4 flex items-center gap-1.5">
+                          <div className={`absolute top-4 right-4 flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${
+                              isUpcoming ? "bg-[#F5C451]/20 border-[#F5C451]/40" : "bg-[#4FBEB0]/15 border-[#2E8E82]/30"
+                            }`}>
                             <span
-                              className={`w-2.5 h-2.5 rounded-full ${
-                                isUpcoming ? "bg-gold-400" : "bg-[#4FBEB0]"
+                              className={`w-2 h-2 rounded-full ${
+                                isUpcoming ? "bg-[#E8B84A]" : "bg-[#2E8E82]"
                               }`}
                             />
-                            <span className="text-xs font-medium text-white/50">
+                            <span className={`text-xs font-semibold ${isUpcoming ? "text-[#B8860B]" : "text-[#2E8E82]"}`}>
                               {isUpcoming ? t("upcomingBadge") : t("pastBadge")}
                             </span>
                           </div>
 
-                          <h2 className="pr-20 text-base font-bold text-white">
+                          <h2 className="pr-24 text-base font-bold text-white">
                             {highlightText(tc(e.title, language as any), eventSearch)}
                           </h2>
 
-                          <p className="mt-1 text-sm text-white/40">
+                          <p className="mt-2 flex items-center gap-1.5 text-sm text-white/50">
+                            <CalendarDays className="h-4 w-4 shrink-0 text-[#2E8E82]" />
                             {highlightText(dateOnly, eventSearch)} · {timeOnly}
                           </p>
 
-                          <p className="mt-1 text-sm text-white/40">
+                          <p className="mt-1 flex items-center gap-1.5 text-sm text-white/50">
+                            <MapPin className="h-4 w-4 shrink-0 text-[#2E8E82]" />
                             {highlightText(tc(e.location, language as any), eventSearch)}
                           </p>
 
@@ -2013,7 +1987,7 @@ export default function EventsView({
                           <div className="mt-4 flex flex-wrap items-center gap-2">
                             {memNames.length > 0 ? (
                               <>
-                                <span className="rounded-full bg-[#4FBEB0]/15 px-3 py-1 text-xs font-semibold text-[#7DD8CB] border border-[#4FBEB0]/25">
+                                <span className="rounded-full bg-[#4FBEB0]/15 px-3 py-1 text-xs font-semibold text-[#2E8E82] border border-[#2E8E82]/30">
                                   {t("forLabel")} {memNames.join(", ")}
                                 </span>
                                 <span className="rounded-full bg-white/[0.06] px-3 py-1 text-xs font-semibold text-white/50 border border-white/10">
@@ -2021,7 +1995,7 @@ export default function EventsView({
                                 </span>
                               </>
                             ) : (
-                              <span className="rounded-full bg-[#4FBEB0]/15 px-3 py-1 text-xs font-semibold text-[#7DD8CB] border border-[#4FBEB0]/25">
+                              <span className="rounded-full bg-[#4FBEB0]/15 px-3 py-1 text-xs font-semibold text-[#2E8E82] border border-[#2E8E82]/30">
                                 {t("openEventAllResidents")}
                               </span>
                             )}
@@ -2208,7 +2182,7 @@ export default function EventsView({
                                   </div>
                                 </div>
                               ) : absence ? (
-                                <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3">
+                                <div className="dash-tile rounded-2xl px-3 py-3">
                                   <p className="text-[11px] font-bold uppercase tracking-wide text-white/40 mb-1">
                                     {t("yourReasonLabel")}
                                   </p>

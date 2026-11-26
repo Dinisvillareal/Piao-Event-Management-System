@@ -1,9 +1,11 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
-import { Filter, FileText, Download, TrendingUp, Users, CalendarDays, CalendarCheck, Star, Award, Wallet, Package, ChevronDown, MapPin, Clock, AlertTriangle, CheckCircle2, History as HistoryIcon } from "lucide-react";
+import { SlidersHorizontal, Filter, FileText, Download, TrendingUp, Users, CalendarDays, CalendarCheck, Star, Award, Wallet, Package, ChevronDown, MapPin, Clock, AlertTriangle, CheckCircle2, History as HistoryIcon } from "lucide-react";
 import api, { apiErrorMessage } from "../../../lib/api";
 import DateRangePicker from "../../../components/ui/DateRangePicker";
+import FilterDropdown from "../../../components/ui/FilterDropdown";
+import SpeedDial from "../../../components/ui/SpeedDial";
 import FilterBar, { type FilterDef } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
 import StatusModal from "../../../components/ui/StatusModal";
@@ -262,6 +264,7 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
   const [drawerFormat, setDrawerFormat] = useState<ReportFormat>("pdf");
   // "report" = the live report; "history" = every report generated before.
   const [view, setView] = useState<"report" | "history">("report");
+  const [filtersOpen, setFiltersOpen] = useState(false); // phones: the filter panel starts collapsed
   const [historyKey, setHistoryKey] = useState(0);
   const [selectedSections, setSelectedSections] = useState<Record<ReportType, string[]>>(ALL_SECTIONS);
   // null = every event in the current list gets an attendee list
@@ -1073,13 +1076,13 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             <p className="mt-1.5 text-sm text-white/50 max-w-xl">{t("reportsSubtitle")}</p>
           </div>
           {view === "report" && (
-            <div className="print:hidden flex flex-wrap items-center gap-3 self-start sm:self-auto">
-              <LiveStatus lastSync={lastSync} refreshing={refreshing} failed={syncFailed} onRefresh={() => { setLoading(true); fetchRef.current(true); }} />
+            <div className="print:hidden flex w-full flex-row items-center justify-between gap-3 sm:w-auto sm:flex-wrap sm:justify-start sm:self-auto">
+              <span className="max-sm:hidden"><LiveStatus lastSync={lastSync} refreshing={refreshing} failed={syncFailed} onRefresh={() => { setLoading(true); fetchRef.current(true); }} /></span>
               <button
                 type="button"
                 onClick={() => { setDrawerFormat("pdf"); setDrawerOpen(true); }}
                 disabled={loading || isEmpty}
-                className="btn-live-navy group inline-flex items-center gap-3.5 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-7 pr-2 py-2 text-[17px] font-semibold text-white shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
+                className="btn-live-navy group inline-flex items-center justify-between gap-3 rounded-full border border-[#1E3A5F] bg-[#1E3A5F] pl-6 pr-2 py-2 text-base font-semibold !text-white max-sm:w-full sm:gap-3.5 sm:pl-7 sm:text-[17px] shadow-md transition-all duration-500 ease-out hover:border-[#274A77] hover:bg-[#274A77] active:scale-95 disabled:pointer-events-none disabled:opacity-50"
               >
                 {tUI("rpGenerate")}
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 transition-colors duration-500 ease-out group-hover:bg-white/25">
@@ -1091,29 +1094,40 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
         </div>
 
         {/* Step 1 per UC-10: choose a report type */}
-        <div className="mt-5 flex flex-wrap gap-2 print:hidden">
+        <SpeedDial
+          value={view === "history" ? "history" : reportType}
+          items={[
+            ...REPORT_TYPES.map((rt) => ({ key: rt.key as string, label: t(rt.labelKey), icon: rt.icon, onSelect: () => handleReportTypeChange(rt.key) })),
+            { key: "history", label: tUI("rpHistoryTab"), icon: HistoryIcon, onSelect: () => setView("history") },
+          ]}
+        />
+        <div className="no-scrollbar -mx-5 mt-5 flex snap-x gap-2 overflow-x-auto px-5 pb-1 max-sm:hidden print:hidden sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
           {REPORT_TYPES.map((rt) => (
             <button
               key={rt.key}
               onClick={() => handleReportTypeChange(rt.key)}
-              className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-[14px] font-semibold transition-colors ${
+              title={t(rt.labelKey)}
+              aria-label={t(rt.labelKey)}
+              className={`inline-flex h-11 shrink-0 max-sm:h-12 max-sm:w-12 max-sm:justify-center max-sm:px-0 snap-start items-center gap-2 whitespace-nowrap rounded-full px-4 text-[13px] font-semibold transition-colors sm:h-11 sm:px-5 sm:text-[14px] ${
                 view === "report" && reportType === rt.key
-                  ? "bg-[#2E8E82] text-white shadow-sm hover:bg-[#267a70]"
+                  ? "bg-[#2E8E82] !text-white shadow-sm hover:bg-[#267a70]"
                   : "dash-tile text-white/70 hover:text-white"
               }`}
             >
-              <rt.icon className="h-4 w-4" /> {t(rt.labelKey)}
+              <rt.icon className="h-4 w-4 max-sm:h-5 max-sm:w-5" /> <span className="max-sm:hidden">{t(rt.labelKey)}</span>
             </button>
           ))}
           <button
             onClick={() => setView("history")}
-            className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-[14px] font-semibold transition-colors ${
+            title={tUI("rpHistoryTab")}
+            aria-label={tUI("rpHistoryTab")}
+            className={`inline-flex h-11 shrink-0 max-sm:h-12 max-sm:w-12 max-sm:justify-center max-sm:px-0 snap-start items-center gap-2 whitespace-nowrap rounded-full px-4 text-[13px] font-semibold transition-colors sm:h-11 sm:px-5 sm:text-[14px] ${
               view === "history"
-                ? "bg-[#2E8E82] text-white shadow-sm hover:bg-[#267a70]"
+                ? "bg-[#2E8E82] !text-white shadow-sm hover:bg-[#267a70]"
                 : "dash-tile text-white/70 hover:text-white"
             }`}
           >
-            <HistoryIcon className="h-4 w-4" /> {tUI("rpHistoryTab")}
+            <HistoryIcon className="h-4 w-4 max-sm:h-5 max-sm:w-5" /> <span className="max-sm:hidden">{tUI("rpHistoryTab")}</span>
           </button>
         </div>
         </div>
@@ -1121,14 +1135,82 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
             the left, exact dates on the right), the report's own filters below. */}
         {view === "report" && (
           <div className="mt-5 dash-card rounded-[32px] p-4 sm:p-6 print:hidden">
+            {/* Phones: one tidy summary row; tap to open the filters. */}
+            {(() => {
+              const changed = filterDefs.filter((d) => String(d.value ?? "") !== String(d.defaultValue ?? ""));
+              const bits = [
+                ...(usesDates ? [presetTabs.find((x) => x.key === activePreset)?.label ?? ""] : []),
+                ...changed.map((d) => d.options?.find((o: any) => String(o.value) === String(d.value))?.label ?? ""),
+              ].filter(Boolean);
+              return (
+                <button
+                  type="button"
+                  data-phone-filterbar
+                  onClick={() => setFiltersOpen((v) => !v)}
+                  aria-expanded={filtersOpen}
+                  className="phone-search relative flex h-12 w-full items-center gap-3 rounded-full pl-4 pr-1.5 text-left text-white sm:hidden"
+                >
+                  <Filter className="h-5 w-5 shrink-0 text-white/50" />
+                  <span className="min-w-0 flex-1 truncate text-[15px] text-white/80">{bits.length > 0 ? bits.join(" · ") : tUI("rpFiltersLabel")}</span>
+                  <span className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition ${filtersOpen ? "bg-[#2E8E82] !text-white" : "text-white/70"}`}>
+                    <SlidersHorizontal className="h-5 w-5" />
+                    {changed.length > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-[#F5C451] px-1 text-[10px] font-bold !text-[#0B0F14]">{changed.length}</span>}
+                  </span>
+                </button>
+              );
+            })()}
+            <div className={`${filtersOpen ? "phone-panel mt-3" : "hidden"} sm:mt-0 sm:block`}>
             {usesDates && (
-              <>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
-                    <span className="w-14 shrink-0 text-xs font-semibold uppercase tracking-wide text-white/45">{tUI("rpPeriodLabel")}</span>
-                    <QuickTabs variant="segmented" value={activePreset} onChange={applyPreset} tabs={presetTabs} />
+              <div className="space-y-3 sm:hidden">
+                <div className="flex items-center gap-3">
+                  <span className="w-[5.5rem] shrink-0 text-[13px] font-semibold text-white/60">{tUI("rpPeriodLabel")}</span>
+                  <div className="min-w-0 flex-1">
+                    <FilterDropdown
+                      value={activePreset}
+                      onChange={applyPreset}
+                      options={presetTabs.map((x) => ({ value: x.key, label: x.label }))}
+                      className="h-11 w-full pl-10 pr-8 !text-[14px]"
+                      wrapperClassName="min-w-0"
+                      icon={<CalendarDays className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#4FBEB0] pointer-events-none" />}
+                      fullWidth
+                      dark
+                    />
                   </div>
-                  <div className="shrink-0 sm:ml-auto">
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="w-[5.5rem] shrink-0 text-[13px] font-semibold text-white/60">{tUI("fltDateChip")}</span>
+                  <div className="min-w-0 flex-1 [&>*]:w-full [&_button]:w-full [&_button]:justify-between">
+                    <DateRangePicker
+                      from={dateFrom}
+                      to={dateTo}
+                      onChange={(f, to) => { setDateFrom(f); setDateTo(to); }}
+                      fromLabel={tUI("fromLabel")}
+                      toLabel={tUI("toLabel")}
+                      allDatesLabel={tUI("allDatesLabel")}
+                      todayLabel={tUI("todayLabel")}
+                      thisWeekLabel={tUI("dateRangeThisWeek")}
+                      thisMonthLabel={tUI("thisMonthLabel")}
+                      thisYearLabel={tUI("thisYearLabel")}
+                      clearLabel={tUI("clearLabel")}
+                      applyLabel={tUI("applyLabel")}
+                      dark
+                    />
+                  </div>
+                </div>
+                <div className="my-1 h-px bg-white/10" />
+              </div>
+            )}
+            {usesDates && (
+              <div className="max-sm:hidden">
+              <>
+                <div className="flex flex-col gap-x-4 gap-y-3 sm:flex-row sm:flex-wrap sm:items-center">
+                  <div className="flex min-w-0 flex-col gap-x-3 gap-y-2 sm:flex-row sm:flex-wrap sm:items-center">
+                    <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-white/45 sm:w-14">{tUI("rpPeriodLabel")}</span>
+                    <div className="no-scrollbar max-w-full overflow-x-auto sm:overflow-visible">
+                      <QuickTabs variant="segmented" value={activePreset} onChange={applyPreset} tabs={presetTabs} />
+                    </div>
+                  </div>
+                  <div className="min-w-0 sm:ml-auto sm:shrink-0 max-sm:[&>*]:w-full max-sm:[&_button]:w-full max-sm:[&_button]:justify-between">
                     <DateRangePicker
                       from={dateFrom}
                       to={dateTo}
@@ -1148,14 +1230,16 @@ export default function ReportsView({ memberships = [], events = [] }: ReportsVi
                 </div>
                 <div className="my-4 h-px bg-white/10" />
               </>
+              </div>
             )}
-            <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-              <span className="flex h-11 w-14 shrink-0 items-center text-xs font-semibold uppercase tracking-wide text-white/45">{tUI("rpFiltersLabel")}</span>
+            <div className="flex flex-col gap-x-3 gap-y-2 sm:flex-row sm:flex-wrap sm:items-start">
+              <span className="max-sm:hidden flex shrink-0 items-center text-xs font-semibold uppercase tracking-wide text-white/45 sm:h-11 sm:w-14">{tUI("rpFiltersLabel")}</span>
               <FilterBar className="min-w-0 flex-1" filters={filterDefs} />
             </div>
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-white/10 pt-3 text-xs text-white/45">
-              <span>{loading ? "" : tUI("fltResults").replace("{n}", String(rowCount))}</span>
-              {previous && !loading && <span>{tUI("rpComparedWith").replace("{range}", prevRangeLabel)}</span>}
+            </div>
+            <div className="mt-4 flex flex-col gap-y-1.5 border-t border-white/10 pt-3 text-xs text-white/45 max-sm:mt-3 max-sm:border-t-0 max-sm:pt-0 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4">
+              <span className="font-semibold text-white/70 sm:font-normal sm:text-white/45">{loading ? "" : tUI("fltResults").replace("{n}", String(rowCount))}</span>
+              {previous && !loading && <span className="flex items-center gap-1.5"><CalendarDays className="h-3.5 w-3.5 shrink-0 sm:hidden" />{tUI("rpComparedWith").replace("{range}", prevRangeLabel)}</span>}
             </div>
           </div>
         )}

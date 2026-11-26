@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 // --- LAYOUT IMPORTS ---
 import Sidebar from "./components/Sidebar";
 import TopHeader from "./components/TopHeader";
+import MobileBrandBanner from "../../components/layout/MobileBrandBanner";
 
 // --- VIEW IMPORTS ---
 import DashboardView from "./views/DashboardView";
@@ -359,7 +360,7 @@ export default function StaffDashboard() {
     : staff.name;
 
   return (
-    <div className="flex min-h-screen bg-white text-gray-900 print:min-h-0">
+    <div className="staff-shell flex min-h-screen bg-white text-gray-900 print:min-h-0">
       <Sidebar
         active={active}
         setActive={setActive}
@@ -380,6 +381,7 @@ export default function StaffDashboard() {
           isHeadStaff={!!currentUser?.is_head_staff}
           onNavigate={(k) => setActive(k as any)}
         />
+        <MobileBrandBanner />
         <OfflineBanner />
 
         <div id="staff-content-scroll" className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 smooth-scroll print:!h-auto print:!overflow-visible print:!p-0">

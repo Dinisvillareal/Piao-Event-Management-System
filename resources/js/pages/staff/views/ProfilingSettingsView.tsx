@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import SaveButton from "../../../components/ui/SaveButton";
 import { Users2, Heart, Tag, Plus, Pencil, Trash2 } from "lucide-react";
+import SpeedDial from "../../../components/ui/SpeedDial";
 import ConfirmDialog from "../../../components/ui/ConfirmDialog";
 import StatusModal from "../../../components/ui/StatusModal";
 import Skeleton from "../../../components/ui/Skeleton";
@@ -477,7 +478,15 @@ export default function ProfilingSettingsView() {
             one card is rendered at a time, so each taxonomy gets its own
             focused screen instead of competing for space with the other
             two. */}
-        <div className="flex flex-wrap gap-2.5">
+        <SpeedDial
+          value={activeTab}
+          items={[
+            { key: "brackets", label: t("ageBracketsTitle"), icon: Users2, count: ageBrackets.length, onSelect: () => switchTab("brackets") },
+            { key: "civil", label: t("civilStatusesTitle"), icon: Heart, count: civilStatuses.length, onSelect: () => switchTab("civil") },
+            { key: "current", label: t("currentStatusesTitle"), icon: Tag, count: currentStatuses.length, onSelect: () => switchTab("current") },
+          ]}
+        />
+        <div className="flex flex-wrap gap-2.5 max-sm:hidden">
           <button
             type="button"
             onClick={() => switchTab("brackets")}
@@ -542,15 +551,15 @@ export default function ProfilingSettingsView() {
             active. Teal accent, matching the app's primary brand accent. */}
         {activeTab === "brackets" && (
         <div className="dash-card rounded-[32px] overflow-hidden">
-          <div className="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center gap-3.5">
+          <div className="px-5 sm:px-6 py-4 border-b border-white/10 flex flex-wrap items-center gap-x-3.5 gap-y-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82] text-white">
               <Users2 className="h-4 w-4" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="font-display text-lg font-extrabold text-white">{t("ageBracketsTitle")}</p>
               <p className="text-[13px] text-white/45">{t("ageBracketsDesc")}</p>
             </div>
-            <button type="button" onClick={() => { resetBracketForm(); setFormTab("brackets"); }} className="ml-auto inline-flex h-12 shrink-0 items-center gap-2.5 rounded-full border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-slate-50 active:scale-95"><Plus className="h-5 w-5" />{t("addAgeBracketLabel")}</button>
+            <button type="button" onClick={() => { resetBracketForm(); setFormTab("brackets"); }} className="ml-auto inline-flex h-12 shrink-0 items-center gap-2.5 max-sm:ml-0 max-sm:w-full max-sm:basis-full max-sm:flex-row-reverse max-sm:justify-between rounded-full border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-slate-50 active:scale-95"><Plus className="h-5 w-5" />{t("addAgeBracketLabel")}</button>
           </div>
 
           {loading || tabSwitching ? (
@@ -665,15 +674,15 @@ export default function ProfilingSettingsView() {
             it apart from Age Brackets at a glance. */}
         {activeTab === "civil" && (
         <div className="dash-card rounded-[32px] overflow-hidden">
-          <div className="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center gap-3.5">
+          <div className="px-5 sm:px-6 py-4 border-b border-white/10 flex flex-wrap items-center gap-x-3.5 gap-y-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82] text-white">
               <Heart className="h-4 w-4" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="font-display text-lg font-extrabold text-white">{t("civilStatusesTitle")}</p>
               <p className="text-[13px] text-white/45">{t("civilStatusesDesc")}</p>
             </div>
-            <button type="button" onClick={() => { resetStatusForm(); setFormTab("civil"); }} className="ml-auto inline-flex h-12 shrink-0 items-center gap-2.5 rounded-full border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-slate-50 active:scale-95"><Plus className="h-5 w-5" />{t("addCivilStatusLabel")}</button>
+            <button type="button" onClick={() => { resetStatusForm(); setFormTab("civil"); }} className="ml-auto inline-flex h-12 shrink-0 items-center gap-2.5 max-sm:ml-0 max-sm:w-full max-sm:basis-full max-sm:flex-row-reverse max-sm:justify-between rounded-full border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-slate-50 active:scale-95"><Plus className="h-5 w-5" />{t("addCivilStatusLabel")}</button>
           </div>
 
           {loading || tabSwitching ? (
@@ -761,15 +770,15 @@ export default function ProfilingSettingsView() {
             third brand color) so all three tabs are visually distinct. */}
         {activeTab === "current" && (
         <div className="dash-card rounded-[32px] overflow-hidden">
-          <div className="px-5 sm:px-6 py-4 border-b border-white/10 flex items-center gap-3.5">
+          <div className="px-5 sm:px-6 py-4 border-b border-white/10 flex flex-wrap items-center gap-x-3.5 gap-y-4">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#2E8E82] text-white">
               <Tag className="h-4 w-4" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="font-display text-lg font-extrabold text-white">{t("currentStatusesTitle")}</p>
               <p className="text-[13px] text-white/45">{t("currentStatusesDesc")}</p>
             </div>
-            <button type="button" onClick={() => { resetCurrentStatusForm(); setFormTab("current"); }} className="ml-auto inline-flex h-12 shrink-0 items-center gap-2.5 rounded-full border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-slate-50 active:scale-95"><Plus className="h-5 w-5" />{t("addCurrentStatusLabel")}</button>
+            <button type="button" onClick={() => { resetCurrentStatusForm(); setFormTab("current"); }} className="ml-auto inline-flex h-12 shrink-0 items-center gap-2.5 max-sm:ml-0 max-sm:w-full max-sm:basis-full max-sm:flex-row-reverse max-sm:justify-between rounded-full border border-slate-200 bg-white px-6 text-[15px] font-semibold text-slate-700 shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5 hover:bg-slate-50 active:scale-95"><Plus className="h-5 w-5" />{t("addCurrentStatusLabel")}</button>
           </div>
 
           {loading || tabSwitching ? (

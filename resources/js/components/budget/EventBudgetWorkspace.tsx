@@ -781,12 +781,12 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
 
               <section className="min-w-0 space-y-5">
               {/* Add an expense / the records of what was already spent. The form is the default view. */}
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="inline-flex max-w-full items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1">
+              <div className="flex flex-wrap items-center justify-between gap-3 max-sm:justify-center">
+                <div className="mx-auto inline-flex max-w-full items-center gap-1 rounded-full sm:mx-0 border border-white/10 bg-white/[0.04] p-1">
                   <button
                     type="button"
                     onClick={() => setExpenseTab("add")}
-                    className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-[15px] font-semibold transition ${
+                    className={`inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] font-semibold transition sm:gap-2 sm:px-5 sm:text-[15px] ${
                       expenseTab === "add" ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/75 hover:bg-white/[0.08] hover:text-white"
                     }`}
                   >
@@ -795,7 +795,7 @@ export default function EventBudgetWorkspace({ event, onChanged, onSummary, show
                   <button
                     type="button"
                     onClick={() => setExpenseTab("records")}
-                    className={`inline-flex h-11 items-center gap-2 rounded-full px-5 text-[15px] font-semibold transition ${
+                    className={`inline-flex h-11 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-[13px] font-semibold transition sm:gap-2 sm:px-5 sm:text-[15px] ${
                       expenseTab === "records" ? "bg-gradient-to-r from-[#0B0F14] to-[#18212B] text-white shadow-sm" : "text-white/75 hover:bg-white/[0.08] hover:text-white"
                     }`}
                   >

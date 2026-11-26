@@ -42,16 +42,22 @@ export default function KpiCard({
   return (
     <Tag
       {...(onClick ? { onClick, type: "button" } : {})}
-      className={`relative w-full overflow-hidden rounded-[24px] ${plain ? "dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none" : "bg-gradient-to-r from-sage-400 to-sage-700 shadow-sm"} p-4 text-left sm:rounded-[30px] sm:p-5 text-white transition-all duration-200 ${
+      className={`relative w-full overflow-hidden rounded-[24px] ${plain ? "dash-card !shadow-[0_14px_34px_rgba(15,23,42,0.18)] print:!shadow-none" : "bg-gradient-to-r from-sage-400 to-sage-700 shadow-sm"} max-sm:col-span-full flex items-center gap-3.5 p-4 text-left sm:block sm:rounded-[30px] sm:p-5 text-white transition-all duration-200 ${
         onClick ? "hover:-translate-y-0.5 hover:shadow-md" : ""
       } ${className}`}
     >
-      {Icon && <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${plain ? "text-[#2E8E82]" : "opacity-80"}`} />}
-      <h2 className={`mt-2 whitespace-nowrap font-black tracking-tight [font-variant-numeric:tabular-nums] ${size}`}>
-        {isNumber ? <AnimatedNumber value={value as number} format={fmt} decimals={decimals} delay={delay} /> : finalText}
-      </h2>
-      <p className="mt-1 text-[11px] font-semibold uppercase leading-tight tracking-wide sm:text-xs">{label}</p>
-      {description && <p className={`mt-1 text-[11px] leading-snug ${plain ? "text-white/55" : "text-white/75"} sm:mt-1.5 sm:text-xs`}>{description}</p>}
+      {Icon && (
+        <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl max-sm:border ${plain ? "bg-[#2E8E82]/12 max-sm:border-[#2E8E82]/25" : "bg-white/15 max-sm:border-white/20"} sm:h-auto sm:w-auto sm:rounded-none sm:bg-transparent`}>
+          <Icon className={`h-5 w-5 ${plain ? "text-[#2E8E82]" : "opacity-80"}`} />
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
+        <h2 className={`whitespace-nowrap font-black tracking-tight [font-variant-numeric:tabular-nums] sm:mt-2 ${size}`}>
+          {isNumber ? <AnimatedNumber value={value as number} format={fmt} decimals={decimals} delay={delay} /> : finalText}
+        </h2>
+        <p className="mt-0.5 text-[11px] font-semibold uppercase leading-tight tracking-wide sm:mt-1 sm:text-xs">{label}</p>
+        {description && <p className={`mt-0.5 text-xs leading-snug ${plain ? "text-white/55" : "text-white/75"} sm:mt-1.5`}>{description}</p>}
+      </div>
     </Tag>
   );
 }
