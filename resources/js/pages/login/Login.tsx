@@ -341,10 +341,20 @@ export default function LoginPage() {
           sessionStorage.setItem("isAuthenticated", "true");
         }
 
+        // if (data.user.role === "Staff") {
+        //   setLoggedInUser(data.user);
+        //   setShowPortalModal(true);
+        //   setIsLoading(false);
+        //   return;
+        // }
+
         if (data.user.role === "Staff") {
-          setLoggedInUser(data.user);
-          setShowPortalModal(true);
-          setIsLoading(false);
+          if (keepSignedIn) {
+            localStorage.setItem("portalMode", "staff");
+          } else {
+            sessionStorage.setItem("portalMode", "staff");
+          }
+          window.location.href = "/";
           return;
         }
 
