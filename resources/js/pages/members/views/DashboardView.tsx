@@ -334,7 +334,7 @@ export default function DashboardView({
     <>
       {/* Same "bento" layout as the staff Overview: greeting + action pill, attention card + live clock,
           upcoming events + stat cards, then the QR code and this week's notifications. */}
-      <div className="h-[calc(100dvh-73px)] overflow-y-auto dash-canvas p-4 sm:p-8">
+      <div className="min-h-[calc(100dvh-73px)] overflow-y-auto bg-[#0A0E1A] p-4 sm:p-8 text-white">
         <div className="mx-auto w-full max-w-[1600px] space-y-5">
           {/* Row 1: greeting + action pill */}
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">

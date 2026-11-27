@@ -27,6 +27,16 @@ interface SidebarProps {
 // width, header block, nav styling, and logout confirm. No quick-jump
 // search box here: this portal's nav list is short enough (6 items) that a
 // search input isn't needed the way it is for staff's larger, grouped nav.
+
+  export const MEMBER_NAV_ITEMS = [
+    { key: "dashboard", label: "Overview", icon: LayoutDashboard },
+    { key: "qr", label: "My QR Code", icon: QrCode },
+    { key: "attendance", label: "Attendance", icon: ClipboardCheck },
+    { key: "events", label: "Events", icon: CalendarDays },
+    { key: "notify", label: "Notifications", icon: Bell },
+    { key: "settings", label: "Settings", icon: Settings },
+  ];
+
 export default function Sidebar({ active, setActive, mobileOpen = false, onCloseMobile, userName, userRole, badges }: SidebarProps) {
   const { t } = useLanguage();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -39,14 +49,14 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
     return () => window.removeEventListener("member:request-logout", open);
   }, []);
 
-  const navItems = [
-    { key: "dashboard", label: "Overview", icon: LayoutDashboard },
-    { key: "qr", label: "My QR Code", icon: QrCode },
-    { key: "attendance", label: "Attendance", icon: ClipboardCheck },
-    { key: "events", label: "Events", icon: CalendarDays },
-    { key: "notify", label: "Notifications", icon: Bell },
-    { key: "settings", label: "Settings", icon: Settings },
-  ];
+  // const navItems = [
+  //   { key: "dashboard", label: "Overview", icon: LayoutDashboard },
+  //   { key: "qr", label: "My QR Code", icon: QrCode },
+  //   { key: "attendance", label: "Attendance", icon: ClipboardCheck },
+  //   { key: "events", label: "Events", icon: CalendarDays },
+  //   { key: "notify", label: "Notifications", icon: Bell },
+  //   { key: "settings", label: "Settings", icon: Settings },
+  // ];
 
   const handleNavClick = (page: string) => {
     setActive(page);
@@ -122,7 +132,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
             {t("memberArea")}
           </p>
           <div className="space-y-1.5">
-            {navItems.map((item) => {
+            {MEMBER_NAV_ITEMS.map((item) => {
               const isActive = active === item.key;
               return (
                 <button

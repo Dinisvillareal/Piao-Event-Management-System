@@ -25,12 +25,31 @@ import FeedbackRulesView from "./views/FeedbackRulesView";
 import ProfilingSettingsView from "./views/ProfilingSettingsView";
 import MyAccountView from "./views/MyAccountView";
 import StaffAccountsView from "./views/StaffAccountsView";
+
+import MemberModules, { EmbeddedMemberOverview, MemberModuleTab } from "../members/components/MemberModules";
+
 import OfflineBanner from "../../components/ui/OfflineBanner";
 import api from "../../lib/api";
 import { saveScanCache, loadScanCache, slimResident } from "../../lib/scanCache";
 import { useLanguage } from "../../i18n/LanguageContext";
 import { useThemeScope } from "../../lib/theme";
 import { staffKeyFromPath, staffUrlFor } from "../../lib/staffRoutes";
+
+const STAFF_TO_MEMBER_TAB: Record<string, MemberModuleTab> = {
+  memberDashboard: "dashboard",
+  memberQr: "qr",
+  memberAttendance: "attendance",
+  memberEvents: "events",
+  memberNotify: "notify",
+};
+
+const MEMBER_TO_STAFF_KEY: Record<MemberModuleTab, string> = {
+  dashboard: "memberDashboard",
+  qr: "memberQr",
+  attendance: "memberAttendance",
+  events: "memberEvents",
+  notify: "memberNotify",
+};
 
 // --- TYPES & MOCK DATA ---
 export type Resident = { id: string; name: string; age: number; address: string; contact: string; };
@@ -206,6 +225,12 @@ export default function StaffDashboard() {
 
     fetchCurrentUser();
   }, []);
+
+  useEffect(() => {
+  if (currentUser && !currentUser.is_head_staff && (active === "feedbackrules" || active === "staffaccounts")) {
+    setActive("dashboard");
+  }
+}, [currentUser, active]);
 
   useEffect(() => {
     const fetchMemberships = async () => {
@@ -411,6 +436,38 @@ export default function StaffDashboard() {
           {active === "profiling" && <ProfilingSettingsView />}
           {active === "myaccount" && <MyAccountView />}
           {active === "staffaccounts" && <StaffAccountsView />}
+          {active === "member-dashboard" && currentUser && (
+            <MemberModules
+              active="dashboard"
+              onNavigate={(tab) => setActive(MEMBER_TO_STAFF_KEY[tab])}
+              member={{
+                id: String(currentUser.id),
+                name: displayName,
+                first_name: currentUser.first_name || "",
+                last_name: currentUser.last_name || "",
+                user_code: currentUser.user_code || "",
+              }}
+              allEvents={allEvents}
+              allMemberships={membershipOptions}
+              embedded
+            />
+          )}
+         {active in STAFF_TO_MEMBER_TAB && currentUser && (
+            <MemberModules
+              active={STAFF_TO_MEMBER_TAB[active]}
+              onNavigate={(tab) => setActive(MEMBER_TO_STAFF_KEY[tab])}
+              member={{
+                id: String(currentUser.id),
+                name: displayName,
+                first_name: currentUser.first_name || "",
+                last_name: currentUser.last_name || "",
+                user_code: currentUser.user_code || "",
+              }}
+              allEvents={allEvents}
+              allMemberships={membershipOptions}
+              embedded
+            />
+          )}
         </div>
       </main>
 

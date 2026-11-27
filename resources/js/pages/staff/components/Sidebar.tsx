@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { useLanguage } from "../../../i18n/LanguageContext";
 import { staffPathFor } from "../../../lib/staffRoutes";
+import { MEMBER_NAV_ITEMS } from "../../../components/layout/Sidebar";
 import api from "../../../lib/api";
 
 // --- NAVIGATION CONFIG ---
@@ -50,19 +51,45 @@ export const NAV = [
   { key: "returns", path: staffPathFor("returns"), label: "Returns", icon: Undo2 },
 ];
 
+export const HEAD_STAFF_NAV = [
+  { key: "staffaccounts", path: staffPathFor("staffaccounts"), label: "Staff Accounts", icon: ShieldCheck },
+  { key: "feedbackrules", path: staffPathFor("feedbackrules"), label: "Feedback Rules", icon: MessageSquareText },
+];
+
 export const SETTINGS_NAV = [
   // Account
   { key: "myaccount", section: "account", path: staffPathFor("myaccount"), label: "My Account", icon: UserCog },
   // Head Staff only (hidden for everyone else in the Sidebar below).
-  { key: "staffaccounts", section: "account", path: staffPathFor("staffaccounts"), label: "Staff Accounts", icon: ShieldCheck },
+  //{ key: "staffaccounts", section: "account", path: staffPathFor("staffaccounts"), label: "Staff Accounts", icon: ShieldCheck },
   // Records & audit
   { key: "activitylogs", section: "records", path: staffPathFor("activitylogs"), label: "Activity Logs", icon: FileText },
   { key: "archive", section: "records", path: staffPathFor("archive"), label: "Trash / Archive", icon: Archive },
   // Configuration
   { key: "profiling", section: "config", path: staffPathFor("profiling"), label: "Age & Status Categories", icon: Tags },
   { key: "integrations", section: "config", path: staffPathFor("integrations"), label: "Integrations", icon: Link2 },
-  { key: "feedbackrules", section: "config", path: staffPathFor("feedbackrules"), label: "Feedback Rules", icon: MessageSquareText },
+  //{ key: "feedbackrules", section: "config", path: staffPathFor("feedbackrules"), label: "Feedback Rules", icon: MessageSquareText },
 ];
+
+const STAFF_MEMBER_KEY_MAP: Record<string, string> = {
+  dashboard: "memberDashboard",
+  qr: "memberQr",
+  attendance: "memberAttendance",
+  events: "memberEvents",
+  notify: "memberNotify",
+};
+
+export const MEMBER_NAV = MEMBER_NAV_ITEMS
+  .filter((item) => item.key in STAFF_MEMBER_KEY_MAP)
+  .map((item) => {
+    const staffKey = STAFF_MEMBER_KEY_MAP[item.key];
+    return {
+      key: staffKey,
+      labelKey: item.key,
+      path: staffPathFor(staffKey),
+      label: item.label,
+      icon: item.icon,
+    };
+  });
 
 // Settings is split into labelled sections so related pages sit together.
 export const SETTINGS_SECTIONS = [
@@ -121,7 +148,9 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   const feedbackUnread = useStaffAlertsUnread();
   // Unread security alerts -- badge on My Account.
   const securityUnread = useSecurityUnread();
-  const settingsNav = useMemo(() => SETTINGS_NAV.filter((i) => i.key !== "staffaccounts" || isHeadStaff), [isHeadStaff]);
+  //const settingsNav = useMemo(() => SETTINGS_NAV.filter((i) => (i.key !== "staffaccounts" && i.key !== "feedbackrules") || isHeadStaff), [isHeadStaff]);
+  const headStaffNav = useMemo(() => (isHeadStaff ? HEAD_STAFF_NAV : []), [isHeadStaff]);
+  const settingsNav = SETTINGS_NAV;
   useEffect(() => {
     let cancelled = false;
     api.get("/households/alerts")
@@ -147,7 +176,7 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
   // and Settings' submenu all at the same time -- a real quick-jump, not
   // a decorative input that does nothing.
   const allNavItems = useMemo(
-    () => [...STANDALONE_NAV, ...NAV_GROUPS.flatMap((g) => g.items), ...settingsNav],
+    () => [...headStaffNav,...STANDALONE_NAV, ...NAV_GROUPS.flatMap((g) => g.items), ...settingsNav],
     [settingsNav]
   );
   const trimmedQuery = navQuery.trim().toLowerCase();
@@ -346,6 +375,29 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
             </>
           ) : (
             <>
+
+            {isHeadStaff && (
+                <div className="mb-6 border-b border-white/10 pb-5">
+                  <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">
+                    Head Staff
+                  </p>
+                  <div className="space-y-1.5">
+                    {HEAD_STAFF_NAV.map((item) => (
+                      <button
+                        key={item.key}
+                        onClick={() => handleNavClick(item.key, item.path)}
+                        className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${
+                          active === item.key ? activeNav : inactiveNav
+                        }`}
+                      >
+                        <item.icon className="h-5 w-5 shrink-0" />
+                        <span className="truncate flex-1 min-w-0 text-left">{t(item.key)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">{t("staffConsole")}</p>
               <div className="space-y-1.5">
                 {/* STANDALONE LINKS -- Dashboard and Reports each go straight
@@ -443,6 +495,27 @@ export default function Sidebar({ active, setActive, mobileOpen = false, onClose
               </div>
             </>
           )}
+          
+          <div className="mt-6 border-t border-white/10 pt-5">
+                <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/35">
+                  {t("memberArea")}
+                </p>
+                <div className="space-y-1.5">
+                  {MEMBER_NAV.map((item) => (
+                    <button
+                      key={item.key}
+                      onClick={() => handleNavClick(item.key, item.path)}
+                      className={`flex items-center w-full rounded-xl px-4 py-3 gap-3 text-[13.5px] transition-all duration-200 group ${
+                        active === item.key ? activeNav : inactiveNav
+                      }`}
+                    >
+                      <item.icon className="h-5 w-5 shrink-0" />
+                      <span className="truncate flex-1 min-w-0 text-left">{t(item.labelKey)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
         </div>
       </aside>
 

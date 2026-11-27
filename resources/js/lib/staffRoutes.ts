@@ -22,6 +22,11 @@ export const STAFF_ROUTES = [
   { key: "feedbackrules", path: "feedback-rules" },
   { key: "myaccount", path: "my-account" },
   { key: "staffaccounts", path: "staff-accounts" },
+  { key: "memberDashboard", path: "member-dashboard" },
+  { key: "memberQr", path: "member-qr" },
+  { key: "memberAttendance", path: "member-attendance" },
+  { key: "memberEvents", path: "member-events" },
+  { key: "memberNotify", path: "member-notifications" },
 ] as const;
 
 export const STAFF_BASE = "/admin";
