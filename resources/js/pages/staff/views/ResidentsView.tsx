@@ -6,6 +6,7 @@ import SaveButton from "../../../components/ui/SaveButton";
 import useServerMatchIds from "../../../hooks/useServerMatchIds";
 import { highlightMatches } from "../../../lib/highlight";
 import SuffixSelect from "../../../components/ui/SuffixSelect";
+import PurokSelect from "../../../components/ui/PurokSelect";
 import FilterBar, { type FilterDef, type ExtraChip } from "../../../components/ui/FilterBar";
 import QuickTabs from "../../../components/ui/QuickTabs";
 import SpeedDial from "../../../components/ui/SpeedDial";
@@ -271,7 +272,7 @@ const emptyAdd = (): AddForm => ({
   lastName: "",
   contactNumber: "",
   role: "",
-  hasAccount: false,
+  hasAccount: true,
   password: "",
   hasMemberships: false,
   selectedMemberships: [],
@@ -293,6 +294,16 @@ const SUFFIX_OPTIONS = ["Jr.", "Sr.", "II", "III", "IV", "V"];
 // "Juan Cruz" + "Jr." -> "Juan Cruz, Jr." (display only)
 const withSuffix = (name: string, suffix?: string | null) =>
   suffix && suffix.trim() ? `${name}, ${suffix.trim()}` : name;
+
+const PUROK_OPTIONS = [
+  "Purok 1",
+  "Purok 2",
+  "Purok 3",
+  "Purok 4",
+  "Purok 5",
+  "Purok 6",
+  "Purok 7",
+] as const;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function ResidentsView({ isHeadStaff = false }: { isHeadStaff?: boolean }) {
@@ -1580,6 +1591,7 @@ const handleDeleteResident = async () => {
   // category. A resident can hold several (Solo Parent + PWD), except inside
   // "employment" where only one applies. The chosen ids still go to the
   // server as current_status_ids[], and membership eligibility checks them.
+  
   const CurrentStatusCheckboxes = ({ isEdit }: { isEdit: boolean }) => {
     const form = isEdit ? editingResident : newResident;
     const selected: number[] = form?.currentStatusIds ?? [];
@@ -1591,15 +1603,9 @@ const handleDeleteResident = async () => {
     };
 
     const toggle = (cs: CurrentStatusOption) => {
-      const cat = csCategoryOf(cs.category);
-      setIds((ids) => {
-        if (ids.includes(cs.id)) return ids.filter((x) => x !== cs.id);
-        if (cat === "employment") {
-          const others = currentStatuses.filter((o) => csCategoryOf(o.category) === "employment").map((o) => o.id);
-          return [...ids.filter((x) => !others.includes(x)), cs.id];
-        }
-        return [...ids, cs.id];
-      });
+      setIds((ids) =>
+        ids.includes(cs.id) ? ids.filter((x) => x !== cs.id) : [...ids, cs.id]
+      );
     };
 
     // Memberships already ticked above that need a particular status.
@@ -1642,18 +1648,15 @@ const handleDeleteResident = async () => {
               <div key={g.key}>
                 <div className={`flex items-center gap-2 ${groups.length === 1 && g.key === "other" ? "hidden" : "mb-2"}`}>
                   <p className="text-xs font-bold uppercase tracking-wider text-gold-300">{t(`csGroup_${g.key}`)}</p>
-                  {g.key === "employment" && (
-                    <span className="text-[11px] font-medium text-white/45">{t("csPickOne")}</span>
-                  )}
                 </div>
-                <div className="flex flex-wrap gap-2" role={g.key === "employment" ? "radiogroup" : "group"}>
+                <div className="flex flex-wrap gap-2" role="group">
                   {g.items.map((cs) => {
                     const on = selected.includes(cs.id);
                     return (
                       <button
                         key={cs.id}
                         type="button"
-                        role={g.key === "employment" ? "radio" : "checkbox"}
+                        role="checkbox"
                         aria-checked={on}
                         onClick={() => toggle(cs)}
                         className={`inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-[15px] font-medium transition-colors ${
@@ -1711,6 +1714,8 @@ const handleDeleteResident = async () => {
     );
   };
 
+
+
   // "Account Access" fields shared by the Add and Edit forms (called as a
   // plain function, not a component, so typing in the password box doesn't
   // remount it). Rules:
@@ -1718,6 +1723,7 @@ const handleDeleteResident = async () => {
   //   - Edit, no account yet: can be switched on (password required).
   //   - Edit, account already exists: locked on -- an account can be
   //     password-reset but never removed (the server enforces this too).
+  
   const renderAccountAccess = (isEdit: boolean) => {
     const form = isEdit ? editingResident : newResident;
     if (!form) return null;
@@ -1730,8 +1736,6 @@ const handleDeleteResident = async () => {
         : setNewResident((p) => ({ ...p, ...patch }));
     return (
       <div className="space-y-4">
-        {/* Portal access -- a switch card (not a checkbox): clear on/off state,
-            status text, and a lock when an existing account can't be removed. */}
         <div
           className={`flex items-center gap-4 rounded-2xl border px-5 py-4 transition ${
             form.hasAccount ? "border-[#4FBEB0]/30 bg-[#4FBEB0]/[0.06]" : "border-white/10 bg-white/[0.04]"
@@ -1786,17 +1790,7 @@ const handleDeleteResident = async () => {
         </div>
 
         {form.hasAccount && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-base font-semibold text-white mb-1.5">{t("usernameLabel")}</label>
-              <input
-                type="text"
-                value={isEdit ? `PR-${String(editingResident!.real_id).padStart(4, "0")}` : ""}
-                placeholder={t("resGeneratedWhenSaved")}
-                disabled
-                className="w-full rounded-full border px-5 py-3.5 text-base bg-white/[0.05] text-white placeholder:text-white/40 border-white/10 cursor-not-allowed"
-              />
-            </div>
+          <div>
             <div className="space-y-3">
               {locked ? (
                 isEdit && editingResident?.pendingActivation ? (
@@ -2891,7 +2885,7 @@ const handleDeleteResident = async () => {
                         dark
                       />
                     </div>
-                    <div>
+                    {/* <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("addressPurokLabel")}</label>
                       <input
                         type="text"
@@ -2900,7 +2894,21 @@ const handleDeleteResident = async () => {
                         placeholder={t("purokPlaceholder")}
                         className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       />
-                    </div>
+                    </div> */}
+
+                <div>
+                  <label className="block text-base font-semibold text-white mb-1.5">{t("addressPurokLabel")}</label>
+                  <PurokSelect
+                    value={newResident.address}
+                    hasError={!!formErrors.address}
+                    onChange={(purok) => {
+                      setNewResident((p) => ({ ...p, address: purok }));
+                      setFormErrors((p) => ({ ...p, address: "" }));
+                    }}
+                  />
+                  {formErrors.address && <p className="text-red-400 text-xs mt-1">{formErrors.address}</p>}
+                </div>
+
                     <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("civilStatusLabel")}</label>
                       <div className="relative">
@@ -3207,7 +3215,8 @@ const handleDeleteResident = async () => {
                         dark
                       />
                     </div>
-                    <div>
+
+                    {/* <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("addressPurokLabel")}</label>
                       <input
                         type="text"
@@ -3216,7 +3225,22 @@ const handleDeleteResident = async () => {
                         placeholder={t("purokPlaceholder")}
                         className="w-full rounded-full border border-white/25 px-5 py-3.5 text-base bg-white/10 text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/40 focus:border-[#4FBEB0]/70"
                       />
+                    </div> */}
+
+                  
+                    <div>
+                      <label className="block text-base font-semibold text-white mb-1.5">{t("addressPurokLabel")}</label>
+                      <PurokSelect
+                        value={editingResident.address}
+                        hasError={!!formErrors.address}
+                        onChange={(purok) => {
+                          setEditingResident((p) => (p ? { ...p, address: purok } : p));
+                          setFormErrors((p) => ({ ...p, address: "" }));
+                        }}
+                      />
+                      {formErrors.address && <p className="text-red-400 text-xs mt-1">{formErrors.address}</p>}
                     </div>
+
                     <div>
                       <label className="block text-base font-semibold text-white mb-1.5">{t("civilStatusLabel")}</label>
                       <div className="relative">

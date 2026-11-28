@@ -417,7 +417,13 @@ class HouseholdController extends Controller
 
                     return $this->notInHouseholdResponse($user);
                 }
-                $household->backfillFromHead($user);
+                // $household->backfillFromHead($user);
+                // $this->createLog('Update', "Set {$user->first_name} {$user->last_name} as head of household '{$household->code}'");
+
+                $household->update([
+                    'address'        => $user->address ?: $household->address,
+                    'contact_number' => $user->contact_number ?: $household->contact_number,
+                ]);
                 $this->createLog('Update', "Set {$user->first_name} {$user->last_name} as head of household '{$household->code}'");
             }
 

@@ -280,9 +280,11 @@ class UserController extends Controller
         // who doesn't match its required age bracket / civil status.
         $incomingMembershipIds = array_filter((array) $request->membership_ids);
         $incomingCurrentStatusIds = array_map('intval', array_filter((array) $request->current_status_ids));
-        if ($error = $this->employmentConflict($incomingCurrentStatusIds)) {
-            return response()->json(['errors' => ['current_status_ids' => [$error]]], 422);
-        }
+       
+        // if ($error = $this->employmentConflict($incomingCurrentStatusIds)) {
+        //     return response()->json(['errors' => ['current_status_ids' => [$error]]], 422);
+        // }
+
         if (!empty($incomingMembershipIds)) {
             $violations = $this->checkMembershipEligibility(
                 $incomingMembershipIds,
@@ -355,12 +357,24 @@ class UserController extends Controller
                         'errors' => ['is_household_head' => ['Link this resident to a household before making them the head.']],
                     ], 422);
                 }
+                // User::where('household_id', $user->household_id)->update(['is_household_head' => false]);
+                // $user->update(['is_household_head' => true]);
+
+                // $household = Household::find($user->household_id);
+                // if ($household) {
+                //     $household->backfillFromHead($user);
+                // }
+
                 User::where('household_id', $user->household_id)->update(['is_household_head' => false]);
                 $user->update(['is_household_head' => true]);
 
+                //BAG-O NIIIIIII PUD
                 $household = Household::find($user->household_id);
                 if ($household) {
-                    $household->backfillFromHead($user);
+                    $household->update([
+                        'address'        => $user->address ?: $household->address,
+                        'contact_number' => $user->contact_number ?: $household->contact_number,
+                    ]);
                 }
             }
 
@@ -645,12 +659,12 @@ class UserController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        if ($request->has('current_status_ids')) {
-            $ids = array_map('intval', array_filter((array) $request->current_status_ids));
-            if ($error = $this->employmentConflict($ids)) {
-                return response()->json(['errors' => ['current_status_ids' => [$error]]], 422);
-            }
-        }
+        // if ($request->has('current_status_ids')) {
+        //     $ids = array_map('intval', array_filter((array) $request->current_status_ids));
+        //     if ($error = $this->employmentConflict($ids)) {
+        //         return response()->json(['errors' => ['current_status_ids' => [$error]]], 422);
+        //     }
+        // }
 
         DB::beginTransaction();
 
@@ -845,10 +859,23 @@ class UserController extends Controller
             // filled in from whatever the head's Residents-page record
             // now has -- but only for a field the household doesn't
             // already have its own value for (see backfillFromHead()).
+
+
+            // if ($user->is_household_head && $user->household_id) {
+            //     $household = Household::find($user->household_id);
+            //     if ($household) {
+            //         $household->backfillFromHead($user);
+            //     }
+            // }
+
+            //BAG-O NIIIIIIIII
             if ($user->is_household_head && $user->household_id) {
                 $household = Household::find($user->household_id);
                 if ($household) {
-                    $household->backfillFromHead($user);
+                    $household->update([
+                        'address'        => $user->address ?: $household->address,
+                        'contact_number' => $user->contact_number ?: $household->contact_number,
+                    ]);
                 }
             }
 

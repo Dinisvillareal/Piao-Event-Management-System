@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { X, ArrowRight, ArrowLeft, CheckCircle2 } from "lucide-react";
 import api, { apiErrorMessage } from "../../lib/api";
 import { useLanguage } from "../../i18n/LanguageContext";
-import { checkPassword } from "../../lib/passwordPolicy";
+import { checkPassword, isStrongPassword } from "../../lib/passwordPolicy";
 import PasswordField from "./PasswordField";
 import SaveButton from "../ui/SaveButton";
 import Portal from "../ui/Portal";
@@ -56,7 +56,8 @@ export default function ActivateAccountModal({ onClose, initialUserCode = "", on
   };
 
   const step1Ready = userCode.trim().length >= 3 && parts.every((p) => p.length === 4) && !busy;
-  const strong = checkPassword(pw).every((c) => c.ok) && pw.length >= 12;
+  //const strong = checkPassword(pw).every((c) => c.ok) && pw.length >= 12;
+  const strong = isStrongPassword(pw);
   const step2Ready = strong && pw === pw2 && !busy;
 
   const checkSlip = async (e: React.FormEvent) => {
@@ -119,10 +120,10 @@ export default function ActivateAccountModal({ onClose, initialUserCode = "", on
 
   return (
     <Portal>
-      <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 px-4 backdrop-blur-sm">
         <div
           className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[30px] border border-white/10 bg-[#0A0E1A] p-7 shadow-2xl sm:p-9"
-          onClick={(e) => e.stopPropagation()}
+          
         >
           <div className="flex items-start justify-between gap-4">
             <h2 className="font-display text-2xl font-extrabold tracking-tight text-white">{t("actTitle")}</h2>
@@ -174,7 +175,6 @@ export default function ActivateAccountModal({ onClose, initialUserCode = "", on
                             autoComplete="off"
                             autoCapitalize="characters"
                             spellCheck={false}
-                            maxLength={12}
                             placeholder="••••"
                             className="min-w-0 flex-1 rounded-2xl border border-white/25 bg-white/10 px-1 py-3.5 text-center font-mono text-lg font-bold tracking-[0.15em] text-white placeholder:text-white/25 focus:border-[#4FBEB0]/60 focus:outline-none focus:ring-2 focus:ring-[#4FBEB0]/20 disabled:opacity-50 sm:text-xl"
                             disabled={busy}

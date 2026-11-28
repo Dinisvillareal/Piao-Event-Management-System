@@ -918,7 +918,7 @@ class EventController extends Controller
             try {
                 app(SmsService::class)->broadcastToAllHouseholdHeads(
                     $event->id,
-                    'CANCELLED: ' . $eventName . ' — Event cancelled. We apologize for the inconvenience.'
+                    'CANCELLED: ' . $eventName . ' - Event cancelled. We apologize for the inconvenience.'
                 );
             } catch (\Throwable $e) {
                 \Illuminate\Support\Facades\Log::warning('SMS cancel broadcast failed: ' . $e->getMessage(), ['event' => $eventName]);
@@ -1067,7 +1067,7 @@ class EventController extends Controller
             ? 'Event Updated: ' . $event->name
             : 'New Event: ' . $event->name;
 
-        $messageWithStaff = $staffName . ' • ' . $event->name . ' — ' .
+        $messageWithStaff = $staffName . ' - ' . $event->name . ' - ' .
             ($event->notification_message ?? 'New event announced');
 
         foreach ($userIds as $userId) {

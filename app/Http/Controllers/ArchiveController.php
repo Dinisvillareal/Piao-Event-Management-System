@@ -418,7 +418,7 @@ class ArchiveController extends Controller
                         try {
                             app(\App\Services\SmsService::class)->broadcastToAllHouseholdHeads(
                                 $item->id,
-                                'RE-OPENED: ' . $item->name . ' — This event has been re-opened. Check the app for the updated schedule.'
+                                'RE-OPENED: ' . $item->name . ' - This event has been re-opened. Check the app for the updated schedule.'
                             );
                         } catch (\Throwable $e) {
                             \Illuminate\Support\Facades\Log::warning('SMS reopen broadcast failed: ' . $e->getMessage(), ['event' => $item->name]);

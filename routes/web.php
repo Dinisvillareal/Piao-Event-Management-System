@@ -21,6 +21,7 @@ use App\Http\Controllers\NameSuffixController;
 use App\Http\Controllers\CurrentStatusController;
 use App\Http\Controllers\HouseholdController;
 use App\Http\Controllers\StaffAccountController;
+use App\Http\Controllers\PurokController;
 use App\Http\Middleware\EnsureHeadStaff;
 use App\Http\Middleware\EnsureStaff;
 use App\Http\Middleware\SecurityHeaders;
@@ -91,6 +92,16 @@ Route::get('/content-translations', function () {
 */
 
 Route::middleware(['auth', SessionGuard::class, SecurityHeaders::class, 'throttle:app'])->group(function () {
+
+    /*
+    |--------------------------------------------------------------------------
+    | PUROKS (UC-18)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/puroks', [PurokController::class, 'index']);
+    Route::post('/puroks', [PurokController::class, 'store']);
+    Route::delete('/puroks/{purok}', [PurokController::class, 'destroy']);
+
 
     /*
     |--------------------------------------------------------------------------
